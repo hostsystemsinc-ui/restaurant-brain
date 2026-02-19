@@ -64,3 +64,29 @@ def recompute():
 while True:
     recompute()
     time.sleep(30)
+
+
+from fastapi import FastAPI
+import uvicorn
+import threading
+
+app = FastAPI()
+
+@app.get("/wait")
+def get_wait():
+    result = supabase.table("wait_quotes") \
+        .select("*") \
+        .order("created_at", desc=True) \
+        .limit(1) \
+        .execute()
+
+    if result.data:
+        return result.data[0]
+    return {"message": "No wait data"}
+
+def start_server():
+    threading.Thread(target=lambda: None).start()
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+
+# start API server
+start_server()
