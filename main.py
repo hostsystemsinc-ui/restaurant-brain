@@ -17,9 +17,10 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "https://restaurant-brain-production.up.railway.app",
-    ],
+    "http://localhost:3000",
+    "https://restaurant-brain-production.up.railway.app",
+    "*"
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,3 +59,16 @@ def clear_table(table_id: str):
         {"p_table": table_id}
     ).execute()
     return result.data
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+    @app.post("/seat-party")
+def seat_party(table_id: str, party_name: str):
+    try:
+        supabase.table("tables").update({
+            "status": "occupied"
+        }).eq("id", table_id).execute()
+
+        return {"status": "seated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
