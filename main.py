@@ -105,3 +105,7 @@ def clear_table(payload: ClearTableRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@app.get("/tables")
+def get_tables():
+    res = supabase.table("tables").select("*").execute()
+    return res.data
