@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 
@@ -13,23 +13,28 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
 
-# ✅ CORS (ONLY ONCE — at top)
+# ✅ CORS (single middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "http://localhost:3000",
-    "https://restaurant-brain-production.up.railway.app",
-    "*"
-],
+        "http://localhost:3000",
+        "https://restaurant-brain-production.up.railway.app",
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Health check
+# Root
 @app.get("/")
 def root():
     return {"status": "restaurant brain alive"}
+
+# Health check
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 # Get tables
 @app.get("/tables")
@@ -42,7 +47,7 @@ def get_tables():
     )
     return res.data
 
-# Seat next party
+# Seat next party (RPC)
 @app.post("/seat-next")
 def seat_next():
     result = supabase.rpc(
@@ -51,7 +56,7 @@ def seat_next():
     ).execute()
     return result.data
 
-# Clear table
+# Clear table (RPC)
 @app.post("/clear-table/{table_id}")
 def clear_table(table_id: str):
     result = supabase.rpc(
@@ -59,10 +64,9 @@ def clear_table(table_id: str):
         {"p_table": table_id}
     ).execute()
     return result.data
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-    @app.post("/seat-party")
+
+# Manual seat party (fallback endpoint for testing)
+@app.post("/seat-party")
 def seat_party(table_id: str, party_name: str):
     try:
         supabase.table("tables").update({
