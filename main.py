@@ -109,3 +109,15 @@ def clear_table(payload: ClearTableRequest):
 def get_tables():
     res = supabase.table("tables").select("*").execute()
     return res.data
+from fastapi import Body
+
+@app.post("/clear-table")
+def clear_table_api(payload: dict = Body(...)):
+    table_id = payload.get("table_id")
+
+    result = supabase.rpc(
+        "clear_table",
+        {"p_table": table_id}
+    ).execute()
+
+    return result.data
