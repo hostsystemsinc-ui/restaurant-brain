@@ -40,7 +40,7 @@ def get_wait():
 def seat_next():
     result = supabase.rpc(
         "seat_next_party",
-        {"p_restaurant": RESTAURANT_ID}
+        {"p_restaurant_id": RESTAURANT_ID}
     ).execute()
 
     return result.data
