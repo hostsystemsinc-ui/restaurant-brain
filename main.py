@@ -3,30 +3,34 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 
+# Environment variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 RESTAURANT_ID = os.environ.get("RESTAURANT_ID")
 
+# Supabase client
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
 
-# ✅ Allow your frontend to call the API
+# ✅ CORS (ONLY ONCE — at top)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://restaurant-brain-production.up.railway.app"
+        "https://restaurant-brain-production.up.railway.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Health check
 @app.get("/")
 def root():
     return {"status": "restaurant brain alive"}
 
+# Get tables
 @app.get("/tables")
 def get_tables():
     res = (
@@ -37,6 +41,7 @@ def get_tables():
     )
     return res.data
 
+# Seat next party
 @app.post("/seat-next")
 def seat_next():
     result = supabase.rpc(
@@ -45,6 +50,7 @@ def seat_next():
     ).execute()
     return result.data
 
+# Clear table
 @app.post("/clear-table/{table_id}")
 def clear_table(table_id: str):
     result = supabase.rpc(
@@ -52,14 +58,3 @@ def clear_table(table_id: str):
         {"p_table": table_id}
     ).execute()
     return result.data
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://restaurant-brain-production.up.railway.app"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
