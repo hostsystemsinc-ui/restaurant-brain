@@ -1,4 +1,3 @@
 supabase
-postgrest
-httpx
-python-dotenv
+fastapi
+uvicorn
