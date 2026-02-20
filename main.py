@@ -76,3 +76,16 @@ def seat_party(table_id: str, party_name: str):
         return {"status": "seated"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@app.post("/join-waitlist")
+def join_waitlist(name: str, party_size: int):
+    try:
+        supabase.table("waitlist_entries").insert({
+            "restaurant_id": RESTAURANT_ID,
+            "name": name,
+            "party_size": party_size,
+            "status": "waiting"
+        }).execute()
+
+        return {"status": "joined"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
