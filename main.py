@@ -101,3 +101,13 @@ def join_waitlist(restaurant_id: str, name: str, party_size: int):
         return {"status": "joined"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@app.get("/waitlist")
+def get_waitlist():
+    res = (
+        supabase.table("waitlist_entries")
+        .select("id, name, party_size, status, created_at")
+        .eq("restaurant_id", RESTAURANT_ID)
+        .order("created_at")
+        .execute()
+    )
+    return res.data
