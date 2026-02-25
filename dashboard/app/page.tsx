@@ -322,22 +322,22 @@ export default function HostDashboard() {
   const waitingList = queue.filter(q => q.status === "waiting")
 
   return (
-    <div className="flex flex-col" style={{ height: "100dvh", overflow: "hidden", background: "var(--bg)" }}>
+    <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "var(--bg)" }}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header className="flex items-center justify-between px-5 py-3.5 shrink-0"
         style={{ background: "rgba(10,10,10,0.95)", borderBottom: "1px solid var(--border)", backdropFilter: "blur(16px)" }}>
-        <div className="flex items-center gap-3">
-          <span className="font-bold text-white tracking-[0.25em] text-sm">HOST</span>
-          <div className="h-4 w-px" style={{ background: "rgba(255,255,255,0.12)" }} />
-          <div className="flex items-center gap-4 text-sm" style={{ color: "var(--muted)" }}>
-            <span><span className="text-green-400 font-bold">{available}</span><span className="text-white/30">/{tables.length}</span> free</span>
-            <span><span className="text-orange-400 font-bold">{waitingList.length}</span> waiting</span>
-            {readyList.length > 0 && <span className="text-green-400 font-bold animate-pulse">{readyList.length} ready ●</span>}
-            {avgWait > 0 && <span className="hidden md:inline">~<span className="text-white font-semibold">{avgWait}m</span></span>}
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="font-bold text-white tracking-[0.25em] text-sm shrink-0">HOST</span>
+          <div className="h-4 w-px shrink-0" style={{ background: "rgba(255,255,255,0.12)" }} />
+          <div className="flex items-center gap-2 sm:gap-4 text-sm min-w-0 overflow-hidden" style={{ color: "var(--muted)" }}>
+            <span className="shrink-0"><span className="text-green-400 font-bold">{available}</span><span className="text-white/30">/{tables.length}</span> free</span>
+            <span className="shrink-0"><span className="text-orange-400 font-bold">{waitingList.length}</span> waiting</span>
+            {readyList.length > 0 && <span className="text-green-400 font-bold animate-pulse shrink-0">{readyList.length} ready ●</span>}
+            {avgWait > 0 && <span className="hidden md:inline shrink-0">~<span className="text-white font-semibold">{avgWait}m</span></span>}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Link href="/admin" className="hidden sm:flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg hover:bg-white/10" style={{ color: "var(--muted)" }}>
             <LayoutDashboard className="w-3.5 h-3.5" /> Admin
           </Link>
