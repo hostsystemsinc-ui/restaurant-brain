@@ -147,6 +147,21 @@ def root():
 def health():
     return {"status": "ok"}
 
+@app.get("/debug/twilio")
+def debug_twilio():
+    """Check Twilio config and attempt a real send to diagnose issues."""
+    sid_set   = bool(TWILIO_SID)
+    token_set = bool(TWILIO_TOKEN)
+    from_set  = bool(TWILIO_FROM)
+    if not (sid_set and token_set and from_set):
+        return {"configured": False, "sid_set": sid_set, "token_set": token_set, "from_set": from_set}
+    try:
+        from twilio.rest import Client
+        Client(TWILIO_SID, TWILIO_TOKEN).api.accounts(TWILIO_SID).fetch()
+        return {"configured": True, "from_number": TWILIO_FROM, "auth_ok": True}
+    except Exception as e:
+        return {"configured": True, "auth_ok": False, "error": str(e)}
+
 @app.get("/restaurant")
 def get_restaurant():
     res = supabase.table("restaurants").select("*").eq("id", RESTAURANT_ID).execute()
