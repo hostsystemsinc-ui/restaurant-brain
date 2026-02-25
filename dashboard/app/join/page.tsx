@@ -17,19 +17,16 @@ export default function JoinPage() {
   const [restName,  setRestName]  = useState("")
 
   useEffect(() => {
-    // Fetch queue status
     fetch(`${API}/queue`)
       .then(r => r.json())
       .then(q => {
         const active = Array.isArray(q) ? q.filter((e: { status: string }) =>
           e.status === "waiting" || e.status === "ready"
         ) : []
-        const ahead = active.length
-        setQueueInfo({ ahead, wait: Math.max(0, ahead * 15) })
+        setQueueInfo({ ahead: active.length, wait: Math.max(0, active.length * 15) })
       })
       .catch(() => setQueueInfo({ ahead: 0, wait: 0 }))
 
-    // Fetch restaurant name
     fetch(`${API}/restaurant`)
       .then(r => r.json())
       .then(d => setRestName(d.name || ""))
@@ -37,12 +34,8 @@ export default function JoinPage() {
   }, [])
 
   const submit = async () => {
-    if (!name.trim()) {
-      setError("Please enter your name.")
-      return
-    }
-    setLoading(true)
-    setError("")
+    if (!name.trim()) { setError("Please enter your name."); return }
+    setLoading(true); setError("")
     try {
       const res = await fetch(`${API}/queue/join`, {
         method:  "POST",
@@ -67,88 +60,82 @@ export default function JoinPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center"
-      style={{ background: "#000", color: "#fff" }}
+      className="flex flex-col"
+      style={{
+        height: "100dvh",
+        background: "#000",
+        color: "#fff",
+        overflow: "hidden",
+      }}
     >
-      {/* ── Top wordmark ───────────────────────────────────────────────── */}
-      <div className="w-full flex flex-col items-center pt-16 pb-8 px-8">
-        <p className="text-xs tracking-[0.4em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.4)" }}>
+      {/* ── Header: HOST + restaurant + queue status ── */}
+      <div className="flex flex-col items-center px-8 pt-10 pb-5 shrink-0">
+        <p
+          className="text-xs tracking-[0.4em] uppercase mb-2"
+          style={{ color: "rgba(255,255,255,0.35)" }}
+        >
           Powered by
         </p>
-        <h1
-          className="text-4xl font-bold"
-          style={{ letterSpacing: "0.35em" }}
-        >
+        <h1 className="text-4xl font-bold" style={{ letterSpacing: "0.35em" }}>
           HOST
         </h1>
-      </div>
-
-      {/* ── Restaurant identity ────────────────────────────────────────── */}
-      <div
-        className="w-full flex flex-col items-center py-10 px-8"
-        style={{ borderTop: "1px solid rgba(255,255,255,0.08)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}
-      >
-        {/* Logo placeholder — replace src with your logo image */}
-        <div
-          className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5"
-          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-        >
-          <span className="text-3xl font-bold" style={{ letterSpacing: "0.05em" }}>
-            {restName ? restName.charAt(0).toUpperCase() : "R"}
-          </span>
-        </div>
-        <h2 className="text-2xl font-semibold text-center" style={{ letterSpacing: "0.05em" }}>
-          {restName || "Welcome"}
-        </h2>
+        {restName && (
+          <p className="mt-3 text-base font-medium" style={{ color: "rgba(255,255,255,0.75)", letterSpacing: "0.04em" }}>
+            {restName}
+          </p>
+        )}
         {queueInfo !== null && (
-          <p className="mt-3 text-sm text-center" style={{ color: "rgba(255,255,255,0.5)" }}>
+          <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
             {queueInfo.ahead === 0
               ? "✦ Tables available now"
-              : `${queueInfo.ahead} ${queueInfo.ahead === 1 ? "party" : "parties"} ahead · ~${queueInfo.wait}m wait`}
+              : `${queueInfo.ahead} ${queueInfo.ahead === 1 ? "party" : "parties"} ahead · ~${queueInfo.wait}m`}
           </p>
         )}
       </div>
 
-      {/* ── Form ───────────────────────────────────────────────────────── */}
-      <div className="w-full flex-1 flex flex-col gap-10 px-8 pt-10 max-w-sm mx-auto">
+      {/* divider */}
+      <div className="mx-8 shrink-0" style={{ height: "1px", background: "rgba(255,255,255,0.08)" }} />
 
-        {/* Party size */}
-        <div className="flex flex-col items-center gap-6">
-          <p className="text-xs tracking-[0.3em] uppercase text-white">
-            Party Size
-          </p>
-          <div className="flex items-center gap-8">
-            <button
-              onClick={() => setPartySize(s => Math.max(1, s - 1))}
-              disabled={partySize <= 1}
-              className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
-              style={{
-                border: "1px solid rgba(255,255,255,0.2)",
-                color:  partySize <= 1 ? "rgba(255,255,255,0.2)" : "white",
-              }}
-            >
-              <Minus className="w-4 h-4" />
-            </button>
-            <span className="text-7xl font-light tabular-nums w-16 text-center">{partySize}</span>
-            <button
-              onClick={() => setPartySize(s => Math.min(20, s + 1))}
-              disabled={partySize >= 20}
-              className="w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
-              style={{
-                border: "1px solid rgba(255,255,255,0.2)",
-                color:  partySize >= 20 ? "rgba(255,255,255,0.2)" : "white",
-              }}
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
+      {/* ── Party size ── */}
+      <div className="flex flex-col items-center gap-4 py-6 px-8 shrink-0">
+        <p className="text-xs tracking-[0.3em] uppercase" style={{ color: "rgba(255,255,255,0.45)" }}>
+          Party Size
+        </p>
+        <div className="flex items-center gap-9">
+          <button
+            onClick={() => setPartySize(s => Math.max(1, s - 1))}
+            disabled={partySize <= 1}
+            className="w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-95"
+            style={{
+              border: "1px solid rgba(255,255,255,0.2)",
+              color:  partySize <= 1 ? "rgba(255,255,255,0.2)" : "white",
+            }}
+          >
+            <Minus className="w-4 h-4" />
+          </button>
+          <span className="text-6xl font-light tabular-nums w-14 text-center">{partySize}</span>
+          <button
+            onClick={() => setPartySize(s => Math.min(20, s + 1))}
+            disabled={partySize >= 20}
+            className="w-11 h-11 rounded-full flex items-center justify-center transition-all active:scale-95"
+            style={{
+              border: "1px solid rgba(255,255,255,0.2)",
+              color:  partySize >= 20 ? "rgba(255,255,255,0.2)" : "white",
+            }}
+          >
+            <Plus className="w-4 h-4" />
+          </button>
         </div>
+      </div>
 
-        <div className="h-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+      {/* divider */}
+      <div className="mx-8 shrink-0" style={{ height: "1px", background: "rgba(255,255,255,0.08)" }} />
 
+      {/* ── Fields: fill remaining space ── */}
+      <div className="flex-1 flex flex-col justify-center gap-6 px-8">
         {/* Name */}
-        <div className="flex flex-col gap-3">
-          <p className="text-xs tracking-[0.3em] uppercase text-white">
+        <div className="flex flex-col gap-2">
+          <p className="text-xs tracking-[0.3em] uppercase" style={{ color: "rgba(255,255,255,0.45)" }}>
             Name
           </p>
           <input
@@ -157,56 +144,50 @@ export default function JoinPage() {
             value={name}
             onChange={e => setName(e.target.value)}
             onKeyDown={e => e.key === "Enter" && submit()}
-            className="w-full bg-transparent border-b text-lg text-white outline-none pb-3"
-            style={{
-              borderColor:   "rgba(255,255,255,0.2)",
-              caretColor:    "white",
-            }}
+            autoComplete="name"
+            className="w-full bg-transparent border-b text-xl text-white outline-none pb-2"
+            style={{ borderColor: "rgba(255,255,255,0.2)", caretColor: "white" }}
           />
         </div>
 
         {/* Phone */}
-        <div className="flex flex-col gap-3">
-          <p className="text-xs tracking-[0.3em] uppercase text-white">
-            Phone <span style={{ color: "rgba(255,255,255,0.35)" }}>— optional</span>
+        <div className="flex flex-col gap-2">
+          <p className="text-xs tracking-[0.3em] uppercase" style={{ color: "rgba(255,255,255,0.45)" }}>
+            Phone <span style={{ color: "rgba(255,255,255,0.28)" }}>— optional</span>
           </p>
           <input
             type="tel"
-            placeholder="For SMS when your table is ready"
+            placeholder="SMS when your table is ready"
             value={phone}
             onChange={e => setPhone(e.target.value)}
             onKeyDown={e => e.key === "Enter" && submit()}
-            className="w-full bg-transparent border-b text-lg text-white outline-none pb-3"
-            style={{
-              borderColor: "rgba(255,255,255,0.2)",
-              caretColor:  "white",
-            }}
+            autoComplete="tel"
+            className="w-full bg-transparent border-b text-xl text-white outline-none pb-2"
+            style={{ borderColor: "rgba(255,255,255,0.2)", caretColor: "white" }}
           />
         </div>
-
       </div>
 
-      {/* ── CTA ────────────────────────────────────────────────────────── */}
-      <div className="w-full max-w-sm mx-auto px-8 pb-14 pt-10">
+      {/* ── CTA — always pinned to bottom ── */}
+      <div className="px-8 pb-8 pt-4 shrink-0">
         {error && (
-          <p className="text-sm text-center mb-5" style={{ color: "rgba(255,80,80,0.9)" }}>
+          <p className="text-sm text-center mb-4" style={{ color: "rgba(255,80,80,0.9)" }}>
             {error}
           </p>
         )}
         <button
           onClick={submit}
           disabled={loading}
-          className="w-full py-5 rounded-2xl text-base font-bold tracking-[0.15em] uppercase transition-all active:scale-95 flex items-center justify-center gap-2"
+          className="w-full rounded-2xl text-base font-bold tracking-[0.15em] uppercase transition-all active:scale-[0.98] flex items-center justify-center gap-2"
           style={{
+            height:     "64px",
             background: loading ? "rgba(255,255,255,0.35)" : "white",
             color:      "black",
           }}
         >
-          {loading
-            ? <Loader2 className="w-5 h-5 animate-spin" />
-            : "Join the Waitlist"}
+          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Join the Waitlist"}
         </button>
-        <p className="text-xs text-center mt-6" style={{ color: "rgba(255,255,255,0.15)" }}>
+        <p className="text-xs text-center mt-4" style={{ color: "rgba(255,255,255,0.13)" }}>
           HOST · No app download needed
         </p>
       </div>

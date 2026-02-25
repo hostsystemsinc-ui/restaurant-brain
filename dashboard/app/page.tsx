@@ -10,7 +10,7 @@ import {
 
 const API = "https://restaurant-brain-production.up.railway.app"
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Table {
   id: string
@@ -33,7 +33,7 @@ interface QueueEntry {
   notes: string | null
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function timeWaiting(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -53,44 +53,7 @@ const SOURCE_COLORS: Record<string, string> = {
   OpenTable: "text-orange-400 bg-orange-400/10",
 }
 
-// ── Table Row ─────────────────────────────────────────────────────────────────
-
-function TableRow({ table, onClear }: { table: Table; onClear: () => void }) {
-  const avail = table.status === "available"
-  return (
-    <div
-      className="flex items-center justify-between px-3 py-2.5 rounded-xl transition-all"
-      style={{
-        background: avail ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.06)",
-        border: `1px solid ${avail ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)"}`,
-      }}
-    >
-      <div className="flex items-center gap-2.5">
-        <div
-          className="w-2 h-2 rounded-full shrink-0"
-          style={{ background: avail ? "#22c55e" : "#ef4444" }}
-        />
-        <span className="text-sm font-semibold text-white/80">T{table.table_number}</span>
-        <span className="text-xs" style={{ color: "var(--muted)" }}>
-          <Users className="inline w-3 h-3 mr-0.5" />{table.capacity}
-        </span>
-      </div>
-      {!avail ? (
-        <button
-          onClick={onClear}
-          className="text-xs px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors font-medium"
-          style={{ color: "var(--muted)" }}
-        >
-          Clear
-        </button>
-      ) : (
-        <span className="text-xs font-medium text-green-400/60">Free</span>
-      )}
-    </div>
-  )
-}
-
-// ── Queue Card ────────────────────────────────────────────────────────────────
+// ── Queue Card — large, touch-friendly ────────────────────────────────────────
 
 function QueueCard({
   entry, onSeat, onNotify, onRemove,
@@ -101,21 +64,20 @@ function QueueCard({
   onRemove: () => void
 }) {
   const isReady = entry.status === "ready"
-  const sourceColor = SOURCE_COLORS[entry.source] ?? "text-white/35 bg-white/5"
+  const srcColor = SOURCE_COLORS[entry.source] ?? "text-white/30 bg-white/5"
 
   return (
     <div
-      className="rounded-2xl p-4 transition-all duration-200"
+      className="rounded-2xl transition-all duration-200"
       style={{
         background: isReady ? "rgba(34,197,94,0.07)" : "var(--surface)",
-        border: `1px solid ${isReady ? "rgba(34,197,94,0.28)" : "var(--border)"}`,
+        border: `1px solid ${isReady ? "rgba(34,197,94,0.3)" : "var(--border)"}`,
       }}
     >
-      {/* Top row */}
-      <div className="flex items-center gap-3 mb-3.5">
-        {/* Position */}
+      {/* Info row */}
+      <div className="flex items-center gap-4 px-5 pt-4 pb-3">
         <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0"
+          className="w-10 h-10 rounded-full flex items-center justify-center text-base font-bold shrink-0"
           style={{
             background: isReady ? "rgba(34,197,94,0.18)" : "rgba(255,255,255,0.07)",
             color: isReady ? "#22c55e" : "var(--muted)",
@@ -124,26 +86,31 @@ function QueueCard({
           {entry.position ?? "·"}
         </div>
 
-        {/* Name + meta */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <span className="font-semibold text-white">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-bold text-lg text-white leading-tight">
               {entry.name || "Guest"}
             </span>
             {isReady && (
-              <span className="text-xs px-1.5 py-0.5 rounded font-medium text-green-400 bg-green-400/12 animate-pulse">
-                Ready
+              <span className="text-xs px-2 py-0.5 rounded-full font-semibold text-green-400 bg-green-400/12 animate-pulse">
+                READY
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2.5 text-xs flex-wrap" style={{ color: "var(--muted)" }}>
-            <span><Users className="inline w-3 h-3 mr-0.5" />{entry.party_size}</span>
-            <span><Clock className="inline w-3 h-3 mr-0.5" />{timeWaiting(entry.arrival_time)}</span>
+          <div className="flex items-center gap-3 text-sm flex-wrap" style={{ color: "var(--muted)" }}>
+            <span className="flex items-center gap-1">
+              <Users className="w-3.5 h-3.5" />
+              {entry.party_size} {entry.party_size === 1 ? "guest" : "guests"}
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" />
+              {timeWaiting(entry.arrival_time)}
+            </span>
             {entry.wait_estimate && entry.wait_estimate > 0 && (
               <span>~{entry.wait_estimate}m est.</span>
             )}
             {entry.source && (
-              <span className={`px-1.5 py-0.5 rounded font-medium ${sourceColor}`}>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${srcColor}`}>
                 {SOURCE_LABELS[entry.source] ?? entry.source}
               </span>
             )}
@@ -151,42 +118,94 @@ function QueueCard({
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
+      {/* Action bar */}
+      <div
+        className="flex items-stretch gap-0 border-t"
+        style={{ borderColor: isReady ? "rgba(34,197,94,0.15)" : "var(--border)" }}
+      >
+        {/* Seat — primary */}
         <button
           onClick={onSeat}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95 hover:brightness-110"
-          style={{ background: "rgba(34,197,94,0.18)", color: "#22c55e" }}
+          className="flex-1 flex items-center justify-center gap-2 py-4 text-base font-bold transition-all active:scale-95 hover:brightness-110 rounded-bl-2xl"
+          style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e" }}
         >
-          <CheckCircle2 className="w-4 h-4" />
+          <CheckCircle2 className="w-5 h-5" />
           Seat
         </button>
 
-        {!isReady && (
+        <div style={{ width: "1px", background: isReady ? "rgba(34,197,94,0.15)" : "var(--border)" }} />
+
+        {/* Notify Ready */}
+        {!isReady ? (
           <button
             onClick={onNotify}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all active:scale-95 hover:brightness-110"
-            style={{ background: "rgba(249,115,22,0.14)", color: "#f97316" }}
+            className="flex-1 flex items-center justify-center gap-2 py-4 text-base font-semibold transition-all active:scale-95 hover:brightness-110"
+            style={{ background: "rgba(249,115,22,0.10)", color: "#f97316" }}
           >
-            <BellRing className="w-4 h-4" />
-            Notify Ready
+            <BellRing className="w-5 h-5" />
+            Notify
           </button>
+        ) : (
+          <div
+            className="flex-1 flex items-center justify-center gap-2 py-4 text-base font-semibold"
+            style={{ color: "rgba(34,197,94,0.35)" }}
+          >
+            <BellRing className="w-5 h-5" />
+            Notified
+          </div>
         )}
 
+        <div style={{ width: "1px", background: "var(--border)" }} />
+
+        {/* Remove */}
         <button
           onClick={onRemove}
-          className="ml-auto p-2 rounded-xl transition-all active:scale-95 hover:bg-red-500/12"
-          style={{ color: "rgba(239,68,68,0.5)" }}
-          title="Remove from queue"
+          className="px-5 flex items-center justify-center transition-all active:scale-95 hover:bg-red-500/10 rounded-br-2xl"
+          style={{ color: "rgba(239,68,68,0.55)" }}
+          title="Remove"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-5 h-5" />
         </button>
       </div>
     </div>
   )
 }
 
-// ── Add Guest Drawer ──────────────────────────────────────────────────────────
+// ── Table chip ─────────────────────────────────────────────────────────────────
+
+function TableChip({ table, onClear }: { table: Table; onClear: () => void }) {
+  const avail = table.status === "available"
+  return (
+    <div
+      className="flex items-center justify-between px-3 py-3 rounded-xl"
+      style={{
+        background: avail ? "rgba(34,197,94,0.07)" : "rgba(239,68,68,0.07)",
+        border: `1px solid ${avail ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)"}`,
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: avail ? "#22c55e" : "#ef4444" }} />
+        <span className="text-sm font-bold text-white/85">T{table.table_number}</span>
+        <span className="text-xs" style={{ color: "var(--muted)" }}>
+          <Users className="inline w-3 h-3 mr-0.5" />{table.capacity}
+        </span>
+      </div>
+      {!avail ? (
+        <button
+          onClick={onClear}
+          className="text-xs px-2.5 py-1 rounded-lg font-semibold hover:bg-white/10 transition-colors"
+          style={{ color: "var(--muted)" }}
+        >
+          Clear
+        </button>
+      ) : (
+        <span className="text-xs font-semibold text-green-400/60">Free</span>
+      )}
+    </div>
+  )
+}
+
+// ── Add Guest Drawer ───────────────────────────────────────────────────────────
 
 function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [name, setName]           = useState("")
@@ -196,8 +215,7 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
   const [error, setError]         = useState("")
 
   const submit = async () => {
-    setLoading(true)
-    setError("")
+    setLoading(true); setError("")
     try {
       const r = await fetch(`${API}/queue/join`, {
         method:  "POST",
@@ -211,11 +229,10 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
           restaurant_id: "272a8876-e4e6-4867-831d-0525db80a8db",
         }),
       })
-      if (!r.ok) throw new Error("Failed")
-      onAdded()
-      onClose()
+      if (!r.ok) throw new Error()
+      onAdded(); onClose()
     } catch {
-      setError("Could not add guest. Try again.")
+      setError("Could not add guest.")
     } finally {
       setLoading(false)
     }
@@ -224,94 +241,48 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={onClose} />
-
       <div
-        className="relative w-full sm:w-[400px] rounded-t-3xl sm:rounded-2xl p-6"
+        className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-6"
         style={{ background: "#181818", border: "1px solid var(--border)" }}
       >
-        {/* Handle (mobile) */}
         <div className="sm:hidden w-10 h-1 rounded-full bg-white/20 mx-auto mb-5" />
-
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-white tracking-tight">Add Guest</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            style={{ color: "var(--muted)" }}
-          >
+          <h2 className="text-xl font-bold text-white">Add Guest</h2>
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10" style={{ color: "var(--muted)" }}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Party size */}
-        <div className="mb-5">
-          <label className="text-xs font-semibold tracking-[0.15em] uppercase mb-3 block" style={{ color: "var(--muted)" }}>
-            Party Size
-          </label>
-          <div className="flex items-center gap-5">
-            <button
-              onClick={() => setPartySize(p => Math.max(1, p - 1))}
-              className="w-11 h-11 rounded-full flex items-center justify-center text-xl font-light transition-colors hover:bg-white/10"
-              style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
-            >
-              −
-            </button>
-            <span className="text-4xl font-light text-white w-14 text-center tabular-nums">
-              {partySize}
-            </span>
-            <button
-              onClick={() => setPartySize(p => Math.min(20, p + 1))}
-              className="w-11 h-11 rounded-full flex items-center justify-center text-xl font-light transition-colors hover:bg-white/10"
-              style={{ border: "1px solid var(--border)", color: "var(--muted)" }}
-            >
-              +
-            </button>
-          </div>
+        <label className="text-xs font-bold tracking-[0.15em] uppercase mb-3 block" style={{ color: "var(--muted)" }}>Party Size</label>
+        <div className="flex items-center gap-5 mb-6">
+          <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
+            className="w-12 h-12 rounded-full flex items-center justify-center text-2xl hover:bg-white/10"
+            style={{ border: "1px solid var(--border)", color: "var(--muted)" }}>−</button>
+          <span className="text-5xl font-light text-white w-14 text-center tabular-nums">{partySize}</span>
+          <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
+            className="w-12 h-12 rounded-full flex items-center justify-center text-2xl hover:bg-white/10"
+            style={{ border: "1px solid var(--border)", color: "var(--muted)" }}>+</button>
         </div>
 
-        {/* Name */}
-        <div className="mb-4">
-          <label className="text-xs font-semibold tracking-[0.15em] uppercase mb-2 block" style={{ color: "var(--muted)" }}>
-            Name <span style={{ color: "rgba(255,255,255,0.2)" }}>(optional)</span>
-          </label>
-          <input
-            type="text"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && submit()}
-            placeholder="Guest name"
-            autoFocus
-            className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/25 outline-none focus:ring-1 focus:ring-white/25 transition-all"
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)" }}
-          />
-        </div>
+        <label className="text-xs font-bold tracking-[0.15em] uppercase mb-2 block" style={{ color: "var(--muted)" }}>Name</label>
+        <input type="text" value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
+          className="w-full px-4 py-3.5 rounded-xl text-base text-white placeholder-white/25 outline-none mb-4"
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)" }} />
 
-        {/* Phone */}
-        <div className="mb-6">
-          <label className="text-xs font-semibold tracking-[0.15em] uppercase mb-2 block" style={{ color: "var(--muted)" }}>
-            Phone <span style={{ color: "rgba(255,255,255,0.2)" }}>(optional — for SMS)</span>
-          </label>
-          <input
-            type="tel"
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && submit()}
-            placeholder="(555) 000-0000"
-            className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/25 outline-none focus:ring-1 focus:ring-white/25 transition-all"
-            style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)" }}
-          />
-        </div>
+        <label className="text-xs font-bold tracking-[0.15em] uppercase mb-2 block" style={{ color: "var(--muted)" }}>
+          Phone <span style={{ color: "rgba(255,255,255,0.2)", fontWeight: 400 }}>(optional)</span>
+        </label>
+        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
+          className="w-full px-4 py-3.5 rounded-xl text-base text-white placeholder-white/25 outline-none mb-6"
+          style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)" }} />
 
-        {error && (
-          <p className="text-sm text-red-400 mb-4 text-center">{error}</p>
-        )}
+        {error && <p className="text-sm text-red-400 mb-4 text-center">{error}</p>}
 
-        <button
-          onClick={submit}
-          disabled={loading}
-          className="w-full py-3.5 rounded-xl text-sm font-bold tracking-[0.1em] uppercase transition-all active:scale-95 disabled:opacity-40"
-          style={{ background: loading ? "rgba(255,255,255,0.1)" : "white", color: "black" }}
-        >
+        <button onClick={submit} disabled={loading}
+          className="w-full py-4 rounded-xl text-base font-bold tracking-[0.1em] uppercase active:scale-[0.98] disabled:opacity-40"
+          style={{ background: loading ? "rgba(255,255,255,0.1)" : "white", color: "black" }}>
           {loading ? "Adding…" : "Add to Queue"}
         </button>
       </div>
@@ -319,40 +290,20 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
   )
 }
 
-// ── Main Dashboard ────────────────────────────────────────────────────────────
+// ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function HostDashboard() {
-  const [tables, setTables]   = useState<Table[]>([])
-  const [queue, setQueue]     = useState<QueueEntry[]>([])
-  const [online, setOnline]   = useState(true)
+  const [tables, setTables]     = useState<Table[]>([])
+  const [queue, setQueue]       = useState<QueueEntry[]>([])
+  const [online, setOnline]     = useState(true)
   const [lastSync, setLastSync] = useState(new Date())
-  const [showAdd, setShowAdd] = useState(false)
-  const [avgWait, setAvgWait] = useState(0)
+  const [showAdd, setShowAdd]   = useState(false)
+  const [avgWait, setAvgWait]   = useState(0)
 
-  const fetchTables = useCallback(async () => {
-    try {
-      const r = await fetch(`${API}/tables`)
-      if (r.ok) setTables(await r.json())
-    } catch { /* ignore */ }
-  }, [])
-
-  const fetchQueue = useCallback(async () => {
-    try {
-      const r = await fetch(`${API}/queue`)
-      if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) }
-    } catch { setOnline(false) }
-  }, [])
-
-  const fetchInsights = useCallback(async () => {
-    try {
-      const r = await fetch(`${API}/insights`)
-      if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) }
-    } catch { /* ignore */ }
-  }, [])
-
-  const refreshAll = useCallback(() => {
-    fetchTables(); fetchQueue()
-  }, [fetchTables, fetchQueue])
+  const fetchTables   = useCallback(async () => { try { const r = await fetch(`${API}/tables`); if (r.ok) setTables(await r.json()) } catch {} }, [])
+  const fetchQueue    = useCallback(async () => { try { const r = await fetch(`${API}/queue`); if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) } } catch { setOnline(false) } }, [])
+  const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
+  const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
 
   useEffect(() => {
     refreshAll(); fetchInsights()
@@ -366,90 +317,57 @@ export default function HostDashboard() {
   const remove = async (id: string) => { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }); refreshAll() }
   const clear  = async (id: string) => { await fetch(`${API}/tables/${id}/clear`, { method: "POST" }); fetchTables() }
 
-  const available  = tables.filter(t => t.status === "available").length
-  const readyList  = queue.filter(q => q.status === "ready")
+  const available   = tables.filter(t => t.status === "available").length
+  const readyList   = queue.filter(q => q.status === "ready")
   const waitingList = queue.filter(q => q.status === "waiting")
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg)" }}>
+    <div className="flex flex-col" style={{ height: "100dvh", overflow: "hidden", background: "var(--bg)" }}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header
-        className="sticky top-0 z-40 flex items-center justify-between px-5 py-3 border-b"
-        style={{ background: "rgba(10,10,10,0.92)", backdropFilter: "blur(16px)", borderColor: "var(--border)" }}
-      >
+      <header className="flex items-center justify-between px-5 py-3.5 shrink-0"
+        style={{ background: "rgba(10,10,10,0.95)", borderBottom: "1px solid var(--border)", backdropFilter: "blur(16px)" }}>
         <div className="flex items-center gap-3">
           <span className="font-bold text-white tracking-[0.25em] text-sm">HOST</span>
           <div className="h-4 w-px" style={{ background: "rgba(255,255,255,0.12)" }} />
-          <div className="flex items-center gap-4 text-xs" style={{ color: "var(--muted)" }}>
-            <span>
-              <span className="text-green-400 font-semibold">{available}</span>
-              <span className="text-white/30">/{tables.length}</span> tables free
-            </span>
-            <span>
-              <span className="text-orange-400 font-semibold">{waitingList.length}</span> waiting
-            </span>
-            {readyList.length > 0 && (
-              <span className="text-green-400 font-semibold animate-pulse">
-                {readyList.length} ready ●
-              </span>
-            )}
-            {avgWait > 0 && (
-              <span className="hidden md:inline">
-                ~<span className="text-white font-medium">{avgWait}m</span> wait
-              </span>
-            )}
+          <div className="flex items-center gap-4 text-sm" style={{ color: "var(--muted)" }}>
+            <span><span className="text-green-400 font-bold">{available}</span><span className="text-white/30">/{tables.length}</span> free</span>
+            <span><span className="text-orange-400 font-bold">{waitingList.length}</span> waiting</span>
+            {readyList.length > 0 && <span className="text-green-400 font-bold animate-pulse">{readyList.length} ready ●</span>}
+            {avgWait > 0 && <span className="hidden md:inline">~<span className="text-white font-semibold">{avgWait}m</span></span>}
           </div>
         </div>
-
         <div className="flex items-center gap-2">
-          <Link
-            href="/admin"
-            className="hidden sm:flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10"
-            style={{ color: "var(--muted)" }}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            Admin
+          <Link href="/admin" className="hidden sm:flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg hover:bg-white/10" style={{ color: "var(--muted)" }}>
+            <LayoutDashboard className="w-3.5 h-3.5" /> Admin
           </Link>
-          <div
-            className="flex items-center gap-1.5 text-xs"
-            style={{ color: online ? "#22c55e" : "#ef4444" }}
-          >
-            {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+          <div style={{ color: online ? "#22c55e" : "#ef4444" }}>
+            {online ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
           </div>
-          <button
-            onClick={refreshAll}
-            className="p-1.5 rounded-lg transition-colors hover:bg-white/10"
-            style={{ color: "var(--muted)" }}
-          >
+          <button onClick={refreshAll} className="p-2 rounded-lg hover:bg-white/10" style={{ color: "var(--muted)" }}>
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
       </header>
 
-      {/* ── Main Content ───────────────────────────────────────────────── */}
-      <div className="flex flex-col lg:flex-row gap-4 p-4">
+      {/* ── Body ───────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
 
-        {/* ── Queue Panel ────────────────────────────────────────────── */}
-        <div className="flex-1 min-w-0 flex flex-col gap-5">
+        {/* ── Queue list (scrollable internally) ─────────────────────── */}
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
 
           {/* Ready to seat */}
           {readyList.length > 0 && (
             <section>
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <h2 className="text-xs font-bold tracking-[0.18em] uppercase text-green-400">
+                <div className="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse" />
+                <h2 className="text-sm font-bold tracking-[0.15em] uppercase text-green-400">
                   Ready to Seat · {readyList.length}
                 </h2>
               </div>
-              <div className="flex flex-col gap-2.5">
-                {readyList.map(entry => (
-                  <QueueCard
-                    key={entry.id} entry={entry}
-                    onSeat={() => seat(entry.id)}
-                    onNotify={() => notify(entry.id)}
-                    onRemove={() => remove(entry.id)}
-                  />
+              <div className="flex flex-col gap-3">
+                {readyList.map(e => (
+                  <QueueCard key={e.id} entry={e} onSeat={() => seat(e.id)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                 ))}
               </div>
             </section>
@@ -457,110 +375,70 @@ export default function HostDashboard() {
 
           {/* Waiting */}
           <section>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                {waitingList.length > 0 && (
-                  <div className="w-2 h-2 rounded-full bg-orange-400" />
-                )}
-                <h2 className="text-xs font-bold tracking-[0.18em] uppercase" style={{ color: "var(--muted)" }}>
-                  {waitingList.length > 0 ? `Waiting · ${waitingList.length}` : "Queue"}
-                </h2>
-              </div>
+            <div className="flex items-center gap-2 mb-3">
+              {waitingList.length > 0 && <div className="w-2.5 h-2.5 rounded-full bg-orange-400" />}
+              <h2 className="text-sm font-bold tracking-[0.15em] uppercase" style={{ color: "var(--muted)" }}>
+                {waitingList.length > 0 ? `Waiting · ${waitingList.length}` : "Queue"}
+              </h2>
             </div>
 
             {queue.length === 0 ? (
-              <div
-                className="rounded-2xl border flex flex-col items-center justify-center py-20 gap-3"
-                style={{ borderColor: "var(--border)" }}
-              >
-                <CheckCircle2 className="w-8 h-8" style={{ color: "rgba(255,255,255,0.15)" }} />
-                <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.25)" }}>
-                  Queue is clear
-                </p>
+              <div className="rounded-2xl border flex flex-col items-center justify-center py-24 gap-3" style={{ borderColor: "var(--border)" }}>
+                <CheckCircle2 className="w-10 h-10" style={{ color: "rgba(255,255,255,0.12)" }} />
+                <p className="text-base font-medium" style={{ color: "rgba(255,255,255,0.2)" }}>Queue is clear</p>
               </div>
             ) : waitingList.length === 0 ? (
-              <div
-                className="rounded-2xl border flex flex-col items-center justify-center py-10 gap-2"
-                style={{ borderColor: "var(--border)" }}
-              >
-                <p className="text-sm" style={{ color: "rgba(255,255,255,0.2)" }}>
-                  No one else waiting
-                </p>
+              <div className="rounded-2xl border flex items-center justify-center py-12" style={{ borderColor: "var(--border)" }}>
+                <p className="text-sm" style={{ color: "rgba(255,255,255,0.2)" }}>No one else waiting</p>
               </div>
             ) : (
-              <div className="flex flex-col gap-2.5">
-                {waitingList.map(entry => (
-                  <QueueCard
-                    key={entry.id} entry={entry}
-                    onSeat={() => seat(entry.id)}
-                    onNotify={() => notify(entry.id)}
-                    onRemove={() => remove(entry.id)}
-                  />
+              <div className="flex flex-col gap-3">
+                {waitingList.map(e => (
+                  <QueueCard key={e.id} entry={e} onSeat={() => seat(e.id)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                 ))}
               </div>
             )}
           </section>
+
+          <p className="text-xs pb-24" style={{ color: "rgba(255,255,255,0.1)" }}>
+            Last sync {lastSync.toLocaleTimeString()}
+          </p>
         </div>
 
-        {/* ── Tables Panel ───────────────────────────────────────────── */}
-        <div className="lg:w-56 shrink-0">
-          <div
-            className="rounded-2xl border p-4 lg:sticky lg:top-[61px]"
-            style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-bold tracking-[0.18em] uppercase flex items-center gap-2" style={{ color: "var(--muted)" }}>
-                <TableProperties className="w-3.5 h-3.5" />
-                Tables
-              </h2>
-              <span className="text-xs font-semibold" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>
-                {available}/{tables.length}
-              </span>
-            </div>
-
-            {tables.length === 0 ? (
-              <div className="text-center py-6">
-                <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>No tables configured.</p>
-                <button
-                  onClick={() => fetch(`${API}/setup`, { method: "POST" }).then(refreshAll)}
-                  className="text-xs px-3 py-1.5 rounded-lg"
-                  style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}
-                >
-                  Run Setup
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {tables.map(t => (
-                  <TableRow key={t.id} table={t} onClear={() => clear(t.id)} />
-                ))}
-              </div>
-            )}
+        {/* ── Tables sidebar (desktop) ───────────────────────────────── */}
+        <div className="hidden lg:flex flex-col w-60 shrink-0 border-l overflow-y-auto p-4 gap-3"
+          style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold tracking-[0.15em] uppercase flex items-center gap-2" style={{ color: "var(--muted)" }}>
+              <TableProperties className="w-3.5 h-3.5" /> Tables
+            </h2>
+            <span className="text-sm font-bold" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>
+              {available}/{tables.length}
+            </span>
           </div>
+          {tables.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>No tables configured.</p>
+              <button onClick={() => fetch(`${API}/setup`, { method: "POST" }).then(refreshAll)}
+                className="text-xs px-3 py-2 rounded-lg font-semibold"
+                style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>Run Setup</button>
+            </div>
+          ) : (
+            tables.map(t => <TableChip key={t.id} table={t} onClear={() => clear(t.id)} />)
+          )}
         </div>
-      </div>
-
-      {/* ── Footer ─────────────────────────────────────────────────────── */}
-      <div className="px-5 pb-24">
-        <span className="text-xs" style={{ color: "rgba(255,255,255,0.15)" }}>
-          Last sync {lastSync.toLocaleTimeString()}
-        </span>
       </div>
 
       {/* ── Add Guest FAB ──────────────────────────────────────────────── */}
       <button
         onClick={() => setShowAdd(true)}
-        className="fixed bottom-6 right-6 flex items-center gap-2 px-5 py-3.5 rounded-full text-sm font-bold shadow-2xl transition-all active:scale-95 hover:scale-105 z-30"
-        style={{ background: "white", color: "black", boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}
+        className="fixed bottom-6 right-6 flex items-center gap-2.5 px-6 py-4 rounded-full text-base font-bold shadow-2xl transition-all active:scale-95 hover:scale-105 z-30"
+        style={{ background: "white", color: "black", boxShadow: "0 8px 40px rgba(0,0,0,0.6)" }}
       >
-        <Plus className="w-4 h-4" />
-        Add Guest
+        <Plus className="w-5 h-5" /> Add Guest
       </button>
 
-      {/* ── Add Guest Drawer ───────────────────────────────────────────── */}
-      {showAdd && (
-        <AddGuestDrawer onClose={() => setShowAdd(false)} onAdded={refreshAll} />
-      )}
+      {showAdd && <AddGuestDrawer onClose={() => setShowAdd(false)} onAdded={refreshAll} />}
     </div>
   )
 }
