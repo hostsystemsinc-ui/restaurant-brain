@@ -1,4 +1,5 @@
 import os
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
@@ -11,6 +12,9 @@ SUPABASE_URL  = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY  = os.environ.get("SUPABASE_KEY")
 RESTAURANT_ID = os.environ.get("RESTAURANT_ID")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+TWILIO_SID    = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM   = os.environ.get("TWILIO_FROM_NUMBER", "")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -50,6 +54,35 @@ class ThroughputEventRequest(BaseModel):
 
 def _now() -> str:
     return datetime.utcnow().isoformat()
+
+def _e164(phone: str) -> Optional[str]:
+    """Normalize a phone number to E.164 format, assuming US (+1) if no country code."""
+    digits = re.sub(r"\D", "", phone)
+    if len(digits) == 10:
+        return f"+1{digits}"
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    if len(digits) > 7:
+        return f"+{digits}"
+    return None
+
+def _send_sms(to_phone: str, body: str) -> bool:
+    """Send an SMS via Twilio. Returns True if sent, False otherwise."""
+    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
+        return False
+    normalized = _e164(to_phone)
+    if not normalized:
+        return False
+    try:
+        from twilio.rest import Client
+        Client(TWILIO_SID, TWILIO_TOKEN).messages.create(
+            body=body,
+            from_=TWILIO_FROM,
+            to=normalized,
+        )
+        return True
+    except Exception:
+        return False
 
 def _active_queue() -> list:
     return (
@@ -240,8 +273,25 @@ def seat_entry(entry_id: str):
 
 @app.post("/queue/{entry_id}/notify")
 def notify_ready(entry_id: str):
+    # 1. Mark as ready in DB
     supabase.table("queue_entries").update({"status": "ready"}).eq("id", entry_id).execute()
-    return {"status": "notified"}
+
+    # 2. Send SMS if the guest provided a phone number
+    sms_sent = False
+    try:
+        entry_res = supabase.table("queue_entries").select("phone, name").eq("id", entry_id).execute()
+        if entry_res.data and entry_res.data[0].get("phone"):
+            phone = entry_res.data[0]["phone"]
+            rest_res = supabase.table("restaurants").select("name").eq("id", RESTAURANT_ID).execute()
+            rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
+            sms_sent = _send_sms(
+                to_phone=phone,
+                body=f"Your table at {rest_name} is ready! Please see the host.",
+            )
+    except Exception:
+        pass  # Never let SMS failure block the notify response
+
+    return {"status": "notified", "sms_sent": sms_sent}
 
 @app.post("/queue/{entry_id}/remove")
 def remove_entry(entry_id: str):

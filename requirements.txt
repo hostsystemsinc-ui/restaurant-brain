@@ -2,3 +2,4 @@ supabase
 fastapi
 uvicorn
 anthropic
+twilio
