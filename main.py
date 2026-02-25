@@ -224,7 +224,7 @@ def seat_entry(entry_id: str):
     )
     table = table_res.data[0] if table_res.data else None
 
-    supabase.table("queue_entries").update({"status": "seated", "updated_at": _now()}).eq("id", entry_id).execute()
+    supabase.table("queue_entries").update({"status": "seated"}).eq("id", entry_id).execute()
 
     if table:
         supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table["id"]).execute()
@@ -240,12 +240,12 @@ def seat_entry(entry_id: str):
 
 @app.post("/queue/{entry_id}/notify")
 def notify_ready(entry_id: str):
-    supabase.table("queue_entries").update({"status": "ready", "updated_at": _now()}).eq("id", entry_id).execute()
+    supabase.table("queue_entries").update({"status": "ready"}).eq("id", entry_id).execute()
     return {"status": "notified"}
 
 @app.post("/queue/{entry_id}/remove")
 def remove_entry(entry_id: str):
-    supabase.table("queue_entries").update({"status": "removed", "updated_at": _now()}).eq("id", entry_id).execute()
+    supabase.table("queue_entries").update({"status": "removed"}).eq("id", entry_id).execute()
     return {"status": "removed"}
 
 @app.post("/seat-next")  # legacy
