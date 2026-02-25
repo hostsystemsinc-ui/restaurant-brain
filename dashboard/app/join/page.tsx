@@ -37,18 +37,18 @@ export default function JoinPage() {
   }, [])
 
   const submit = async () => {
+    if (!name.trim()) {
+      setError("Please enter your name.")
+      return
+    }
     setLoading(true)
     setError("")
     try {
-      // Auto-assign guest number if no name provided
-      const guestName = name.trim() ||
-        `Guest ${queueInfo !== null ? queueInfo.ahead + 1 : "#"}`
-
       const res = await fetch(`${API}/queue/join`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:          guestName,
+          name:          name.trim(),
           party_size:    partySize,
           phone:         phone.trim() || null,
           preference:    "asap",
@@ -149,7 +149,7 @@ export default function JoinPage() {
         {/* Name */}
         <div className="flex flex-col gap-3">
           <p className="text-xs tracking-[0.3em] uppercase text-white">
-            Name <span style={{ color: "rgba(255,255,255,0.35)" }}>— optional</span>
+            Name
           </p>
           <input
             type="text"
@@ -163,11 +163,6 @@ export default function JoinPage() {
               caretColor:    "white",
             }}
           />
-          {!name.trim() && queueInfo !== null && (
-            <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-              You&apos;ll be assigned Guest {queueInfo.ahead + 1}
-            </p>
-          )}
         </div>
 
         {/* Phone */}
