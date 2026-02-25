@@ -76,8 +76,8 @@ export default function JoinPage() {
         </h1>
       </div>
 
-      {/* ── Gap ──────────────────────────────────────────────────────── */}
-      <div className="shrink-0" style={{ height: "20px" }} />
+      {/* ── Flexible gap — grows to push party size down ─────────────── */}
+      <div className="flex-1" style={{ maxHeight: "72px" }} />
 
       {/* ── Restaurant identity ───────────────────────────────────────── */}
       <div className="flex flex-col items-center px-8 pb-5 shrink-0">
