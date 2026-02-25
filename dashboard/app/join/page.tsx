@@ -2,37 +2,34 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Minus, Plus, BrainCircuit, Loader2 } from "lucide-react"
+import { Minus, Plus, Loader2 } from "lucide-react"
 
 const API = "https://restaurant-brain-production.up.railway.app"
 
 const PREFERENCES = [
-  { key: "asap",  label: "ASAP" },
-  { key: "15min", label: "~15 min" },
-  { key: "30min", label: "~30 min" },
+  { key: "asap",  label: "Now" },
+  { key: "15min", label: "15 min" },
+  { key: "30min", label: "30 min" },
 ]
 
 export default function JoinPage() {
-  const router = useRouter()
+  const router       = useRouter()
   const [partySize,  setPartySize]  = useState(2)
   const [name,       setName]       = useState("")
   const [phone,      setPhone]      = useState("")
   const [preference, setPreference] = useState("asap")
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState("")
-  const [waitInfo,   setWaitInfo]   = useState<{ estimate: number; position: number } | null>(null)
+  const [queueInfo,  setQueueInfo]  = useState<{ ahead: number; wait: number } | null>(null)
 
-  // Preview wait time as party size changes
   useEffect(() => {
-    const controller = new AbortController()
-    fetch(`${API}/queue`, { signal: controller.signal })
+    fetch(`${API}/queue`)
       .then(r => r.json())
       .then(q => {
         const ahead = Array.isArray(q) ? q.length : 0
-        setWaitInfo({ estimate: Math.max(5, ahead * 15), position: ahead + 1 })
+        setQueueInfo({ ahead, wait: Math.max(0, ahead * 15) })
       })
       .catch(() => {})
-    return () => controller.abort()
   }, [])
 
   const submit = async () => {
@@ -50,7 +47,7 @@ export default function JoinPage() {
           source:     "nfc",
         }),
       })
-      if (!res.ok) throw new Error("Failed to join")
+      if (!res.ok) throw new Error()
       const data = await res.json()
       router.push(`/wait/${data.entry.id}`)
     } catch {
@@ -60,75 +57,72 @@ export default function JoinPage() {
   }
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-6 py-12"
-      style={{ background: "#0a0a0a" }}
-    >
-      <div className="w-full max-w-sm flex flex-col gap-8">
+    <div className="min-h-screen flex flex-col" style={{ background: "#000", color: "#fff" }}>
 
-        {/* Logo */}
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center"
-            style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.25)" }}
-          >
-            <BrainCircuit className="w-7 h-7 text-green-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white mt-2">Join the Waitlist</h1>
-          {waitInfo && waitInfo.position > 1 && (
-            <p className="text-sm" style={{ color: "rgba(255,255,255,0.45)" }}>
-              {waitInfo.position - 1} {waitInfo.position === 2 ? "party" : "parties"} ahead · ~{waitInfo.estimate}m wait
-            </p>
-          )}
-          {waitInfo && waitInfo.position === 1 && (
-            <p className="text-sm text-green-400">You could be seated right away!</p>
-          )}
-        </div>
+      {/* Header */}
+      <div className="px-8 pt-14 pb-2">
+        <p className="text-xs tracking-[0.3em] uppercase mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
+          Welcome to
+        </p>
+        <h1 className="text-5xl font-bold uppercase" style={{ letterSpacing: "0.15em" }}>
+          HOST
+        </h1>
+        {queueInfo !== null && (
+          <p className="mt-3 text-sm" style={{ color: "rgba(255,255,255,0.4)" }}>
+            {queueInfo.ahead === 0
+              ? "Tables available now"
+              : `${queueInfo.ahead} ${queueInfo.ahead === 1 ? "party" : "parties"} ahead · ~${queueInfo.wait}m`}
+          </p>
+        )}
+      </div>
+
+      <div className="mx-8 mt-8 h-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+
+      <div className="flex-1 px-8 pt-8 flex flex-col gap-8">
 
         {/* Party Size */}
-        <div
-          className="rounded-2xl border p-5"
-          style={{ background: "#141414", borderColor: "rgba(255,255,255,0.08)" }}
-        >
-          <p className="text-xs font-semibold mb-4 tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.45)" }}>
-            Party Size
+        <div>
+          <p className="text-xs tracking-[0.2em] uppercase mb-5" style={{ color: "rgba(255,255,255,0.35)" }}>
+            Party size
           </p>
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6">
             <button
               onClick={() => setPartySize(s => Math.max(1, s - 1))}
-              className="w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold transition-colors"
-              style={{ background: "rgba(255,255,255,0.06)", color: partySize <= 1 ? "rgba(255,255,255,0.2)" : "white" }}
               disabled={partySize <= 1}
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ border: "1px solid rgba(255,255,255,0.15)", color: partySize <= 1 ? "rgba(255,255,255,0.2)" : "white" }}
             >
-              <Minus className="w-5 h-5" />
+              <Minus className="w-4 h-4" />
             </button>
-            <span className="text-5xl font-bold text-white tabular-nums">{partySize}</span>
+            <span className="text-6xl font-light tabular-nums w-12 text-center">{partySize}</span>
             <button
               onClick={() => setPartySize(s => Math.min(20, s + 1))}
-              className="w-12 h-12 rounded-full flex items-center justify-center transition-colors"
-              style={{ background: "rgba(255,255,255,0.06)", color: partySize >= 20 ? "rgba(255,255,255,0.2)" : "white" }}
               disabled={partySize >= 20}
+              className="w-11 h-11 rounded-full flex items-center justify-center"
+              style={{ border: "1px solid rgba(255,255,255,0.15)", color: partySize >= 20 ? "rgba(255,255,255,0.2)" : "white" }}
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Preference */}
+        <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+
+        {/* Timing */}
         <div>
-          <p className="text-xs font-semibold mb-3 tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.45)" }}>
-            When would you like to be seated?
+          <p className="text-xs tracking-[0.2em] uppercase mb-4" style={{ color: "rgba(255,255,255,0.35)" }}>
+            Timing
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             {PREFERENCES.map(p => (
               <button
                 key={p.key}
                 onClick={() => setPreference(p.key)}
                 className="flex-1 py-3 rounded-xl text-sm font-medium transition-all"
                 style={{
-                  background: preference === p.key ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)",
-                  color:      preference === p.key ? "#22c55e" : "rgba(255,255,255,0.6)",
-                  border:     `1px solid ${preference === p.key ? "rgba(34,197,94,0.35)" : "transparent"}`,
+                  background: preference === p.key ? "white" : "rgba(255,255,255,0.05)",
+                  color:      preference === p.key ? "black" : "rgba(255,255,255,0.5)",
+                  border:     `1px solid ${preference === p.key ? "white" : "rgba(255,255,255,0.08)"}`,
                 }}
               >
                 {p.label}
@@ -137,62 +131,55 @@ export default function JoinPage() {
           </div>
         </div>
 
+        <div className="h-px" style={{ background: "rgba(255,255,255,0.06)" }} />
+
         {/* Optional fields */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-6">
           <div>
-            <label className="text-xs font-semibold tracking-widest uppercase mb-2 block" style={{ color: "rgba(255,255,255,0.45)" }}>
-              Name <span style={{ color: "rgba(255,255,255,0.25)" }}>(optional)</span>
-            </label>
+            <p className="text-xs tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.35)" }}>
+              Name <span style={{ color: "rgba(255,255,255,0.2)" }}>— optional</span>
+            </p>
             <input
               type="text"
               placeholder="Your name"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
-              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              className="w-full bg-transparent border-b text-base text-white outline-none pb-2"
+              style={{ borderColor: "rgba(255,255,255,0.15)", caretColor: "white" }}
             />
           </div>
           <div>
-            <label className="text-xs font-semibold tracking-widest uppercase mb-2 block" style={{ color: "rgba(255,255,255,0.45)" }}>
-              Phone <span style={{ color: "rgba(255,255,255,0.25)" }}>(for text updates)</span>
-            </label>
+            <p className="text-xs tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.35)" }}>
+              Phone <span style={{ color: "rgba(255,255,255,0.2)" }}>— optional</span>
+            </p>
             <input
               type="tel"
               placeholder="(555) 000-0000"
               value={phone}
               onChange={e => setPhone(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 outline-none"
-              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              className="w-full bg-transparent border-b text-base text-white outline-none pb-2"
+              style={{ borderColor: "rgba(255,255,255,0.15)", caretColor: "white" }}
             />
           </div>
         </div>
 
-        {error && (
-          <p className="text-sm text-center" style={{ color: "#ef4444" }}>{error}</p>
-        )}
+      </div>
 
-        {/* Submit */}
+      {/* CTA */}
+      <div className="px-8 pb-12 pt-6">
+        {error && (
+          <p className="text-sm text-center mb-4" style={{ color: "rgba(255,80,80,0.9)" }}>{error}</p>
+        )}
         <button
           onClick={submit}
           disabled={loading}
-          className="w-full py-4 rounded-2xl text-base font-semibold transition-all flex items-center justify-center gap-2"
-          style={{
-            background: loading ? "rgba(34,197,94,0.3)" : "rgba(34,197,94,0.9)",
-            color: "white",
-          }}
+          className="w-full py-4 rounded-2xl text-base font-semibold tracking-widest uppercase transition-all flex items-center justify-center gap-2"
+          style={{ background: loading ? "rgba(255,255,255,0.4)" : "white", color: "black" }}
         >
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Joining...
-            </>
-          ) : (
-            "Join Waitlist"
-          )}
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Join the Wait"}
         </button>
-
-        <p className="text-xs text-center" style={{ color: "rgba(255,255,255,0.2)" }}>
-          No app download required · Powered by Restaurant Brain
+        <p className="text-xs text-center mt-5" style={{ color: "rgba(255,255,255,0.12)" }}>
+          HOST · Powered by Restaurant Brain
         </p>
       </div>
     </div>
