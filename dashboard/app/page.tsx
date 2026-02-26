@@ -63,16 +63,16 @@ function QueueRow({
     <div
       className="flex items-center gap-3 sm:gap-4 px-4 py-3.5 rounded-xl transition-colors duration-200"
       style={{
-        background: isReady ? "rgba(34,197,94,0.05)" : "rgba(255,255,255,0.025)",
-        border: `1px solid ${isReady ? "rgba(34,197,94,0.16)" : "rgba(255,255,255,0.055)"}`,
+        background: isReady ? "rgba(34,197,94,0.06)" : "rgba(255,185,100,0.03)",
+        border: `1px solid ${isReady ? "rgba(34,197,94,0.18)" : "rgba(255,185,100,0.07)"}`,
       }}
     >
       {/* Position */}
       <div
         className="w-7 h-7 rounded-md flex items-center justify-center text-xs font-bold shrink-0 tabular-nums"
         style={{
-          background: isReady ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.06)",
-          color: isReady ? "#22c55e" : "rgba(255,255,255,0.28)",
+          background: isReady ? "rgba(34,197,94,0.14)" : "rgba(255,185,100,0.06)",
+          color: isReady ? "#22c55e" : "rgba(255,220,180,0.28)",
         }}
       >
         {entry.position ?? "—"}
@@ -83,7 +83,7 @@ function QueueRow({
         <div className="flex items-center gap-2 flex-wrap">
           <span
             className="font-semibold text-[15px] leading-snug"
-            style={{ color: isReady ? "#86efac" : "rgba(255,255,255,0.92)" }}
+            style={{ color: isReady ? "#86efac" : "rgba(255,248,240,0.92)" }}
           >
             {entry.name || "Guest"}
           </span>
@@ -96,24 +96,24 @@ function QueueRow({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 mt-[3px]" style={{ color: "rgba(255,255,255,0.28)", fontSize: "12px" }}>
+        <div className="flex items-center gap-2 mt-[3px]" style={{ color: "rgba(255,200,150,0.3)", fontSize: "12px" }}>
           <span className="flex items-center gap-1">
             <Users className="w-3 h-3" />{entry.party_size}
           </span>
-          <span style={{ color: "rgba(255,255,255,0.12)" }}>·</span>
+          <span style={{ color: "rgba(255,185,100,0.14)" }}>·</span>
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />{timeWaiting(entry.arrival_time)}
           </span>
           {entry.wait_estimate != null && entry.wait_estimate > 0 && (
             <>
-              <span style={{ color: "rgba(255,255,255,0.12)" }}>·</span>
+              <span style={{ color: "rgba(255,185,100,0.14)" }}>·</span>
               <span>~{entry.wait_estimate}m</span>
             </>
           )}
           {entry.source && (
             <>
-              <span style={{ color: "rgba(255,255,255,0.12)" }}>·</span>
-              <span style={{ letterSpacing: "0.04em", color: "rgba(255,255,255,0.22)" }}>
+              <span style={{ color: "rgba(255,185,100,0.14)" }}>·</span>
+              <span style={{ letterSpacing: "0.04em", color: "rgba(255,200,150,0.25)" }}>
                 {SOURCE_LABELS[entry.source] ?? entry.source}
               </span>
             </>
@@ -126,7 +126,7 @@ function QueueRow({
         <button
           onClick={onSeat}
           className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95 hover:brightness-125"
-          style={{ background: "rgba(34,197,94,0.12)", color: "#22c55e" }}
+          style={{ background: "rgba(34,197,94,0.11)", color: "#22c55e" }}
         >
           <CheckCircle2 className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Seat</span>
@@ -136,7 +136,7 @@ function QueueRow({
           <button
             onClick={onNotify}
             className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(245,158,11,0.1)", color: "#f59e0b" }}
+            style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }}
           >
             <BellRing className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Notify</span>
@@ -153,7 +153,7 @@ function QueueRow({
         <button
           onClick={onRemove}
           className="h-8 w-8 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:bg-red-500/10 hover:text-red-400"
-          style={{ color: "rgba(255,255,255,0.18)" }}
+          style={{ color: "rgba(255,200,150,0.18)" }}
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -170,12 +170,12 @@ function TableChip({ table, onClear }: { table: Table; onClear: () => void }) {
     <div
       className="p-3 rounded-xl transition-colors"
       style={{
-        background: avail ? "rgba(34,197,94,0.04)" : "rgba(255,255,255,0.02)",
-        border: `1px solid ${avail ? "rgba(34,197,94,0.13)" : "rgba(255,255,255,0.055)"}`,
+        background: avail ? "rgba(34,197,94,0.04)" : "rgba(255,185,100,0.025)",
+        border: `1px solid ${avail ? "rgba(34,197,94,0.13)" : "rgba(255,185,100,0.07)"}`,
       }}
     >
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-sm font-bold" style={{ color: "rgba(255,255,255,0.75)" }}>
+        <span className="text-sm font-bold" style={{ color: "rgba(255,240,220,0.75)" }}>
           T{table.table_number}
         </span>
         <div
@@ -184,7 +184,7 @@ function TableChip({ table, onClear }: { table: Table; onClear: () => void }) {
         />
       </div>
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: "rgba(255,255,255,0.22)" }}>
+        <span className="flex items-center gap-1 text-[11px]" style={{ color: "rgba(255,200,150,0.22)" }}>
           <Users className="w-2.5 h-2.5" />{table.capacity}
         </span>
         {avail ? (
@@ -193,7 +193,7 @@ function TableChip({ table, onClear }: { table: Table; onClear: () => void }) {
           <button
             onClick={onClear}
             className="text-[10px] font-medium transition-colors hover:text-white/60"
-            style={{ color: "rgba(255,255,255,0.22)" }}
+            style={{ color: "rgba(255,200,150,0.22)" }}
           >
             Clear
           </button>
@@ -238,61 +238,67 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[400px] rounded-t-3xl sm:rounded-2xl p-6"
-        style={{ background: "#0f0f0f", border: "1px solid rgba(255,255,255,0.07)" }}
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.09)" }}
       >
-        <div className="sm:hidden w-8 h-[3px] rounded-full bg-white/10 mx-auto mb-6" />
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.12)" }} />
 
         <div className="flex items-center justify-between mb-7">
-          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,255,255,0.9)" }}>
+          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
             Add Guest
           </span>
           <button
             onClick={onClose}
-            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors"
-            style={{ color: "rgba(255,255,255,0.25)" }}
+            className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors hover:bg-white/8"
+            style={{ color: "rgba(255,200,150,0.25)" }}
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.25)" }}>
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.28)" }}>
           Party Size
         </p>
         <div className="flex items-center gap-6 mb-7">
           <button
             onClick={() => setPartySize(p => Math.max(1, p - 1))}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-lg hover:bg-white/8 transition-colors"
-            style={{ border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.35)" }}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-lg transition-colors hover:bg-white/8"
+            style={{ border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,200,150,0.35)" }}
           >
             −
           </button>
-          <span className="text-5xl font-extralight text-white w-12 text-center tabular-nums">{partySize}</span>
+          <span className="text-5xl font-extralight w-12 text-center tabular-nums" style={{ color: "rgba(255,248,240,0.92)" }}>
+            {partySize}
+          </span>
           <button
             onClick={() => setPartySize(p => Math.min(20, p + 1))}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-lg hover:bg-white/8 transition-colors"
-            style={{ border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.35)" }}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-lg transition-colors hover:bg-white/8"
+            style={{ border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,200,150,0.35)" }}
           >
             +
           </button>
         </div>
 
-        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,255,255,0.25)" }}>
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.28)" }}>
           Name
         </p>
         <input
           type="text" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()}
           placeholder="Guest name" autoFocus
-          className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/20 outline-none mb-4"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+          className="w-full px-4 py-3 rounded-xl text-sm placeholder-white/15 outline-none mb-4"
+          style={{
+            background: "rgba(255,185,100,0.04)",
+            border: "1px solid rgba(255,185,100,0.09)",
+            color: "rgba(255,248,240,0.88)",
+          }}
         />
 
-        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,255,255,0.25)" }}>
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.28)" }}>
           Phone{" "}
-          <span style={{ color: "rgba(255,255,255,0.13)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
+          <span style={{ color: "rgba(255,200,150,0.14)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
             (optional)
           </span>
         </p>
@@ -300,8 +306,12 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
           type="tel" value={phone} onChange={e => setPhone(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()}
           placeholder="(555) 000-0000"
-          className="w-full px-4 py-3 rounded-xl text-sm text-white placeholder-white/20 outline-none mb-6"
-          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+          className="w-full px-4 py-3 rounded-xl text-sm placeholder-white/15 outline-none mb-6"
+          style={{
+            background: "rgba(255,185,100,0.04)",
+            border: "1px solid rgba(255,185,100,0.09)",
+            color: "rgba(255,248,240,0.88)",
+          }}
         />
 
         {error && <p className="text-xs text-red-400 mb-4 text-center">{error}</p>}
@@ -309,7 +319,7 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
         <button
           onClick={submit} disabled={loading}
           className="w-full py-3.5 rounded-xl text-xs font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-          style={{ background: loading ? "rgba(255,255,255,0.08)" : "white", color: "#080808" }}
+          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#D9321C", color: "white" }}
         >
           {loading ? "Adding…" : "Add to Queue"}
         </button>
@@ -350,29 +360,58 @@ export default function HostDashboard() {
   const waitingList = queue.filter(q => q.status === "waiting")
 
   return (
-    <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#080808" }}>
+    <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907" }}>
 
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header
-        className="flex items-center justify-between px-5 h-12 shrink-0"
+        className="flex items-center justify-between px-5 h-13 shrink-0"
         style={{
-          background: "rgba(5,5,5,0.98)",
-          borderBottom: "1px solid rgba(255,255,255,0.055)",
+          background: "rgba(7,4,2,0.98)",
+          borderBottom: "1px solid rgba(255,185,100,0.08)",
           backdropFilter: "blur(20px)",
         }}
       >
-        {/* Left: HOST + stats */}
+        {/* Left: Restaurant brand + stats */}
         <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
 
-          {/* HOST wordmark */}
-          <span
-            className="text-[11px] font-black shrink-0"
-            style={{ color: "white", letterSpacing: "0.32em" }}
-          >
-            HOST
-          </span>
+          {/* Walter303 wordmark */}
+          <div className="flex flex-col shrink-0 leading-none">
+            <div className="flex items-baseline">
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 900,
+                  letterSpacing: "0.18em",
+                  color: "rgba(255,245,235,0.95)",
+                }}
+              >
+                WALTER
+              </span>
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 900,
+                  letterSpacing: "0.12em",
+                  color: "#D9321C",
+                }}
+              >
+                303
+              </span>
+            </div>
+            <span
+              style={{
+                fontSize: "8px",
+                letterSpacing: "0.22em",
+                color: "rgba(255,200,150,0.28)",
+                fontWeight: 600,
+                marginTop: "2px",
+              }}
+            >
+              DENVER, CO
+            </span>
+          </div>
 
-          <div className="w-px h-3.5 shrink-0" style={{ background: "rgba(255,255,255,0.08)" }} />
+          <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.09)" }} />
 
           {/* Stat chips */}
           <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
@@ -380,7 +419,7 @@ export default function HostDashboard() {
             {/* Tables */}
             <div
               className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.055)" }}
+              style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}
             >
               <span
                 className="text-xs font-bold tabular-nums"
@@ -388,22 +427,22 @@ export default function HostDashboard() {
               >
                 {available}
               </span>
-              <span className="text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>/{tables.length}</span>
-              <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,255,255,0.22)" }}>free</span>
+              <span className="text-xs" style={{ color: "rgba(255,185,100,0.18)" }}>/{tables.length}</span>
+              <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,200,150,0.22)" }}>free</span>
             </div>
 
             {/* Waiting */}
             <div
               className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0"
-              style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.055)" }}
+              style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}
             >
               <span
                 className="text-xs font-bold tabular-nums"
-                style={{ color: waitingList.length > 0 ? "#f59e0b" : "rgba(255,255,255,0.3)" }}
+                style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(255,200,150,0.28)" }}
               >
                 {waitingList.length}
               </span>
-              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.22)" }}>waiting</span>
+              <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.22)" }}>waiting</span>
             </div>
 
             {/* Ready pulse */}
@@ -419,14 +458,14 @@ export default function HostDashboard() {
               </div>
             )}
 
-            {/* Avg wait — desktop only */}
+            {/* Avg wait — desktop */}
             {avgWait > 0 && (
               <div
                 className="hidden md:flex items-center gap-1 px-2 py-1 rounded-lg shrink-0"
-                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.055)" }}
+                style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}
               >
-                <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.22)" }}>~</span>
-                <span className="text-xs font-semibold tabular-nums" style={{ color: "rgba(255,255,255,0.55)" }}>
+                <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.22)" }}>~</span>
+                <span className="text-xs font-semibold tabular-nums" style={{ color: "rgba(255,220,180,0.5)" }}>
                   {avgWait}m
                 </span>
               </div>
@@ -439,20 +478,20 @@ export default function HostDashboard() {
           <Link
             href="/admin"
             className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors hover:bg-white/8"
-            style={{ color: "rgba(255,255,255,0.25)" }}
+            style={{ color: "rgba(255,200,150,0.22)" }}
           >
             <LayoutDashboard className="w-3 h-3" /> Admin
           </Link>
           <div
             className="h-7 w-7 flex items-center justify-center"
-            style={{ color: online ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)" }}
+            style={{ color: online ? "rgba(34,197,94,0.55)" : "rgba(239,68,68,0.55)" }}
           >
             {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
           </div>
           <button
             onClick={refreshAll}
             className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors"
-            style={{ color: "rgba(255,255,255,0.22)" }}
+            style={{ color: "rgba(255,200,150,0.2)" }}
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
@@ -472,7 +511,7 @@ export default function HostDashboard() {
                 <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                 <span
                   className="text-[10px] font-black tracking-[0.16em] uppercase"
-                  style={{ color: "rgba(34,197,94,0.65)" }}
+                  style={{ color: "rgba(34,197,94,0.6)" }}
                 >
                   Ready to Seat · {readyList.length}
                 </span>
@@ -490,11 +529,11 @@ export default function HostDashboard() {
           <section>
             <div className="flex items-center gap-2 mb-2.5 px-1">
               {waitingList.length > 0 && (
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f59e0b", opacity: 0.7 }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.65 }} />
               )}
               <span
                 className="text-[10px] font-black tracking-[0.16em] uppercase"
-                style={{ color: "rgba(255,255,255,0.22)" }}
+                style={{ color: "rgba(255,200,150,0.22)" }}
               >
                 {waitingList.length > 0 ? `Waiting · ${waitingList.length}` : "Queue"}
               </span>
@@ -503,19 +542,19 @@ export default function HostDashboard() {
             {queue.length === 0 ? (
               <div
                 className="rounded-xl flex flex-col items-center justify-center py-20 gap-3"
-                style={{ border: "1px solid rgba(255,255,255,0.045)" }}
+                style={{ border: "1px solid rgba(255,185,100,0.06)" }}
               >
-                <CheckCircle2 className="w-8 h-8" style={{ color: "rgba(255,255,255,0.07)" }} />
-                <p className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.14)" }}>
+                <CheckCircle2 className="w-8 h-8" style={{ color: "rgba(255,185,100,0.08)" }} />
+                <p className="text-xs font-medium" style={{ color: "rgba(255,200,150,0.15)" }}>
                   Queue is clear
                 </p>
               </div>
             ) : waitingList.length === 0 ? (
               <div
                 className="rounded-xl flex items-center justify-center py-10"
-                style={{ border: "1px solid rgba(255,255,255,0.045)" }}
+                style={{ border: "1px solid rgba(255,185,100,0.06)" }}
               >
-                <p className="text-xs" style={{ color: "rgba(255,255,255,0.14)" }}>No one else waiting</p>
+                <p className="text-xs" style={{ color: "rgba(255,200,150,0.15)" }}>No one else waiting</p>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
@@ -527,23 +566,32 @@ export default function HostDashboard() {
             )}
           </section>
 
-          <p className="text-[10px] pb-24 px-1" style={{ color: "rgba(255,255,255,0.07)" }}>
-            Updated {lastSync.toLocaleTimeString()}
-          </p>
+          {/* Footer */}
+          <div className="flex items-center justify-between pb-24 px-1">
+            <p className="text-[10px]" style={{ color: "rgba(255,200,150,0.08)" }}>
+              Updated {lastSync.toLocaleTimeString()}
+            </p>
+            <p className="text-[10px]" style={{ color: "rgba(255,200,150,0.1)" }}>
+              Powered by{" "}
+              <span style={{ fontWeight: 800, letterSpacing: "0.1em", color: "rgba(255,200,150,0.15)" }}>
+                HOST
+              </span>
+            </p>
+          </div>
         </div>
 
         {/* ── Tables sidebar ─────────────────────────────────────────── */}
         <div
           className="hidden lg:flex flex-col w-52 shrink-0 overflow-y-auto p-4 gap-3"
           style={{
-            borderLeft: "1px solid rgba(255,255,255,0.05)",
-            background: "#060606",
+            borderLeft: "1px solid rgba(255,185,100,0.07)",
+            background: "#080503",
           }}
         >
           <div className="flex items-center justify-between px-0.5 mb-1">
             <span
               className="text-[10px] font-black tracking-[0.16em] uppercase flex items-center gap-1.5"
-              style={{ color: "rgba(255,255,255,0.22)" }}
+              style={{ color: "rgba(255,200,150,0.22)" }}
             >
               <TableProperties className="w-3 h-3" /> Tables
             </span>
@@ -557,7 +605,7 @@ export default function HostDashboard() {
 
           {tables.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-xs mb-3" style={{ color: "rgba(255,255,255,0.18)" }}>No tables yet.</p>
+              <p className="text-xs mb-3" style={{ color: "rgba(255,200,150,0.18)" }}>No tables yet.</p>
               <button
                 onClick={() => fetch(`${API}/setup`, { method: "POST" }).then(refreshAll)}
                 className="text-xs px-3 py-2 rounded-lg font-semibold transition-colors hover:brightness-125"
@@ -571,6 +619,16 @@ export default function HostDashboard() {
               {tables.map(t => <TableChip key={t.id} table={t} onClear={() => clear(t.id)} />)}
             </div>
           )}
+
+          {/* Sidebar footer */}
+          <div className="mt-auto pt-4">
+            <p
+              className="text-[9px] text-center tracking-[0.1em] uppercase"
+              style={{ color: "rgba(255,185,100,0.1)" }}
+            >
+              Powered by HOST
+            </p>
+          </div>
         </div>
       </div>
 
@@ -578,7 +636,7 @@ export default function HostDashboard() {
       <button
         onClick={() => setShowAdd(true)}
         className="fixed bottom-6 right-6 flex items-center gap-2 h-11 px-5 rounded-full text-xs font-black tracking-[0.1em] uppercase shadow-2xl transition-all active:scale-95 hover:scale-[1.03] z-30"
-        style={{ background: "white", color: "#080808", boxShadow: "0 4px 24px rgba(0,0,0,0.8)" }}
+        style={{ background: "#D9321C", color: "white", boxShadow: "0 4px 28px rgba(217,50,28,0.4)" }}
       >
         <Plus className="w-3.5 h-3.5" /> Add Guest
       </button>
