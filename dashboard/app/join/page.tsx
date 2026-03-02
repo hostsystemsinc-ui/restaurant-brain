@@ -138,9 +138,6 @@ export default function JoinPage() {
         )}
       </div>
 
-      {/* divider */}
-      <div className="mx-8 shrink-0" style={{ height: "1px", background: "rgba(255,255,255,0.08)" }} />
-
       {/* ── Party size ───────────────────────────────────────────────── */}
       <div className="flex flex-col items-center gap-3 py-5 px-8 shrink-0">
         <p className="text-xs tracking-[0.3em] uppercase" style={{ color: "rgba(255,255,255,0.65)" }}>
@@ -172,9 +169,6 @@ export default function JoinPage() {
           </button>
         </div>
       </div>
-
-      {/* divider */}
-      <div className="mx-8 shrink-0" style={{ height: "1px", background: "rgba(255,255,255,0.08)" }} />
 
       {/* ── Fields: fill remaining space ─────────────────────────────── */}
       <div className="flex-1 flex flex-col justify-center gap-6 px-8">

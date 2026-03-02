@@ -531,6 +531,96 @@ function FloorMap({
   )
 }
 
+// ── Seat Table Picker ──────────────────────────────────────────────────────────
+
+function SeatTablePicker({
+  entry,
+  tables,
+  localOccupants,
+  onConfirm,
+  onClose,
+}: {
+  entry: QueueEntry
+  tables: Table[]
+  localOccupants: Map<number, LocalOccupant>
+  onConfirm: (tableNumber: number, tableId: string | undefined) => void
+  onClose: () => void
+}) {
+  const available = FLOOR_PLAN.filter(pos => {
+    if (localOccupants.has(pos.number)) return false
+    const t = tables.find(t => t.table_number === pos.number)
+    return !t || t.status === "available"
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-6"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+            Seat Guest
+          </span>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs mb-6" style={{ color: "rgba(255,200,150,0.3)" }}>
+          {entry.name || "Guest"} · {entry.party_size}p — choose a table
+        </p>
+
+        {available.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-xs" style={{ color: "rgba(255,200,150,0.3)" }}>No tables available right now</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+            {available.map(pos => {
+              const t = tables.find(t => t.table_number === pos.number)
+              return (
+                <button
+                  key={pos.number}
+                  onClick={() => onConfirm(pos.number, t?.id)}
+                  className="flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all active:scale-95 hover:brightness-125"
+                  style={{
+                    background: "rgba(34,197,94,0.07)",
+                    border: "1px solid rgba(34,197,94,0.25)",
+                  }}
+                >
+                  <span className="text-xl font-bold" style={{ color: "rgba(34,197,94,0.9)" }}>
+                    {pos.number}
+                  </span>
+                  {t && (
+                    <span className="text-[10px]" style={{ color: "rgba(34,197,94,0.45)" }}>
+                      {t.capacity}p
+                    </span>
+                  )}
+                  <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: "rgba(34,197,94,0.3)" }}>
+                    {pos.section}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        <button
+          onClick={onClose}
+          className="w-full mt-5 py-3 rounded-xl text-xs font-bold tracking-[0.1em] uppercase"
+          style={{ background: "rgba(255,185,100,0.05)", color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.07)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Add Guest Drawer ───────────────────────────────────────────────────────────
 
 function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
@@ -628,6 +718,7 @@ export default function HostDashboard() {
   const [showAdd, setShowAdd]             = useState(false)
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
+  const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
   const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
     try {
       const s = localStorage.getItem("host_occupants")
@@ -661,18 +752,23 @@ export default function HostDashboard() {
   const notify = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }); refreshAll() }, [refreshAll])
   const remove = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }); refreshAll() }, [refreshAll])
 
-  // Seat a guest using best-fit table recommendation (smallest available table that fits party)
-  const seatWithRecommendation = useCallback(async (entry: QueueEntry) => {
-    await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
-    const availableTables = tables.filter(t => t.status === "available" && !localOccupants.has(t.table_number))
-    const best = availableTables
-      .filter(t => t.capacity >= entry.party_size)
-      .sort((a, b) => a.capacity - b.capacity)[0]
-    if (best) {
-      setLocalOccupants(prev => new Map(prev).set(best.table_number, { name: entry.name || "Guest", party_size: entry.party_size }))
+  // Open the table picker — the hostess chooses which table to seat the guest at
+  const openSeatPicker = useCallback((entry: QueueEntry) => {
+    setSeatPicker(entry)
+  }, [])
+
+  // Called when hostess confirms a table from the picker
+  const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
+    setSeatPicker(null)
+    if (tableId) {
+      // Atomic: mark queue entry seated + mark specific table occupied
+      await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
+    } else {
+      await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
     }
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
     refreshAll()
-  }, [tables, localOccupants, refreshAll])
+  }, [refreshAll])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
     // Always clear local occupant immediately
@@ -815,7 +911,7 @@ export default function HostDashboard() {
                 <div className="flex flex-col gap-1.5">
                   {readyList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
-                      onSeat={() => seatWithRecommendation(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                   ))}
                 </div>
               </div>
@@ -848,7 +944,7 @@ export default function HostDashboard() {
                 <div className="flex flex-col gap-1.5 pb-24">
                   {waitingList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
-                      onSeat={() => seatWithRecommendation(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                   ))}
                 </div>
               )}
@@ -889,6 +985,16 @@ export default function HostDashboard() {
         </button>
 
         {showAdd && <AddGuestDrawer onClose={() => setShowAdd(false)} onAdded={refreshAll} />}
+
+        {seatPicker && (
+          <SeatTablePicker
+            entry={seatPicker}
+            tables={tables}
+            localOccupants={localOccupants}
+            onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
+            onClose={() => setSeatPicker(null)}
+          />
+        )}
       </div>
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
