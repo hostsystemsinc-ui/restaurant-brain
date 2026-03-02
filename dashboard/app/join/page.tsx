@@ -121,19 +121,15 @@ export default function JoinPage() {
           {RESTAURANT}
         </p>
 
-        {live !== null && (
+        {live !== null && (live.ahead > 0 || live.waitMin) && (
           <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
-            {live.available > 0
-              ? <>
-                  <span style={{ color: "rgba(100,230,130,0.9)", fontWeight: 600 }}>
-                    {live.available} {live.available === 1 ? "table" : "tables"} available
-                  </span>
-                  {" — "}
-                  {live.waitMin ? `~${live.waitMin}m wait` : "no wait"}
-                </>
-              : live.waitMin
-                ? `All tables occupied · ~${live.waitMin}m wait`
-                : "All tables occupied"}
+            {live.ahead > 0 && (
+              <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+                {live.ahead} {live.ahead === 1 ? "party" : "parties"} ahead
+              </span>
+            )}
+            {live.ahead > 0 && live.waitMin && " · "}
+            {live.waitMin ? `~${live.waitMin}m wait` : ""}
           </p>
         )}
       </div>
