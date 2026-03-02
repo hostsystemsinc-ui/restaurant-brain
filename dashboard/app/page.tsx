@@ -698,7 +698,14 @@ export default function HostDashboard() {
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
   }
 
-  const available   = tables.filter(t => t.status === "available").length
+  // Base availability on the floor map (all 16 positions) + live local occupancy state
+  // so the counter updates instantly when a table is cleared or seated via drag
+  const floorOccupied = FLOOR_PLAN.filter(pos => {
+    if (localOccupants.has(pos.number)) return true
+    const t = tables.find(t => t.table_number === pos.number)
+    return !!t && t.status !== "available"
+  }).length
+  const available = FLOOR_PLAN.length - floorOccupied
   const readyList   = queue.filter(q => q.status === "ready")
   const waitingList = queue.filter(q => q.status === "waiting")
 
@@ -732,7 +739,7 @@ export default function HostDashboard() {
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}>
                 <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
-                <span className="text-xs" style={{ color: "rgba(255,185,100,0.18)" }}>/{tables.length}</span>
+                <span className="text-xs" style={{ color: "rgba(255,185,100,0.18)" }}>/{FLOOR_PLAN.length}</span>
                 <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,200,150,0.22)" }}>free</span>
               </div>
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}>
