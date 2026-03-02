@@ -133,14 +133,15 @@ actor LiveActivityManager {
     // ── Primitive variant (used by App Clip) ──────────────────────────────
 
     func start(entryId: String, name: String?, partySize: Int,
-               minutesLeft: Int, partiesAhead: Int, progress: Double) async {
+               minutesLeft: Int, partiesAhead: Int, progress: Double,
+               restaurantName: String = "HOST") async {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         let attrs = WaitlistActivityAttributes(
             entryId:    entryId,
             name:       name ?? "Guest",
             partySize:  partySize,
-            restaurant: "HOST"
+            restaurant: restaurantName
         )
         let state = WaitlistActivityAttributes.ContentState(
             status:       "waiting",

@@ -39,12 +39,19 @@ struct WaitStatusView: View {
         VStack(alignment: .leading, spacing: 0) {
 
             // Header
-            Text("HOST")
-                .font(.system(size: 11, weight: .medium))
-                .tracking(4)
-                .foregroundStyle(Color.white.opacity(0.2))
-                .padding(.horizontal, 32)
-                .padding(.top, 60)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("HOST")
+                    .font(.system(size: 11, weight: .medium))
+                    .tracking(4)
+                    .foregroundStyle(Color.white.opacity(0.2))
+                if !session.sessionRestaurantName.isEmpty {
+                    Text(session.sessionRestaurantName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.45))
+                }
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 60)
 
             Spacer()
 

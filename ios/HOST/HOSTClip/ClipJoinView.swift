@@ -1,9 +1,15 @@
 import SwiftUI
 
-/// Minimal NFC-triggered join screen for the HOST App Clip.
-/// Matches the HOST design language: black background, clean type, white CTA.
+private struct LiveInfo {
+    let available: Int
+    let waitMin:   Int?
+}
+
+/// NFC-triggered join screen for the HOST App Clip.
+/// Mirrors the web join page: restaurant identity header, live availability, party size, fields, CTA.
 struct ClipJoinView: View {
-    let restaurantId: String
+    let restaurantId:   String
+    let restaurantName: String
     let onJoined: (String) -> Void
 
     @State private var partySize  = 2
@@ -12,6 +18,7 @@ struct ClipJoinView: View {
     @State private var preference = "asap"
     @State private var loading    = false
     @State private var error      = ""
+    @State private var liveInfo:  LiveInfo? = nil
 
     private let timingOptions: [(key: String, label: String)] = [
         ("asap",  "Now"),
@@ -22,16 +29,41 @@ struct ClipJoinView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // ── Header ──────────────────────────────────────────────────────
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Welcome to")
-                    .font(.system(size: 11, weight: .medium)).tracking(4)
-                    .textCase(.uppercase).foregroundStyle(Color.white.opacity(0.35))
-                Text("HOST")
-                    .font(.system(size: 48, weight: .bold)).tracking(8)
-                    .foregroundStyle(Color.white)
+            // ── Restaurant Identity Header ────────────────────────────────────
+            VStack(alignment: .leading, spacing: 12) {
+
+                // Avatar
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color.white.opacity(0.07))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14)
+                                .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+                        )
+                    Text(String(restaurantName.prefix(1)).uppercased())
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.85))
+                }
+                .frame(width: 54, height: 54)
+
+                // Name
+                Text(restaurantName)
+                    .font(.system(size: 20, weight: .semibold))
+                    .tracking(0.3)
+                    .foregroundStyle(Color.white.opacity(0.9))
+
+                // Live availability
+                if let info = liveInfo {
+                    liveInfoRow(info)
+                } else {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.white.opacity(0.07))
+                        .frame(width: 200, height: 14)
+                }
             }
-            .padding(.horizontal, 32).padding(.top, 56).padding(.bottom, 32)
+            .padding(.horizontal, 32)
+            .padding(.top, 56)
+            .padding(.bottom, 28)
 
             Divider().overlay(Color.white.opacity(0.08))
 
@@ -45,15 +77,18 @@ struct ClipJoinView: View {
                             stepperButton(systemName: "minus") {
                                 if partySize > 1 { partySize -= 1 }
                             }
+                            .opacity(partySize <= 1 ? 0.3 : 1)
                             .disabled(partySize <= 1)
 
                             Text("\(partySize)")
                                 .font(.system(size: 56, weight: .light))
                                 .frame(width: 60, alignment: .center)
+                                .monospacedDigit()
 
                             stepperButton(systemName: "plus") {
                                 if partySize < 20 { partySize += 1 }
                             }
+                            .opacity(partySize >= 20 ? 0.3 : 1)
                             .disabled(partySize >= 20)
                         }
                     }
@@ -76,12 +111,13 @@ struct ClipJoinView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         underlineField(label: "Name", placeholder: "Your name",
                                        text: $name, keyboard: .default)
-                        underlineField(label: "Phone", placeholder: "(555) 000-0000",
+                        underlineField(label: "Phone", placeholder: "SMS when your table is ready",
                                        text: $phone, keyboard: .phonePad)
                     }
-
-                } // VStack
-                .padding(.horizontal, 32).padding(.top, 28).padding(.bottom, 16)
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 28)
+                .padding(.bottom, 16)
             }
 
             Spacer(minLength: 0)
@@ -98,31 +134,66 @@ struct ClipJoinView: View {
 
                 Button(action: join) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 14)
+                        RoundedRectangle(cornerRadius: 18)
                             .fill(loading ? Color.white.opacity(0.4) : Color.white)
                         if loading {
                             ProgressView().progressViewStyle(.circular).tint(.black)
                         } else {
-                            Text("Join the Wait")
-                                .font(.system(size: 13, weight: .semibold)).tracking(3)
+                            Text("Join the Waitlist")
+                                .font(.system(size: 14, weight: .semibold))
+                                .tracking(3)
                                 .textCase(.uppercase)
                                 .foregroundStyle(Color.black)
                         }
                     }
-                    .frame(height: 54)
+                    .frame(height: 64)
                 }
                 .disabled(loading)
 
                 Text("HOST · No app download needed")
-                    .font(.system(size: 10)).tracking(1)
+                    .font(.system(size: 10))
+                    .tracking(1)
                     .foregroundStyle(Color.white.opacity(0.12))
                     .padding(.top, 14)
             }
-            .padding(.horizontal, 32).padding(.bottom, 44)
+            .padding(.horizontal, 32)
+            .padding(.bottom, 44)
         }
+        .task { await loadLive() }
     }
 
-    // MARK: - Helpers
+    // MARK: - Live Info Row
+
+    @ViewBuilder
+    private func liveInfoRow(_ info: LiveInfo) -> some View {
+        HStack(spacing: 6) {
+            if info.available > 0 {
+                Text("\(info.available) \(info.available == 1 ? "table" : "tables") available")
+                    .foregroundStyle(Color(red: 0.39, green: 0.90, blue: 0.51))
+                    .fontWeight(.semibold)
+                Text("—")
+                    .foregroundStyle(Color.white.opacity(0.35))
+                if let w = info.waitMin {
+                    Text("~\(w)m wait")
+                        .foregroundStyle(Color.white.opacity(0.5))
+                } else {
+                    Text("no wait")
+                        .foregroundStyle(Color.white.opacity(0.5))
+                }
+            } else {
+                if let w = info.waitMin {
+                    Text("All tables occupied · ~\(w)m wait")
+                        .foregroundStyle(Color.white.opacity(0.5))
+                } else {
+                    Text("All tables occupied")
+                        .foregroundStyle(Color.white.opacity(0.5))
+                }
+            }
+        }
+        .font(.system(size: 13))
+    }
+
+    // MARK: - Component Helpers
 
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
@@ -176,6 +247,24 @@ struct ClipJoinView: View {
         }
     }
 
+    // MARK: - Data Loading
+
+    private func loadLive() async {
+        async let tablesTask   = RailwayAPI.shared.getTables()
+        async let insightsTask = RailwayAPI.shared.getInsights()
+
+        let tables   = (try? await tablesTask)   ?? []
+        let insights = try? await insightsTask
+
+        let apiOccupied = tables.filter { !$0.isAvailable }.count
+        let available   = max(0, 16 - apiOccupied)
+        let waitMin: Int? = {
+            guard let m = insights?.avg_wait_estimate, m > 0 else { return nil }
+            return m
+        }()
+        liveInfo = LiveInfo(available: available, waitMin: waitMin)
+    }
+
     // MARK: - Join
 
     private func join() {
@@ -191,15 +280,15 @@ struct ClipJoinView: View {
                     preference:   preference,
                     source:       "appclip"
                 )
-                // Request notification permission then start Live Activity
                 await NotificationManager.shared.requestPermission()
                 await LiveActivityManager.shared.start(
-                    entryId:      entry.id,
-                    name:         entry.name,
-                    partySize:    entry.partySize,
-                    minutesLeft:  entry.estimatedMinutes,
-                    partiesAhead: entry.partiesAhead ?? 0,
-                    progress:     entry.progressFraction
+                    entryId:        entry.id,
+                    name:           entry.name,
+                    partySize:      entry.partySize,
+                    minutesLeft:    entry.estimatedMinutes,
+                    partiesAhead:   entry.partiesAhead ?? 0,
+                    progress:       entry.progressFraction,
+                    restaurantName: restaurantName
                 )
                 await MainActor.run { onJoined(entry.id) }
             } catch {

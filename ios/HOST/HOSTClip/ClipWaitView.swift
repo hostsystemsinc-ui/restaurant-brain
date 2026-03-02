@@ -3,7 +3,8 @@ import SwiftUI
 /// Live wait-status screen shown after joining via the App Clip.
 /// Polls every 5 s and keeps the Live Activity updated.
 struct ClipWaitView: View {
-    let entryId: String
+    let entryId:        String
+    var restaurantName: String = "HOST"
 
     @State private var entry: QueueEntry? = nil
     @State private var dots  = ""
@@ -32,11 +33,16 @@ struct ClipWaitView: View {
         VStack(spacing: 0) {
 
             // ── Wordmark ─────────────────────────────────────────────────────
-            Text("HOST")
-                .font(.system(size: 14, weight: .bold)).tracking(6)
-                .foregroundStyle(Color.white.opacity(0.25))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 56)
+            VStack(spacing: 3) {
+                Text("HOST")
+                    .font(.system(size: 11, weight: .bold)).tracking(6)
+                    .foregroundStyle(Color.white.opacity(0.2))
+                Text(restaurantName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.45))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 56)
 
             Spacer()
 
