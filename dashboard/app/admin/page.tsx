@@ -906,15 +906,27 @@ function GuestsPage({ queue }: { queue: QueueEntry[] }) {
 // ── Page: Inputs ───────────────────────────────────────────────────────────────
 
 function InputsPage() {
+  // OpenTable state
   const [icalUrl,    setIcalUrl]    = useState("")
   const [saved,      setSaved]      = useState(false)
   const [syncing,    setSyncing]    = useState(false)
   const [syncMsg,    setSyncMsg]    = useState<{ text: string; ok: boolean } | null>(null)
 
+  // Calendar card state
+  const [copied,       setCopied]      = useState(false)
+  const [calPlatform,  setCalPlatform] = useState("resy")
+  const [calUrl,       setCalUrl]      = useState("")
+  const [calSaved,     setCalSaved]    = useState(false)
+  const [calSyncing,   setCalSyncing]  = useState(false)
+  const [calSyncMsg,   setCalSyncMsg]  = useState<{ text: string; ok: boolean } | null>(null)
+
   useEffect(() => {
     fetch(`${API}/settings`)
       .then(r => r.json())
-      .then(d => { if (d.opentable_ical_url) setIcalUrl(d.opentable_ical_url) })
+      .then(d => {
+        if (d.opentable_ical_url)  setIcalUrl(d.opentable_ical_url)
+        if (d.secondary_ical_url)  setCalUrl(d.secondary_ical_url)
+      })
       .catch(() => {})
   }, [])
 
@@ -951,6 +963,69 @@ function InputsPage() {
     }
   }
 
+  // Calendar card helpers
+  const webcalUrl = `webcal://${API.replace("https://", "")}/reservations.ics`
+  const icsHttpUrl = `${API}/reservations.ics`
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(webcalUrl).catch(() => {})
+    setCopied(true); setTimeout(() => setCopied(false), 2200)
+  }
+
+  const saveCalUrl = async () => {
+    try {
+      await fetch(`${API}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secondary_ical_url: calUrl.trim() || null }),
+      })
+      setCalSaved(true); setTimeout(() => setCalSaved(false), 2200)
+    } catch {}
+  }
+
+  const syncCalNow = async () => {
+    if (!calUrl.trim()) return
+    setCalSyncing(true); setCalSyncMsg(null)
+    try {
+      const r = await fetch(`${API}/settings/sync-ical`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: calUrl.trim() }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setCalSyncMsg({ text: `Synced ${d.imported} reservation${d.imported !== 1 ? "s" : ""}.`, ok: true })
+      } else {
+        setCalSyncMsg({ text: d.detail ?? "Sync failed.", ok: false })
+      }
+    } catch {
+      setCalSyncMsg({ text: "Could not reach the calendar URL. Check the link.", ok: false })
+    } finally {
+      setCalSyncing(false)
+    }
+  }
+
+  const PLATFORMS: Record<string, { name: string; hint: string }> = {
+    resy:        { name: "Resy",               hint: "Resy OS → Settings → Integrations → Calendar Export → Copy iCal Link" },
+    sevenrooms:  { name: "SevenRooms",         hint: "SevenRooms → Reporting → Export → Calendar Integration → iCal URL" },
+    tock:        { name: "Tock",               hint: "Tock → Restaurant Settings → Calendar Sync → Export URL" },
+    toasttables: { name: "Toast Tables",       hint: "Toast → Restaurant → Reservations → Calendar → Export iCal URL" },
+    square:      { name: "Square",             hint: "Square Dashboard → Appointments → Settings → Calendar Sync → iCal Feed" },
+    yelp:        { name: "Yelp Reservations",  hint: "Yelp for Business → Reservations → Settings → Calendar → Export iCal" },
+    other:       { name: "Other / Generic",    hint: "Paste any iCal (.ics) feed URL from your reservation management platform." },
+  }
+
+  const CAL_BTNS = [
+    { label: "Google Calendar", bg: "rgba(66,133,244,0.08)",  border: "rgba(66,133,244,0.3)",  color: "#4285F4",
+      href: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl)}` },
+    { label: "Apple Calendar",  bg: "rgba(0,122,255,0.08)",   border: "rgba(0,122,255,0.3)",   color: "#007AFF",
+      href: webcalUrl },
+    { label: "Outlook.com",     bg: "rgba(0,120,212,0.08)",   border: "rgba(0,120,212,0.3)",   color: "#0078D4",
+      href: `https://outlook.live.com/calendar/0/addcalendar?url=${encodeURIComponent(icsHttpUrl)}` },
+    { label: "Office 365",      bg: "rgba(0,120,212,0.08)",   border: "rgba(0,120,212,0.3)",   color: "#0078D4",
+      href: `https://outlook.office.com/calendar/0/addcalendar?url=${encodeURIComponent(icsHttpUrl)}` },
+  ]
+
   const boxStyle: React.CSSProperties = {
     background: C.surface, border: `1px solid ${C.border}`,
     borderRadius: 12, padding: 24,
@@ -976,12 +1051,12 @@ function InputsPage() {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, alignItems: "start" }}>
 
         {/* ── Reservations / OpenTable ── */}
         <div style={boxStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={iconBoxStyle("#FFFBEB")}>
+            <div style={iconBoxStyle(C.orangeBg)}>
               <CalendarDays style={{ width: 20, height: 20, color: C.orange }} />
             </div>
             <div>
@@ -997,7 +1072,7 @@ function InputsPage() {
             <textarea
               value={icalUrl}
               onChange={e => setIcalUrl(e.target.value)}
-              placeholder="Paste your OpenTable calendar link here…&#10;(Guest Center → Settings → Calendar Sync → iCal Feed)"
+              placeholder={"Paste your OpenTable calendar link here…\n(Guest Center → Settings → Calendar Sync → iCal Feed)"}
               rows={4}
               style={inputSt}
             />
@@ -1007,12 +1082,7 @@ function InputsPage() {
             <Btn onClick={saveUrl} variant="primary" small icon={saved ? Check : undefined}>
               {saved ? "Saved!" : "Save URL"}
             </Btn>
-            <Btn
-              onClick={syncNow}
-              small
-              disabled={!icalUrl.trim() || syncing}
-              icon={syncing ? Loader2 : RefreshCw}
-            >
+            <Btn onClick={syncNow} small disabled={!icalUrl.trim() || syncing} icon={syncing ? Loader2 : RefreshCw}>
               {syncing ? "Syncing…" : "Sync Now"}
             </Btn>
           </div>
@@ -1025,8 +1095,105 @@ function InputsPage() {
 
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
             <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.6 }}>
-              <strong style={{ color: C.text2 }}>Where to find it:</strong> OpenTable Guest Center → Settings → Reservations → Calendar Sync → iCal Feed URL. Paste the link above, save, then click Sync Now. Reservations will appear in the Reservations calendar.
+              <strong style={{ color: C.text2 }}>Where to find it:</strong> OpenTable Guest Center → Settings → Reservations → Calendar Sync → iCal Feed URL. Paste above, save, then Sync Now.
             </p>
+          </div>
+        </div>
+
+        {/* ── Calendar ── */}
+        <div style={boxStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={iconBoxStyle("rgba(59,130,246,0.1)")}>
+              <CalendarDays style={{ width: 20, height: 20, color: "#3b82f6" }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Calendar</div>
+              <div style={{ fontSize: 11, color: C.muted }}>Subscribe & sync with any calendar app</div>
+            </div>
+          </div>
+
+          {/* ── Outbound: add HOST calendar to external app ── */}
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 10 }}>
+              Add HOST Reservations to Your Calendar
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+              {CAL_BTNS.map(btn => (
+                <a key={btn.label} href={btn.href} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 7,
+                    padding: "8px 11px", borderRadius: 8,
+                    background: btn.bg, border: `1px solid ${btn.border}`,
+                    cursor: "pointer", fontSize: 11, fontWeight: 600, color: btn.color,
+                  }}>
+                    <ExternalLink style={{ width: 11, height: 11, flexShrink: 0 }} />
+                    {btn.label}
+                  </div>
+                </a>
+              ))}
+            </div>
+            <button
+              onClick={copyLink}
+              style={{
+                marginTop: 7, width: "100%", display: "flex", alignItems: "center", gap: 7,
+                padding: "8px 11px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 600,
+                background: copied ? C.greenBg : "rgba(148,163,184,0.08)",
+                border: `1px solid ${copied ? C.greenBorder : C.border}`,
+                color: copied ? C.green : C.text2, textAlign: "left",
+              }}
+            >
+              {copied
+                ? <Check style={{ width: 11, height: 11 }} />
+                : <Copy style={{ width: 11, height: 11 }} />}
+              {copied ? "Copied!" : "Copy webcal:// link  (any app)"}
+            </button>
+          </div>
+
+          {/* ── Inbound: import from other platforms ── */}
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 8 }}>
+              Import from Other Platforms
+            </label>
+
+            <select
+              value={calPlatform}
+              onChange={e => setCalPlatform(e.target.value)}
+              style={{ ...inputSt, resize: undefined, marginBottom: 8, cursor: "pointer" }}
+            >
+              {Object.entries(PLATFORMS).map(([key, { name }]) => (
+                <option key={key} value={key}>{name}</option>
+              ))}
+            </select>
+
+            <textarea
+              value={calUrl}
+              onChange={e => setCalUrl(e.target.value)}
+              placeholder={`Paste your ${PLATFORMS[calPlatform]?.name ?? "platform"} iCal feed URL here…`}
+              rows={3}
+              style={inputSt}
+            />
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+              <Btn onClick={saveCalUrl} variant="primary" small icon={calSaved ? Check : undefined}>
+                {calSaved ? "Saved!" : "Save URL"}
+              </Btn>
+              <Btn onClick={syncCalNow} small disabled={!calUrl.trim() || calSyncing} icon={calSyncing ? Loader2 : RefreshCw}>
+                {calSyncing ? "Syncing…" : "Sync Now"}
+              </Btn>
+            </div>
+
+            {calSyncMsg && (
+              <p style={{ fontSize: 12, color: calSyncMsg.ok ? C.green : C.red, margin: "8px 0 0", lineHeight: 1.5 }}>
+                {calSyncMsg.text}
+              </p>
+            )}
+
+            {PLATFORMS[calPlatform] && (
+              <p style={{ fontSize: 11, color: C.muted, margin: "12px 0 0", lineHeight: 1.6 }}>
+                <strong style={{ color: C.text2 }}>Where to find it:</strong>{" "}
+                {PLATFORMS[calPlatform].hint}
+              </p>
+            )}
           </div>
         </div>
 

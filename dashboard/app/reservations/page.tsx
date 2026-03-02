@@ -780,11 +780,7 @@ export default function ReservationsPage() {
           >
             <RefreshCw style={{ width: 12, height: 12 }} />
           </button>
-          <a href={`${API}/reservations.ics`} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU }}>
-              Subscribe to Calendar
-            </button>
-          </a>
+
           <Link href="/" style={{ textDecoration: "none" }}>
             <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
               ← Host View
