@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   ChevronLeft, ChevronRight, Plus, X, Edit2, Trash2,
   Users, Phone, Check, Loader2, LayoutDashboard,
-  CalendarCheck, RefreshCw, CalendarDays,
+  CalendarCheck, RefreshCw, CalendarDays, Clock,
 } from "lucide-react"
 
 const API = "https://restaurant-brain-production.up.railway.app"
@@ -77,6 +77,21 @@ function getMonthGrid(year: number, month: number) {
   return out
 }
 
+// ── Urgency ────────────────────────────────────────────────────────────────────
+
+type ResUrgency = "upcoming" | "arriving" | "now" | "late"
+
+function getResUrgency(dateStr: string, timeStr: string, now: Date): ResUrgency {
+  const [h, m] = timeStr.split(":").map(Number)
+  const [y, mo, d] = dateStr.split("-").map(Number)
+  const resTime = new Date(y, mo - 1, d, h, m, 0)
+  const diff = (resTime.getTime() - now.getTime()) / 60_000
+  if (diff > 30)  return "upcoming"
+  if (diff > 15)  return "arriving"
+  if (diff > -15) return "now"
+  return "late"
+}
+
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December",
@@ -118,6 +133,29 @@ function StatusPill({ status }: { status: string }) {
   )
 }
 
+// ── Urgency Badge ──────────────────────────────────────────────────────────────
+
+function UrgencyBadge({ urgency }: { urgency: ResUrgency }) {
+  if (urgency === "upcoming") return null
+  const cfg = {
+    arriving: { label: "ARRIVING SOON", color: "#fbbf24", bg: "rgba(251,191,36,0.1)",  border: "rgba(251,191,36,0.25)", pulse: false },
+    now:      { label: "DUE NOW",        color: "#f97316", bg: "rgba(249,115,22,0.1)",  border: "rgba(249,115,22,0.25)", pulse: true  },
+    late:     { label: "LATE",           color: "#ef4444", bg: "rgba(239,68,68,0.1)",   border: "rgba(239,68,68,0.25)",  pulse: true  },
+  }[urgency]
+  return (
+    <span
+      className={cfg.pulse ? "animate-pulse" : ""}
+      style={{
+        fontSize: 9, padding: "2px 8px", borderRadius: 99, fontWeight: 900,
+        background: cfg.bg, color: cfg.color, letterSpacing: "0.12em",
+        border: `1px solid ${cfg.border}`, whiteSpace: "nowrap",
+      }}
+    >
+      {cfg.label}
+    </span>
+  )
+}
+
 // ── Mini Calendar ──────────────────────────────────────────────────────────────
 
 function MiniCalendar({
@@ -131,7 +169,6 @@ function MiniCalendar({
   const [year,  setYear]  = useState(() => parseInt(selectedDate.slice(0, 4)))
   const [month, setMonth] = useState(() => parseInt(selectedDate.slice(5, 7)) - 1)
 
-  // Sync calendar view when selected date changes to a different month
   useEffect(() => {
     setYear(parseInt(selectedDate.slice(0, 4)))
     setMonth(parseInt(selectedDate.slice(5, 7)) - 1)
@@ -155,7 +192,6 @@ function MiniCalendar({
 
   return (
     <div style={{ padding: "0 14px" }}>
-      {/* Month nav */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
         <button onClick={prev} style={calBtnSt}>
           <ChevronLeft style={{ width: 13, height: 13 }} />
@@ -171,7 +207,6 @@ function MiniCalendar({
         </button>
       </div>
 
-      {/* Day headers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 4 }}>
         {DAY_ABBR.map(d => (
           <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", color: "rgba(255,200,150,0.2)", paddingBottom: 8 }}>
@@ -180,7 +215,6 @@ function MiniCalendar({
         ))}
       </div>
 
-      {/* Day grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 2 }}>
         {grid.map(({ date, current }, i) => {
           const ds      = toDateStr(date)
@@ -244,11 +278,21 @@ const calBtnSt: React.CSSProperties = {
 
 // ── Reservation Card ───────────────────────────────────────────────────────────
 
-function ResCard({ res, onEdit, onDelete }: {
-  res: Reservation; onEdit: () => void; onDelete: () => void
+function ResCard({ res, onEdit, onDelete, onMarkNoShow, now }: {
+  res: Reservation
+  onEdit: () => void
+  onDelete: () => void
+  onMarkNoShow?: () => void
+  now: Date
 }) {
+  const today = toDateStr(new Date())
+  const isToday = res.date === today
+  const urgency: ResUrgency = (isToday && res.status === "confirmed")
+    ? getResUrgency(res.date, res.time, now)
+    : "upcoming"
+
   const borderColor: Record<string, string> = {
-    confirmed: GRN,
+    confirmed: urgency === "late" ? "#ef4444" : urgency === "now" ? "#f97316" : urgency === "arriving" ? "#fbbf24" : GRN,
     seated:    "#60a5fa",
     cancelled: "rgba(255,200,150,0.12)",
     "no-show": "rgba(255,200,150,0.12)",
@@ -259,8 +303,14 @@ function ResCard({ res, onEdit, onDelete }: {
   return (
     <div style={{
       display: "flex", alignItems: "stretch",
-      background: "rgba(255,185,100,0.025)", borderRadius: 12, overflow: "hidden",
-      border: `1px solid ${BR}`, borderLeft: `3px solid ${borderColor[res.status] ?? GRN}`,
+      background: urgency === "late"
+        ? "rgba(239,68,68,0.04)"
+        : urgency === "now"
+        ? "rgba(249,115,22,0.03)"
+        : "rgba(255,185,100,0.025)",
+      borderRadius: 12, overflow: "hidden",
+      border: `1px solid ${BR}`,
+      borderLeft: `3px solid ${borderColor[res.status] ?? GRN}`,
       opacity: isCancelled ? 0.55 : 1,
       transition: "opacity 0.15s",
     }}>
@@ -279,6 +329,7 @@ function ResCard({ res, onEdit, onDelete }: {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
           <span style={{ fontSize: 15, fontWeight: 700, color: TX }}>{res.guest_name}</span>
           <StatusPill status={res.status} />
+          {urgency !== "upcoming" && res.status === "confirmed" && <UrgencyBadge urgency={urgency} />}
           {res.source === "opentable" && (
             <span style={{
               fontSize: 9, padding: "2px 7px", borderRadius: 4, fontWeight: 800,
@@ -306,6 +357,22 @@ function ResCard({ res, onEdit, onDelete }: {
             </span>
           )}
         </div>
+
+        {/* Late quick-action */}
+        {urgency === "late" && res.status === "confirmed" && onMarkNoShow && (
+          <div style={{ marginTop: 8 }}>
+            <button
+              onClick={onMarkNoShow}
+              style={{
+                height: 24, padding: "0 10px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.08)", color: "#f87171",
+                fontSize: 10, fontWeight: 700, cursor: "pointer", letterSpacing: "0.08em",
+              }}
+            >
+              Mark No-Show
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -377,7 +444,6 @@ function ResDrawer({
         const d = await res.json().catch(() => ({}))
         throw new Error(d.detail ?? "Server error — please check Supabase tables are created.")
       }
-      // Patch status if changed during edit
       if (isEdit && status !== initial?.status) {
         await fetch(`${API}/reservations/${initial!.id}/status?status=${status}`, { method: "PATCH" })
       }
@@ -564,8 +630,15 @@ export default function ReservationsPage() {
   const [loading,         setLoading]         = useState(true)
   const [drawer,          setDrawer]          = useState<"new" | Reservation | null>(null)
   const [deleteTarget,    setDeleteTarget]    = useState<string | null>(null)
+  const [now,             setNow]             = useState(() => new Date())
 
-  // Fetch ALL reservations once — filter client-side (avoids date-format mismatch bug)
+  // Live clock — tick every 30s for urgency badge updates
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Fetch ALL reservations — filter client-side (avoids date-format mismatch bug)
   const fetchAll = useCallback(async () => {
     try {
       const r = await fetch(`${API}/reservations`)
@@ -577,15 +650,31 @@ export default function ReservationsPage() {
     }
   }, [])
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+  // On mount + auto-refresh every 30s
+  useEffect(() => {
+    fetchAll()
+    const t = setInterval(fetchAll, 30_000)
+    return () => clearInterval(t)
+  }, [fetchAll])
 
   // Day's reservations — simple string equality, always works regardless of server date format
-  const dayRes = useMemo(() =>
-    [...allReservations]
-      .filter(r => r.date === selectedDate)
-      .sort((a, b) => a.time.localeCompare(b.time)),
-    [allReservations, selectedDate],
-  )
+  // For today: sort by urgency (late first), then time. Other days: time only.
+  const dayRes = useMemo(() => {
+    const filtered = allReservations.filter(r => r.date === selectedDate)
+    if (selectedDate === today) {
+      const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
+      return [...filtered].sort((a, b) => {
+        // Only apply urgency sort to confirmed reservations
+        if (a.status === "confirmed" && b.status === "confirmed") {
+          const ua = urgencyOrder[getResUrgency(a.date, a.time, now)]
+          const ub = urgencyOrder[getResUrgency(b.date, b.time, now)]
+          if (ua !== ub) return ua - ub
+        }
+        return a.time.localeCompare(b.time)
+      })
+    }
+    return [...filtered].sort((a, b) => a.time.localeCompare(b.time))
+  }, [allReservations, selectedDate, today, now])
 
   // Map date → active reservation count (for calendar dots)
   const resMap = useMemo(() => {
@@ -600,12 +689,29 @@ export default function ReservationsPage() {
   const active = dayRes.filter(r => r.status !== "cancelled" && r.status !== "no-show")
   const covers = active.reduce((s, r) => s + r.party_size, 0)
 
+  // Count today's urgent reservations for header badge
+  const urgentCount = useMemo(() => {
+    if (selectedDate !== today) return 0
+    return allReservations.filter(r => {
+      if (r.date !== today || r.status !== "confirmed") return false
+      const u = getResUrgency(r.date, r.time, now)
+      return u === "now" || u === "late"
+    }).length
+  }, [allReservations, today, selectedDate, now])
+
   async function deleteRes(id: string) {
     try {
       await fetch(`${API}/reservations/${id}`, { method: "DELETE" })
       setAllReservations(prev => prev.filter(r => r.id !== id))
     } catch {}
     setDeleteTarget(null)
+  }
+
+  async function markNoShow(id: string) {
+    try {
+      await fetch(`${API}/reservations/${id}/status?status=no-show`, { method: "PATCH" })
+      setAllReservations(prev => prev.map(r => r.id === id ? { ...r, status: "no-show" as const } : r))
+    } catch {}
   }
 
   // Upcoming days with reservations (next 30 days, up to 10)
@@ -623,6 +729,9 @@ export default function ReservationsPage() {
     }
     return out
   }, [resMap])
+
+  // Live clock string for today header
+  const clockStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
 
   return (
     <div style={{
@@ -652,6 +761,15 @@ export default function ReservationsPage() {
             <CalendarCheck style={{ width: 13, height: 13 }} />
             Reservations
           </div>
+          {urgentCount > 0 && (
+            <span className="animate-pulse" style={{
+              fontSize: 10, padding: "2px 8px", borderRadius: 99, fontWeight: 800,
+              background: "rgba(249,115,22,0.12)", color: "#f97316",
+              border: "1px solid rgba(249,115,22,0.25)", letterSpacing: "0.06em",
+            }}>
+              {urgentCount} URGENT
+            </span>
+          )}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -748,6 +866,18 @@ export default function ReservationsPage() {
               <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                 <span style={{ fontSize: 22, fontWeight: 800, color: TX }}>{displayDay(selectedDate)}</span>
                 <span style={{ fontSize: 13, color: MU }}>{longDate(selectedDate)}</span>
+                {/* Live clock chip — only for today */}
+                {selectedDate === today && (
+                  <span style={{
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                    fontSize: 11, color: "rgba(255,200,150,0.35)", fontVariantNumeric: "tabular-nums",
+                    padding: "2px 8px", borderRadius: 99,
+                    background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`,
+                  }}>
+                    <Clock style={{ width: 9, height: 9 }} />
+                    {clockStr}
+                  </span>
+                )}
               </div>
               <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
                 <span style={{ fontSize: 11, color: TX2 }}>
@@ -852,8 +982,10 @@ export default function ReservationsPage() {
                     ) : (
                       <ResCard
                         res={res}
+                        now={now}
                         onEdit={() => setDrawer(res)}
                         onDelete={() => setDeleteTarget(res.id)}
+                        onMarkNoShow={() => markNoShow(res.id)}
                       />
                     )}
                   </div>

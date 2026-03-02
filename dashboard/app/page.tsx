@@ -80,6 +80,16 @@ interface QueueEntry {
 
 interface LocalOccupant { name: string; party_size: number }
 
+interface Reservation {
+  id:         string
+  guest_name: string
+  party_size: number
+  date:       string   // "YYYY-MM-DD"
+  time:       string   // "HH:MM" or "HH:MM:SS"
+  status:     string
+  phone:      string | null
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function timeWaiting(iso: string): string {
@@ -87,6 +97,28 @@ function timeWaiting(iso: string): string {
   if (diff < 60) return `${diff}s`
   if (diff < 3600) return `${Math.floor(diff / 60)}m`
   return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
+}
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function fmt12Res(t: string): string {
+  const [h, m] = t.split(":").map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
+}
+
+type ResUrgency = "upcoming" | "arriving" | "now" | "late"
+
+function getResUrgency(dateStr: string, timeStr: string, now: Date): ResUrgency {
+  const [h, m] = timeStr.split(":").map(Number)
+  const [y, mo, d] = dateStr.split("-").map(Number)
+  const resTime = new Date(y, mo - 1, d, h, m, 0)
+  const diff = (resTime.getTime() - now.getTime()) / 60_000
+  if (diff > 30)  return "upcoming"
+  if (diff > 15)  return "arriving"
+  if (diff > -15) return "now"
+  return "late"
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -249,7 +281,6 @@ function DroppableFloorTable({
   occupant?: LocalOccupant
   onClear?: () => void
 }) {
-  // Allow drop on any table that isn't already locally occupied — don't require API match
   const isOccupied = !!occupant || (!!table && table.status !== "available")
   const canDrop = !isOccupied
   const noTable = !table
@@ -260,7 +291,6 @@ function DroppableFloorTable({
     disabled: !canDrop,
   })
 
-  // Visual styles — clear green for available, clear red for occupied
   const bg = isOver && avail
     ? "rgba(34,197,94,0.28)"
     : isOccupied ? "rgba(239,68,68,0.18)"
@@ -303,7 +333,6 @@ function DroppableFloorTable({
       }}
       onClick={isOccupied && onClear ? onClear : undefined}
     >
-      {/* Status indicator: green dot (available) or red × button (occupied/clear) */}
       {isOccupied && onClear ? (
         <button
           onPointerDown={e => e.stopPropagation()}
@@ -413,7 +442,6 @@ function FloorMap({
       className="flex-1 relative overflow-hidden"
       style={{ background: "#080503" }}
     >
-      {/* Section label — top left */}
       <span style={{
         position: "absolute",
         top: 14,
@@ -429,7 +457,6 @@ function FloorMap({
         Floor Plan
       </span>
 
-      {/* Canvas wrapper — percentage layout, zero CSS transforms so @dnd-kit rects are always accurate */}
       <div style={{
         position: "absolute",
         inset: "30px 16px 40px 16px",
@@ -532,15 +559,16 @@ function FloorMap({
 }
 
 // ── Seat Table Picker ──────────────────────────────────────────────────────────
+// Generic — accepts any guest object with name + party_size
 
 function SeatTablePicker({
-  entry,
+  guest,
   tables,
   localOccupants,
   onConfirm,
   onClose,
 }: {
-  entry: QueueEntry
+  guest: { name: string | null; party_size: number }
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
   onConfirm: (tableNumber: number, tableId: string | undefined) => void
@@ -561,7 +589,6 @@ function SeatTablePicker({
       >
         <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
             Seat Guest
@@ -571,7 +598,7 @@ function SeatTablePicker({
           </button>
         </div>
         <p className="text-xs mb-6" style={{ color: "rgba(255,200,150,0.3)" }}>
-          {entry.name || "Guest"} · {entry.party_size}p — choose a table
+          {guest.name || "Guest"} · {guest.party_size}p — choose a table
         </p>
 
         {available.length === 0 ? (
@@ -719,6 +746,9 @@ export default function HostDashboard() {
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
+  const [resPicker, setResPicker]         = useState<Reservation | null>(null)
+  const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
+  const [now, setNow]                     = useState(() => new Date())
   const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
     try {
       const s = localStorage.getItem("host_occupants")
@@ -731,37 +761,57 @@ export default function HostDashboard() {
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 5 } }),
   )
 
-  // Keep admin page in sync — persist floor map occupancy to localStorage
+  // Persist floor map occupancy to localStorage
   useEffect(() => {
     try { localStorage.setItem("host_occupants", JSON.stringify([...localOccupants])) } catch {}
   }, [localOccupants])
+
+  // Live clock — ticks every 30s for urgency updates
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(t)
+  }, [])
 
   const fetchTables   = useCallback(async () => { try { const r = await fetch(`${API}/tables`);   if (r.ok) setTables(await r.json()) } catch {} }, [])
   const fetchQueue    = useCallback(async () => { try { const r = await fetch(`${API}/queue`);    if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) } } catch { setOnline(false) } }, [])
   const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
   const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
 
+  // Fetch today's confirmed reservations
+  const fetchReservations = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/reservations`)
+      if (r.ok) {
+        const all: Reservation[] = await r.json()
+        const todayStr = toLocalDateStr(new Date())
+        setTodayRes(
+          all
+            .filter(r => r.date === todayStr && r.status === "confirmed")
+            .sort((a, b) => a.time.localeCompare(b.time))
+        )
+      }
+    } catch {}
+  }, [])
+
   useEffect(() => {
-    refreshAll(); fetchInsights()
-    const fast = setInterval(refreshAll, 4000)
-    const slow = setInterval(fetchInsights, 30000)
-    return () => { clearInterval(fast); clearInterval(slow) }
-  }, [refreshAll, fetchInsights])
+    refreshAll(); fetchInsights(); fetchReservations()
+    const fast   = setInterval(refreshAll, 4000)
+    const slow   = setInterval(fetchInsights, 30000)
+    const resInt = setInterval(fetchReservations, 30000)
+    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt) }
+  }, [refreshAll, fetchInsights, fetchReservations])
 
   const seat   = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }); refreshAll() }, [refreshAll])
   const notify = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }); refreshAll() }, [refreshAll])
   const remove = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }); refreshAll() }, [refreshAll])
 
-  // Open the table picker — the hostess chooses which table to seat the guest at
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
   }, [])
 
-  // Called when hostess confirms a table from the picker
   const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
     setSeatPicker(null)
     if (tableId) {
-      // Atomic: mark queue entry seated + mark specific table occupied
       await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
     } else {
       await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
@@ -770,17 +820,33 @@ export default function HostDashboard() {
     refreshAll()
   }, [refreshAll])
 
+  // Check in a reservation — mark as seated + assign table
+  const checkInConfirm = useCallback(async (res: Reservation, tableNumber: number, tableId: string | undefined) => {
+    setResPicker(null)
+    // Mark reservation as seated
+    try {
+      await fetch(`${API}/reservations/${res.id}/status?status=seated`, { method: "PATCH" })
+    } catch {}
+    // Remove from today's sidebar immediately
+    setTodayRes(prev => prev.filter(r => r.id !== res.id))
+    // Mark table occupied if an API table was found
+    if (tableId) {
+      try { await fetch(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
+      fetchTables()
+    }
+    // Always update local occupant map (floor map visual)
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
+  }, [fetchTables])
+
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
-    // Always clear local occupant immediately
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
-    // Also clear in API if we have an ID
     if (tableId) {
       try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
       fetchTables()
     }
   }, [fetchTables])
 
-  // ── DnD handlers ──────────────────────────────────────────────────────────
+  // ── DnD handlers ──────────────────────────────────────────────────────
 
   function handleDragStart(event: DragStartEvent) {
     const entry = (event.active.data.current as { entry: QueueEntry } | undefined)?.entry
@@ -796,31 +862,46 @@ export default function HostDashboard() {
     const entry = (active.data.current as { entry: QueueEntry } | undefined)?.entry
     if (!entry || isNaN(tableNumber)) return
 
-    // Prevent double-booking a locally occupied table
     if (localOccupants.has(tableNumber)) return
 
     const apiTable = tables.find(t => t.table_number === tableNumber)
     if (apiTable) {
-      // Seat guest AND mark the specific table occupied in one atomic call
-      // — this syncs the API so the guest join page sees accurate availability
       fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" }).then(() => refreshAll())
     } else {
-      // No API table for this floor position — just mark the queue entry as seated
       seat(entry.id)
     }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
   }
 
-  // Base availability on the floor map (all 16 positions) + live local occupancy state
-  // so the counter updates instantly when a table is cleared or seated via drag
+  // Floor availability
   const floorOccupied = FLOOR_PLAN.filter(pos => {
     if (localOccupants.has(pos.number)) return true
     const t = tables.find(t => t.table_number === pos.number)
     return !!t && t.status !== "available"
   }).length
-  const available = FLOOR_PLAN.length - floorOccupied
+  const available   = FLOOR_PLAN.length - floorOccupied
   const readyList   = queue.filter(q => q.status === "ready")
   const waitingList = queue.filter(q => q.status === "waiting")
+
+  // Reservations to show in sidebar: window of 3hr future + 45min past, sorted by urgency
+  const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
+  const activeRes = todayReservations
+    .filter(r => {
+      const [h, m] = r.time.split(":").map(Number)
+      const [y, mo, d] = r.date.split("-").map(Number)
+      const resTime = new Date(y, mo - 1, d, h, m)
+      const diffMin = (resTime.getTime() - now.getTime()) / 60_000
+      return diffMin > -45 && diffMin < 180
+    })
+    .sort((a, b) => {
+      const ua = urgencyOrder[getResUrgency(a.date, a.time, now)]
+      const ub = urgencyOrder[getResUrgency(b.date, b.time, now)]
+      if (ua !== ub) return ua - ub
+      return a.time.localeCompare(b.time)
+    })
+
+  // Live clock string
+  const clockStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
 
   return (
     <DndContext
@@ -875,6 +956,13 @@ export default function HostDashboard() {
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {/* Live clock */}
+            <span
+              className="hidden sm:block text-[11px] tabular-nums font-medium px-2"
+              style={{ color: "rgba(255,200,150,0.22)", letterSpacing: "0.04em" }}
+            >
+              {clockStr}
+            </span>
             <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.22)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>
@@ -902,9 +990,110 @@ export default function HostDashboard() {
               background: "#0C0907",
             }}
           >
+
+            {/* ── Today's reservations ──────────────────────────── */}
+            {activeRes.length > 0 && (
+              <div
+                style={{
+                  padding: "8px 12px 8px",
+                  borderBottom: "1px solid rgba(255,185,100,0.06)",
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, padding: "0 2px" }}>
+                  <CalendarDays style={{ width: 9, height: 9, color: "rgba(99,179,237,0.5)" }} />
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: "0.16em",
+                    color: "rgba(99,179,237,0.45)", textTransform: "uppercase",
+                  }}>
+                    Reservations · {activeRes.length}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {activeRes.map(res => {
+                    const urgency = getResUrgency(res.date, res.time, now)
+                    const isLate     = urgency === "late"
+                    const isNow      = urgency === "now"
+                    const isArriving = urgency === "arriving"
+
+                    return (
+                      <div
+                        key={res.id}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "7px 9px", borderRadius: 9,
+                          background: isLate
+                            ? "rgba(239,68,68,0.07)"
+                            : isNow
+                            ? "rgba(249,115,22,0.06)"
+                            : isArriving
+                            ? "rgba(251,191,36,0.04)"
+                            : "rgba(99,179,237,0.03)",
+                          border: `1px solid ${isLate
+                            ? "rgba(239,68,68,0.22)"
+                            : isNow
+                            ? "rgba(249,115,22,0.18)"
+                            : isArriving
+                            ? "rgba(251,191,36,0.14)"
+                            : "rgba(99,179,237,0.08)"}`,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 12, fontWeight: 600,
+                            color: "rgba(255,248,240,0.85)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            marginBottom: 2,
+                          }}>
+                            {res.guest_name}
+                          </div>
+                          <div style={{
+                            fontSize: 10, display: "flex", gap: 5, alignItems: "center",
+                            color: "rgba(255,200,150,0.3)",
+                          }}>
+                            <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
+                            <span>·</span>
+                            <span>{res.party_size}p</span>
+                            {isArriving && (
+                              <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
+                                ARRIVING
+                              </span>
+                            )}
+                            {isNow && (
+                              <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
+                                DUE NOW
+                              </span>
+                            )}
+                            {isLate && (
+                              <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
+                                LATE
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => setResPicker(res)}
+                          style={{
+                            height: 24, padding: "0 8px", borderRadius: 6, border: "none",
+                            cursor: "pointer", fontSize: 9, fontWeight: 800,
+                            letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
+                            background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                          }}
+                        >
+                          Check In
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Ready section */}
             {readyList.length > 0 && (
-              <div className="px-3 pt-3 pb-1">
+              <div className="px-3 pt-3 pb-1 shrink-0">
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
                   <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(34,197,94,0.6)" }}>
@@ -922,7 +1111,7 @@ export default function HostDashboard() {
 
             {/* Divider */}
             {readyList.length > 0 && waitingList.length > 0 && (
-              <div className="mx-3 my-2" style={{ height: 1, background: "rgba(255,185,100,0.05)" }} />
+              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.05)" }} />
             )}
 
             {/* Waiting section */}
@@ -955,7 +1144,7 @@ export default function HostDashboard() {
 
             {/* Sidebar footer */}
             <div className="px-4 py-3 shrink-0" style={{ borderTop: "1px solid rgba(255,185,100,0.05)" }}>
-              <p className="text-[10px]" style={{ color: "rgba(255,200,150,0.08)" }}>
+              <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.08)" }}>
                 Updated {lastSync.toLocaleTimeString()}
               </p>
             </div>
@@ -989,13 +1178,25 @@ export default function HostDashboard() {
 
         {showAdd && <AddGuestDrawer onClose={() => setShowAdd(false)} onAdded={refreshAll} />}
 
+        {/* Queue seat picker */}
         {seatPicker && (
           <SeatTablePicker
-            entry={seatPicker}
+            guest={seatPicker}
             tables={tables}
             localOccupants={localOccupants}
             onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
             onClose={() => setSeatPicker(null)}
+          />
+        )}
+
+        {/* Reservation check-in picker */}
+        {resPicker && (
+          <SeatTablePicker
+            guest={{ name: resPicker.guest_name, party_size: resPicker.party_size }}
+            tables={tables}
+            localOccupants={localOccupants}
+            onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
+            onClose={() => setResPicker(null)}
           />
         )}
       </div>
