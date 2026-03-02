@@ -103,21 +103,19 @@ export default function JoinPage() {
       <div className="flex flex-col items-center px-8 pb-5 shrink-0">
         {/* Logo box */}
         <div
-          className="flex items-center justify-center mb-3"
+          className="mb-3 overflow-hidden"
           style={{
             width: "200px",
             height: "76px",
             borderRadius: "14px",
-            background: "rgba(255,255,255,0.06)",
             border: "1px solid rgba(255,255,255,0.12)",
-            padding: "12px 18px",
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/walters-logo.png"
             alt="Walter's303"
-            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
           />
         </div>
 
