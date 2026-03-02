@@ -249,15 +249,16 @@ function DroppableFloorTable({
   occupant?: LocalOccupant
   onClear?: () => void
 }) {
-  const canDrop = !!table && table.status === "available" && !occupant
+  // Allow drop on any table that isn't already locally occupied — don't require API match
+  const isOccupied = !!occupant || (!!table && table.status !== "available")
+  const canDrop = !isOccupied
+  const noTable = !table
+  const avail = canDrop
+
   const { setNodeRef, isOver } = useDroppable({
     id: `table-${pos.number}`,
     disabled: !canDrop,
   })
-
-  const avail = canDrop
-  const isOccupied = occupant || (table && table.status !== "available")
-  const noTable = !table
 
   // Visual styles — clear green for available, clear red for occupied
   const bg = isOver && avail
@@ -273,8 +274,6 @@ function DroppableFloorTable({
     : "rgba(34,197,94,0.42)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
-
-  const dotColor = isOccupied ? "#ef4444" : noTable ? "rgba(255,255,255,0.08)" : "#22c55e"
 
   return (
     <div
@@ -300,19 +299,48 @@ function DroppableFloorTable({
         justifyContent: "center",
         gap: 2,
         overflow: "hidden",
-        cursor: canDrop ? "copy" : "default",
+        cursor: isOccupied && onClear ? "pointer" : canDrop ? "copy" : "default",
       }}
+      onClick={isOccupied && onClear ? onClear : undefined}
     >
-      {/* Status dot */}
-      <div style={{
-        position: "absolute",
-        top: pos.shape === "round" ? "16%" : 7,
-        right: pos.shape === "round" ? "16%" : 7,
-        width: 6, height: 6,
-        borderRadius: "50%",
-        background: dotColor,
-        opacity: 0.75,
-      }} />
+      {/* Status indicator: green dot (available) or red × button (occupied/clear) */}
+      {isOccupied && onClear ? (
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onClear() }}
+          style={{
+            position: "absolute",
+            top: pos.shape === "round" ? "10%" : 4,
+            right: pos.shape === "round" ? "10%" : 4,
+            width: 16, height: 16,
+            borderRadius: "50%",
+            background: "rgba(239,68,68,0.75)",
+            border: "none",
+            cursor: "pointer",
+            color: "rgba(255,255,255,0.95)",
+            fontSize: 11,
+            fontWeight: 900,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            padding: 0,
+          }}
+          title="Clear table"
+        >
+          ×
+        </button>
+      ) : (
+        <div style={{
+          position: "absolute",
+          top: pos.shape === "round" ? "16%" : 7,
+          right: pos.shape === "round" ? "16%" : 7,
+          width: 6, height: 6,
+          borderRadius: "50%",
+          background: noTable ? "rgba(255,255,255,0.08)" : "#22c55e",
+          opacity: 0.75,
+        }} />
+      )}
 
       {isOver && avail ? (
         <span style={{
@@ -341,24 +369,6 @@ function DroppableFloorTable({
           <span style={{ fontSize: 9, color: "rgba(255,200,150,0.35)" }}>
             {occupant.party_size}p
           </span>
-          {onClear && (
-            <button
-              onPointerDown={e => e.stopPropagation()}
-              onClick={onClear}
-              style={{
-                marginTop: 3,
-                fontSize: 9,
-                fontWeight: 600,
-                color: "rgba(255,200,150,0.3)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                letterSpacing: "0.08em",
-              }}
-            >
-              CLEAR
-            </button>
-          )}
         </>
       ) : table && table.status !== "available" ? (
         <>
@@ -366,24 +376,6 @@ function DroppableFloorTable({
             {pos.number}
           </span>
           <span style={{ fontSize: 9, color: "rgba(239,68,68,0.48)" }}>{table.capacity}p</span>
-          {onClear && (
-            <button
-              onPointerDown={e => e.stopPropagation()}
-              onClick={onClear}
-              style={{
-                marginTop: 2,
-                fontSize: 9,
-                fontWeight: 600,
-                color: "rgba(239,68,68,0.45)",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                letterSpacing: "0.08em",
-              }}
-            >
-              CLEAR
-            </button>
-          )}
         </>
       ) : (
         <>
@@ -412,7 +404,7 @@ function FloorMap({
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
-  onClear: (tableId: string, tableNumber: number) => void
+  onClear: (tableId: string | undefined, tableNumber: number) => void
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -514,7 +506,7 @@ function FloorMap({
                 pos={pos}
                 table={table}
                 occupant={occupant}
-                onClear={table ? () => onClear(table.id, pos.number) : undefined}
+                onClear={() => onClear(table?.id, pos.number)}
               />
             )
           })}
@@ -672,10 +664,14 @@ export default function HostDashboard() {
     refreshAll()
   }, [tables, localOccupants, refreshAll])
 
-  const clearTable = useCallback(async (tableId: string, tableNumber: number) => {
-    await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" })
+  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
+    // Always clear local occupant immediately
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
-    fetchTables()
+    // Also clear in API if we have an ID
+    if (tableId) {
+      try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
+      fetchTables()
+    }
   }, [fetchTables])
 
   // ── DnD handlers ──────────────────────────────────────────────────────────
@@ -694,10 +690,10 @@ export default function HostDashboard() {
     const entry = (active.data.current as { entry: QueueEntry } | undefined)?.entry
     if (!entry || isNaN(tableNumber)) return
 
-    const apiTable = tables.find(t => t.table_number === tableNumber)
-    if (!apiTable || apiTable.status !== "available") return
+    // Prevent double-booking a locally occupied table
     if (localOccupants.has(tableNumber)) return
 
+    // Seat via API and track on floor map — works even if no API table record exists
     seat(entry.id)
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
   }
