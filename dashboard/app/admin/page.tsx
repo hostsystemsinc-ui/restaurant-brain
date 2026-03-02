@@ -325,7 +325,7 @@ function OverviewPage({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: 0 }}>Overview</h1>
-          <p style={{ fontSize: 13, color: C.muted, margin: "4px 0 0" }}>Walter303 · Denver, CO · Live</p>
+          <p style={{ fontSize: 13, color: C.muted, margin: "4px 0 0" }}>Walter's303 · Denver, CO · Live</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: online ? C.green : C.red, display: "flex", alignItems: "center", gap: 4 }}>
@@ -924,7 +924,7 @@ function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => vo
         <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: C.muted, textTransform: "uppercase", marginBottom: 4 }}>
           Powered by HOST
         </div>
-        <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>Walter303</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>Walter's303</div>
         <div style={{ fontSize: 11, color: C.muted }}>Denver, CO · Admin</div>
       </div>
 
