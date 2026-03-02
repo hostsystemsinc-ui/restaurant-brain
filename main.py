@@ -182,6 +182,11 @@ def get_tables():
         .data
     )
 
+@app.post("/tables/{table_id}/occupy")
+def occupy_table(table_id: str):
+    supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table_id).execute()
+    return {"status": "occupied"}
+
 @app.post("/tables/{table_id}/clear")
 def clear_table(table_id: str):
     supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
@@ -285,6 +290,20 @@ def seat_entry(entry_id: str):
             pass
 
     return {"status": "seated", "table": table}
+
+@app.post("/queue/{entry_id}/seat-to-table/{table_id}")
+def seat_to_table(entry_id: str, table_id: str):
+    """Seat a queue entry and mark a specific table as occupied (used by floor-map drag-and-drop)."""
+    supabase.table("queue_entries").update({"status": "seated"}).eq("id", entry_id).execute()
+    supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table_id).execute()
+    try:
+        supabase.table("seating_events").insert({
+            "restaurant_id": RESTAURANT_ID, "table_id": table_id,
+            "queue_entry_id": entry_id, "action": "seated",
+        }).execute()
+    except Exception:
+        pass
+    return {"status": "seated", "table_id": table_id}
 
 @app.post("/queue/{entry_id}/notify")
 def notify_ready(entry_id: str):

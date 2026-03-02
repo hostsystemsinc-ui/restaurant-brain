@@ -32,12 +32,11 @@ export default function JoinPage() {
       const tables   = tablesRes.ok   ? await tablesRes.json()   : []
       const insights = insightsRes.ok ? await insightsRes.json() : null
 
-      // Tables available from API; fallback to TOTAL_TABLES if none returned
-      const occupied  = Array.isArray(tables)
+      // Count how many API tables are occupied, subtract from full floor plan of 16
+      const apiOccupied = Array.isArray(tables)
         ? tables.filter((t: { status: string }) => t.status !== "available").length
         : 0
-      const apiTotal  = Array.isArray(tables) && tables.length > 0 ? tables.length : TOTAL_TABLES
-      const available = Math.max(0, apiTotal - occupied)
+      const available = Math.max(0, TOTAL_TABLES - apiOccupied)
 
       const ahead   = insights?.parties_waiting ?? 0
       const waitMin = insights?.avg_wait_estimate > 0 ? insights.avg_wait_estimate : null

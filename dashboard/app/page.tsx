@@ -703,8 +703,15 @@ export default function HostDashboard() {
     // Prevent double-booking a locally occupied table
     if (localOccupants.has(tableNumber)) return
 
-    // Seat via API and track on floor map — works even if no API table record exists
-    seat(entry.id)
+    const apiTable = tables.find(t => t.table_number === tableNumber)
+    if (apiTable) {
+      // Seat guest AND mark the specific table occupied in one atomic call
+      // — this syncs the API so the guest join page sees accurate availability
+      fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" }).then(() => refreshAll())
+    } else {
+      // No API table for this floor position — just mark the queue entry as seated
+      seat(entry.id)
+    }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
   }
 
