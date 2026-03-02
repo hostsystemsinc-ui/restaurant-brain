@@ -5,7 +5,7 @@ import Link from "next/link"
 import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
-  LayoutDashboard, GripVertical,
+  LayoutDashboard, GripVertical, CalendarDays,
 } from "lucide-react"
 import {
   DndContext, DragOverlay,
@@ -875,6 +875,9 @@ export default function HostDashboard() {
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.22)" }}>
+              <CalendarDays className="w-3 h-3" /> Reservations
+            </Link>
             <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.22)" }}>
               <LayoutDashboard className="w-3 h-3" /> Admin
             </Link>

@@ -6,6 +6,7 @@ import {
   LayoutDashboard, TrendingUp, TableProperties, Users,
   Download, Wifi, WifiOff, RefreshCw, Copy, Check,
   ExternalLink, Search, ArrowLeft, Sparkles,
+  Settings2, CalendarDays, Camera, CreditCard, Loader2,
 } from "lucide-react"
 import {
   AreaChart, Area, BarChart, Bar,
@@ -50,7 +51,7 @@ interface Insights {
   ai_insights: string | null
 }
 
-type Page = "overview" | "analytics" | "tables" | "guests"
+type Page = "overview" | "analytics" | "tables" | "guests" | "inputs"
 type TimeFrame = "today" | "7d" | "30d" | "90d"
 
 interface LocalOcc { name: string; party_size: number }
@@ -902,6 +903,186 @@ function GuestsPage({ queue }: { queue: QueueEntry[] }) {
   )
 }
 
+// ── Page: Inputs ───────────────────────────────────────────────────────────────
+
+function InputsPage() {
+  const [icalUrl,    setIcalUrl]    = useState("")
+  const [saved,      setSaved]      = useState(false)
+  const [syncing,    setSyncing]    = useState(false)
+  const [syncMsg,    setSyncMsg]    = useState<{ text: string; ok: boolean } | null>(null)
+
+  useEffect(() => {
+    fetch(`${API}/settings`)
+      .then(r => r.json())
+      .then(d => { if (d.opentable_ical_url) setIcalUrl(d.opentable_ical_url) })
+      .catch(() => {})
+  }, [])
+
+  const saveUrl = async () => {
+    try {
+      await fetch(`${API}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ opentable_ical_url: icalUrl.trim() || null }),
+      })
+      setSaved(true); setTimeout(() => setSaved(false), 2200)
+    } catch {}
+  }
+
+  const syncNow = async () => {
+    if (!icalUrl.trim()) return
+    setSyncing(true); setSyncMsg(null)
+    try {
+      const r = await fetch(`${API}/settings/sync-ical`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: icalUrl.trim() }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setSyncMsg({ text: `Synced ${d.imported} reservation${d.imported !== 1 ? "s" : ""} from OpenTable.`, ok: true })
+      } else {
+        setSyncMsg({ text: d.detail ?? "Sync failed.", ok: false })
+      }
+    } catch {
+      setSyncMsg({ text: "Could not reach the OpenTable calendar. Check the URL.", ok: false })
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const boxStyle: React.CSSProperties = {
+    background: C.surface, border: `1px solid ${C.border}`,
+    borderRadius: 12, padding: 24,
+    display: "flex", flexDirection: "column", gap: 16,
+  }
+  const iconBoxStyle = (bg: string): React.CSSProperties => ({
+    width: 40, height: 40, borderRadius: 10, background: bg,
+    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+  })
+  const inputSt: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box",
+    padding: "9px 12px", fontSize: 12, color: C.text,
+    border: `1px solid ${C.border}`, borderRadius: 8, outline: "none",
+    background: C.bg, fontFamily: "monospace", lineHeight: 1.5, resize: "vertical" as const,
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: 0 }}>Inputs</h1>
+        <p style={{ fontSize: 13, color: C.muted, margin: "4px 0 0" }}>
+          Connect reservations, POS, and camera systems to HOST
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, alignItems: "start" }}>
+
+        {/* ── Reservations / OpenTable ── */}
+        <div style={boxStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={iconBoxStyle("#FFFBEB")}>
+              <CalendarDays style={{ width: 20, height: 20, color: C.orange }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Reservations</div>
+              <div style={{ fontSize: 11, color: C.muted }}>OpenTable iCal sync</div>
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>
+              OpenTable iCal Feed URL
+            </label>
+            <textarea
+              value={icalUrl}
+              onChange={e => setIcalUrl(e.target.value)}
+              placeholder="Paste your OpenTable calendar link here…&#10;(Guest Center → Settings → Calendar Sync → iCal Feed)"
+              rows={4}
+              style={inputSt}
+            />
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Btn onClick={saveUrl} variant="primary" small icon={saved ? Check : undefined}>
+              {saved ? "Saved!" : "Save URL"}
+            </Btn>
+            <Btn
+              onClick={syncNow}
+              small
+              disabled={!icalUrl.trim() || syncing}
+              icon={syncing ? Loader2 : RefreshCw}
+            >
+              {syncing ? "Syncing…" : "Sync Now"}
+            </Btn>
+          </div>
+
+          {syncMsg && (
+            <p style={{ fontSize: 12, color: syncMsg.ok ? C.green : C.red, margin: 0, lineHeight: 1.5 }}>
+              {syncMsg.text}
+            </p>
+          )}
+
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+            <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+              <strong style={{ color: C.text2 }}>Where to find it:</strong> OpenTable Guest Center → Settings → Reservations → Calendar Sync → iCal Feed URL. Paste the link above, save, then click Sync Now. Reservations will appear in the Reservations calendar.
+            </p>
+          </div>
+        </div>
+
+        {/* ── POS ── */}
+        <div style={{ ...boxStyle, opacity: 0.65 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={iconBoxStyle(C.bg)}>
+              <CreditCard style={{ width: 20, height: 20, color: C.muted }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>POS System</div>
+              <div style={{ fontSize: 11, color: C.muted }}>Toast · Square · Clover</div>
+            </div>
+          </div>
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <span style={{
+              fontSize: 11, padding: "3px 12px", borderRadius: 99, fontWeight: 700,
+              background: C.orangeBg, color: C.orange, border: `1px solid ${C.orangeBorder}`,
+            }}>
+              Coming Soon
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+            Connect your point-of-sale to automatically close tables when checks are paid and sync covers to your analytics.
+          </p>
+        </div>
+
+        {/* ── Camera AI ── */}
+        <div style={{ ...boxStyle, opacity: 0.65 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={iconBoxStyle(C.bg)}>
+              <Camera style={{ width: 20, height: 20, color: C.muted }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Camera AI</div>
+              <div style={{ fontSize: 11, color: C.muted }}>Occupancy detection</div>
+            </div>
+          </div>
+          <div style={{ textAlign: "center", padding: "20px 0" }}>
+            <span style={{
+              fontSize: 11, padding: "3px 12px", borderRadius: 99, fontWeight: 700,
+              background: C.orangeBg, color: C.orange, border: `1px solid ${C.orangeBorder}`,
+            }}>
+              Coming Soon
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+            Real-time table occupancy from ceiling cameras that auto-updates the floor map without any host input.
+          </p>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
 const NAV: { label: string; page: Page; Icon: React.ElementType }[] = [
@@ -909,6 +1090,7 @@ const NAV: { label: string; page: Page; Icon: React.ElementType }[] = [
   { label: "Analytics", page: "analytics", Icon: TrendingUp      },
   { label: "Tables",    page: "tables",    Icon: TableProperties  },
   { label: "Guests",    page: "guests",    Icon: Users            },
+  { label: "Inputs",    page: "inputs",    Icon: Settings2        },
 ]
 
 function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => void }) {
@@ -1038,6 +1220,7 @@ export default function AdminPage() {
         {page === "analytics" && <AnalyticsPage />}
         {page === "tables"    && <TablesPage tables={tables} localOccupants={localOccupants} />}
         {page === "guests"    && <GuestsPage queue={queue} />}
+        {page === "inputs"    && <InputsPage />}
       </main>
     </div>
   )

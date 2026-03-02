@@ -2,6 +2,7 @@ import os
 import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from supabase import create_client
 from pydantic import BaseModel
 from typing import Optional
@@ -49,6 +50,22 @@ class ThroughputEventRequest(BaseModel):
     metric:   str
     value:    float
     metadata: Optional[dict] = None
+
+class ReservationRequest(BaseModel):
+    guest_name: str
+    party_size: int           = 2
+    date:       str           # YYYY-MM-DD
+    time:       str           # HH:MM (24-hour)
+    phone:      Optional[str] = None
+    email:      Optional[str] = None
+    notes:      Optional[str] = None
+    source:     Optional[str] = "host"
+
+class SettingsRequest(BaseModel):
+    opentable_ical_url: Optional[str] = None
+
+class SyncIcalRequest(BaseModel):
+    url: str
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -380,6 +397,251 @@ def log_delivery(req: DeliveryEventRequest):
 def log_throughput(req: ThroughputEventRequest):
     supabase.table("throughput_events").insert({"restaurant_id": RESTAURANT_ID, "metric": req.metric, "value": req.value, "metadata": req.metadata}).execute()
     return {"status": "logged"}
+
+# ── Reservations ─────────────────────────────────────────────────────────────
+#
+# Required Supabase tables (run once in the Supabase SQL editor):
+#
+#   CREATE TABLE IF NOT EXISTS reservations (
+#     id            uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+#     restaurant_id uuid REFERENCES restaurants(id) ON DELETE CASCADE,
+#     guest_name    text NOT NULL,
+#     party_size    int  NOT NULL DEFAULT 2,
+#     date          date NOT NULL,
+#     time          time NOT NULL,
+#     phone         text,
+#     email         text,
+#     notes         text,
+#     status        text NOT NULL DEFAULT 'confirmed',
+#     source        text NOT NULL DEFAULT 'host',
+#     external_uid  text,
+#     created_at    timestamptz DEFAULT now()
+#   );
+#   CREATE TABLE IF NOT EXISTS restaurant_settings (
+#     id            uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+#     restaurant_id uuid REFERENCES restaurants(id) ON DELETE CASCADE UNIQUE,
+#     opentable_ical_url text,
+#     updated_at    timestamptz DEFAULT now()
+#   );
+#   CREATE INDEX IF NOT EXISTS reservations_restaurant_date ON reservations(restaurant_id, date);
+#   CREATE INDEX IF NOT EXISTS reservations_external_uid    ON reservations(restaurant_id, external_uid);
+
+@app.get("/reservations")
+def get_reservations(date: Optional[str] = None):
+    try:
+        q = supabase.table("reservations").select("*").eq("restaurant_id", RESTAURANT_ID)
+        if date:
+            q = q.eq("date", date)
+        return q.order("time").execute().data
+    except Exception:
+        return []
+
+@app.post("/reservations")
+def create_reservation(req: ReservationRequest):
+    try:
+        data = supabase.table("reservations").insert({
+            "restaurant_id": RESTAURANT_ID,
+            "guest_name":    req.guest_name,
+            "party_size":    req.party_size,
+            "date":          req.date,
+            "time":          req.time,
+            "phone":         req.phone,
+            "email":         req.email,
+            "notes":         req.notes,
+            "source":        req.source or "host",
+            "status":        "confirmed",
+            "created_at":    _now(),
+        }).execute()
+        return {"status": "created", "reservation": data.data[0]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/reservations/{res_id}")
+def update_reservation(res_id: str, req: ReservationRequest):
+    try:
+        data = supabase.table("reservations").update({
+            "guest_name": req.guest_name,
+            "party_size": req.party_size,
+            "date":       req.date,
+            "time":       req.time,
+            "phone":      req.phone,
+            "email":      req.email,
+            "notes":      req.notes,
+            "source":     req.source or "host",
+        }).eq("id", res_id).execute()
+        return {"status": "updated", "reservation": data.data[0] if data.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/reservations/{res_id}/status")
+def update_reservation_status(res_id: str, status: str):
+    try:
+        supabase.table("reservations").update({"status": status}).eq("id", res_id).execute()
+        return {"status": "updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/reservations/{res_id}")
+def delete_reservation(res_id: str):
+    try:
+        supabase.table("reservations").delete().eq("id", res_id).execute()
+        return {"status": "deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/reservations.ics")
+def export_ical():
+    """Export all reservations as an iCal feed (subscribe from Apple/Google Calendar)."""
+    try:
+        from icalendar import Calendar, Event as ICalEvent
+        import uuid as uuid_lib
+
+        rows = (
+            supabase.table("reservations")
+            .select("*")
+            .eq("restaurant_id", RESTAURANT_ID)
+            .neq("status", "cancelled")
+            .order("date").order("time")
+            .execute()
+            .data
+        )
+
+        cal = Calendar()
+        cal.add("prodid", "-//HOST Restaurant//host.app//EN")
+        cal.add("version", "2.0")
+        cal.add("x-wr-calname", "HOST Reservations")
+        cal.add("x-wr-timezone", "America/Denver")
+        cal.add("calscale", "GREGORIAN")
+
+        for r in rows:
+            ev = ICalEvent()
+            ev.add("uid", r.get("id", str(uuid_lib.uuid4())))
+            ev.add("summary", f"{r['guest_name']} — {r['party_size']}p")
+            try:
+                from datetime import datetime as dt, timedelta
+                start = dt.strptime(f"{r['date']} {r['time'][:5]}", "%Y-%m-%d %H:%M")
+                end   = start + timedelta(hours=1, minutes=30)
+                ev.add("dtstart", start)
+                ev.add("dtend",   end)
+            except Exception:
+                continue
+            desc_parts = [f"Party size: {r['party_size']}"]
+            if r.get("phone"): desc_parts.append(f"Phone: {r['phone']}")
+            if r.get("email"): desc_parts.append(f"Email: {r['email']}")
+            if r.get("notes"): desc_parts.append(f"Notes: {r['notes']}")
+            ev.add("description", "\n".join(desc_parts))
+            ev.add("status", "CONFIRMED" if r.get("status") == "confirmed" else "TENTATIVE")
+            cal.add_component(ev)
+
+        return Response(
+            content=cal.to_ical(),
+            media_type="text/calendar; charset=utf-8",
+            headers={"Content-Disposition": "inline; filename=reservations.ics"},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ── Settings ──────────────────────────────────────────────────────────────────
+
+@app.get("/settings")
+def get_settings():
+    try:
+        res = supabase.table("restaurant_settings").select("*").eq("restaurant_id", RESTAURANT_ID).execute()
+        return res.data[0] if res.data else {"restaurant_id": RESTAURANT_ID, "opentable_ical_url": None}
+    except Exception:
+        return {"restaurant_id": RESTAURANT_ID, "opentable_ical_url": None}
+
+@app.put("/settings")
+def update_settings(req: SettingsRequest):
+    try:
+        existing = supabase.table("restaurant_settings").select("id").eq("restaurant_id", RESTAURANT_ID).execute()
+        if existing.data:
+            supabase.table("restaurant_settings").update({
+                "opentable_ical_url": req.opentable_ical_url,
+                "updated_at": _now(),
+            }).eq("restaurant_id", RESTAURANT_ID).execute()
+        else:
+            supabase.table("restaurant_settings").insert({
+                "restaurant_id":     RESTAURANT_ID,
+                "opentable_ical_url": req.opentable_ical_url,
+            }).execute()
+        return {"status": "saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/settings/sync-ical")
+def sync_ical(req: SyncIcalRequest):
+    """Fetch an iCal URL (e.g., from OpenTable) and upsert reservations into HOST."""
+    try:
+        import requests as http
+        from icalendar import Calendar
+
+        resp = http.get(req.url, timeout=15, headers={"User-Agent": "HOST-Restaurant/1.0"})
+        if not resp.ok:
+            raise HTTPException(status_code=400, detail=f"Could not fetch iCal URL (HTTP {resp.status_code})")
+
+        cal      = Calendar.from_ical(resp.content)
+        imported = 0
+
+        for component in cal.walk():
+            if component.name != "VEVENT":
+                continue
+
+            summary = str(component.get("summary", "Guest"))
+            dtstart = component.get("dtstart")
+            if not dtstart:
+                continue
+
+            start_dt = dtstart.dt
+            if hasattr(start_dt, "hour"):
+                date_str = start_dt.strftime("%Y-%m-%d")
+                time_str = start_dt.strftime("%H:%M")
+            else:
+                date_str = start_dt.strftime("%Y-%m-%d")
+                time_str = "19:00"  # default for all-day events
+
+            uid         = str(component.get("uid", ""))
+            description = str(component.get("description", ""))
+
+            # Try to parse party/cover count from description (OpenTable includes it)
+            party_size  = 2
+            size_match  = re.search(r"(\d+)\s*(guest|cover|person|party|pax)", description.lower())
+            if size_match:
+                party_size = int(size_match.group(1))
+
+            # Upsert by external_uid so re-syncing is idempotent
+            existing = (
+                supabase.table("reservations")
+                .select("id")
+                .eq("restaurant_id", RESTAURANT_ID)
+                .eq("external_uid", uid)
+                .execute()
+            )
+            payload = {
+                "guest_name": summary,
+                "party_size": party_size,
+                "date":       date_str,
+                "time":       time_str,
+                "notes":      description[:500] if description else None,
+            }
+            if existing.data:
+                supabase.table("reservations").update(payload).eq("id", existing.data[0]["id"]).execute()
+            else:
+                supabase.table("reservations").insert({
+                    **payload,
+                    "restaurant_id": RESTAURANT_ID,
+                    "source":        "opentable",
+                    "status":        "confirmed",
+                    "external_uid":  uid,
+                    "created_at":    _now(),
+                }).execute()
+            imported += 1
+
+        return {"status": "synced", "imported": imported}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ── One-time setup ────────────────────────────────────────────────────────────
 
