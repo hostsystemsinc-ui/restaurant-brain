@@ -101,25 +101,25 @@ export default function JoinPage() {
 
       {/* ── Restaurant identity ───────────────────────────────────────── */}
       <div className="flex flex-col items-center px-8 pb-5 shrink-0">
-        {/* Avatar */}
+        {/* Logo box */}
         <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3"
+          className="flex items-center justify-center mb-3"
           style={{
-            background: "rgba(255,255,255,0.07)",
-            border: "1px solid rgba(255,255,255,0.13)",
+            width: "200px",
+            height: "76px",
+            borderRadius: "14px",
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            padding: "12px 18px",
           }}
         >
-          <span className="text-2xl font-bold" style={{ color: "rgba(255,255,255,0.85)" }}>
-            W
-          </span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/walters-logo.png"
+            alt="Walter's303"
+            style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+          />
         </div>
-
-        <p
-          className="text-lg font-semibold text-center"
-          style={{ color: "rgba(255,255,255,0.9)", letterSpacing: "0.03em" }}
-        >
-          {RESTAURANT}
-        </p>
 
         {live !== null && (live.ahead > 0 || live.waitMin) && (
           <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
