@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useRef } from "react"
+import { useEffect, useState, useCallback } from "react"
 import Link from "next/link"
 import {
   Users, Clock, CheckCircle2, BellRing,
@@ -12,7 +12,7 @@ import {
   PointerSensor, TouchSensor,
   useSensor, useSensors,
   useDraggable, useDroppable,
-  pointerWithin,
+  pointerWithin, MeasuringStrategy,
   type DragStartEvent, type DragEndEvent,
 } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
@@ -259,18 +259,18 @@ function DroppableFloorTable({
   const isOccupied = occupant || (table && table.status !== "available")
   const noTable = !table
 
-  // Visual styles
+  // Visual styles — clear green for available, clear red for occupied
   const bg = isOver && avail
-    ? "rgba(34,197,94,0.12)"
-    : isOccupied ? "rgba(239,68,68,0.05)"
+    ? "rgba(34,197,94,0.28)"
+    : isOccupied ? "rgba(239,68,68,0.18)"
     : noTable ? "rgba(255,255,255,0.01)"
-    : "rgba(255,185,100,0.03)"
+    : "rgba(34,197,94,0.08)"
 
   const borderColor = isOver && avail
-    ? "rgba(34,197,94,0.65)"
-    : isOccupied ? "rgba(239,68,68,0.22)"
+    ? "#22c55e"
+    : isOccupied ? "rgba(239,68,68,0.62)"
     : noTable ? "rgba(255,255,255,0.04)"
-    : "rgba(255,185,100,0.1)"
+    : "rgba(34,197,94,0.42)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
 
@@ -281,15 +281,17 @@ function DroppableFloorTable({
       ref={setNodeRef}
       style={{
         position: "absolute",
-        left: pos.x,
-        top: pos.y,
-        width: pos.w,
-        height: pos.h,
+        left: `${(pos.x / CANVAS_W * 100).toFixed(3)}%`,
+        top: `${(pos.y / CANVAS_H * 100).toFixed(3)}%`,
+        width: `${(pos.w / CANVAS_W * 100).toFixed(3)}%`,
+        height: `${(pos.h / CANVAS_H * 100).toFixed(3)}%`,
         borderRadius,
         background: bg,
         border: `1.5px solid ${borderColor}`,
         boxShadow: isOver && avail
-          ? "0 0 0 3px rgba(34,197,94,0.12), inset 0 0 20px rgba(34,197,94,0.04)"
+          ? "0 0 0 4px rgba(34,197,94,0.22), inset 0 0 20px rgba(34,197,94,0.06)"
+          : isOccupied ? "0 0 0 1px rgba(239,68,68,0.1)"
+          : avail ? "0 0 0 1px rgba(34,197,94,0.1)"
           : "none",
         transition: "border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease",
         display: "flex",
@@ -360,10 +362,10 @@ function DroppableFloorTable({
         </>
       ) : table && table.status !== "available" ? (
         <>
-          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(255,200,150,0.35)" }}>
+          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(239,68,68,0.75)" }}>
             {pos.number}
           </span>
-          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.22)" }}>{table.capacity}p</span>
+          <span style={{ fontSize: 9, color: "rgba(239,68,68,0.48)" }}>{table.capacity}p</span>
           {onClear && (
             <button
               onPointerDown={e => e.stopPropagation()}
@@ -372,7 +374,7 @@ function DroppableFloorTable({
                 marginTop: 2,
                 fontSize: 9,
                 fontWeight: 600,
-                color: "rgba(255,200,150,0.28)",
+                color: "rgba(239,68,68,0.45)",
                 background: "none",
                 border: "none",
                 cursor: "pointer",
@@ -388,12 +390,12 @@ function DroppableFloorTable({
           <span style={{
             fontSize: pos.shape === "rect" ? 17 : 14,
             fontWeight: 800,
-            color: table ? "rgba(255,240,220,0.6)" : "rgba(255,200,150,0.14)",
+            color: table ? "rgba(34,197,94,0.8)" : "rgba(255,200,150,0.14)",
           }}>
             {pos.number}
           </span>
           {table && (
-            <span style={{ fontSize: 10, color: "rgba(255,200,150,0.28)" }}>
+            <span style={{ fontSize: 10, color: "rgba(34,197,94,0.5)" }}>
               {table.capacity}p
             </span>
           )}
@@ -412,25 +414,10 @@ function FloorMap({
   localOccupants: Map<number, LocalOccupant>
   onClear: (tableId: string, tableNumber: number) => void
 }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [scale, setScale] = useState(1)
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const obs = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect
-      setScale(Math.min(width / CANVAS_W, height / CANVAS_H) * 0.94)
-    })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [])
-
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
   return (
     <div
-      ref={containerRef}
       className="flex-1 relative overflow-hidden"
       style={{ background: "#080503" }}
     >
@@ -445,91 +432,99 @@ function FloorMap({
         color: "rgba(255,200,150,0.1)",
         textTransform: "uppercase",
         zIndex: 1,
+        pointerEvents: "none",
       }}>
         Floor Plan
       </span>
 
-      {/* Scaled canvas */}
+      {/* Canvas wrapper — percentage layout, zero CSS transforms so @dnd-kit rects are always accurate */}
       <div style={{
         position: "absolute",
-        top: "50%",
-        left: "50%",
-        width: CANVAS_W,
-        height: CANVAS_H,
-        transform: `translate(-50%, -50%) scale(${scale})`,
-        transformOrigin: "center center",
+        inset: "30px 16px 40px 16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}>
-
-        {/* Bar section background */}
         <div style={{
-          position: "absolute",
-          left: 726,
-          top: 0,
-          width: CANVAS_W - 726,
-          height: CANVAS_H,
-          background: "rgba(255,185,100,0.015)",
-          borderLeft: "1px solid rgba(255,185,100,0.07)",
-          borderRadius: "0 8px 8px 0",
-        }} />
-
-        {/* Section labels */}
-        <span style={{
-          position: "absolute",
-          left: 760,
-          top: 10,
-          fontSize: 8,
-          fontWeight: 800,
-          letterSpacing: "0.22em",
-          color: "rgba(255,200,150,0.2)",
-          textTransform: "uppercase",
+          position: "relative",
+          width: "100%",
+          aspectRatio: `${CANVAS_W} / ${CANVAS_H}`,
+          maxHeight: "100%",
         }}>
-          BAR
-        </span>
-        <span style={{
-          position: "absolute",
-          left: 30,
-          bottom: 12,
-          fontSize: 8,
-          fontWeight: 800,
-          letterSpacing: "0.2em",
-          color: "rgba(255,200,150,0.1)",
-          textTransform: "uppercase",
-        }}>
-          Main Dining
-        </span>
+          {/* Bar section background */}
+          <div style={{
+            position: "absolute",
+            left: `${(726 / CANVAS_W * 100).toFixed(2)}%`,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(255,185,100,0.015)",
+            borderLeft: "1px solid rgba(255,185,100,0.07)",
+            borderRadius: "0 8px 8px 0",
+          }} />
 
-        {/* "Powered by HOST" */}
-        <span style={{
-          position: "absolute",
-          right: 8,
-          bottom: 8,
-          fontSize: 8,
-          letterSpacing: "0.08em",
-          color: "rgba(255,185,100,0.1)",
-        }}>
-          Powered by <strong>HOST</strong>
-        </span>
+          {/* Section labels */}
+          <span style={{
+            position: "absolute",
+            left: `${(760 / CANVAS_W * 100).toFixed(2)}%`,
+            top: `${(10 / CANVAS_H * 100).toFixed(2)}%`,
+            fontSize: 8,
+            fontWeight: 800,
+            letterSpacing: "0.22em",
+            color: "rgba(255,200,150,0.2)",
+            textTransform: "uppercase",
+            pointerEvents: "none",
+          }}>
+            BAR
+          </span>
+          <span style={{
+            position: "absolute",
+            left: `${(30 / CANVAS_W * 100).toFixed(2)}%`,
+            bottom: `${(12 / CANVAS_H * 100).toFixed(2)}%`,
+            fontSize: 8,
+            fontWeight: 800,
+            letterSpacing: "0.2em",
+            color: "rgba(255,200,150,0.1)",
+            textTransform: "uppercase",
+            pointerEvents: "none",
+          }}>
+            Main Dining
+          </span>
 
-        {/* Tables */}
-        {FLOOR_PLAN.map(pos => {
-          const table = tableByNumber.get(pos.number)
-          const occupant = localOccupants.get(pos.number)
-          return (
-            <DroppableFloorTable
-              key={pos.number}
-              pos={pos}
-              table={table}
-              occupant={occupant}
-              onClear={table ? () => onClear(table.id, pos.number) : undefined}
-            />
-          )
-        })}
+          {/* "Powered by HOST" */}
+          <span style={{
+            position: "absolute",
+            right: `${(8 / CANVAS_W * 100).toFixed(2)}%`,
+            bottom: `${(8 / CANVAS_H * 100).toFixed(2)}%`,
+            fontSize: 8,
+            letterSpacing: "0.08em",
+            color: "rgba(255,185,100,0.1)",
+            pointerEvents: "none",
+          }}>
+            Powered by <strong>HOST</strong>
+          </span>
+
+          {/* Tables */}
+          {FLOOR_PLAN.map(pos => {
+            const table = tableByNumber.get(pos.number)
+            const occupant = localOccupants.get(pos.number)
+            return (
+              <DroppableFloorTable
+                key={pos.number}
+                pos={pos}
+                table={table}
+                occupant={occupant}
+                onClear={table ? () => onClear(table.id, pos.number) : undefined}
+              />
+            )
+          })}
+        </div>
       </div>
 
-      {/* Hint text when no guests in queue */}
+      {/* Hint text */}
       <div style={{
         position: "absolute",
-        bottom: 16,
+        bottom: 14,
         left: "50%",
         transform: "translateX(-50%)",
         fontSize: 10,
@@ -712,7 +707,13 @@ export default function HostDashboard() {
   const waitingList = queue.filter(q => q.status === "waiting")
 
   return (
-    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
       <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907" }}>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
