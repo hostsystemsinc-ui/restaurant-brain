@@ -1135,8 +1135,19 @@ function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => vo
         })}
       </nav>
 
-      {/* Back to host */}
-      <div style={{ padding: "12px 10px", borderTop: `1px solid ${C.border}` }}>
+      {/* Footer links */}
+      <div style={{ padding: "12px 10px", borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 6 }}>
+        <Link href="/reservations" style={{ textDecoration: "none" }}>
+          <button style={{
+            width: "100%", display: "flex", alignItems: "center", gap: 8,
+            padding: "9px 12px", border: `1px solid ${C.border}`, borderRadius: 8,
+            cursor: "pointer", fontSize: 12, fontWeight: 600,
+            background: "transparent", color: C.text2,
+          }}>
+            <CalendarDays style={{ width: 13, height: 13 }} />
+            Reservations
+          </button>
+        </Link>
         <Link href="/" style={{ textDecoration: "none" }}>
           <button style={{
             width: "100%", display: "flex", alignItems: "center", gap: 8,

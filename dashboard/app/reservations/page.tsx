@@ -1,40 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
 import {
   ChevronLeft, ChevronRight, Plus, X, Edit2, Trash2,
-  Users, Phone, CalendarDays, Check, ArrowLeft,
-  RefreshCw, ExternalLink, Loader2, LayoutDashboard,
-  CalendarCheck,
+  Users, Phone, Check, Loader2, LayoutDashboard,
+  CalendarCheck, RefreshCw, CalendarDays,
 } from "lucide-react"
 
-const API            = "https://restaurant-brain-production.up.railway.app"
-const RESTAURANT_NAME = "Walter's303"
-
-// ── Design tokens (light mode — matches admin) ─────────────────────────────────
-
-const C = {
-  bg:           "#F8FAFC",
-  surface:      "#FFFFFF",
-  border:       "#E2E8F0",
-  text:         "#0F172A",
-  text2:        "#475569",
-  muted:        "#94A3B8",
-  accent:       "#D9321C",
-  green:        "#16A34A",
-  greenBg:      "#F0FDF4",
-  greenBorder:  "#BBF7D0",
-  red:          "#DC2626",
-  redBg:        "#FEF2F2",
-  redBorder:    "#FECACA",
-  orange:       "#D97706",
-  orangeBg:     "#FFFBEB",
-  orangeBorder: "#FDE68A",
-  blue:         "#2563EB",
-  blueBg:       "#EFF6FF",
-  blueBorder:   "#BFDBFE",
-}
+const API = "https://restaurant-brain-production.up.railway.app"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -42,8 +16,8 @@ interface Reservation {
   id:         string
   guest_name: string
   party_size: number
-  date:       string
-  time:       string
+  date:       string  // "YYYY-MM-DD"
+  time:       string  // "HH:MM" or "HH:MM:SS" from Supabase
   phone:      string | null
   email:      string | null
   notes:      string | null
@@ -52,128 +26,282 @@ interface Reservation {
   created_at: string
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Date helpers — always use LOCAL date, never UTC ────────────────────────────
 
 function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const y   = d.getFullYear()
+  const mo  = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${mo}-${day}`
 }
 
-function displayDate(dateStr: string): string {
-  const d        = new Date(dateStr + "T12:00:00")
-  const today    = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  if (toDateStr(d) === toDateStr(today))    return "Today"
-  if (toDateStr(d) === toDateStr(tomorrow)) return "Tomorrow"
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })
-}
-
-function longDate(dateStr: string): string {
-  return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
-    weekday: "long", month: "long", day: "numeric", year: "numeric",
-  })
+function localDate(ds: string): Date {
+  const [y, mo, d] = ds.split("-").map(Number)
+  return new Date(y, mo - 1, d)
 }
 
 function fmt12(t: string): string {
   const [h, m] = t.split(":").map(Number)
-  const period = h >= 12 ? "PM" : "AM"
-  const hour   = h % 12 || 12
-  return `${hour}:${m.toString().padStart(2, "0")} ${period}`
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
 }
 
-// ── StatusBadge ────────────────────────────────────────────────────────────────
+function displayDay(ds: string): string {
+  const today = toDateStr(new Date())
+  const tmr   = toDateStr(new Date(new Date().setDate(new Date().getDate() + 1)))
+  if (ds === today) return "Today"
+  if (ds === tmr)   return "Tomorrow"
+  return localDate(ds).toLocaleDateString("en-US", { weekday: "long" })
+}
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { bg: string; color: string; border: string; label: string }> = {
-    confirmed: { bg: C.greenBg, color: C.green,  border: C.greenBorder, label: "Confirmed" },
-    seated:    { bg: C.blueBg,  color: C.blue,   border: C.blueBorder,  label: "Seated"    },
-    cancelled: { bg: C.redBg,   color: C.red,    border: C.redBorder,   label: "Cancelled" },
-    "no-show": { bg: C.bg,      color: C.muted,  border: C.border,      label: "No Show"   },
+function longDate(ds: string): string {
+  return localDate(ds).toLocaleDateString("en-US", {
+    month: "long", day: "numeric", year: "numeric",
+  })
+}
+
+function getMonthGrid(year: number, month: number) {
+  const first  = new Date(year, month, 1)
+  const last   = new Date(year, month + 1, 0)
+  const padStart = first.getDay()
+  const out: { date: Date; current: boolean }[] = []
+
+  for (let i = padStart - 1; i >= 0; i--)
+    out.push({ date: new Date(year, month, -i), current: false })
+  for (let d = 1; d <= last.getDate(); d++)
+    out.push({ date: new Date(year, month, d), current: true })
+  const rem = out.length % 7
+  if (rem > 0)
+    for (let i = 1; i <= 7 - rem; i++)
+      out.push({ date: new Date(year, month + 1, i), current: false })
+
+  return out
+}
+
+const MONTH_NAMES = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+]
+const DAY_ABBR = ["Su","Mo","Tu","We","Th","Fr","Sa"]
+const STATUSES = ["confirmed","seated","cancelled","no-show"] as const
+
+// ── Design tokens (dark host-view palette) ─────────────────────────────────────
+
+const BG   = "#0C0907"
+const SRF  = "#100C09"
+const SRF2 = "#0A0705"
+const BR   = "rgba(255,185,100,0.08)"
+const BR2  = "rgba(255,185,100,0.05)"
+const TX   = "rgba(255,248,240,0.92)"
+const TX2  = "rgba(255,220,180,0.5)"
+const MU   = "rgba(255,200,150,0.28)"
+const ACC  = "#D9321C"
+const GRN  = "#22c55e"
+
+// ── StatusPill ─────────────────────────────────────────────────────────────────
+
+function StatusPill({ status }: { status: string }) {
+  const map: Record<string, { bg: string; color: string; label: string }> = {
+    confirmed: { bg: "rgba(34,197,94,0.1)",   color: GRN,        label: "Confirmed" },
+    seated:    { bg: "rgba(59,130,246,0.12)",  color: "#60a5fa",  label: "Seated"    },
+    cancelled: { bg: "rgba(239,68,68,0.1)",    color: "#f87171",  label: "Cancelled" },
+    "no-show": { bg: "rgba(148,163,184,0.1)",  color: MU,         label: "No Show"   },
   }
   const s = map[status] ?? map.confirmed
   return (
     <span style={{
-      fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 700,
-      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
+      fontSize: 10, padding: "2px 8px", borderRadius: 99, fontWeight: 800,
+      background: s.bg, color: s.color, letterSpacing: "0.07em",
+      textTransform: "uppercase", border: `1px solid ${s.color}22`,
     }}>
       {s.label}
     </span>
   )
 }
 
-// ── ReservationCard ────────────────────────────────────────────────────────────
+// ── Mini Calendar ──────────────────────────────────────────────────────────────
 
-function ReservationCard({
-  res, onEdit, onDelete,
+function MiniCalendar({
+  selectedDate, onSelect, reservationsByDate,
 }: {
-  res:      Reservation
-  onEdit:   () => void
-  onDelete: () => void
+  selectedDate:     string
+  onSelect:         (d: string) => void
+  reservationsByDate: Map<string, number>
 }) {
-  const sourceColor: Record<string, string> = {
-    opentable: "#DA3743",
-    host:      C.accent,
-    google:    "#4285F4",
-    apple:     "#555",
+  const today = toDateStr(new Date())
+  const [year,  setYear]  = useState(() => parseInt(selectedDate.slice(0, 4)))
+  const [month, setMonth] = useState(() => parseInt(selectedDate.slice(5, 7)) - 1)
+
+  // Sync calendar view when selected date changes to a different month
+  useEffect(() => {
+    setYear(parseInt(selectedDate.slice(0, 4)))
+    setMonth(parseInt(selectedDate.slice(5, 7)) - 1)
+  }, [selectedDate])
+
+  const grid = useMemo(() => getMonthGrid(year, month), [year, month])
+
+  function prev() {
+    if (month === 0) { setYear(y => y - 1); setMonth(11) }
+    else setMonth(m => m - 1)
+  }
+  function next() {
+    if (month === 11) { setYear(y => y + 1); setMonth(0) }
+    else setMonth(m => m + 1)
+  }
+  function jumpToday() {
+    const n = new Date()
+    setYear(n.getFullYear()); setMonth(n.getMonth())
+    onSelect(toDateStr(n))
   }
 
+  return (
+    <div style={{ padding: "0 14px" }}>
+      {/* Month nav */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <button onClick={prev} style={calBtnSt}>
+          <ChevronLeft style={{ width: 13, height: 13 }} />
+        </button>
+        <button
+          onClick={jumpToday}
+          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, color: TX2, letterSpacing: "0.04em" }}
+        >
+          {MONTH_NAMES[month]} {year}
+        </button>
+        <button onClick={next} style={calBtnSt}>
+          <ChevronRight style={{ width: 13, height: 13 }} />
+        </button>
+      </div>
+
+      {/* Day headers */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 4 }}>
+        {DAY_ABBR.map(d => (
+          <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", color: "rgba(255,200,150,0.2)", paddingBottom: 8 }}>
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Day grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 2 }}>
+        {grid.map(({ date, current }, i) => {
+          const ds      = toDateStr(date)
+          const isSel   = ds === selectedDate
+          const isToday = ds === today
+          const isPast  = ds < today
+          const count   = current ? (reservationsByDate.get(ds) ?? 0) : 0
+
+          return (
+            <button
+              key={i}
+              onClick={() => current && onSelect(ds)}
+              style={{
+                width: "100%", aspectRatio: "1",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: 3, border: "none", borderRadius: 8,
+                cursor: current ? "pointer" : "default",
+                background: isSel ? ACC : isToday ? "rgba(217,50,28,0.1)" : "transparent",
+                outline: isToday && !isSel ? "1px solid rgba(217,50,28,0.45)" : "none",
+                outlineOffset: -1,
+                transition: "background 0.1s",
+              }}
+            >
+              <span style={{
+                fontSize: 11, fontWeight: isSel || isToday ? 700 : 400, lineHeight: 1,
+                color: isSel
+                  ? "white"
+                  : !current
+                  ? "rgba(255,200,150,0.07)"
+                  : isPast
+                  ? "rgba(255,200,150,0.2)"
+                  : "rgba(255,240,220,0.7)",
+              }}>
+                {date.getDate()}
+              </span>
+              {count > 0 && (
+                <div style={{
+                  minWidth: 14, height: 4, borderRadius: 99,
+                  background: isSel ? "rgba(255,255,255,0.6)" : ACC,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 8, fontWeight: 800, color: isSel ? ACC : "white",
+                  padding: count > 1 ? "0 3px" : "0 2px",
+                }}>
+                  {count > 1 ? count : ""}
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+const calBtnSt: React.CSSProperties = {
+  width: 26, height: 26, borderRadius: 7, cursor: "pointer",
+  background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`,
+  display: "flex", alignItems: "center", justifyContent: "center",
+  color: MU,
+}
+
+// ── Reservation Card ───────────────────────────────────────────────────────────
+
+function ResCard({ res, onEdit, onDelete }: {
+  res: Reservation; onEdit: () => void; onDelete: () => void
+}) {
+  const borderColor: Record<string, string> = {
+    confirmed: GRN,
+    seated:    "#60a5fa",
+    cancelled: "rgba(255,200,150,0.12)",
+    "no-show": "rgba(255,200,150,0.12)",
+  }
   const isCancelled = res.status === "cancelled" || res.status === "no-show"
+  const [timePart, period] = fmt12(res.time).split(" ")
 
   return (
     <div style={{
-      background: C.surface,
-      border: `1px solid ${C.border}`,
-      borderLeft: `4px solid ${isCancelled ? C.muted : C.accent}`,
-      borderRadius: 12,
-      padding: "14px 16px",
-      display: "flex",
-      alignItems: "flex-start",
-      gap: 16,
-      opacity: isCancelled ? 0.6 : 1,
+      display: "flex", alignItems: "stretch",
+      background: "rgba(255,185,100,0.025)", borderRadius: 12, overflow: "hidden",
+      border: `1px solid ${BR}`, borderLeft: `3px solid ${borderColor[res.status] ?? GRN}`,
+      opacity: isCancelled ? 0.55 : 1,
+      transition: "opacity 0.15s",
     }}>
-      {/* Time column */}
-      <div style={{ width: 60, flexShrink: 0, textAlign: "center", paddingTop: 2 }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: C.text, lineHeight: 1 }}>
-          {fmt12(res.time).split(" ")[0]}
-        </div>
-        <div style={{ fontSize: 10, color: C.muted, fontWeight: 700, marginTop: 2 }}>
-          {fmt12(res.time).split(" ")[1]}
-        </div>
+      {/* Time */}
+      <div style={{
+        width: 68, flexShrink: 0, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", padding: "16px 0",
+        borderRight: `1px solid ${BR2}`,
+      }}>
+        <span style={{ fontSize: 19, fontWeight: 800, color: TX, lineHeight: 1 }}>{timePart}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: MU, marginTop: 3, letterSpacing: "0.1em" }}>{period}</span>
       </div>
 
-      {/* Divider */}
-      <div style={{ width: 1, background: C.border, alignSelf: "stretch" }} />
-
       {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>
-            {res.guest_name}
-          </span>
-          <StatusBadge status={res.status} />
-          {res.source && res.source !== "host" && (
+      <div style={{ flex: 1, padding: "13px 16px", minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: TX }}>{res.guest_name}</span>
+          <StatusPill status={res.status} />
+          {res.source === "opentable" && (
             <span style={{
-              fontSize: 10, padding: "1px 7px", borderRadius: 5, fontWeight: 700,
-              background: "#FFF5F5", color: sourceColor[res.source] ?? C.muted,
-              border: `1px solid ${sourceColor[res.source] ?? C.border}`,
+              fontSize: 9, padding: "2px 7px", borderRadius: 4, fontWeight: 800,
+              background: "rgba(218,55,67,0.1)", color: "#DA3743",
+              border: "1px solid rgba(218,55,67,0.22)", letterSpacing: "0.08em",
             }}>
-              {res.source === "opentable" ? "OpenTable" : res.source}
+              OPENTABLE
             </span>
           )}
         </div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, color: C.text2, display: "flex", alignItems: "center", gap: 4 }}>
-            <Users style={{ width: 12, height: 12 }} />
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 12, color: TX2, display: "flex", alignItems: "center", gap: 4 }}>
+            <Users style={{ width: 11, height: 11 }} />
             {res.party_size} {res.party_size === 1 ? "guest" : "guests"}
           </span>
           {res.phone && (
-            <span style={{ fontSize: 12, color: C.text2, display: "flex", alignItems: "center", gap: 4 }}>
-              <Phone style={{ width: 12, height: 12 }} />
+            <span style={{ fontSize: 12, color: TX2, display: "flex", alignItems: "center", gap: 4 }}>
+              <Phone style={{ width: 11, height: 11 }} />
               {res.phone}
             </span>
           )}
           {res.notes && (
-            <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>
+            <span style={{ fontSize: 11, color: MU, fontStyle: "italic" }}>
               {res.notes.length > 70 ? res.notes.slice(0, 70) + "…" : res.notes}
             </span>
           )}
@@ -181,56 +309,32 @@ function ReservationCard({
       </div>
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+      <div style={{
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 5,
+        padding: "0 14px", flexShrink: 0, borderLeft: `1px solid ${BR2}`,
+      }}>
         <button
           onClick={onEdit}
-          style={{
-            width: 32, height: 32, borderRadius: 8, cursor: "pointer",
-            background: C.bg, border: `1px solid ${C.border}`,
-            display: "flex", alignItems: "center", justifyContent: "center", color: C.text2,
-          }}
+          style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.05)", border: `1px solid ${BR}`, color: TX2 }}
           title="Edit"
         >
-          <Edit2 style={{ width: 13, height: 13 }} />
+          <Edit2 style={{ width: 12, height: 12 }} />
         </button>
         <button
           onClick={onDelete}
-          style={{
-            width: 32, height: 32, borderRadius: 8, cursor: "pointer",
-            background: C.redBg, border: `1px solid ${C.redBorder}`,
-            display: "flex", alignItems: "center", justifyContent: "center", color: C.red,
-          }}
+          style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)", color: "#f87171" }}
           title="Delete"
         >
-          <Trash2 style={{ width: 13, height: 13 }} />
+          <Trash2 style={{ width: 12, height: 12 }} />
         </button>
       </div>
     </div>
   )
 }
 
-// ── Shared input/label styles for the drawer ───────────────────────────────────
+// ── Reservation Drawer ─────────────────────────────────────────────────────────
 
-const labelSt: React.CSSProperties = {
-  fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6,
-}
-const inputSt: React.CSSProperties = {
-  width: "100%", boxSizing: "border-box" as const,
-  padding: "9px 12px", fontSize: 14, color: C.text,
-  border: `1px solid ${C.border}`, borderRadius: 8, outline: "none",
-  background: C.bg, fontFamily: "inherit",
-}
-const smallBtnSt: React.CSSProperties = {
-  width: 36, height: 36, borderRadius: 8, border: `1px solid ${C.border}`,
-  background: C.surface, cursor: "pointer", fontSize: 20, color: C.text2,
-  display: "flex", alignItems: "center", justifyContent: "center",
-}
-
-const STATUSES = ["confirmed", "seated", "cancelled", "no-show"] as const
-
-// ── ReservationDrawer ──────────────────────────────────────────────────────────
-
-function ReservationDrawer({
+function ResDrawer({
   initial, defaultDate, onClose, onSave,
 }: {
   initial:     Partial<Reservation> | null
@@ -243,7 +347,7 @@ function ReservationDrawer({
   const [name,    setName]    = useState(initial?.guest_name ?? "")
   const [party,   setParty]   = useState(initial?.party_size ?? 2)
   const [date,    setDate]    = useState(initial?.date ?? defaultDate)
-  const [time,    setTime]    = useState(initial?.time ?? "19:00")
+  const [time,    setTime]    = useState(initial?.time ? initial.time.slice(0, 5) : "19:00")
   const [phone,   setPhone]   = useState(initial?.phone ?? "")
   const [email,   setEmail]   = useState(initial?.email ?? "")
   const [notes,   setNotes]   = useState(initial?.notes ?? "")
@@ -257,157 +361,142 @@ function ReservationDrawer({
     setLoading(true); setError("")
     try {
       const body = {
-        guest_name: name.trim(),
-        party_size: party,
-        date, time,
+        guest_name: name.trim(), party_size: party,
+        date, time: time.slice(0, 5),
         phone: phone.trim() || null,
         email: email.trim() || null,
         notes: notes.trim() || null,
         source: initial?.source ?? "host",
       }
-      if (isEdit) {
-        await fetch(`${API}/reservations/${initial!.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-        // If status changed, patch it separately
-        if (status !== initial?.status) {
-          await fetch(`${API}/reservations/${initial!.id}/status?status=${status}`, { method: "PATCH" })
-        }
-      } else {
-        await fetch(`${API}/reservations`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
+      const url    = isEdit ? `${API}/reservations/${initial!.id}` : `${API}/reservations`
+      const method = isEdit ? "PUT" : "POST"
+      const res = await fetch(url, {
+        method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        throw new Error(d.detail ?? "Server error — please check Supabase tables are created.")
+      }
+      // Patch status if changed during edit
+      if (isEdit && status !== initial?.status) {
+        await fetch(`${API}/reservations/${initial!.id}/status?status=${status}`, { method: "PATCH" })
       }
       onSave()
-    } catch {
-      setError("Could not save reservation. Please try again.")
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not save reservation. Try again.")
     } finally {
       setLoading(false)
     }
   }
 
+  const inp: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box" as const,
+    padding: "10px 12px", fontSize: 13, color: TX,
+    background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`,
+    borderRadius: 8, outline: "none", fontFamily: "inherit",
+  }
+  const lbl: React.CSSProperties = {
+    fontSize: 10, fontWeight: 800, color: MU, display: "block",
+    marginBottom: 7, letterSpacing: "0.12em", textTransform: "uppercase" as const,
+  }
+  const stepBtn: React.CSSProperties = {
+    width: 36, height: 36, borderRadius: 8, border: `1px solid ${BR}`,
+    background: "rgba(255,185,100,0.05)", cursor: "pointer", fontSize: 20,
+    color: TX2, display: "flex", alignItems: "center", justifyContent: "center",
+  }
+
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex" }}>
-      {/* Backdrop */}
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex" }}>
       <div
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }}
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
         onClick={onClose}
       />
-
-      {/* Slide-in panel from right */}
       <div style={{
-        position: "absolute", right: 0, top: 0, bottom: 0,
-        width: 440, background: C.surface,
-        boxShadow: "-8px 0 32px rgba(0,0,0,0.12)",
+        position: "absolute", right: 0, top: 0, bottom: 0, width: 430,
+        background: SRF, borderLeft: `1px solid ${BR}`,
         display: "flex", flexDirection: "column",
-        overflowY: "auto",
+        boxShadow: "-8px 0 40px rgba(0,0,0,0.5)",
       }}>
         {/* Header */}
         <div style={{
-          padding: "20px 24px", borderBottom: `1px solid ${C.border}`,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          position: "sticky", top: 0, background: C.surface, zIndex: 1,
+          padding: "18px 22px", borderBottom: `1px solid ${BR}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
         }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: C.text }}>
-            {isEdit ? "Edit Reservation" : "New Reservation"}
-          </h2>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: MU, textTransform: "uppercase", marginBottom: 4 }}>
+              {isEdit ? "Edit" : "New"} Reservation
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: TX }}>
+              {isEdit ? (initial?.guest_name || "Guest") : "Add a reservation"}
+            </div>
+          </div>
           <button
             onClick={onClose}
-            style={{
-              width: 32, height: 32, borderRadius: 8, cursor: "pointer",
-              border: `1px solid ${C.border}`, background: C.bg,
-              display: "flex", alignItems: "center", justifyContent: "center", color: C.text2,
-            }}
+            style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,185,100,0.05)", border: `1px solid ${BR}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: MU }}
           >
             <X style={{ width: 14, height: 14 }} />
           </button>
         </div>
 
-        {/* Form body */}
-        <div style={{ padding: 24, flex: 1, display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* Body */}
+        <div style={{ flex: 1, padding: "22px", display: "flex", flexDirection: "column", gap: 20, overflowY: "auto" }}>
 
           {/* Party size */}
           <div>
-            <label style={labelSt}>Party Size</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8 }}>
-              <button onClick={() => setParty(p => Math.max(1, p - 1))} style={smallBtnSt}>−</button>
-              <span style={{ fontSize: 28, fontWeight: 800, color: C.text, width: 48, textAlign: "center" }}>
-                {party}
-              </span>
-              <button onClick={() => setParty(p => Math.min(20, p + 1))} style={smallBtnSt}>+</button>
-              <span style={{ fontSize: 12, color: C.muted }}>
-                {party === 1 ? "guest" : "guests"}
-              </span>
+            <label style={lbl}>Party Size</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 4 }}>
+              <button onClick={() => setParty(p => Math.max(1, p - 1))} style={stepBtn}>−</button>
+              <span style={{ fontSize: 34, fontWeight: 800, color: TX, width: 52, textAlign: "center" }}>{party}</span>
+              <button onClick={() => setParty(p => Math.min(20, p + 1))} style={stepBtn}>+</button>
+              <span style={{ fontSize: 12, color: MU }}>{party === 1 ? "guest" : "guests"}</span>
             </div>
           </div>
 
-          {/* Guest name */}
+          {/* Name */}
           <div>
-            <label style={labelSt}>Guest Name *</label>
-            <input
-              type="text" value={name} onChange={e => setName(e.target.value)}
-              placeholder="First and last name" autoFocus
-              style={inputSt}
-            />
+            <label style={lbl}>Guest Name *</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="First and last name" autoFocus style={inp} />
           </div>
 
-          {/* Date & Time */}
+          {/* Date + Time */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
-              <label style={labelSt}>Date *</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputSt} />
+              <label style={lbl}>Date *</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inp} />
             </div>
             <div>
-              <label style={labelSt}>Time *</label>
-              <input type="time" value={time} onChange={e => setTime(e.target.value)} style={inputSt} />
+              <label style={lbl}>Time *</label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)} style={inp} />
             </div>
           </div>
 
           {/* Phone */}
           <div>
-            <label style={labelSt}>
-              Phone{" "}
-              <span style={{ color: C.muted, fontWeight: 400 }}>— optional</span>
-            </label>
-            <input
-              type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-              placeholder="(555) 000-0000"
-              style={inputSt}
-            />
+            <label style={lbl}>Phone <span style={{ color: "rgba(255,200,150,0.18)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" style={inp} />
           </div>
 
           {/* Email */}
           <div>
-            <label style={labelSt}>
-              Email{" "}
-              <span style={{ color: C.muted, fontWeight: 400 }}>— optional</span>
-            </label>
-            <input
-              type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="guest@email.com"
-              style={inputSt}
-            />
+            <label style={lbl}>Email <span style={{ color: "rgba(255,200,150,0.18)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="guest@email.com" style={inp} />
           </div>
 
-          {/* Status (edit mode only) */}
+          {/* Status (edit only) */}
           {isEdit && (
             <div>
-              <label style={labelSt}>Status</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              <label style={lbl}>Status</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
                 {STATUSES.map(s => (
                   <button
                     key={s}
                     onClick={() => setStatus(s)}
                     style={{
-                      padding: "5px 14px", borderRadius: 7, cursor: "pointer",
-                      border: `1px solid ${status === s ? C.accent : C.border}`,
+                      padding: "6px 14px", borderRadius: 8, cursor: "pointer",
+                      border: `1px solid ${status === s ? ACC : BR}`,
                       fontSize: 12, fontWeight: 600, textTransform: "capitalize",
-                      background: status === s ? C.accent : C.surface,
-                      color: status === s ? "white" : C.text2,
+                      background: status === s ? ACC : "rgba(255,185,100,0.04)",
+                      color: status === s ? "white" : TX2,
                     }}
                   >
                     {s}
@@ -419,51 +508,43 @@ function ReservationDrawer({
 
           {/* Notes */}
           <div>
-            <label style={labelSt}>
-              Notes{" "}
-              <span style={{ color: C.muted, fontWeight: 400 }}>— optional</span>
-            </label>
+            <label style={lbl}>Notes <span style={{ color: "rgba(255,200,150,0.18)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Dietary restrictions, birthday, booth preference…"
+              placeholder="Seating preference, special occasion, dietary needs…"
               rows={3}
-              style={{ ...inputSt, resize: "vertical" }}
+              style={{ ...inp, resize: "vertical" }}
             />
           </div>
 
-          {error && (
-            <p style={{ fontSize: 12, color: C.red, margin: 0, lineHeight: 1.5 }}>{error}</p>
-          )}
+          {error && <p style={{ fontSize: 12, color: "#f87171", margin: 0, lineHeight: 1.5, padding: "10px 12px", background: "rgba(239,68,68,0.08)", borderRadius: 8, border: "1px solid rgba(239,68,68,0.18)" }}>{error}</p>}
         </div>
 
         {/* Footer */}
-        <div style={{
-          padding: "16px 24px", borderTop: `1px solid ${C.border}`,
-          display: "flex", gap: 10,
-          position: "sticky", bottom: 0, background: C.surface,
-        }}>
+        <div style={{ padding: "16px 22px", borderTop: `1px solid ${BR}`, display: "flex", gap: 10, flexShrink: 0 }}>
           <button
             onClick={save}
             disabled={loading}
             style={{
-              flex: 1, padding: "11px 0", borderRadius: 9, border: "none",
-              background: loading ? C.muted : C.accent, color: "white",
-              fontWeight: 700, fontSize: 14, cursor: loading ? "default" : "pointer",
+              flex: 1, padding: "12px 0", borderRadius: 10, border: "none",
+              background: loading ? "rgba(255,185,100,0.1)" : ACC, color: "white",
+              fontWeight: 700, fontSize: 13, cursor: loading ? "default" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              letterSpacing: "0.06em", textTransform: "uppercase",
             }}
           >
             {loading
-              ? <><Loader2 style={{ width: 15, height: 15 }} /> Saving…</>
-              : <><Check style={{ width: 15, height: 15 }} /> {isEdit ? "Save Changes" : "Add Reservation"}</>
+              ? <><Loader2 style={{ width: 14, height: 14 }} /> Saving…</>
+              : <><Check style={{ width: 14, height: 14 }} /> {isEdit ? "Save Changes" : "Add Reservation"}</>
             }
           </button>
           <button
             onClick={onClose}
             style={{
-              padding: "11px 18px", borderRadius: 9,
-              border: `1px solid ${C.border}`, background: C.surface,
-              color: C.text2, fontWeight: 600, fontSize: 14, cursor: "pointer",
+              padding: "12px 18px", borderRadius: 10, border: `1px solid ${BR}`,
+              background: "rgba(255,185,100,0.04)", color: TX2,
+              fontWeight: 600, fontSize: 13, cursor: "pointer",
             }}
           >
             Cancel
@@ -476,266 +557,320 @@ function ReservationDrawer({
 
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
-const navBtnSt: React.CSSProperties = {
-  width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`,
-  background: C.surface, cursor: "pointer",
-  display: "flex", alignItems: "center", justifyContent: "center", color: C.text2,
-}
-
 export default function ReservationsPage() {
-  const [selectedDate,   setSelectedDate]   = useState(toDateStr(new Date()))
-  const [reservations,   setReservations]   = useState<Reservation[]>([])
-  const [loading,        setLoading]        = useState(false)
-  const [drawer,         setDrawer]         = useState<"new" | Reservation | null>(null)
-  const [deleteConfirm,  setDeleteConfirm]  = useState<string | null>(null)
+  const today = toDateStr(new Date())
+  const [selectedDate,    setSelectedDate]    = useState(today)
+  const [allReservations, setAllReservations] = useState<Reservation[]>([])
+  const [loading,         setLoading]         = useState(true)
+  const [drawer,          setDrawer]          = useState<"new" | Reservation | null>(null)
+  const [deleteTarget,    setDeleteTarget]    = useState<string | null>(null)
 
-  const fetchReservations = useCallback(async (date: string) => {
-    setLoading(true)
+  // Fetch ALL reservations once — filter client-side (avoids date-format mismatch bug)
+  const fetchAll = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/reservations?date=${date}`)
-      setReservations(r.ok ? await r.json() : [])
+      const r = await fetch(`${API}/reservations`)
+      setAllReservations(r.ok ? await r.json() : [])
     } catch {
-      setReservations([])
+      setAllReservations([])
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchReservations(selectedDate) }, [selectedDate, fetchReservations])
+  useEffect(() => { fetchAll() }, [fetchAll])
 
-  function goDay(delta: number) {
-    const d = new Date(selectedDate + "T12:00:00")
-    d.setDate(d.getDate() + delta)
-    setSelectedDate(toDateStr(d))
-  }
+  // Day's reservations — simple string equality, always works regardless of server date format
+  const dayRes = useMemo(() =>
+    [...allReservations]
+      .filter(r => r.date === selectedDate)
+      .sort((a, b) => a.time.localeCompare(b.time)),
+    [allReservations, selectedDate],
+  )
 
-  async function deleteReservation(id: string) {
+  // Map date → active reservation count (for calendar dots)
+  const resMap = useMemo(() => {
+    const m = new Map<string, number>()
+    allReservations.forEach(r => {
+      if (r.status !== "cancelled" && r.status !== "no-show")
+        m.set(r.date, (m.get(r.date) ?? 0) + 1)
+    })
+    return m
+  }, [allReservations])
+
+  const active = dayRes.filter(r => r.status !== "cancelled" && r.status !== "no-show")
+  const covers = active.reduce((s, r) => s + r.party_size, 0)
+
+  async function deleteRes(id: string) {
     try {
       await fetch(`${API}/reservations/${id}`, { method: "DELETE" })
-      fetchReservations(selectedDate)
+      setAllReservations(prev => prev.filter(r => r.id !== id))
     } catch {}
-    setDeleteConfirm(null)
+    setDeleteTarget(null)
   }
 
-  const sorted    = [...reservations].sort((a, b) => a.time.localeCompare(b.time))
-  const active    = reservations.filter(r => r.status !== "cancelled" && r.status !== "no-show")
-  const covers    = active.reduce((s, r) => s + r.party_size, 0)
-  const icsUrl    = `${API}/reservations.ics`
+  // Upcoming days with reservations (next 30 days, up to 10)
+  const upcomingDays = useMemo(() => {
+    const out: { ds: string; count: number; label: string }[] = []
+    for (let i = 0; i <= 30 && out.length < 10; i++) {
+      const d  = new Date()
+      d.setDate(d.getDate() + i)
+      const ds    = toDateStr(d)
+      const count = resMap.get(ds) ?? 0
+      if (count === 0) continue
+      const label = i === 0 ? "Today" : i === 1 ? "Tomorrow"
+        : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+      out.push({ ds, count, label })
+    }
+    return out
+  }, [resMap])
 
   return (
     <div style={{
-      minHeight: "100vh", background: C.bg,
+      height: "100dvh", display: "flex", flexDirection: "column",
+      background: BG, color: TX,
       fontFamily: "var(--font-geist), system-ui, -apple-system, sans-serif",
-      color: C.text,
+      overflow: "hidden",
     }}>
 
-      {/* ── Header ────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <header style={{
-        background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: "0 28px", height: 56,
+        height: 48, flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        position: "sticky", top: 0, zIndex: 10,
+        padding: "0 20px",
+        background: "rgba(7,4,2,0.98)", borderBottom: `1px solid ${BR}`,
+        backdropFilter: "blur(20px)",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Link href="/" style={{ textDecoration: "none" }}>
-            <button style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "5px 10px",
-              borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface,
-              cursor: "pointer", fontSize: 12, fontWeight: 600, color: C.text2,
-            }}>
-              <ArrowLeft style={{ width: 13, height: 13 }} /> Host View
-            </button>
-          </Link>
-          <div style={{ width: 1, height: 20, background: C.border }} />
-          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: C.muted, textTransform: "uppercase" }}>
-            Powered by HOST
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.22em", color: MU, textTransform: "uppercase" }}>Powered by</div>
+            <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: "0.35em", color: TX }}>HOST</div>
           </div>
-          <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{RESTAURANT_NAME}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: C.muted }}>
-            <CalendarCheck style={{ width: 14, height: 14 }} />
+          <div style={{ width: 1, height: 24, background: BR }} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: TX2 }}>Walter&apos;s303</span>
+          <div style={{ width: 1, height: 24, background: BR }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: MU }}>
+            <CalendarCheck style={{ width: 13, height: 13 }} />
             Reservations
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <a href={icsUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-            <button style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
-              borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface,
-              cursor: "pointer", fontSize: 12, fontWeight: 600, color: C.text2,
-            }}>
-              <ExternalLink style={{ width: 12, height: 12 }} /> Subscribe to Calendar
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            onClick={fetchAll}
+            style={{ height: 30, width: 30, borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: MU }}
+            title="Refresh"
+          >
+            <RefreshCw style={{ width: 12, height: 12 }} />
+          </button>
+          <a href={`${API}/reservations.ics`} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU }}>
+              Subscribe to Calendar
             </button>
           </a>
+          <Link href="/" style={{ textDecoration: "none" }}>
+            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
+              ← Host View
+            </button>
+          </Link>
           <Link href="/admin" style={{ textDecoration: "none" }}>
-            <button style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
-              borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface,
-              cursor: "pointer", fontSize: 12, fontWeight: 600, color: C.text2,
-            }}>
-              <LayoutDashboard style={{ width: 12, height: 12 }} /> Admin
+            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
+              <LayoutDashboard style={{ width: 11, height: 11 }} /> Admin
             </button>
           </Link>
         </div>
       </header>
 
-      {/* ── Body ──────────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth: 900, margin: "0 auto", padding: "32px 24px" }}>
+      {/* ── Body ────────────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* Date navigation + Add button */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <button onClick={() => goDay(-1)} style={navBtnSt}>
-              <ChevronLeft style={{ width: 16, height: 16 }} />
-            </button>
-            <div style={{ textAlign: "center", minWidth: 200 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: C.text, lineHeight: 1 }}>
-                {displayDate(selectedDate)}
-              </div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
-                {longDate(selectedDate)}
-              </div>
-            </div>
-            <button onClick={() => goDay(1)} style={navBtnSt}>
-              <ChevronRight style={{ width: 16, height: 16 }} />
-            </button>
-            <button
-              onClick={() => setSelectedDate(toDateStr(new Date()))}
-              style={{
-                padding: "5px 11px", borderRadius: 7,
-                border: `1px solid ${C.border}`, background: C.surface,
-                cursor: "pointer", fontSize: 12, fontWeight: 600, color: C.text2,
-              }}
-            >
-              Today
-            </button>
+        {/* ── Left panel: Calendar + upcoming ─────────────────────────── */}
+        <div style={{
+          width: 262, flexShrink: 0, display: "flex", flexDirection: "column",
+          background: SRF2, borderRight: `1px solid ${BR}`, overflowY: "auto",
+        }}>
+          {/* Month calendar */}
+          <div style={{ padding: "16px 0 4px" }}>
+            <MiniCalendar
+              selectedDate={selectedDate}
+              onSelect={setSelectedDate}
+              reservationsByDate={resMap}
+            />
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              onClick={() => fetchReservations(selectedDate)}
-              style={navBtnSt}
-              title="Refresh"
-            >
-              <RefreshCw style={{ width: 14, height: 14 }} />
-            </button>
-            <button
-              onClick={() => setDrawer("new")}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "8px 16px",
-                borderRadius: 9, border: "none", background: C.accent, color: "white",
-                cursor: "pointer", fontWeight: 700, fontSize: 13,
-              }}
-            >
-              <Plus style={{ width: 14, height: 14 }} /> Add Reservation
-            </button>
+          {/* Divider */}
+          <div style={{ height: 1, background: BR, margin: "10px 0 12px" }} />
+
+          {/* Upcoming list */}
+          <div style={{ flex: 1, padding: "0 14px 20px" }}>
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.2em", color: "rgba(255,200,150,0.18)", textTransform: "uppercase", marginBottom: 10 }}>
+              Coming Up
+            </div>
+            {loading ? (
+              <div style={{ fontSize: 11, color: MU, padding: "10px 0" }}>Loading…</div>
+            ) : upcomingDays.length === 0 ? (
+              <div style={{ fontSize: 11, color: MU, textAlign: "center", padding: "20px 0 10px" }}>
+                No upcoming reservations
+              </div>
+            ) : (
+              upcomingDays.map(({ ds, count, label }) => (
+                <button
+                  key={ds}
+                  onClick={() => setSelectedDate(ds)}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                    padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+                    background: selectedDate === ds ? "rgba(217,50,28,0.1)" : "transparent",
+                    marginBottom: 2, textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontSize: 12, color: selectedDate === ds ? TX : TX2, fontWeight: selectedDate === ds ? 700 : 400 }}>
+                    {label}
+                  </span>
+                  <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 99, background: "rgba(217,50,28,0.12)", color: ACC, fontWeight: 700 }}>
+                    {count}
+                  </span>
+                </button>
+              ))
+            )}
           </div>
         </div>
 
-        {/* Summary chips */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
-          {[
-            { label: "Total",      value: reservations.length,                                                            color: C.text   },
-            { label: "Confirmed",  value: reservations.filter(r => r.status === "confirmed").length,                      color: C.green  },
-            { label: "Seated",     value: reservations.filter(r => r.status === "seated").length,                         color: C.blue   },
-            { label: "Cancelled",  value: reservations.filter(r => r.status === "cancelled" || r.status === "no-show").length, color: C.red },
-            { label: "Covers",     value: covers,                                                                          color: C.accent },
-          ].map(({ label, value, color }) => (
-            <div key={label} style={{
-              background: C.surface, border: `1px solid ${C.border}`,
-              borderRadius: 10, padding: "12px 16px", textAlign: "center",
-            }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1 }}>{value}</div>
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{label}</div>
-            </div>
-          ))}
-        </div>
+        {/* ── Right panel: Day view ────────────────────────────────────── */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
-        {/* Reservation list */}
-        {loading ? (
-          <div style={{ textAlign: "center", padding: "64px 0", color: C.muted, fontSize: 14 }}>
-            Loading…
-          </div>
-        ) : sorted.length === 0 ? (
+          {/* Day header */}
           <div style={{
-            textAlign: "center", padding: "80px 0",
-            background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`,
+            height: 62, flexShrink: 0, padding: "0 24px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            borderBottom: `1px solid ${BR}`, background: "rgba(12,9,7,0.7)",
           }}>
-            <CalendarDays style={{ width: 44, height: 44, color: C.border, margin: "0 auto 18px", display: "block" }} />
-            <p style={{ fontSize: 16, fontWeight: 600, color: C.text2, margin: "0 0 6px" }}>
-              No reservations for {displayDate(selectedDate).toLowerCase()}
-            </p>
-            <p style={{ fontSize: 13, color: C.muted, margin: "0 0 24px" }}>
-              Add one manually, or sync OpenTable in Admin → Inputs
-            </p>
-            <button
-              onClick={() => setDrawer("new")}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "9px 18px", borderRadius: 9, border: "none",
-                background: C.accent, color: "white", cursor: "pointer",
-                fontWeight: 700, fontSize: 13,
-              }}
-            >
-              <Plus style={{ width: 14, height: 14 }} /> Add Reservation
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {sorted.map(res => (
-              <div key={res.id}>
-                {deleteConfirm === res.id ? (
-                  <div style={{
-                    background: C.redBg, border: `1px solid ${C.redBorder}`,
-                    borderRadius: 12, padding: "14px 18px",
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                  }}>
-                    <span style={{ fontSize: 13, color: C.red, fontWeight: 600 }}>
-                      Delete reservation for <strong>{res.guest_name}</strong> at {fmt12(res.time)}?
-                    </span>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        onClick={() => deleteReservation(res.id)}
-                        style={{
-                          padding: "5px 14px", borderRadius: 7, border: "none",
-                          background: C.red, color: "white", cursor: "pointer",
-                          fontWeight: 700, fontSize: 12,
-                        }}
-                      >
-                        Delete
-                      </button>
-                      <button
-                        onClick={() => setDeleteConfirm(null)}
-                        style={{
-                          padding: "5px 14px", borderRadius: 7,
-                          border: `1px solid ${C.border}`, background: C.surface,
-                          cursor: "pointer", fontWeight: 600, fontSize: 12, color: C.text2,
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <ReservationCard
-                    res={res}
-                    onEdit={() => setDrawer(res)}
-                    onDelete={() => setDeleteConfirm(res.id)}
-                  />
+            <div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                <span style={{ fontSize: 22, fontWeight: 800, color: TX }}>{displayDay(selectedDate)}</span>
+                <span style={{ fontSize: 13, color: MU }}>{longDate(selectedDate)}</span>
+              </div>
+              <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
+                <span style={{ fontSize: 11, color: TX2 }}>
+                  <strong style={{ color: active.length > 0 ? TX : MU }}>{active.length}</strong>
+                  {" "}{active.length === 1 ? "reservation" : "reservations"}
+                </span>
+                {covers > 0 && (
+                  <span style={{ fontSize: 11, color: TX2 }}>
+                    <strong style={{ color: TX }}>{covers}</strong> covers
+                  </span>
+                )}
+                {dayRes.filter(r => r.status === "seated").length > 0 && (
+                  <span style={{ fontSize: 11, color: "#60a5fa" }}>
+                    <strong>{dayRes.filter(r => r.status === "seated").length}</strong> seated
+                  </span>
                 )}
               </div>
-            ))}
-          </div>
-        )}
-      </main>
+            </div>
 
-      {/* ── Drawer ─────────────────────────────────────────────────────────── */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setSelectedDate(today)}
+                style={{ height: 32, padding: "0 12px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU }}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => { setDrawer("new"); }}
+                style={{
+                  height: 36, padding: "0 16px", borderRadius: 10, border: "none",
+                  background: ACC, color: "white", cursor: "pointer",
+                  fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <Plus style={{ width: 13, height: 13 }} /> Add Reservation
+              </button>
+            </div>
+          </div>
+
+          {/* Reservations list */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+            {loading ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 220, color: MU, fontSize: 13 }}>
+                Loading…
+              </div>
+            ) : dayRes.length === 0 ? (
+              <div style={{
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                height: 280, gap: 16,
+                border: `1px dashed rgba(255,185,100,0.09)`, borderRadius: 16,
+              }}>
+                <CalendarDays style={{ width: 44, height: 44, color: "rgba(255,185,100,0.1)" }} />
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: TX2, margin: "0 0 5px" }}>
+                    No reservations for {displayDay(selectedDate).toLowerCase()}
+                  </p>
+                  <p style={{ fontSize: 12, color: MU, margin: 0 }}>
+                    Add one manually or sync OpenTable in Admin → Inputs
+                  </p>
+                </div>
+                <button
+                  onClick={() => setDrawer("new")}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "9px 20px",
+                    borderRadius: 10, border: "none", background: ACC, color: "white",
+                    cursor: "pointer", fontWeight: 700, fontSize: 13,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  <Plus style={{ width: 13, height: 13 }} /> Add Reservation
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {dayRes.map(res => (
+                  <div key={res.id}>
+                    {deleteTarget === res.id ? (
+                      <div style={{
+                        padding: "14px 18px", borderRadius: 12,
+                        background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.18)",
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                      }}>
+                        <span style={{ fontSize: 13, color: "#f87171", fontWeight: 600 }}>
+                          Delete <strong>{res.guest_name}</strong> at {fmt12(res.time)}?
+                        </span>
+                        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                          <button
+                            onClick={() => deleteRes(res.id)}
+                            style={{ padding: "5px 14px", borderRadius: 7, border: "none", background: "#ef4444", color: "white", cursor: "pointer", fontWeight: 700, fontSize: 12 }}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(null)}
+                            style={{ padding: "5px 14px", borderRadius: 7, border: `1px solid ${BR}`, background: "rgba(255,185,100,0.04)", cursor: "pointer", fontWeight: 600, fontSize: 12, color: TX2 }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <ResCard
+                        res={res}
+                        onEdit={() => setDrawer(res)}
+                        onDelete={() => setDeleteTarget(res.id)}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Drawer ──────────────────────────────────────────────────────── */}
       {drawer !== null && (
-        <ReservationDrawer
+        <ResDrawer
           initial={drawer === "new" ? null : drawer}
           defaultDate={selectedDate}
           onClose={() => setDrawer(null)}
-          onSave={() => { setDrawer(null); fetchReservations(selectedDate) }}
+          onSave={() => { setDrawer(null); fetchAll() }}
         />
       )}
     </div>
