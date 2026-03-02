@@ -12,6 +12,7 @@ import {
   PointerSensor, TouchSensor,
   useSensor, useSensors,
   useDraggable, useDroppable,
+  pointerWithin,
   type DragStartEvent, type DragEndEvent,
 } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
@@ -663,6 +664,19 @@ export default function HostDashboard() {
   const notify = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }); refreshAll() }, [refreshAll])
   const remove = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }); refreshAll() }, [refreshAll])
 
+  // Seat a guest using best-fit table recommendation (smallest available table that fits party)
+  const seatWithRecommendation = useCallback(async (entry: QueueEntry) => {
+    await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
+    const availableTables = tables.filter(t => t.status === "available" && !localOccupants.has(t.table_number))
+    const best = availableTables
+      .filter(t => t.capacity >= entry.party_size)
+      .sort((a, b) => a.capacity - b.capacity)[0]
+    if (best) {
+      setLocalOccupants(prev => new Map(prev).set(best.table_number, { name: entry.name || "Guest", party_size: entry.party_size }))
+    }
+    refreshAll()
+  }, [tables, localOccupants, refreshAll])
+
   const clearTable = useCallback(async (tableId: string, tableNumber: number) => {
     await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" })
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
@@ -698,7 +712,7 @@ export default function HostDashboard() {
   const waitingList = queue.filter(q => q.status === "waiting")
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907" }}>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
@@ -707,14 +721,13 @@ export default function HostDashboard() {
           style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.08)", backdropFilter: "blur(20px)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
-            {/* Walter303 wordmark */}
-            <div className="flex flex-col shrink-0 leading-none">
-              <div className="flex items-baseline">
-                <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.18em", color: "rgba(255,245,235,0.95)" }}>WALTER</span>
-                <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.12em", color: "#D9321C" }}>303</span>
-              </div>
-              <span style={{ fontSize: 8, letterSpacing: "0.22em", color: "rgba(255,200,150,0.28)", fontWeight: 600, marginTop: 2 }}>DENVER, CO</span>
-            </div>
+            {/* Walter's 303 logo */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/walters-logo.png"
+              alt="Walter's 303"
+              style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }}
+            />
 
             <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.09)" }} />
 
@@ -781,7 +794,7 @@ export default function HostDashboard() {
                 <div className="flex flex-col gap-1.5">
                   {readyList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
-                      onSeat={() => seat(e.id)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                      onSeat={() => seatWithRecommendation(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                   ))}
                 </div>
               </div>
@@ -814,7 +827,7 @@ export default function HostDashboard() {
                 <div className="flex flex-col gap-1.5 pb-24">
                   {waitingList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
-                      onSeat={() => seat(e.id)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                      onSeat={() => seatWithRecommendation(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                   ))}
                 </div>
               )}
