@@ -104,11 +104,11 @@ const STATUSES = ["confirmed","seated","cancelled","no-show"] as const
 const BG   = "#0C0907"
 const SRF  = "#100C09"
 const SRF2 = "#0A0705"
-const BR   = "rgba(255,185,100,0.08)"
-const BR2  = "rgba(255,185,100,0.05)"
+const BR   = "rgba(255,185,100,0.16)"
+const BR2  = "rgba(255,185,100,0.14)"
 const TX   = "rgba(255,248,240,0.92)"
 const TX2  = "rgba(255,220,180,0.5)"
-const MU   = "rgba(255,200,150,0.28)"
+const MU   = "rgba(255,200,150,0.65)"
 const ACC  = "#D9321C"
 const GRN  = "#22c55e"
 
@@ -271,7 +271,7 @@ function MiniCalendar({
 
 const calBtnSt: React.CSSProperties = {
   width: 26, height: 26, borderRadius: 7, cursor: "pointer",
-  background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`,
+  background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`,
   display: "flex", alignItems: "center", justifyContent: "center",
   color: MU,
 }
@@ -294,8 +294,8 @@ function ResCard({ res, onEdit, onDelete, onMarkNoShow, now }: {
   const borderColor: Record<string, string> = {
     confirmed: urgency === "late" ? "#ef4444" : urgency === "now" ? "#f97316" : urgency === "arriving" ? "#fbbf24" : GRN,
     seated:    "#60a5fa",
-    cancelled: "rgba(255,200,150,0.12)",
-    "no-show": "rgba(255,200,150,0.12)",
+    cancelled: "rgba(255,200,150,0.50)",
+    "no-show": "rgba(255,200,150,0.50)",
   }
   const isCancelled = res.status === "cancelled" || res.status === "no-show"
   const [timePart, period] = fmt12(res.time).split(" ")
@@ -382,7 +382,7 @@ function ResCard({ res, onEdit, onDelete, onMarkNoShow, now }: {
       }}>
         <button
           onClick={onEdit}
-          style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.05)", border: `1px solid ${BR}`, color: TX2 }}
+          style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.14)", border: `1px solid ${BR}`, color: TX2 }}
           title="Edit"
         >
           <Edit2 style={{ width: 12, height: 12 }} />
@@ -458,7 +458,7 @@ function ResDrawer({
   const inp: React.CSSProperties = {
     width: "100%", boxSizing: "border-box" as const,
     padding: "10px 12px", fontSize: 13, color: TX,
-    background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`,
+    background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`,
     borderRadius: 8, outline: "none", fontFamily: "inherit",
   }
   const lbl: React.CSSProperties = {
@@ -467,7 +467,7 @@ function ResDrawer({
   }
   const stepBtn: React.CSSProperties = {
     width: 36, height: 36, borderRadius: 8, border: `1px solid ${BR}`,
-    background: "rgba(255,185,100,0.05)", cursor: "pointer", fontSize: 20,
+    background: "rgba(255,185,100,0.14)", cursor: "pointer", fontSize: 20,
     color: TX2, display: "flex", alignItems: "center", justifyContent: "center",
   }
 
@@ -498,7 +498,7 @@ function ResDrawer({
           </div>
           <button
             onClick={onClose}
-            style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,185,100,0.05)", border: `1px solid ${BR}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: MU }}
+            style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,185,100,0.14)", border: `1px solid ${BR}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: MU }}
           >
             <X style={{ width: 14, height: 14 }} />
           </button>
@@ -538,13 +538,13 @@ function ResDrawer({
 
           {/* Phone */}
           <div>
-            <label style={lbl}>Phone <span style={{ color: "rgba(255,200,150,0.18)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
+            <label style={lbl}>Phone <span style={{ color: "rgba(255,200,150,0.55)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
             <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" style={inp} />
           </div>
 
           {/* Email */}
           <div>
-            <label style={lbl}>Email <span style={{ color: "rgba(255,200,150,0.18)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
+            <label style={lbl}>Email <span style={{ color: "rgba(255,200,150,0.55)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="guest@email.com" style={inp} />
           </div>
 
@@ -561,7 +561,7 @@ function ResDrawer({
                       padding: "6px 14px", borderRadius: 8, cursor: "pointer",
                       border: `1px solid ${status === s ? ACC : BR}`,
                       fontSize: 12, fontWeight: 600, textTransform: "capitalize",
-                      background: status === s ? ACC : "rgba(255,185,100,0.04)",
+                      background: status === s ? ACC : "rgba(255,185,100,0.16)",
                       color: status === s ? "white" : TX2,
                     }}
                   >
@@ -574,7 +574,7 @@ function ResDrawer({
 
           {/* Notes */}
           <div>
-            <label style={lbl}>Notes <span style={{ color: "rgba(255,200,150,0.18)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
+            <label style={lbl}>Notes <span style={{ color: "rgba(255,200,150,0.55)", fontWeight: 400, letterSpacing: 0, textTransform: "none" }}>— optional</span></label>
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
@@ -609,7 +609,7 @@ function ResDrawer({
             onClick={onClose}
             style={{
               padding: "12px 18px", borderRadius: 10, border: `1px solid ${BR}`,
-              background: "rgba(255,185,100,0.04)", color: TX2,
+              background: "rgba(255,185,100,0.16)", color: TX2,
               fontWeight: 600, fontSize: 13, cursor: "pointer",
             }}
           >
@@ -775,19 +775,19 @@ export default function ReservationsPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <button
             onClick={fetchAll}
-            style={{ height: 30, width: 30, borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: MU }}
+            style={{ height: 30, width: 30, borderRadius: 8, background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: MU }}
             title="Refresh"
           >
             <RefreshCw style={{ width: 12, height: 12 }} />
           </button>
 
           <Link href="/" style={{ textDecoration: "none" }}>
-            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
+            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
               ← Host View
             </button>
           </Link>
           <Link href="/admin" style={{ textDecoration: "none" }}>
-            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
+            <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
               <LayoutDashboard style={{ width: 11, height: 11 }} /> Admin
             </button>
           </Link>
@@ -816,7 +816,7 @@ export default function ReservationsPage() {
 
           {/* Upcoming list */}
           <div style={{ flex: 1, padding: "0 14px 20px" }}>
-            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.2em", color: "rgba(255,200,150,0.18)", textTransform: "uppercase", marginBottom: 10 }}>
+            <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.2em", color: "rgba(255,200,150,0.55)", textTransform: "uppercase", marginBottom: 10 }}>
               Coming Up
             </div>
             {loading ? (
@@ -868,7 +868,7 @@ export default function ReservationsPage() {
                     display: "inline-flex", alignItems: "center", gap: 4,
                     fontSize: 11, color: "rgba(255,200,150,0.35)", fontVariantNumeric: "tabular-nums",
                     padding: "2px 8px", borderRadius: 99,
-                    background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`,
+                    background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`,
                   }}>
                     <Clock style={{ width: 9, height: 9 }} />
                     {clockStr}
@@ -896,7 +896,7 @@ export default function ReservationsPage() {
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={() => setSelectedDate(today)}
-                style={{ height: 32, padding: "0 12px", borderRadius: 8, background: "rgba(255,185,100,0.04)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU }}
+                style={{ height: 32, padding: "0 12px", borderRadius: 8, background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU }}
               >
                 Today
               </button>
@@ -924,7 +924,7 @@ export default function ReservationsPage() {
               <div style={{
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                 height: 280, gap: 16,
-                border: `1px dashed rgba(255,185,100,0.09)`, borderRadius: 16,
+                border: `1px dashed rgba(255,185,100,0.18)`, borderRadius: 16,
               }}>
                 <CalendarDays style={{ width: 44, height: 44, color: "rgba(255,185,100,0.1)" }} />
                 <div style={{ textAlign: "center" }}>
@@ -969,7 +969,7 @@ export default function ReservationsPage() {
                           </button>
                           <button
                             onClick={() => setDeleteTarget(null)}
-                            style={{ padding: "5px 14px", borderRadius: 7, border: `1px solid ${BR}`, background: "rgba(255,185,100,0.04)", cursor: "pointer", fontWeight: 600, fontSize: 12, color: TX2 }}
+                            style={{ padding: "5px 14px", borderRadius: 7, border: `1px solid ${BR}`, background: "rgba(255,185,100,0.16)", cursor: "pointer", fontWeight: 600, fontSize: 12, color: TX2 }}
                           >
                             Cancel
                           </button>

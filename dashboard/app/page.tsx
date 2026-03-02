@@ -151,8 +151,8 @@ function DraggableQueueCard({
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
         touchAction: "none",
-        background: isReady ? "rgba(34,197,94,0.06)" : "rgba(255,185,100,0.03)",
-        border: `1px solid ${isReady ? "rgba(34,197,94,0.18)" : "rgba(255,185,100,0.07)"}`,
+        background: isReady ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
+        border: `1px solid ${isReady ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.16)"}`,
         borderRadius: 12,
         cursor: isDragging ? "grabbing" : "grab",
         display: "flex",
@@ -164,15 +164,15 @@ function DraggableQueueCard({
       {/* Grip */}
       <GripVertical
         className="w-3.5 h-3.5 shrink-0"
-        style={{ color: "rgba(255,200,150,0.18)" }}
+        style={{ color: "rgba(255,200,150,0.45)" }}
       />
 
       {/* Position badge */}
       <div
         className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums"
         style={{
-          background: isReady ? "rgba(34,197,94,0.14)" : "rgba(255,185,100,0.07)",
-          color: isReady ? "#22c55e" : "rgba(255,220,180,0.3)",
+          background: isReady ? "rgba(34,197,94,0.20)" : "rgba(255,185,100,0.12)",
+          color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)",
         }}
       >
         {entry.position ?? "—"}
@@ -183,7 +183,7 @@ function DraggableQueueCard({
         <div className="flex items-center gap-1.5">
           <span
             className="font-semibold text-[13px] leading-snug truncate"
-            style={{ color: isReady ? "#86efac" : "rgba(255,248,240,0.9)" }}
+            style={{ color: isReady ? "#86efac" : "rgba(255,248,240,0.97)" }}
           >
             {entry.name || "Guest"}
           </span>
@@ -196,11 +196,11 @@ function DraggableQueueCard({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(255,200,150,0.28)", fontSize: 11 }}>
+        <div className="flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(255,200,150,0.70)", fontSize: 11 }}>
           <span className="flex items-center gap-0.5">
             <Users className="w-2.5 h-2.5" />{entry.party_size}p
           </span>
-          <span style={{ color: "rgba(255,185,100,0.14)" }}>·</span>
+          <span style={{ color: "rgba(255,185,100,0.45)" }}>·</span>
           <span className="flex items-center gap-0.5">
             <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
           </span>
@@ -235,7 +235,7 @@ function DraggableQueueCard({
           onPointerDown={e => e.stopPropagation()}
           onClick={onRemove}
           className="h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:bg-red-500/10 hover:text-red-400"
-          style={{ color: "rgba(255,200,150,0.18)" }}
+          style={{ color: "rgba(255,200,150,0.48)" }}
           title="Remove"
         >
           <X className="w-3.5 h-3.5" />
@@ -292,16 +292,16 @@ function DroppableFloorTable({
   })
 
   const bg = isOver && avail
-    ? "rgba(34,197,94,0.28)"
-    : isOccupied ? "rgba(239,68,68,0.18)"
-    : noTable ? "rgba(255,255,255,0.01)"
-    : "rgba(34,197,94,0.08)"
+    ? "rgba(34,197,94,0.45)"
+    : isOccupied ? "rgba(239,68,68,0.28)"
+    : noTable ? "rgba(255,255,255,0.07)"
+    : "rgba(34,197,94,0.22)"
 
   const borderColor = isOver && avail
     ? "#22c55e"
-    : isOccupied ? "rgba(239,68,68,0.62)"
-    : noTable ? "rgba(255,255,255,0.04)"
-    : "rgba(34,197,94,0.42)"
+    : isOccupied ? "rgba(239,68,68,0.90)"
+    : noTable ? "rgba(255,255,255,0.32)"
+    : "rgba(34,197,94,0.82)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
 
@@ -318,9 +318,9 @@ function DroppableFloorTable({
         background: bg,
         border: `1.5px solid ${borderColor}`,
         boxShadow: isOver && avail
-          ? "0 0 0 4px rgba(34,197,94,0.22), inset 0 0 20px rgba(34,197,94,0.06)"
-          : isOccupied ? "0 0 0 1px rgba(239,68,68,0.1)"
-          : avail ? "0 0 0 1px rgba(34,197,94,0.1)"
+          ? "0 0 0 4px rgba(34,197,94,0.35), inset 0 0 20px rgba(34,197,94,0.10)"
+          : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
+          : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
           : "none",
         transition: "border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease",
         display: "flex",
@@ -366,8 +366,8 @@ function DroppableFloorTable({
           right: pos.shape === "round" ? "16%" : 7,
           width: 6, height: 6,
           borderRadius: "50%",
-          background: noTable ? "rgba(255,255,255,0.08)" : "#22c55e",
-          opacity: 0.75,
+          background: noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
+          opacity: 0.85,
         }} />
       )}
 
@@ -382,41 +382,41 @@ function DroppableFloorTable({
         </span>
       ) : occupant ? (
         <>
-          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,200,150,0.45)", letterSpacing: "0.1em" }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,200,150,0.75)", letterSpacing: "0.1em" }}>
             T{pos.number}
           </span>
           <span style={{
             fontSize: pos.shape === "rect" ? 11 : 10,
             fontWeight: 700,
-            color: "rgba(255,240,220,0.82)",
+            color: "rgba(255,240,220,0.97)",
             textAlign: "center",
             lineHeight: 1.2,
             paddingInline: 4,
           }}>
             {occupant.name}
           </span>
-          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.35)" }}>
+          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.70)" }}>
             {occupant.party_size}p
           </span>
         </>
       ) : table && table.status !== "available" ? (
         <>
-          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(239,68,68,0.75)" }}>
+          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(239,68,68,0.95)" }}>
             {pos.number}
           </span>
-          <span style={{ fontSize: 9, color: "rgba(239,68,68,0.48)" }}>{table.capacity}p</span>
+          <span style={{ fontSize: 9, color: "rgba(239,68,68,0.72)" }}>{table.capacity}p</span>
         </>
       ) : (
         <>
           <span style={{
             fontSize: pos.shape === "rect" ? 17 : 14,
             fontWeight: 800,
-            color: table ? "rgba(34,197,94,0.8)" : "rgba(255,200,150,0.14)",
+            color: table ? "#22c55e" : "rgba(255,200,150,0.55)",
           }}>
             {pos.number}
           </span>
           {table && (
-            <span style={{ fontSize: 10, color: "rgba(34,197,94,0.5)" }}>
+            <span style={{ fontSize: 10, color: "rgba(34,197,94,0.90)" }}>
               {table.capacity}p
             </span>
           )}
@@ -440,7 +440,7 @@ function FloorMap({
   return (
     <div
       className="flex-1 relative overflow-hidden"
-      style={{ background: "#080503" }}
+      style={{ background: "#0a0704" }}
     >
       <span style={{
         position: "absolute",
@@ -449,7 +449,7 @@ function FloorMap({
         fontSize: 9,
         fontWeight: 800,
         letterSpacing: "0.2em",
-        color: "rgba(255,200,150,0.1)",
+        color: "rgba(255,200,150,0.45)",
         textTransform: "uppercase",
         zIndex: 1,
         pointerEvents: "none",
@@ -477,8 +477,8 @@ function FloorMap({
             top: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(255,185,100,0.015)",
-            borderLeft: "1px solid rgba(255,185,100,0.07)",
+            background: "rgba(255,185,100,0.03)",
+            borderLeft: "1px solid rgba(255,185,100,0.16)",
             borderRadius: "0 8px 8px 0",
           }} />
 
@@ -490,7 +490,7 @@ function FloorMap({
             fontSize: 8,
             fontWeight: 800,
             letterSpacing: "0.22em",
-            color: "rgba(255,200,150,0.2)",
+            color: "rgba(255,200,150,0.55)",
             textTransform: "uppercase",
             pointerEvents: "none",
           }}>
@@ -503,7 +503,7 @@ function FloorMap({
             fontSize: 8,
             fontWeight: 800,
             letterSpacing: "0.2em",
-            color: "rgba(255,200,150,0.1)",
+            color: "rgba(255,200,150,0.45)",
             textTransform: "uppercase",
             pointerEvents: "none",
           }}>
@@ -517,7 +517,7 @@ function FloorMap({
             bottom: `${(8 / CANVAS_H * 100).toFixed(2)}%`,
             fontSize: 8,
             letterSpacing: "0.08em",
-            color: "rgba(255,185,100,0.1)",
+            color: "rgba(255,185,100,0.35)",
             pointerEvents: "none",
           }}>
             Powered by <strong>HOST</strong>
@@ -547,7 +547,7 @@ function FloorMap({
         left: "50%",
         transform: "translateX(-50%)",
         fontSize: 10,
-        color: "rgba(255,200,150,0.1)",
+        color: "rgba(255,200,150,0.45)",
         letterSpacing: "0.1em",
         whiteSpace: "nowrap",
         pointerEvents: "none",
@@ -916,7 +916,7 @@ export default function HostDashboard() {
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header
           className="flex items-center justify-between px-5 h-12 shrink-0"
-          style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.08)", backdropFilter: "blur(20px)" }}
+          style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.18)", backdropFilter: "blur(20px)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
             {/* Walter's 303 logo */}
@@ -927,29 +927,29 @@ export default function HostDashboard() {
               style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }}
             />
 
-            <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.09)" }} />
+            <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
 
             {/* Stats */}
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
                 <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
-                <span className="text-xs" style={{ color: "rgba(255,185,100,0.18)" }}>/{FLOOR_PLAN.length}</span>
-                <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,200,150,0.22)" }}>free</span>
+                <span className="text-xs" style={{ color: "rgba(255,185,100,0.50)" }}>/{FLOOR_PLAN.length}</span>
+                <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,200,150,0.60)" }}>free</span>
               </div>
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}>
-                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(255,200,150,0.28)" }}>{waitingList.length}</span>
-                <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.22)" }}>waiting</span>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(255,200,150,0.60)" }}>{waitingList.length}</span>
+                <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.60)" }}>waiting</span>
               </div>
               {readyList.length > 0 && (
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.18)" }}>
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)" }}>
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
                   <span className="text-xs font-bold" style={{ color: "#22c55e" }}>{readyList.length} ready</span>
                 </div>
               )}
               {avgWait > 0 && (
-                <div className="hidden md:flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.07)" }}>
-                  <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.22)" }}>~</span>
-                  <span className="text-xs font-semibold tabular-nums" style={{ color: "rgba(255,220,180,0.5)" }}>{avgWait}m</span>
+                <div className="hidden md:flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
+                  <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.60)" }}>~</span>
+                  <span className="text-xs font-semibold tabular-nums" style={{ color: "rgba(255,220,180,0.80)" }}>{avgWait}m</span>
                 </div>
               )}
             </div>
@@ -959,20 +959,20 @@ export default function HostDashboard() {
             {/* Live clock */}
             <span
               className="hidden sm:block text-[11px] tabular-nums font-medium px-2"
-              style={{ color: "rgba(255,200,150,0.22)", letterSpacing: "0.04em" }}
+              style={{ color: "rgba(255,200,150,0.65)", letterSpacing: "0.04em" }}
             >
               {clockStr}
             </span>
-            <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.22)" }}>
+            <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>
-            <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.22)" }}>
+            <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <LayoutDashboard className="w-3 h-3" /> Admin
             </Link>
-            <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.55)" : "rgba(239,68,68,0.55)" }}>
+            <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
               {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             </div>
-            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.2)" }}>
+            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.55)" }}>
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -986,7 +986,7 @@ export default function HostDashboard() {
             className="flex flex-col shrink-0 overflow-hidden"
             style={{
               width: 272,
-              borderRight: "1px solid rgba(255,185,100,0.07)",
+              borderRight: "1px solid rgba(255,185,100,0.16)",
               background: "#0C0907",
             }}
           >
@@ -996,15 +996,15 @@ export default function HostDashboard() {
               <div
                 style={{
                   padding: "8px 12px 8px",
-                  borderBottom: "1px solid rgba(255,185,100,0.06)",
+                  borderBottom: "1px solid rgba(255,185,100,0.16)",
                   flexShrink: 0,
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, padding: "0 2px" }}>
-                  <CalendarDays style={{ width: 9, height: 9, color: "rgba(99,179,237,0.5)" }} />
+                  <CalendarDays style={{ width: 9, height: 9, color: "rgba(99,179,237,0.80)" }} />
                   <span style={{
                     fontSize: 9, fontWeight: 800, letterSpacing: "0.16em",
-                    color: "rgba(99,179,237,0.45)", textTransform: "uppercase",
+                    color: "rgba(99,179,237,0.75)", textTransform: "uppercase",
                   }}>
                     Reservations · {activeRes.length}
                   </span>
@@ -1024,25 +1024,25 @@ export default function HostDashboard() {
                           display: "flex", alignItems: "center", gap: 8,
                           padding: "7px 9px", borderRadius: 9,
                           background: isLate
-                            ? "rgba(239,68,68,0.07)"
+                            ? "rgba(239,68,68,0.12)"
                             : isNow
-                            ? "rgba(249,115,22,0.06)"
+                            ? "rgba(249,115,22,0.10)"
                             : isArriving
-                            ? "rgba(251,191,36,0.04)"
-                            : "rgba(99,179,237,0.03)",
+                            ? "rgba(251,191,36,0.08)"
+                            : "rgba(99,179,237,0.06)",
                           border: `1px solid ${isLate
-                            ? "rgba(239,68,68,0.22)"
+                            ? "rgba(239,68,68,0.45)"
                             : isNow
-                            ? "rgba(249,115,22,0.18)"
+                            ? "rgba(249,115,22,0.40)"
                             : isArriving
-                            ? "rgba(251,191,36,0.14)"
-                            : "rgba(99,179,237,0.08)"}`,
+                            ? "rgba(251,191,36,0.35)"
+                            : "rgba(99,179,237,0.22)"}`,
                         }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{
                             fontSize: 12, fontWeight: 600,
-                            color: "rgba(255,248,240,0.85)",
+                            color: "rgba(255,248,240,0.97)",
                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                             marginBottom: 2,
                           }}>
@@ -1050,7 +1050,7 @@ export default function HostDashboard() {
                           </div>
                           <div style={{
                             fontSize: 10, display: "flex", gap: 5, alignItems: "center",
-                            color: "rgba(255,200,150,0.3)",
+                            color: "rgba(255,200,150,0.70)",
                           }}>
                             <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
                             <span>·</span>
@@ -1096,7 +1096,7 @@ export default function HostDashboard() {
               <div className="px-3 pt-3 pb-1 shrink-0">
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(34,197,94,0.6)" }}>
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(34,197,94,0.90)" }}>
                     Ready · {readyList.length}
                   </span>
                 </div>
@@ -1111,26 +1111,26 @@ export default function HostDashboard() {
 
             {/* Divider */}
             {readyList.length > 0 && waitingList.length > 0 && (
-              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.05)" }} />
+              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.14)" }} />
             )}
 
             {/* Waiting section */}
             <div className="px-3 pt-2 flex-1 overflow-y-auto">
               <div className="flex items-center gap-2 mb-2 px-1">
-                {waitingList.length > 0 && <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.65 }} />}
-                <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.22)" }}>
+                {waitingList.length > 0 && <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />}
+                <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
                   {waitingList.length > 0 ? `Waiting · ${waitingList.length}` : "Queue"}
                 </span>
               </div>
 
               {queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.05)", borderRadius: 12 }}>
-                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.08)" }} />
-                  <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.15)" }}>Queue is clear</p>
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
+                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
+                  <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
                 </div>
               ) : waitingList.length === 0 ? (
-                <div className="flex items-center justify-center py-8" style={{ border: "1px solid rgba(255,185,100,0.05)", borderRadius: 12 }}>
-                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.14)" }}>No one else waiting</p>
+                <div className="flex items-center justify-center py-8" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
+                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.50)" }}>No one else waiting</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5 pb-24">
@@ -1143,8 +1143,8 @@ export default function HostDashboard() {
             </div>
 
             {/* Sidebar footer */}
-            <div className="px-4 py-3 shrink-0" style={{ borderTop: "1px solid rgba(255,185,100,0.05)" }}>
-              <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.08)" }}>
+            <div className="px-4 py-3 shrink-0" style={{ borderTop: "1px solid rgba(255,185,100,0.14)" }}>
+              <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.40)" }}>
                 Updated {lastSync.toLocaleTimeString()}
               </p>
             </div>
@@ -1161,7 +1161,7 @@ export default function HostDashboard() {
 
           {/* ── Mobile: no floor map — full queue ─────────────────── */}
           <div className="flex-1 lg:hidden overflow-y-auto p-4 flex flex-col gap-4">
-            <p className="text-xs text-center py-8" style={{ color: "rgba(255,200,150,0.15)" }}>
+            <p className="text-xs text-center py-8" style={{ color: "rgba(255,200,150,0.50)" }}>
               Floor map available on larger screens
             </p>
           </div>

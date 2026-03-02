@@ -3,9 +3,11 @@
 :root {
   --bg: #0C0907;
   --surface: #131009;
-  --border: rgba(255,190,110,0.07);
-  --text: rgba(255,248,240,0.92);
-  --muted: rgba(255,220,180,0.35);
+  --border: rgba(255,190,110,0.18);
+  --border-faint: rgba(255,190,110,0.10);
+  --text: rgba(255,248,240,0.96);
+  --muted: rgba(255,220,180,0.65);
+  --muted-faint: rgba(255,220,180,0.38);
   --green: #22c55e;
   --orange: #f97316;
   --red: #ef4444;
@@ -29,4 +31,4 @@ body {
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,190,110,0.12); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: rgba(255,190,110,0.22); border-radius: 2px; }
