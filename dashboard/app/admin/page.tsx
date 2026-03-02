@@ -53,6 +53,18 @@ interface Insights {
 type Page = "overview" | "analytics" | "tables" | "guests"
 type TimeFrame = "today" | "7d" | "30d" | "90d"
 
+interface LocalOcc { name: string; party_size: number }
+
+// Shared floor-plan availability calculation (mirrors host view logic)
+function calcAvailable(tables: Table[], localOccupants: Map<number, LocalOcc>): number {
+  const occupied = Array.from({ length: 16 }, (_, i) => i + 1).filter(num => {
+    if (localOccupants.has(num)) return true
+    const t = tables.find(t => t.table_number === num)
+    return !!t && t.status !== "available"
+  }).length
+  return 16 - occupied
+}
+
 // ── Design tokens ──────────────────────────────────────────────────────────────
 
 const C = {
@@ -287,10 +299,11 @@ const TD_STYLE: React.CSSProperties = {
 // ── Page: Overview ─────────────────────────────────────────────────────────────
 
 function OverviewPage({
-  tables, queue, insights, online, lastSync, onRefresh,
+  tables, queue, insights, online, lastSync, onRefresh, localOccupants,
 }: {
   tables: Table[]; queue: QueueEntry[]; insights: Insights | null
   online: boolean; lastSync: Date; onRefresh: () => void
+  localOccupants: Map<number, LocalOcc>
 }) {
   const [copied, setCopied] = useState(false)
   const joinUrl = typeof window !== "undefined"
@@ -302,7 +315,7 @@ function OverviewPage({
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 
-  const available = tables.filter(t => t.status === "available").length
+  const available = calcAvailable(tables, localOccupants)
   const occupied  = 16 - available
   const active    = queue.filter(q => q.status === "waiting" || q.status === "ready")
   const avgWait   = insights?.avg_wait_estimate ?? 0
@@ -426,12 +439,14 @@ function OverviewPage({
           {Array.from({ length: 16 }, (_, i) => {
             const num = i + 1
             const t = tables.find(t => t.table_number === num)
-            const avail = !t || t.status === "available"
+            const localOcc = localOccupants.get(num)
+            const apiOccupied = !!t && t.status !== "available"
+            const avail = !apiOccupied && !localOcc
             return (
               <div
                 key={num}
                 style={{
-                  padding: "10px 6px",
+                  padding: "8px 4px",
                   borderRadius: 8,
                   border: `1px solid ${avail ? C.greenBorder : C.redBorder}`,
                   background: avail ? C.greenBg : C.redBg,
@@ -439,9 +454,18 @@ function OverviewPage({
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 800, color: avail ? C.green : C.red }}>T{num}</div>
-                <div style={{ fontSize: 10, color: avail ? "#4ADE80" : "#F87171", marginTop: 2, fontWeight: 600 }}>
-                  {avail ? "Free" : "Occ."}
-                </div>
+                {localOcc ? (
+                  <>
+                    <div style={{ fontSize: 9, color: C.red, marginTop: 1, fontWeight: 700, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {localOcc.name}
+                    </div>
+                    <div style={{ fontSize: 9, color: C.red, fontWeight: 600 }}>{localOcc.party_size}p</div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 9, color: avail ? C.green : C.red, marginTop: 2, fontWeight: 600 }}>
+                    {avail ? "Free" : "Occupied"}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -647,8 +671,8 @@ function AnalyticsPage() {
 
 // ── Page: Tables ───────────────────────────────────────────────────────────────
 
-function TablesPage({ tables }: { tables: Table[] }) {
-  const available = tables.filter(t => t.status === "available").length
+function TablesPage({ tables, localOccupants }: { tables: Table[]; localOccupants: Map<number, LocalOcc> }) {
+  const available = calcAvailable(tables, localOccupants)
   const occupied  = 16 - available
 
   return (
@@ -956,6 +980,25 @@ export default function AdminPage() {
   const [insights, setInsights] = useState<Insights | null>(null)
   const [online,   setOnline]   = useState(true)
   const [lastSync, setLastSync] = useState(new Date())
+  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOcc>>(() => {
+    try {
+      const s = typeof window !== "undefined" ? localStorage.getItem("host_occupants") : null
+      return s ? new Map(JSON.parse(s) as [number, LocalOcc][]) : new Map()
+    } catch { return new Map() }
+  })
+
+  // Sync localOccupants from host view via storage events (cross-tab)
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "host_occupants" && e.newValue) {
+        try { setLocalOccupants(new Map(JSON.parse(e.newValue) as [number, LocalOcc][])) } catch {}
+      } else if (e.key === "host_occupants" && !e.newValue) {
+        setLocalOccupants(new Map())
+      }
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [])
 
   const fetchAll = useCallback(async () => {
     try {
@@ -989,10 +1032,11 @@ export default function AdminPage() {
           <OverviewPage
             tables={tables} queue={queue} insights={insights}
             online={online} lastSync={lastSync} onRefresh={fetchAll}
+            localOccupants={localOccupants}
           />
         )}
         {page === "analytics" && <AnalyticsPage />}
-        {page === "tables"    && <TablesPage tables={tables} />}
+        {page === "tables"    && <TablesPage tables={tables} localOccupants={localOccupants} />}
         {page === "guests"    && <GuestsPage queue={queue} />}
       </main>
     </div>

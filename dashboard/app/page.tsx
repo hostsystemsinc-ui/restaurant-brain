@@ -628,12 +628,22 @@ export default function HostDashboard() {
   const [showAdd, setShowAdd]             = useState(false)
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
-  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(new Map())
+  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
+    try {
+      const s = localStorage.getItem("host_occupants")
+      return s ? new Map(JSON.parse(s) as [number, LocalOccupant][]) : new Map()
+    } catch { return new Map() }
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 5 } }),
   )
+
+  // Keep admin page in sync — persist floor map occupancy to localStorage
+  useEffect(() => {
+    try { localStorage.setItem("host_occupants", JSON.stringify([...localOccupants])) } catch {}
+  }, [localOccupants])
 
   const fetchTables   = useCallback(async () => { try { const r = await fetch(`${API}/tables`);   if (r.ok) setTables(await r.json()) } catch {} }, [])
   const fetchQueue    = useCallback(async () => { try { const r = await fetch(`${API}/queue`);    if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) } } catch { setOnline(false) } }, [])
