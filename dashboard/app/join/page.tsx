@@ -1,10 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Minus, Plus, Loader2 } from "lucide-react"
 
-const API = "https://restaurant-brain-production.up.railway.app"
+const API          = "https://restaurant-brain-production.up.railway.app"
+const RESTAURANT   = "Walter's303"
+const TOTAL_TABLES = 16
+
+interface LiveInfo {
+  available: number
+  waitMin:   number | null
+  ahead:     number
+}
 
 export default function JoinPage() {
   const router      = useRouter()
@@ -13,25 +21,38 @@ export default function JoinPage() {
   const [phone,     setPhone]     = useState("")
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState("")
-  const [queueInfo, setQueueInfo] = useState<{ ahead: number; wait: number } | null>(null)
-  const [restName,  setRestName]  = useState("")
+  const [live,      setLive]      = useState<LiveInfo | null>(null)
+
+  const fetchLive = useCallback(async () => {
+    try {
+      const [tablesRes, insightsRes] = await Promise.all([
+        fetch(`${API}/tables`),
+        fetch(`${API}/insights`),
+      ])
+      const tables   = tablesRes.ok   ? await tablesRes.json()   : []
+      const insights = insightsRes.ok ? await insightsRes.json() : null
+
+      // Tables available from API; fallback to TOTAL_TABLES if none returned
+      const occupied  = Array.isArray(tables)
+        ? tables.filter((t: { status: string }) => t.status !== "available").length
+        : 0
+      const apiTotal  = Array.isArray(tables) && tables.length > 0 ? tables.length : TOTAL_TABLES
+      const available = Math.max(0, apiTotal - occupied)
+
+      const ahead   = insights?.parties_waiting ?? 0
+      const waitMin = insights?.avg_wait_estimate > 0 ? insights.avg_wait_estimate : null
+
+      setLive({ available, waitMin, ahead })
+    } catch {
+      setLive(prev => prev ?? { available: 0, waitMin: null, ahead: 0 })
+    }
+  }, [])
 
   useEffect(() => {
-    fetch(`${API}/queue`)
-      .then(r => r.json())
-      .then(q => {
-        const active = Array.isArray(q) ? q.filter((e: { status: string }) =>
-          e.status === "waiting" || e.status === "ready"
-        ) : []
-        setQueueInfo({ ahead: active.length, wait: Math.max(0, active.length * 15) })
-      })
-      .catch(() => setQueueInfo({ ahead: 0, wait: 0 }))
-
-    fetch(`${API}/restaurant`)
-      .then(r => r.json())
-      .then(d => setRestName(d.name || ""))
-      .catch(() => {})
-  }, [])
+    fetchLive()
+    const t = setInterval(fetchLive, 20_000)
+    return () => clearInterval(t)
+  }, [fetchLive])
 
   const submit = async () => {
     if (!name.trim()) { setError("Please enter your name."); return }
@@ -90,24 +111,30 @@ export default function JoinPage() {
           }}
         >
           <span className="text-2xl font-bold" style={{ color: "rgba(255,255,255,0.85)" }}>
-            {restName ? restName.charAt(0).toUpperCase() : "R"}
+            W
           </span>
         </div>
 
-        {restName && (
-          <p
-            className="text-lg font-semibold text-center"
-            style={{ color: "rgba(255,255,255,0.9)", letterSpacing: "0.03em" }}
-          >
-            {restName}
-          </p>
-        )}
+        <p
+          className="text-lg font-semibold text-center"
+          style={{ color: "rgba(255,255,255,0.9)", letterSpacing: "0.03em" }}
+        >
+          {RESTAURANT}
+        </p>
 
-        {queueInfo !== null && (
+        {live !== null && (
           <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
-            {queueInfo.ahead === 0
-              ? "✦ Tables available now"
-              : `${queueInfo.ahead} ${queueInfo.ahead === 1 ? "party" : "parties"} ahead · ~${queueInfo.wait}m`}
+            {live.available > 0
+              ? <>
+                  <span style={{ color: "rgba(100,230,130,0.9)", fontWeight: 600 }}>
+                    {live.available} {live.available === 1 ? "table" : "tables"} available
+                  </span>
+                  {" — "}
+                  {live.waitMin ? `~${live.waitMin}m wait` : "no wait"}
+                </>
+              : live.waitMin
+                ? `All tables occupied · ~${live.waitMin}m wait`
+                : "All tables occupied"}
           </p>
         )}
       </div>
