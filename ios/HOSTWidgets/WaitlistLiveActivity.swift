@@ -5,14 +5,31 @@
 // 1. In Xcode: File → New → Target → Widget Extension
 //    Name it "HOSTWidgets" and CHECK "Include Live Activity"
 // 2. Add this file to the HOSTWidgets target
-// 3. Add NotificationManager.swift to the HOSTWidgets target membership
-//    (or move WaitlistActivityAttributes into a shared Swift Package)
-// 4. In HOSTWidgets Info.plist add: NSSupportsLiveActivities = YES
+// 3. In HOSTWidgets Info.plist add: NSSupportsLiveActivities = YES
+// Note: WaitlistActivityAttributes is defined below (self-contained).
+//       The struct in NotificationManager.swift (HOST target) must match exactly.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import ActivityKit
 import SwiftUI
 import WidgetKit
+
+// MARK: - Shared Activity Attributes
+// Must exactly match WaitlistActivityAttributes in NotificationManager.swift
+
+struct WaitlistActivityAttributes: ActivityAttributes {
+    public struct ContentState: Codable, Hashable {
+        var status:       String   // waiting | ready | seated
+        var minutesLeft:  Int
+        var partiesAhead: Int
+        var progress:     Double   // 0.0 → 1.0
+    }
+
+    var entryId:    String
+    var name:       String
+    var partySize:  Int
+    var restaurant: String
+}
 
 // MARK: - Lock Screen / Notification Banner View
 

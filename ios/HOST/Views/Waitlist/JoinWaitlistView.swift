@@ -66,8 +66,6 @@ struct JoinWaitlistView: View {
                         .padding(.top, 56)
                         .padding(.bottom, 28)
 
-                        Divider().overlay(Color.white.opacity(0.08))
-
                         VStack(alignment: .leading, spacing: 40) {
 
                             // Party size

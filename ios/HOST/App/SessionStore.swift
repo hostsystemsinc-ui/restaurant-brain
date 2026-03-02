@@ -44,9 +44,10 @@ class SessionStore: ObservableObject {
     // Active waitlist entry (persisted across app launches)
     @AppStorage("activeEntryId") var activeEntryId: String = ""
 
-    // Active restaurant session (set when NFC tag is tapped)
-    @AppStorage("sessionRestaurantId")   var sessionRestaurantId:   String = ""
-    @AppStorage("sessionRestaurantName") var sessionRestaurantName: String = ""
+    // Active restaurant session (set when NFC tag is tapped; resets each launch so
+    // the app always opens to the "Tap Now" screen until an NFC scan happens)
+    @Published var sessionRestaurantId:   String = ""
+    @Published var sessionRestaurantName: String = ""
 
     var hasActiveEntry: Bool { !activeEntryId.isEmpty }
     var hasRestaurant:  Bool { !sessionRestaurantId.isEmpty }
