@@ -7,7 +7,9 @@ import {
   Download, Wifi, WifiOff, RefreshCw, Copy, Check,
   ExternalLink, Search, ArrowLeft, Sparkles,
   Settings2, CalendarDays, Camera, CreditCard, Loader2,
+  CalendarCheck,
 } from "lucide-react"
+import SchedulingPanel from "./SchedulingPanel"
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -51,7 +53,7 @@ interface Insights {
   ai_insights: string | null
 }
 
-type Page = "overview" | "analytics" | "tables" | "guests" | "inputs"
+type Page = "overview" | "analytics" | "tables" | "guests" | "inputs" | "schedule"
 type TimeFrame = "today" | "7d" | "30d" | "90d"
 
 interface LocalOcc { name: string; party_size: number }
@@ -1257,6 +1259,7 @@ const NAV: { label: string; page: Page; Icon: React.ElementType }[] = [
   { label: "Analytics", page: "analytics", Icon: TrendingUp      },
   { label: "Tables",    page: "tables",    Icon: TableProperties  },
   { label: "Guests",    page: "guests",    Icon: Users            },
+  { label: "Schedule",  page: "schedule",  Icon: CalendarCheck    },
   { label: "Inputs",    page: "inputs",    Icon: Settings2        },
 ]
 
@@ -1387,7 +1390,12 @@ export default function AdminPage() {
       color: C.text,
     }}>
       <Sidebar active={page} onSelect={setPage} />
-      <main style={{ flex: 1, overflowY: "auto", padding: "32px 36px" }}>
+      <main style={{
+        flex: 1,
+        overflowY: page === "schedule" ? "hidden" : "auto",
+        padding: page === "schedule" ? 0 : "32px 36px",
+        display: "flex", flexDirection: "column",
+      }}>
         {page === "overview"  && (
           <OverviewPage
             tables={tables} queue={queue} insights={insights}
@@ -1398,6 +1406,7 @@ export default function AdminPage() {
         {page === "analytics" && <AnalyticsPage />}
         {page === "tables"    && <TablesPage tables={tables} localOccupants={localOccupants} />}
         {page === "guests"    && <GuestsPage queue={queue} />}
+        {page === "schedule"  && <SchedulingPanel />}
         {page === "inputs"    && <InputsPage />}
       </main>
     </div>
