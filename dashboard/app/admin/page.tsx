@@ -907,7 +907,7 @@ function GuestsPage({ queue }: { queue: QueueEntry[] }) {
 
 // ── Page: Inputs ───────────────────────────────────────────────────────────────
 
-function InputsPage() {
+function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
   // OpenTable state
   const [icalUrl,    setIcalUrl]    = useState("")
   const [saved,      setSaved]      = useState(false)
@@ -922,6 +922,14 @@ function InputsPage() {
   const [calSyncing,   setCalSyncing]  = useState(false)
   const [calSyncMsg,   setCalSyncMsg]  = useState<{ text: string; ok: boolean } | null>(null)
 
+  // 7Shifts state
+  const [shiftKey,        setShiftKey]        = useState("")
+  const [shiftSaved,      setShiftSaved]      = useState<string | null>(null)
+  const [shiftCo,         setShiftCo]         = useState<{ id: number; name: string } | null>(null)
+  const [shiftConnecting, setShiftConnecting] = useState(false)
+  const [shiftErr,        setShiftErr]        = useState<string | null>(null)
+  const [showHowTo,       setShowHowTo]       = useState(false)
+
   useEffect(() => {
     fetch(`${API}/settings`)
       .then(r => r.json())
@@ -930,6 +938,14 @@ function InputsPage() {
         if (d.secondary_ical_url)  setCalUrl(d.secondary_ical_url)
       })
       .catch(() => {})
+
+    // Load 7Shifts connection from localStorage
+    try {
+      const savedKey = localStorage.getItem("host_7shifts_key")
+      const savedCo  = localStorage.getItem("host_7shifts_company")
+      if (savedKey) setShiftSaved(savedKey)
+      if (savedCo)  setShiftCo(JSON.parse(savedCo))
+    } catch {}
   }, [])
 
   const saveUrl = async () => {
@@ -1005,6 +1021,37 @@ function InputsPage() {
     } finally {
       setCalSyncing(false)
     }
+  }
+
+  // 7Shifts helpers
+  async function connect7Shifts() {
+    if (!shiftKey.trim()) return
+    setShiftConnecting(true); setShiftErr(null)
+    try {
+      const res  = await fetch("/api/7shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-7shifts-key": shiftKey.trim() },
+        body: JSON.stringify({ endpoint: "/company" }),
+      })
+      const data = await res.json()
+      if (res.ok && data?.data?.id) {
+        const co = { id: data.data.id, name: data.data.name }
+        localStorage.setItem("host_7shifts_key",     shiftKey.trim())
+        localStorage.setItem("host_7shifts_company", JSON.stringify(co))
+        setShiftSaved(shiftKey.trim()); setShiftCo(co); setShiftKey("")
+      } else {
+        setShiftErr("Invalid key — check 7Shifts → Settings → Integrations → API Keys")
+      }
+    } catch {
+      setShiftErr("Connection failed. Check your internet and try again.")
+    }
+    setShiftConnecting(false)
+  }
+
+  function disconnect7Shifts() {
+    localStorage.removeItem("host_7shifts_key")
+    localStorage.removeItem("host_7shifts_company")
+    setShiftSaved(null); setShiftCo(null); setShiftKey(""); setShiftErr(null)
   }
 
   const PLATFORMS: Record<string, { name: string; hint: string }> = {
@@ -1197,6 +1244,120 @@ function InputsPage() {
               </p>
             )}
           </div>
+        </div>
+
+        {/* ── 7Shifts ── */}
+        <div style={boxStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={iconBoxStyle("rgba(124,58,237,0.1)")}>
+              <CalendarCheck style={{ width: 20, height: 20, color: "#7C3AED" }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Staff Scheduling</div>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
+                  background: "rgba(124,58,237,0.1)", color: "#7C3AED",
+                  border: "1px solid rgba(124,58,237,0.2)",
+                  borderRadius: 5, padding: "1px 7px",
+                }}>7Shifts</span>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted }}>Push HOST schedules directly to 7Shifts</div>
+            </div>
+            {shiftCo && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+                background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
+                whiteSpace: "nowrap",
+              }}>● Connected</span>
+            )}
+          </div>
+
+          {shiftCo ? (
+            // ── Connected state ──
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{
+                background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                borderRadius: 8, padding: "12px 14px",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{shiftCo.name}</div>
+                <div style={{ fontSize: 11, color: C.green, opacity: 0.75, marginTop: 2 }}>
+                  Schedules you publish in HOST will sync directly to 7Shifts.
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {setPage && (
+                  <Btn onClick={() => setPage("schedule")} variant="primary" small icon={CalendarCheck}>
+                    Open Schedule
+                  </Btn>
+                )}
+                <button
+                  onClick={disconnect7Shifts}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.muted, padding: 0 }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            </div>
+          ) : (
+            // ── Not connected state ──
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ fontSize: 12, color: C.text2, margin: 0, lineHeight: 1.6 }}>
+                Connect your 7Shifts account to push HOST AI schedules directly — no copy-paste needed.
+              </p>
+
+              {/* How-to toggle */}
+              <div>
+                <button
+                  onClick={() => setShowHowTo(v => !v)}
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: 11, fontWeight: 600, color: "#7C3AED", padding: 0,
+                    display: "flex", alignItems: "center", gap: 5,
+                  }}
+                >
+                  {showHowTo ? "▲" : "▼"} How to get your 7Shifts API key
+                </button>
+                {showHowTo && (
+                  <ol style={{ margin: "10px 0 0 16px", padding: 0, fontSize: 11, color: C.text2, lineHeight: 2 }}>
+                    <li>Log in to <strong>7Shifts</strong></li>
+                    <li>Go to <strong>Settings → Integrations → API Keys</strong></li>
+                    <li>Click <strong>Generate New Key</strong> → copy it</li>
+                    <li>Paste it below → click <strong>Connect 7Shifts</strong></li>
+                  </ol>
+                )}
+              </div>
+
+              {/* Key input */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>
+                  7Shifts API Key
+                </label>
+                <input
+                  type="password"
+                  value={shiftKey}
+                  onChange={e => setShiftKey(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && connect7Shifts()}
+                  placeholder="Paste your 7Shifts API key here…"
+                  style={{ ...inputSt, resize: undefined, fontFamily: "monospace" }}
+                />
+              </div>
+
+              <Btn
+                onClick={connect7Shifts}
+                variant="primary"
+                small
+                disabled={!shiftKey.trim() || shiftConnecting}
+                icon={shiftConnecting ? Loader2 : undefined}
+              >
+                {shiftConnecting ? "Connecting…" : "Connect 7Shifts"}
+              </Btn>
+
+              {shiftErr && (
+                <p style={{ fontSize: 11, color: C.red, margin: 0, lineHeight: 1.5 }}>{shiftErr}</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── POS ── */}
@@ -1407,7 +1568,7 @@ export default function AdminPage() {
         {page === "tables"    && <TablesPage tables={tables} localOccupants={localOccupants} />}
         {page === "guests"    && <GuestsPage queue={queue} />}
         {page === "schedule"  && <SchedulingPanel />}
-        {page === "inputs"    && <InputsPage />}
+        {page === "inputs"    && <InputsPage setPage={setPage} />}
       </main>
     </div>
   )

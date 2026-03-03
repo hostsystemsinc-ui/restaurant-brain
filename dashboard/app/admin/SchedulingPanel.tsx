@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState, useMemo, useCallback } from "react"
-import { Sparkles, Copy, Check, Plus, Info, Download } from "lucide-react"
+import React, { useState, useMemo, useCallback, useEffect } from "react"
+import { Sparkles, Copy, Check, Plus, Info, Download, Loader2 } from "lucide-react"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -257,6 +257,18 @@ export default function SchedulingPanel() {
   const [activeCell, setActiveCell] = useState<{ slotId: string; day: number } | null>(null)
   const [copied,     setCopied]     = useState(false)
 
+  // 7Shifts publish state
+  const [shiftCo,    setShiftCo]    = useState<{ id: number; name: string } | null>(null)
+  const [publishing, setPublishing] = useState(false)
+  const [pubResult,  setPubResult]  = useState<{ ok: boolean; msg: string } | null>(null)
+
+  useEffect(() => {
+    try {
+      const co = localStorage.getItem("host_7shifts_company")
+      if (co) setShiftCo(JSON.parse(co))
+    } catch {}
+  }, [])
+
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset])
 
   const todayIdx = useMemo(() => {
@@ -342,6 +354,66 @@ export default function SchedulingPanel() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
+  }
+
+  async function publishTo7Shifts() {
+    const key = localStorage.getItem("host_7shifts_key")
+    if (!key || !shiftCo) return
+    setPublishing(true); setPubResult(null)
+    const pad = (n: number) => n.toString().padStart(2, "0")
+
+    // Fetch roles to map server/host/busser → role_id
+    let roleMap: Record<string, number | undefined> = {}
+    try {
+      const rolesRes  = await fetch("/api/7shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-7shifts-key": key },
+        body: JSON.stringify({ endpoint: `/company/${shiftCo.id}/roles` }),
+      })
+      const rolesData = await rolesRes.json()
+      if (rolesData?.data) {
+        for (const r of rolesData.data as { id: number; name: string }[]) {
+          const n = r.name.toLowerCase()
+          if (n.includes("server")) roleMap.server = r.id
+          if (n.includes("host"))   roleMap.host   = r.id
+          if (n.includes("buss"))   roleMap.busser = r.id
+        }
+      }
+    } catch {}
+
+    // Create an open shift for every scheduled block
+    const creates: Promise<unknown>[] = []
+    for (const slot of slots) {
+      for (let day = 0; day < 7; day++) {
+        for (const sh of getShifts(slot.id, day)) {
+          const d       = weekDates[day]
+          const dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+          creates.push(
+            fetch("/api/7shifts", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-7shifts-key": key },
+              body: JSON.stringify({
+                endpoint: `/company/${shiftCo.id}/shifts`,
+                method:   "POST",
+                body: {
+                  location_id:    shiftCo.id,
+                  role_id:        roleMap[slot.role],
+                  start_datetime: `${dateStr}T${pad(sh.start)}:00:00`,
+                  end_datetime:   `${dateStr}T${pad(sh.end)}:00:00`,
+                  open:           true,
+                },
+              }),
+            })
+          )
+        }
+      }
+    }
+
+    await Promise.allSettled(creates)
+    const n = creates.length
+    setPubResult({ ok: true, msg: `${n} shift${n !== 1 ? "s" : ""} pushed to 7Shifts ✓` })
+    setPublishing(false)
+    setTimeout(() => setPubResult(null), 4500)
   }
 
   function copySchedule() {
@@ -452,13 +524,32 @@ export default function SchedulingPanel() {
         </button>
 
         {/* Publish */}
-        <button style={{
-          height: 32, padding: "0 18px", borderRadius: 7,
-          background: "#D9321C", border: "none", color: "#fff",
-          fontSize: 12, fontWeight: 700, cursor: "pointer",
-          letterSpacing: "0.02em",
-        }}>
-          Publish Schedule
+        <button
+          onClick={shiftCo ? publishTo7Shifts : undefined}
+          disabled={publishing}
+          title={shiftCo ? `Push to ${shiftCo.name} on 7Shifts` : "Connect 7Shifts in Admin → Inputs to enable"}
+          style={{
+            height: 32, padding: "0 18px", borderRadius: 7,
+            border: "none", color: "#fff",
+            fontSize: 12, fontWeight: 700, cursor: shiftCo ? "pointer" : "default",
+            letterSpacing: "0.02em",
+            background: pubResult?.ok
+              ? "#16A34A"
+              : publishing
+              ? "#B91C1C"
+              : shiftCo
+              ? "#D9321C"
+              : "#94A3B8",
+            transition: "background 0.2s",
+            display: "flex", alignItems: "center", gap: 6,
+          }}
+        >
+          {publishing
+            ? <><Loader2 style={{ width: 12, height: 12, animation: "spin 1s linear infinite" }} /> Publishing…</>
+            : pubResult?.ok
+            ? pubResult.msg
+            : "Publish Schedule"
+          }
         </button>
       </div>
 
