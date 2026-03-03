@@ -922,7 +922,8 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
   const [calSyncing,   setCalSyncing]  = useState(false)
   const [calSyncMsg,   setCalSyncMsg]  = useState<{ text: string; ok: boolean } | null>(null)
 
-  // 7Shifts state
+  // 7Shifts / scheduling state
+  const [schedPlatform,   setSchedPlatform]   = useState("7shifts")
   const [shiftKey,        setShiftKey]        = useState("")
   const [shiftSaved,      setShiftSaved]      = useState<string | null>(null)
   const [shiftCo,         setShiftCo]         = useState<{ id: number; name: string } | null>(null)
@@ -939,12 +940,14 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
       })
       .catch(() => {})
 
-    // Load 7Shifts connection from localStorage
+    // Load scheduling connection from localStorage
     try {
-      const savedKey = localStorage.getItem("host_7shifts_key")
-      const savedCo  = localStorage.getItem("host_7shifts_company")
-      if (savedKey) setShiftSaved(savedKey)
-      if (savedCo)  setShiftCo(JSON.parse(savedCo))
+      const savedPlatform = localStorage.getItem("host_scheduling_platform")
+      const savedKey      = localStorage.getItem("host_7shifts_key")
+      const savedCo       = localStorage.getItem("host_7shifts_company")
+      if (savedPlatform) setSchedPlatform(savedPlatform)
+      if (savedKey)      setShiftSaved(savedKey)
+      if (savedCo)       setShiftCo(JSON.parse(savedCo))
     } catch {}
   }, [])
 
@@ -1036,8 +1039,9 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
       const data = await res.json()
       if (res.ok && data?.data?.id) {
         const co = { id: data.data.id, name: data.data.name }
-        localStorage.setItem("host_7shifts_key",     shiftKey.trim())
-        localStorage.setItem("host_7shifts_company", JSON.stringify(co))
+        localStorage.setItem("host_7shifts_key",        shiftKey.trim())
+        localStorage.setItem("host_7shifts_company",    JSON.stringify(co))
+        localStorage.setItem("host_scheduling_platform", "7shifts")
         setShiftSaved(shiftKey.trim()); setShiftCo(co); setShiftKey("")
       } else {
         setShiftErr("Invalid key — check 7Shifts → Settings → Integrations → API Keys")
@@ -1052,6 +1056,19 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
     localStorage.removeItem("host_7shifts_key")
     localStorage.removeItem("host_7shifts_company")
     setShiftSaved(null); setShiftCo(null); setShiftKey(""); setShiftErr(null)
+  }
+
+  // Scheduling platform config
+  const SCHED_PLATFORMS: Record<string, {
+    name: string; color: string; fullApi: boolean
+    planNote?: string; keyPath: string; csvImport: string
+  }> = {
+    "7shifts":     { name: "7Shifts",        color: "#7C3AED", fullApi: true,  planNote: "Requires The Works plan or above",       keyPath: "Settings → Integrations → API Keys → Generate New Key",          csvImport: "Schedule → Import" },
+    "homebase":    { name: "Homebase",        color: "#FF6B35", fullApi: false, planNote: "Free plan supported",                    keyPath: "Settings → Integrations → API Access → Generate Token",          csvImport: "Schedule → Import Shifts → Upload CSV" },
+    "wheniwork":   { name: "When I Work",     color: "#00B2A9", fullApi: false,                                                     keyPath: "Profile → Integrations → API Tokens → Create Token",             csvImport: "Scheduler → Import → Upload CSV" },
+    "deputy":      { name: "Deputy",          color: "#3B82F6", fullApi: false,                                                     keyPath: "Business Settings → Integrations → API → Create API Token",      csvImport: "Scheduling → Import → CSV Upload" },
+    "sling":       { name: "Sling",           color: "#F97316", fullApi: false,                                                     keyPath: "N/A — use CSV import",                                           csvImport: "Schedule → More → Import CSV" },
+    "hotschedules":{ name: "HotSchedules",    color: "#DC2626", fullApi: false, planNote: "Enterprise — contact your account rep", keyPath: "Admin → Integrations → API Management → Create Key",             csvImport: "Schedule → Actions → Import via CSV" },
   }
 
   const PLATFORMS: Record<string, { name: string; hint: string }> = {
@@ -1246,119 +1263,193 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
           </div>
         </div>
 
-        {/* ── 7Shifts ── */}
-        <div style={boxStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={iconBoxStyle("rgba(124,58,237,0.1)")}>
-              <CalendarCheck style={{ width: 20, height: 20, color: "#7C3AED" }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Staff Scheduling</div>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, letterSpacing: "0.05em",
-                  background: "rgba(124,58,237,0.1)", color: "#7C3AED",
-                  border: "1px solid rgba(124,58,237,0.2)",
-                  borderRadius: 5, padding: "1px 7px",
-                }}>7Shifts</span>
-              </div>
-              <div style={{ fontSize: 11, color: C.muted }}>Push HOST schedules directly to 7Shifts</div>
-            </div>
-            {shiftCo && (
-              <span style={{
-                fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
-                background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
-                whiteSpace: "nowrap",
-              }}>● Connected</span>
-            )}
-          </div>
-
-          {shiftCo ? (
-            // ── Connected state ──
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{
-                background: C.greenBg, border: `1px solid ${C.greenBorder}`,
-                borderRadius: 8, padding: "12px 14px",
-              }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{shiftCo.name}</div>
-                <div style={{ fontSize: 11, color: C.green, opacity: 0.75, marginTop: 2 }}>
-                  Schedules you publish in HOST will sync directly to 7Shifts.
-                </div>
-              </div>
+        {/* ── Staff Scheduling (multi-platform) ── */}
+        {(() => {
+          const sp  = SCHED_PLATFORMS[schedPlatform]
+          const is7 = schedPlatform === "7shifts"
+          return (
+            <div style={boxStyle}>
+              {/* Header */}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {setPage && (
-                  <Btn onClick={() => setPage("schedule")} variant="primary" small icon={CalendarCheck}>
-                    Open Schedule
-                  </Btn>
-                )}
-                <button
-                  onClick={disconnect7Shifts}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.muted, padding: 0 }}
-                >
-                  Disconnect
-                </button>
-              </div>
-            </div>
-          ) : (
-            // ── Not connected state ──
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <p style={{ fontSize: 12, color: C.text2, margin: 0, lineHeight: 1.6 }}>
-                Connect your 7Shifts account to push HOST AI schedules directly — no copy-paste needed.
-              </p>
-
-              {/* How-to toggle */}
-              <div>
-                <button
-                  onClick={() => setShowHowTo(v => !v)}
-                  style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    fontSize: 11, fontWeight: 600, color: "#7C3AED", padding: 0,
-                    display: "flex", alignItems: "center", gap: 5,
-                  }}
-                >
-                  {showHowTo ? "▲" : "▼"} How to get your 7Shifts API key
-                </button>
-                {showHowTo && (
-                  <ol style={{ margin: "10px 0 0 16px", padding: 0, fontSize: 11, color: C.text2, lineHeight: 2 }}>
-                    <li>Log in to <strong>7Shifts</strong></li>
-                    <li>Go to <strong>Settings → Integrations → API Keys</strong></li>
-                    <li>Click <strong>Generate New Key</strong> → copy it</li>
-                    <li>Paste it below → click <strong>Connect 7Shifts</strong></li>
-                  </ol>
+                <div style={iconBoxStyle(`${sp.color}18`)}>
+                  <CalendarCheck style={{ width: 20, height: 20, color: sp.color }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Staff Scheduling</div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+                      background: `${sp.color}18`, color: sp.color,
+                      border: `1px solid ${sp.color}33`,
+                      borderRadius: 5, padding: "1px 7px",
+                    }}>{sp.name}</span>
+                    {!sp.fullApi && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: "0.06em",
+                        background: C.orangeBg, color: C.orange,
+                        border: `1px solid ${C.orangeBorder}`,
+                        borderRadius: 5, padding: "1px 6px",
+                      }}>API Soon</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted }}>
+                    {sp.fullApi ? `Push HOST schedules directly to ${sp.name}` : `Export HOST schedules for ${sp.name}`}
+                  </div>
+                </div>
+                {shiftCo && is7 && (
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+                    background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
+                    whiteSpace: "nowrap",
+                  }}>● Connected</span>
                 )}
               </div>
 
-              {/* Key input */}
+              {/* Platform selector */}
               <div>
                 <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>
-                  7Shifts API Key
+                  Your scheduling platform
                 </label>
-                <input
-                  type="password"
-                  value={shiftKey}
-                  onChange={e => setShiftKey(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && connect7Shifts()}
-                  placeholder="Paste your 7Shifts API key here…"
-                  style={{ ...inputSt, resize: undefined, fontFamily: "monospace" }}
-                />
+                <select
+                  value={schedPlatform}
+                  onChange={e => {
+                    setSchedPlatform(e.target.value)
+                    localStorage.setItem("host_scheduling_platform", e.target.value)
+                    setShiftErr(null)
+                  }}
+                  style={{ ...inputSt, resize: undefined, cursor: "pointer" }}
+                >
+                  {Object.entries(SCHED_PLATFORMS).map(([id, { name, fullApi }]) => (
+                    <option key={id} value={id}>{name}{fullApi ? " ✓ Live API" : ""}</option>
+                  ))}
+                </select>
               </div>
 
-              <Btn
-                onClick={connect7Shifts}
-                variant="primary"
-                small
-                disabled={!shiftKey.trim() || shiftConnecting}
-                icon={shiftConnecting ? Loader2 : undefined}
-              >
-                {shiftConnecting ? "Connecting…" : "Connect 7Shifts"}
-              </Btn>
+              {/* 7Shifts — full API flow */}
+              {is7 && sp.fullApi && (
+                shiftCo ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div style={{
+                      background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                      borderRadius: 8, padding: "12px 14px",
+                    }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{shiftCo.name}</div>
+                      <div style={{ fontSize: 11, color: C.green, opacity: 0.75, marginTop: 2 }}>
+                        Schedules you publish in HOST will sync directly to 7Shifts.
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      {setPage && (
+                        <Btn onClick={() => setPage("schedule")} variant="primary" small icon={CalendarCheck}>
+                          Open Schedule
+                        </Btn>
+                      )}
+                      <button
+                        onClick={disconnect7Shifts}
+                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.muted, padding: 0 }}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <div>
+                      <button
+                        onClick={() => setShowHowTo(v => !v)}
+                        style={{
+                          background: "none", border: "none", cursor: "pointer",
+                          fontSize: 11, fontWeight: 600, color: sp.color, padding: 0,
+                          display: "flex", alignItems: "center", gap: 5,
+                        }}
+                      >
+                        {showHowTo ? "▲" : "▼"} Where to find your API key
+                      </button>
+                      {showHowTo && (
+                        <ol style={{ margin: "10px 0 0 16px", padding: 0, fontSize: 11, color: C.text2, lineHeight: 2 }}>
+                          <li>Log in to <strong>7Shifts</strong></li>
+                          <li>Go to <strong>Settings → Integrations → API Keys</strong></li>
+                          <li>Click <strong>Generate New Key</strong> → copy it</li>
+                          <li>Paste it below → click <strong>Connect 7Shifts</strong></li>
+                        </ol>
+                      )}
+                      {sp.planNote && (
+                        <p style={{ fontSize: 10, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>
+                          ⓘ {sp.planNote}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>
+                        API Key
+                      </label>
+                      <input
+                        type="password"
+                        value={shiftKey}
+                        onChange={e => setShiftKey(e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && connect7Shifts()}
+                        placeholder="Paste your 7Shifts API key here…"
+                        style={{ ...inputSt, resize: undefined, fontFamily: "monospace" }}
+                      />
+                    </div>
+                    <Btn onClick={connect7Shifts} variant="primary" small
+                      disabled={!shiftKey.trim() || shiftConnecting}
+                      icon={shiftConnecting ? Loader2 : undefined}
+                    >
+                      {shiftConnecting ? "Connecting…" : `Connect ${sp.name}`}
+                    </Btn>
+                    {shiftErr && (
+                      <p style={{ fontSize: 11, color: C.red, margin: 0, lineHeight: 1.5 }}>{shiftErr}</p>
+                    )}
+                  </div>
+                )
+              )}
 
-              {shiftErr && (
-                <p style={{ fontSize: 11, color: C.red, margin: 0, lineHeight: 1.5 }}>{shiftErr}</p>
+              {/* Other platforms — CSV instructions + coming soon */}
+              {!is7 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  {/* CSV workflow */}
+                  <div style={{
+                    background: "#F8FAFC", border: `1px solid ${C.border}`,
+                    borderRadius: 8, padding: "12px 14px",
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.text2, marginBottom: 6 }}>
+                      Use CSV export today
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: C.text2, lineHeight: 1.9 }}>
+                      <li>Go to <strong>Admin → Schedule</strong> and build your week with HOST AI</li>
+                      <li>Click <strong>Download CSV</strong> in the schedule toolbar</li>
+                      <li>In {sp.name}: <strong>{sp.csvImport}</strong></li>
+                    </ol>
+                  </div>
+
+                  {/* API coming soon */}
+                  <div style={{
+                    background: C.orangeBg, border: `1px solid ${C.orangeBorder}`,
+                    borderRadius: 8, padding: "10px 14px",
+                    display: "flex", alignItems: "flex-start", gap: 8,
+                  }}>
+                    <Sparkles style={{ width: 12, height: 12, color: C.orange, marginTop: 1, flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.orange }}>
+                        Direct {sp.name} API integration coming soon
+                      </div>
+                      <div style={{ fontSize: 10, color: C.orange, opacity: 0.8, marginTop: 2, lineHeight: 1.5 }}>
+                        When ready: {sp.keyPath}{sp.planNote ? ` · ${sp.planNote}` : ""}
+                      </div>
+                    </div>
+                  </div>
+
+                  {setPage && (
+                    <Btn onClick={() => setPage("schedule")} small icon={CalendarCheck}>
+                      Open Schedule to Download CSV
+                    </Btn>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
+          )
+        })()}
 
         {/* ── POS ── */}
         <div style={{ ...boxStyle, opacity: 0.65 }}>
