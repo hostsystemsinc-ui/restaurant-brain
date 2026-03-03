@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useMemo, useCallback } from "react"
-import { Sparkles, Copy, Check, Plus, Info } from "lucide-react"
+import { Sparkles, Copy, Check, Plus, Info, Download } from "lucide-react"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -307,6 +307,43 @@ export default function SchedulingPanel() {
     setShifts(p => p.filter(s => s.slotId !== slotId))
   }
 
+  function downloadCSV() {
+    const pad     = (n: number) => n.toString().padStart(2, "0")
+    const fmtDate = (d: Date)   => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const fmtTime = (h: number) => `${pad(h)}:00`
+
+    const rows: string[] = ["First Name,Last Name,Role,Location,Department,Date,Start,End"]
+
+    for (const slot of slots) {
+      // "Server 1" → firstName="Server", lastName="1"
+      const parts     = slot.label.split(" ")
+      const lastName  = parts.pop() ?? ""
+      const firstName = parts.join(" ")
+      const dept      = slot.role.charAt(0).toUpperCase() + slot.role.slice(1)
+
+      for (let day = 0; day < 7; day++) {
+        for (const sh of getShifts(slot.id, day)) {
+          rows.push(
+            [firstName, lastName, slot.label, "Walter's303", dept, fmtDate(weekDates[day]), fmtTime(sh.start), fmtTime(sh.end)]
+              .map(v => `"${v}"`)
+              .join(",")
+          )
+        }
+      }
+    }
+
+    const csv  = rows.join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement("a")
+    a.href     = url
+    a.download = `walters303-schedule-${weekLabel(weekDates).replace(/\s+/g, "-")}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   function copySchedule() {
     const lines: string[] = [
       `HOST AI Schedule — Walter's303 · ${weekLabel(weekDates)}`,
@@ -395,6 +432,23 @@ export default function SchedulingPanel() {
             ? <><Check style={{ width: 12, height: 12 }} /> Copied!</>
             : <><Copy style={{ width: 12, height: 12 }} /> Copy for 7Shifts</>
           }
+        </button>
+
+        {/* Download CSV */}
+        <button
+          onClick={downloadCSV}
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            height: 32, padding: "0 14px", borderRadius: 7, cursor: "pointer",
+            fontSize: 12, fontWeight: 600,
+            background: "#F8FAFC",
+            border: "1px solid #E2E8F0",
+            color: "#475569",
+            transition: "all 0.2s",
+          }}
+          title="Download 7Shifts-compatible CSV"
+        >
+          <Download style={{ width: 12, height: 12 }} /> Download CSV
         </button>
 
         {/* Publish */}
@@ -630,7 +684,7 @@ export default function SchedulingPanel() {
         <Info style={{ width: 12, height: 12, color: "#D97706", flexShrink: 0 }} />
         <span style={{ fontSize: 11, color: "#92400E" }}>
           <strong>HOST AI</strong> pre-filled this schedule from your queue data &amp; reservation history.
-          Tap any empty cell to add a shift · Click <strong>×</strong> on a pill to remove it · Add positions with the <strong>+ Add</strong> buttons · Hit <strong>Copy for 7Shifts</strong> to paste directly into 7Shifts.
+          Tap any empty cell to add a shift · Click <strong>×</strong> on a pill to remove it · Add positions with the <strong>+ Add</strong> buttons · <strong>Copy for 7Shifts</strong> to paste as text · <strong>Download CSV</strong> to import directly into 7Shifts.
         </span>
       </div>
     </div>
