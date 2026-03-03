@@ -931,6 +931,12 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
   const [shiftErr,        setShiftErr]        = useState<string | null>(null)
   const [showHowTo,       setShowHowTo]       = useState(false)
 
+  // Generic state for other connectable platforms (Homebase, When I Work, ...)
+  const [otherKey,         setOtherKey]         = useState("")          // key input field
+  const [otherCos,         setOtherCos]         = useState<Record<string, { id: string | number; name: string }>>({})
+  const [otherConnecting,  setOtherConnecting]  = useState(false)
+  const [otherErr,         setOtherErr]         = useState<string | null>(null)
+
   useEffect(() => {
     fetch(`${API}/settings`)
       .then(r => r.json())
@@ -940,7 +946,7 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
       })
       .catch(() => {})
 
-    // Load scheduling connection from localStorage
+    // Load scheduling connections from localStorage
     try {
       const savedPlatform = localStorage.getItem("host_scheduling_platform")
       const savedKey      = localStorage.getItem("host_7shifts_key")
@@ -948,6 +954,14 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
       if (savedPlatform) setSchedPlatform(savedPlatform)
       if (savedKey)      setShiftSaved(savedKey)
       if (savedCo)       setShiftCo(JSON.parse(savedCo))
+
+      // Load other platform connections
+      const loaded: Record<string, { id: string | number; name: string }> = {}
+      for (const pid of ["homebase", "wheniwork"]) {
+        const raw = localStorage.getItem(`host_${pid}_company`)
+        if (raw) try { loaded[pid] = JSON.parse(raw) } catch {}
+      }
+      if (Object.keys(loaded).length) setOtherCos(loaded)
     } catch {}
   }, [])
 
@@ -1058,17 +1072,64 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
     setShiftSaved(null); setShiftCo(null); setShiftKey(""); setShiftErr(null)
   }
 
+  // Generic connect helpers
+  async function connectOtherPlatform(pid: string) {
+    const sp = SCHED_PLATFORMS[pid]
+    if (!sp?.canConnect || !sp.proxyRoute) return
+    if (!otherKey.trim()) return
+    setOtherConnecting(true); setOtherErr(null)
+    try {
+      const res = await fetch(sp.proxyRoute, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [sp.proxyHeader]: otherKey.trim() },
+        body: JSON.stringify({ endpoint: sp.verifyEndpoint }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        // Resolve id + name from nested response shapes
+        const root = Array.isArray(data) ? data[0]
+          : (data?.data ?? data?.account ?? data)
+        const id   = root?.id   ?? pid
+        const name = root?.name ?? root?.company_name ?? sp.name
+        if (root !== undefined) {
+          const co = { id, name }
+          localStorage.setItem(`host_${pid}_key`,      otherKey.trim())
+          localStorage.setItem(`host_${pid}_company`,  JSON.stringify(co))
+          localStorage.setItem("host_scheduling_platform", pid)
+          setOtherCos(prev => ({ ...prev, [pid]: co }))
+          setSchedPlatform(pid); setOtherKey("")
+        } else {
+          setOtherErr(`Invalid key — check ${sp.name}: ${sp.keyPath}`)
+        }
+      } else {
+        setOtherErr(`Invalid key — check ${sp.name}: ${sp.keyPath}`)
+      }
+    } catch {
+      setOtherErr("Connection failed. Check your internet and try again.")
+    }
+    setOtherConnecting(false)
+  }
+
+  function disconnectOtherPlatform(pid: string) {
+    localStorage.removeItem(`host_${pid}_key`)
+    localStorage.removeItem(`host_${pid}_company`)
+    setOtherCos(prev => { const n = { ...prev }; delete n[pid]; return n })
+    setOtherKey(""); setOtherErr(null)
+  }
+
   // Scheduling platform config
   const SCHED_PLATFORMS: Record<string, {
-    name: string; color: string; fullApi: boolean
+    name: string; color: string; canConnect: boolean; canPublish: boolean
     planNote?: string; keyPath: string; csvImport: string
+    proxyRoute: string; proxyHeader: string
+    verifyEndpoint: string
   }> = {
-    "7shifts":     { name: "7Shifts",        color: "#7C3AED", fullApi: true,  planNote: "Requires The Works plan or above",       keyPath: "Settings → Integrations → API Keys → Generate New Key",          csvImport: "Schedule → Import" },
-    "homebase":    { name: "Homebase",        color: "#FF6B35", fullApi: false, planNote: "Free plan supported",                    keyPath: "Settings → Integrations → API Access → Generate Token",          csvImport: "Schedule → Import Shifts → Upload CSV" },
-    "wheniwork":   { name: "When I Work",     color: "#00B2A9", fullApi: false,                                                     keyPath: "Profile → Integrations → API Tokens → Create Token",             csvImport: "Scheduler → Import → Upload CSV" },
-    "deputy":      { name: "Deputy",          color: "#3B82F6", fullApi: false,                                                     keyPath: "Business Settings → Integrations → API → Create API Token",      csvImport: "Scheduling → Import → CSV Upload" },
-    "sling":       { name: "Sling",           color: "#F97316", fullApi: false,                                                     keyPath: "N/A — use CSV import",                                           csvImport: "Schedule → More → Import CSV" },
-    "hotschedules":{ name: "HotSchedules",    color: "#DC2626", fullApi: false, planNote: "Enterprise — contact your account rep", keyPath: "Admin → Integrations → API Management → Create Key",             csvImport: "Schedule → Actions → Import via CSV" },
+    "7shifts":     { name: "7Shifts",     color: "#7C3AED", canConnect: true,  canPublish: true,  planNote: "Requires The Works plan or above",       keyPath: "Settings → Integrations → API Keys → Generate New Key",         csvImport: "Schedule → Import",                    proxyRoute: "/api/7shifts",   proxyHeader: "x-7shifts-key",  verifyEndpoint: "/company"        },
+    "homebase":    { name: "Homebase",    color: "#FF6B35", canConnect: true,  canPublish: false, planNote: "Free plan supported",                    keyPath: "Settings → Integrations → API Access → Generate Token",         csvImport: "Schedule → Import Shifts → Upload CSV", proxyRoute: "/api/homebase",  proxyHeader: "x-homebase-key", verifyEndpoint: "/v1/businesses"  },
+    "wheniwork":   { name: "When I Work", color: "#00B2A9", canConnect: true,  canPublish: false,                                                    keyPath: "Profile → Integrations → API Tokens → Create Token",            csvImport: "Scheduler → Import → Upload CSV",      proxyRoute: "/api/wheniwork", proxyHeader: "x-wiw-key",      verifyEndpoint: "/account"        },
+    "deputy":      { name: "Deputy",      color: "#3B82F6", canConnect: false, canPublish: false,                                                    keyPath: "Business Settings → Integrations → API → Create API Token",     csvImport: "Scheduling → Import → CSV Upload",     proxyRoute: "",               proxyHeader: "",               verifyEndpoint: ""                },
+    "sling":       { name: "Sling",       color: "#F97316", canConnect: false, canPublish: false,                                                    keyPath: "N/A — use CSV import",                                          csvImport: "Schedule → More → Import CSV",         proxyRoute: "",               proxyHeader: "",               verifyEndpoint: ""                },
+    "hotschedules":{ name: "HotSchedules",color: "#DC2626", canConnect: false, canPublish: false, planNote: "Enterprise — contact your account rep", keyPath: "Admin → Integrations → API Management → Create Key",            csvImport: "Schedule → Actions → Import via CSV",  proxyRoute: "",               proxyHeader: "",               verifyEndpoint: ""                },
   }
 
   const PLATFORMS: Record<string, { name: string; hint: string }> = {
@@ -1283,7 +1344,7 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
                       border: `1px solid ${sp.color}33`,
                       borderRadius: 5, padding: "1px 7px",
                     }}>{sp.name}</span>
-                    {!sp.fullApi && (
+                    {!sp.canConnect && (
                       <span style={{
                         fontSize: 9, fontWeight: 700, letterSpacing: "0.06em",
                         background: C.orangeBg, color: C.orange,
@@ -1293,10 +1354,10 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
                     )}
                   </div>
                   <div style={{ fontSize: 11, color: C.muted }}>
-                    {sp.fullApi ? `Push HOST schedules directly to ${sp.name}` : `Export HOST schedules for ${sp.name}`}
+                    {sp.canPublish ? `Push HOST schedules directly to ${sp.name}` : sp.canConnect ? `Connect ${sp.name} — publish support coming soon` : `Export HOST schedules for ${sp.name}`}
                   </div>
                 </div>
-                {shiftCo && is7 && (
+                {((is7 && shiftCo) || (!is7 && otherCos[schedPlatform])) && (
                   <span style={{
                     fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
                     background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
@@ -1319,14 +1380,14 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
                   }}
                   style={{ ...inputSt, resize: undefined, cursor: "pointer" }}
                 >
-                  {Object.entries(SCHED_PLATFORMS).map(([id, { name, fullApi }]) => (
-                    <option key={id} value={id}>{name}{fullApi ? " ✓ Live API" : ""}</option>
+                  {Object.entries(SCHED_PLATFORMS).map(([id, { name, canPublish, canConnect }]) => (
+                    <option key={id} value={id}>{name}{canPublish ? " ✓ Live API" : canConnect ? " ✓ Connect" : ""}</option>
                   ))}
                 </select>
               </div>
 
               {/* 7Shifts — full API flow */}
-              {is7 && sp.fullApi && (
+              {is7 && (
                 shiftCo ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div style={{
@@ -1405,8 +1466,101 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
                 )
               )}
 
-              {/* Other platforms — CSV instructions + coming soon */}
-              {!is7 && (
+              {/* canConnect platforms — Homebase / When I Work */}
+              {!is7 && sp.canConnect && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {otherCos[schedPlatform] ? (
+                    /* ── Connected state ── */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div style={{
+                        background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                        borderRadius: 8, padding: "12px 14px",
+                      }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{otherCos[schedPlatform].name}</div>
+                        <div style={{ fontSize: 11, color: C.green, opacity: 0.75, marginTop: 2 }}>
+                          Connected to {sp.name}. HOST can read your account data.
+                        </div>
+                      </div>
+                      <div style={{
+                        background: C.orangeBg, border: `1px solid ${C.orangeBorder}`,
+                        borderRadius: 8, padding: "10px 14px",
+                        display: "flex", alignItems: "flex-start", gap: 8,
+                      }}>
+                        <Sparkles style={{ width: 12, height: 12, color: C.orange, marginTop: 1, flexShrink: 0 }} />
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.orange }}>
+                          Schedule publishing to {sp.name} coming soon
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        {setPage && (
+                          <Btn onClick={() => setPage("schedule")} small icon={CalendarCheck}>
+                            Open Schedule
+                          </Btn>
+                        )}
+                        <button
+                          onClick={() => disconnectOtherPlatform(schedPlatform)}
+                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.muted, padding: 0 }}
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Not connected — API key input ── */
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div>
+                        <button
+                          onClick={() => setShowHowTo(v => !v)}
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            fontSize: 11, fontWeight: 600, color: sp.color, padding: 0,
+                            display: "flex", alignItems: "center", gap: 5,
+                          }}
+                        >
+                          {showHowTo ? "▲" : "▼"} Where to find your API key
+                        </button>
+                        {showHowTo && (
+                          <div style={{ margin: "10px 0 0", fontSize: 11, color: C.text2, lineHeight: 2 }}>
+                            <strong>{sp.name}:</strong> {sp.keyPath}
+                          </div>
+                        )}
+                        {sp.planNote && (
+                          <p style={{ fontSize: 10, color: C.muted, margin: "8px 0 0", lineHeight: 1.5 }}>
+                            ⓘ {sp.planNote}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>
+                          API Key
+                        </label>
+                        <input
+                          type="password"
+                          value={otherKey}
+                          onChange={e => setOtherKey(e.target.value)}
+                          onKeyDown={e => e.key === "Enter" && connectOtherPlatform(schedPlatform)}
+                          placeholder={`Paste your ${sp.name} API key here…`}
+                          style={{ ...inputSt, resize: undefined, fontFamily: "monospace" }}
+                        />
+                      </div>
+                      <Btn
+                        onClick={() => connectOtherPlatform(schedPlatform)}
+                        variant="primary" small
+                        disabled={!otherKey.trim() || otherConnecting}
+                        icon={otherConnecting ? Loader2 : undefined}
+                      >
+                        {otherConnecting ? "Connecting…" : `Connect ${sp.name}`}
+                      </Btn>
+                      {otherErr && (
+                        <p style={{ fontSize: 11, color: C.red, margin: 0, lineHeight: 1.5 }}>{otherErr}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* CSV-only platforms — Deputy, Sling, HotSchedules */}
+              {!is7 && !sp.canConnect && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   {/* CSV workflow */}
                   <div style={{

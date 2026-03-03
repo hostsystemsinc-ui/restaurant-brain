@@ -1,0 +1,1210 @@
+"use client"
+
+import { useEffect, useState, useCallback } from "react"
+import Link from "next/link"
+import {
+  Users, Clock, CheckCircle2, BellRing,
+  RefreshCw, Wifi, WifiOff, Plus, X,
+  LayoutDashboard, GripVertical, CalendarDays, CalendarCheck,
+} from "lucide-react"
+import {
+  DndContext, DragOverlay,
+  PointerSensor, TouchSensor,
+  useSensor, useSensors,
+  useDraggable, useDroppable,
+  pointerWithin, MeasuringStrategy,
+  type DragStartEvent, type DragEndEvent,
+} from "@dnd-kit/core"
+import { CSS } from "@dnd-kit/utilities"
+
+const API = "https://restaurant-brain-production.up.railway.app"
+
+// ── Floor plan ─────────────────────────────────────────────────────────────────
+
+const CANVAS_W = 920
+const CANVAS_H = 500
+
+interface FloorPos {
+  number: number
+  shape: "round" | "square" | "rect"
+  x: number; y: number; w: number; h: number
+  section: "main" | "bar"
+}
+
+const FLOOR_PLAN: FloorPos[] = [
+  // Window 2-tops (far left, round)
+  { number: 1,  shape: "round",  x: 28,  y: 32,  w: 72, h: 72,  section: "main" },
+  { number: 2,  shape: "round",  x: 28,  y: 148, w: 72, h: 72,  section: "main" },
+  { number: 3,  shape: "round",  x: 28,  y: 264, w: 72, h: 72,  section: "main" },
+  // 4-tops (second column, square)
+  { number: 4,  shape: "square", x: 148, y: 26,  w: 95, h: 95,  section: "main" },
+  { number: 5,  shape: "square", x: 148, y: 163, w: 95, h: 95,  section: "main" },
+  { number: 6,  shape: "square", x: 148, y: 298, w: 95, h: 95,  section: "main" },
+  // Center feature tables (rect)
+  { number: 7,  shape: "rect",   x: 293, y: 26,  w: 162, h: 112, section: "main" },
+  { number: 8,  shape: "rect",   x: 293, y: 196, w: 162, h: 112, section: "main" },
+  { number: 9,  shape: "rect",   x: 293, y: 366, w: 162, h: 98,  section: "main" },
+  // Right 4-tops
+  { number: 10, shape: "square", x: 506, y: 26,  w: 95, h: 95,  section: "main" },
+  { number: 11, shape: "square", x: 506, y: 163, w: 95, h: 95,  section: "main" },
+  { number: 12, shape: "square", x: 506, y: 298, w: 95, h: 95,  section: "main" },
+  // Bar stools (far right, behind divider)
+  { number: 13, shape: "round",  x: 748, y: 36,  w: 60, h: 60,  section: "bar" },
+  { number: 14, shape: "round",  x: 748, y: 134, w: 60, h: 60,  section: "bar" },
+  { number: 15, shape: "round",  x: 748, y: 232, w: 60, h: 60,  section: "bar" },
+  { number: 16, shape: "round",  x: 748, y: 330, w: 60, h: 60,  section: "bar" },
+]
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface Table {
+  id: string
+  table_number: number
+  capacity: number
+  status: "available" | "occupied" | "reserved"
+}
+
+interface QueueEntry {
+  id: string
+  name: string
+  party_size: number
+  status: "waiting" | "ready" | "seated" | "removed"
+  source: string
+  quoted_wait: number | null
+  wait_estimate?: number
+  arrival_time: string
+  position?: number
+  phone: string | null
+  notes: string | null
+}
+
+interface LocalOccupant { name: string; party_size: number }
+
+interface Reservation {
+  id:         string
+  guest_name: string
+  party_size: number
+  date:       string   // "YYYY-MM-DD"
+  time:       string   // "HH:MM" or "HH:MM:SS"
+  status:     string
+  phone:      string | null
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function timeWaiting(iso: string): string {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 60) return `${diff}s`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
+}
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function fmt12Res(t: string): string {
+  const [h, m] = t.split(":").map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
+}
+
+type ResUrgency = "upcoming" | "arriving" | "now" | "late"
+
+function getResUrgency(dateStr: string, timeStr: string, now: Date): ResUrgency {
+  const [h, m] = timeStr.split(":").map(Number)
+  const [y, mo, d] = dateStr.split("-").map(Number)
+  const resTime = new Date(y, mo - 1, d, h, m, 0)
+  const diff = (resTime.getTime() - now.getTime()) / 60_000
+  if (diff > 30)  return "upcoming"
+  if (diff > 15)  return "arriving"
+  if (diff > -15) return "now"
+  return "late"
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  nfc: "NFC", host: "Host", phone: "Phone",
+  web: "Web", app: "App", OpenTable: "OT",
+}
+
+// ── Draggable Queue Card ───────────────────────────────────────────────────────
+
+function DraggableQueueCard({
+  entry, onSeat, onNotify, onRemove,
+}: {
+  entry: QueueEntry
+  onSeat: () => void
+  onNotify: () => void
+  onRemove: () => void
+}) {
+  const isReady = entry.status === "ready"
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: entry.id,
+    data: { entry },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.35 : 1,
+        touchAction: "none",
+        background: isReady ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
+        border: `1px solid ${isReady ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.16)"}`,
+        borderRadius: 12,
+        cursor: isDragging ? "grabbing" : "grab",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 12px",
+      }}
+    >
+      {/* Grip */}
+      <GripVertical
+        className="w-3.5 h-3.5 shrink-0"
+        style={{ color: "rgba(255,200,150,0.45)" }}
+      />
+
+      {/* Position badge */}
+      <div
+        className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums"
+        style={{
+          background: isReady ? "rgba(34,197,94,0.20)" : "rgba(255,185,100,0.12)",
+          color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)",
+        }}
+      >
+        {entry.position ?? "—"}
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span
+            className="font-semibold text-[13px] leading-snug truncate"
+            style={{ color: isReady ? "#86efac" : "rgba(255,248,240,0.97)" }}
+          >
+            {entry.name || "Guest"}
+          </span>
+          {isReady && (
+            <span
+              className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded shrink-0 animate-pulse"
+              style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}
+            >
+              READY
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(255,200,150,0.70)", fontSize: 11 }}>
+          <span className="flex items-center gap-0.5">
+            <Users className="w-2.5 h-2.5" />{entry.party_size}p
+          </span>
+          <span style={{ color: "rgba(255,185,100,0.45)" }}>·</span>
+          <span className="flex items-center gap-0.5">
+            <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
+          </span>
+        </div>
+      </div>
+
+      {/* Action buttons — stopPropagation prevents drag from starting on click */}
+      <div className="flex items-center gap-0.5 shrink-0">
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={onSeat}
+          className="h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:brightness-125"
+          style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}
+          title="Seat"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5" />
+        </button>
+        {!isReady ? (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={onNotify}
+            className="h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:brightness-125"
+            style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }}
+            title="Notify"
+          >
+            <BellRing className="w-3.5 h-3.5" />
+          </button>
+        ) : (
+          <div className="h-7 w-7" />
+        )}
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={onRemove}
+          className="h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:bg-red-500/10 hover:text-red-400"
+          style={{ color: "rgba(255,200,150,0.48)" }}
+          title="Remove"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Drag ghost (DragOverlay) ───────────────────────────────────────────────────
+
+function DragGhost({ entry }: { entry: QueueEntry }) {
+  return (
+    <div
+      style={{
+        background: "rgba(10,6,3,0.96)",
+        border: "1px solid rgba(255,185,100,0.22)",
+        borderRadius: 10,
+        padding: "9px 13px",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+        cursor: "grabbing",
+        minWidth: 130,
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 13, color: "rgba(255,248,240,0.92)" }}>
+        {entry.name || "Guest"}
+      </div>
+      <div style={{ fontSize: 11, color: "rgba(255,200,150,0.4)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
+        <Users style={{ width: 10, height: 10 }} />
+        {entry.party_size} guests
+      </div>
+    </div>
+  )
+}
+
+// ── Droppable floor table ──────────────────────────────────────────────────────
+
+function DroppableFloorTable({
+  pos, table, occupant, onClear,
+}: {
+  pos: FloorPos
+  table?: Table
+  occupant?: LocalOccupant
+  onClear?: () => void
+}) {
+  const isOccupied = !!occupant || (!!table && table.status !== "available")
+  const canDrop = !isOccupied
+  const noTable = !table
+  const avail = canDrop
+
+  const { setNodeRef, isOver } = useDroppable({
+    id: `table-${pos.number}`,
+    disabled: !canDrop,
+  })
+
+  const bg = isOver && avail
+    ? "rgba(34,197,94,0.45)"
+    : isOccupied ? "rgba(239,68,68,0.28)"
+    : noTable ? "rgba(255,255,255,0.07)"
+    : "rgba(34,197,94,0.22)"
+
+  const borderColor = isOver && avail
+    ? "#22c55e"
+    : isOccupied ? "rgba(239,68,68,0.90)"
+    : noTable ? "rgba(255,255,255,0.32)"
+    : "rgba(34,197,94,0.82)"
+
+  const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        position: "absolute",
+        left: `${(pos.x / CANVAS_W * 100).toFixed(3)}%`,
+        top: `${(pos.y / CANVAS_H * 100).toFixed(3)}%`,
+        width: `${(pos.w / CANVAS_W * 100).toFixed(3)}%`,
+        height: `${(pos.h / CANVAS_H * 100).toFixed(3)}%`,
+        borderRadius,
+        background: bg,
+        border: `1.5px solid ${borderColor}`,
+        boxShadow: isOver && avail
+          ? "0 0 0 4px rgba(34,197,94,0.35), inset 0 0 20px rgba(34,197,94,0.10)"
+          : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
+          : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
+          : "none",
+        transition: "border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 2,
+        overflow: "hidden",
+        cursor: isOccupied && onClear ? "pointer" : canDrop ? "copy" : "default",
+      }}
+      onClick={isOccupied && onClear ? onClear : undefined}
+    >
+      {isOccupied && onClear ? (
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onClear() }}
+          style={{
+            position: "absolute",
+            top: pos.shape === "round" ? "10%" : 4,
+            right: pos.shape === "round" ? "10%" : 4,
+            width: 16, height: 16,
+            borderRadius: "50%",
+            background: "rgba(239,68,68,0.75)",
+            border: "none",
+            cursor: "pointer",
+            color: "rgba(255,255,255,0.95)",
+            fontSize: 11,
+            fontWeight: 900,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            padding: 0,
+          }}
+          title="Clear table"
+        >
+          ×
+        </button>
+      ) : (
+        <div style={{
+          position: "absolute",
+          top: pos.shape === "round" ? "16%" : 7,
+          right: pos.shape === "round" ? "16%" : 7,
+          width: 6, height: 6,
+          borderRadius: "50%",
+          background: noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
+          opacity: 0.85,
+        }} />
+      )}
+
+      {isOver && avail ? (
+        <span style={{
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: "0.12em",
+          color: "rgba(34,197,94,0.9)",
+        }}>
+          DROP
+        </span>
+      ) : occupant ? (
+        <>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,200,150,0.75)", letterSpacing: "0.1em" }}>
+            T{pos.number}
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 11 : 10,
+            fontWeight: 700,
+            color: "rgba(255,240,220,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 4,
+          }}>
+            {occupant.name}
+          </span>
+          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.70)" }}>
+            {occupant.party_size}p
+          </span>
+        </>
+      ) : table && table.status !== "available" ? (
+        <>
+          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(239,68,68,0.95)" }}>
+            {pos.number}
+          </span>
+          <span style={{ fontSize: 9, color: "rgba(239,68,68,0.72)" }}>{table.capacity}p</span>
+        </>
+      ) : (
+        <>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 17 : 14,
+            fontWeight: 800,
+            color: table ? "#22c55e" : "rgba(255,200,150,0.55)",
+          }}>
+            {pos.number}
+          </span>
+          {table && (
+            <span style={{ fontSize: 10, color: "rgba(34,197,94,0.90)" }}>
+              {table.capacity}p
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Floor map ──────────────────────────────────────────────────────────────────
+
+function FloorMap({
+  tables, localOccupants, onClear,
+}: {
+  tables: Table[]
+  localOccupants: Map<number, LocalOccupant>
+  onClear: (tableId: string | undefined, tableNumber: number) => void
+}) {
+  const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
+
+  return (
+    <div
+      className="flex-1 relative overflow-hidden"
+      style={{ background: "#0a0704" }}
+    >
+      <span style={{
+        position: "absolute",
+        top: 14,
+        left: 18,
+        fontSize: 9,
+        fontWeight: 800,
+        letterSpacing: "0.2em",
+        color: "rgba(255,200,150,0.45)",
+        textTransform: "uppercase",
+        zIndex: 1,
+        pointerEvents: "none",
+      }}>
+        Floor Plan
+      </span>
+
+      <div style={{
+        position: "absolute",
+        inset: "30px 16px 40px 16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+        <div style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: `${CANVAS_W} / ${CANVAS_H}`,
+          maxHeight: "100%",
+        }}>
+          {/* Bar section background */}
+          <div style={{
+            position: "absolute",
+            left: `${(726 / CANVAS_W * 100).toFixed(2)}%`,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(255,185,100,0.03)",
+            borderLeft: "1px solid rgba(255,185,100,0.16)",
+            borderRadius: "0 8px 8px 0",
+          }} />
+
+          {/* Section labels */}
+          <span style={{
+            position: "absolute",
+            left: `${(760 / CANVAS_W * 100).toFixed(2)}%`,
+            top: `${(10 / CANVAS_H * 100).toFixed(2)}%`,
+            fontSize: 8,
+            fontWeight: 800,
+            letterSpacing: "0.22em",
+            color: "rgba(255,200,150,0.55)",
+            textTransform: "uppercase",
+            pointerEvents: "none",
+          }}>
+            BAR
+          </span>
+          <span style={{
+            position: "absolute",
+            left: `${(30 / CANVAS_W * 100).toFixed(2)}%`,
+            bottom: `${(12 / CANVAS_H * 100).toFixed(2)}%`,
+            fontSize: 8,
+            fontWeight: 800,
+            letterSpacing: "0.2em",
+            color: "rgba(255,200,150,0.45)",
+            textTransform: "uppercase",
+            pointerEvents: "none",
+          }}>
+            Main Dining
+          </span>
+
+          {/* "Powered by HOST" */}
+          <span style={{
+            position: "absolute",
+            right: `${(8 / CANVAS_W * 100).toFixed(2)}%`,
+            bottom: `${(8 / CANVAS_H * 100).toFixed(2)}%`,
+            fontSize: 8,
+            letterSpacing: "0.08em",
+            color: "rgba(255,185,100,0.35)",
+            pointerEvents: "none",
+          }}>
+            Powered by <strong>HOST</strong>
+          </span>
+
+          {/* Tables */}
+          {FLOOR_PLAN.map(pos => {
+            const table = tableByNumber.get(pos.number)
+            const occupant = localOccupants.get(pos.number)
+            return (
+              <DroppableFloorTable
+                key={pos.number}
+                pos={pos}
+                table={table}
+                occupant={occupant}
+                onClear={() => onClear(table?.id, pos.number)}
+              />
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Hint text */}
+      <div style={{
+        position: "absolute",
+        bottom: 14,
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontSize: 10,
+        color: "rgba(255,200,150,0.45)",
+        letterSpacing: "0.1em",
+        whiteSpace: "nowrap",
+        pointerEvents: "none",
+      }}>
+        Drag guests from the queue to seat them
+      </div>
+    </div>
+  )
+}
+
+// ── Seat Table Picker ──────────────────────────────────────────────────────────
+// Generic — accepts any guest object with name + party_size
+
+function SeatTablePicker({
+  guest,
+  tables,
+  localOccupants,
+  onConfirm,
+  onClose,
+}: {
+  guest: { name: string | null; party_size: number }
+  tables: Table[]
+  localOccupants: Map<number, LocalOccupant>
+  onConfirm: (tableNumber: number, tableId: string | undefined) => void
+  onClose: () => void
+}) {
+  const available = FLOOR_PLAN.filter(pos => {
+    if (localOccupants.has(pos.number)) return false
+    const t = tables.find(t => t.table_number === pos.number)
+    return !t || t.status === "available"
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-6"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+            Seat Guest
+          </span>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs mb-6" style={{ color: "rgba(255,200,150,0.3)" }}>
+          {guest.name || "Guest"} · {guest.party_size}p — choose a table
+        </p>
+
+        {available.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-xs" style={{ color: "rgba(255,200,150,0.3)" }}>No tables available right now</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+            {available.map(pos => {
+              const t = tables.find(t => t.table_number === pos.number)
+              return (
+                <button
+                  key={pos.number}
+                  onClick={() => onConfirm(pos.number, t?.id)}
+                  className="flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all active:scale-95 hover:brightness-125"
+                  style={{
+                    background: "rgba(34,197,94,0.07)",
+                    border: "1px solid rgba(34,197,94,0.25)",
+                  }}
+                >
+                  <span className="text-xl font-bold" style={{ color: "rgba(34,197,94,0.9)" }}>
+                    {pos.number}
+                  </span>
+                  {t && (
+                    <span className="text-[10px]" style={{ color: "rgba(34,197,94,0.45)" }}>
+                      {t.capacity}p
+                    </span>
+                  )}
+                  <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: "rgba(34,197,94,0.3)" }}>
+                    {pos.section}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        <button
+          onClick={onClose}
+          className="w-full mt-5 py-3 rounded-xl text-xs font-bold tracking-[0.1em] uppercase"
+          style={{ background: "rgba(255,185,100,0.05)", color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.07)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Add Guest Drawer ───────────────────────────────────────────────────────────
+
+function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [name, setName]           = useState("")
+  const [partySize, setPartySize] = useState(2)
+  const [phone, setPhone]         = useState("")
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState("")
+
+  const submit = async () => {
+    setLoading(true); setError("")
+    try {
+      const r = await fetch(`${API}/queue/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim() || null,
+          party_size: partySize,
+          phone: phone.trim() || null,
+          preference: "asap",
+          source: "host",
+          restaurant_id: "272a8876-e4e6-4867-831d-0525db80a8db",
+        }),
+      })
+      if (!r.ok) throw new Error()
+      onAdded(); onClose()
+    } catch {
+      setError("Could not add guest.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[400px] rounded-t-3xl sm:rounded-2xl p-6"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.12)" }} />
+        <div className="flex items-center justify-between mb-7">
+          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+            Add Guest
+          </span>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/8" style={{ color: "rgba(255,200,150,0.25)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.28)" }}>Party Size</p>
+        <div className="flex items-center gap-6 mb-7">
+          <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-lg hover:bg-white/8 transition-colors"
+            style={{ border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,200,150,0.35)" }}>−</button>
+          <span className="text-5xl font-extralight w-12 text-center tabular-nums" style={{ color: "rgba(255,248,240,0.92)" }}>{partySize}</span>
+          <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-lg hover:bg-white/8 transition-colors"
+            style={{ border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,200,150,0.35)" }}>+</button>
+        </div>
+
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.28)" }}>Name</p>
+        <input type="text" value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
+          className="w-full px-4 py-3 rounded-xl text-sm placeholder-white/15 outline-none mb-4"
+          style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,248,240,0.88)" }} />
+
+        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.28)" }}>
+          Phone <span style={{ color: "rgba(255,200,150,0.14)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+        </p>
+        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
+          className="w-full px-4 py-3 rounded-xl text-sm placeholder-white/15 outline-none mb-6"
+          style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,248,240,0.88)" }} />
+
+        {error && <p className="text-xs text-red-400 mb-4 text-center">{error}</p>}
+
+        <button onClick={submit} disabled={loading}
+          className="w-full py-3.5 rounded-xl text-xs font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
+          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#D9321C", color: "white" }}>
+          {loading ? "Adding…" : "Add to Queue"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Dashboard ─────────────────────────────────────────────────────────────
+
+export default function HostDashboard() {
+  const [tables, setTables]               = useState<Table[]>([])
+  const [queue, setQueue]                 = useState<QueueEntry[]>([])
+  const [online, setOnline]               = useState(true)
+  const [lastSync, setLastSync]           = useState(new Date())
+  const [showAdd, setShowAdd]             = useState(false)
+  const [avgWait, setAvgWait]             = useState(0)
+  const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
+  const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
+  const [resPicker, setResPicker]         = useState<Reservation | null>(null)
+  const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
+  const [now, setNow]                     = useState(() => new Date())
+  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
+    try {
+      const s = localStorage.getItem("host_occupants")
+      return s ? new Map(JSON.parse(s) as [number, LocalOccupant][]) : new Map()
+    } catch { return new Map() }
+  })
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 5 } }),
+  )
+
+  // Persist floor map occupancy to localStorage
+  useEffect(() => {
+    try { localStorage.setItem("host_occupants", JSON.stringify([...localOccupants])) } catch {}
+  }, [localOccupants])
+
+  // Live clock — ticks every 30s for urgency updates
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const fetchTables   = useCallback(async () => { try { const r = await fetch(`${API}/tables`);   if (r.ok) setTables(await r.json()) } catch {} }, [])
+  const fetchQueue    = useCallback(async () => { try { const r = await fetch(`${API}/queue`);    if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) } } catch { setOnline(false) } }, [])
+  const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
+  const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
+
+  // Fetch today's confirmed reservations
+  const fetchReservations = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/reservations`)
+      if (r.ok) {
+        const all: Reservation[] = await r.json()
+        const todayStr = toLocalDateStr(new Date())
+        setTodayRes(
+          all
+            .filter(r => r.date === todayStr && r.status === "confirmed")
+            .sort((a, b) => a.time.localeCompare(b.time))
+        )
+      }
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    refreshAll(); fetchInsights(); fetchReservations()
+    const fast   = setInterval(refreshAll, 4000)
+    const slow   = setInterval(fetchInsights, 30000)
+    const resInt = setInterval(fetchReservations, 30000)
+    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt) }
+  }, [refreshAll, fetchInsights, fetchReservations])
+
+  const seat   = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }); refreshAll() }, [refreshAll])
+  const notify = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }); refreshAll() }, [refreshAll])
+  const remove = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }); refreshAll() }, [refreshAll])
+
+  const openSeatPicker = useCallback((entry: QueueEntry) => {
+    setSeatPicker(entry)
+  }, [])
+
+  const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
+    setSeatPicker(null)
+    if (tableId) {
+      await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
+    } else {
+      await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
+    }
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
+    refreshAll()
+  }, [refreshAll])
+
+  // Check in a reservation — mark as seated + assign table
+  const checkInConfirm = useCallback(async (res: Reservation, tableNumber: number, tableId: string | undefined) => {
+    setResPicker(null)
+    // Mark reservation as seated
+    try {
+      await fetch(`${API}/reservations/${res.id}/status?status=seated`, { method: "PATCH" })
+    } catch {}
+    // Remove from today's sidebar immediately
+    setTodayRes(prev => prev.filter(r => r.id !== res.id))
+    // Mark table occupied if an API table was found
+    if (tableId) {
+      try { await fetch(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
+      fetchTables()
+    }
+    // Always update local occupant map (floor map visual)
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
+  }, [fetchTables])
+
+  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
+    setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+    if (tableId) {
+      try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
+      fetchTables()
+    }
+  }, [fetchTables])
+
+  // ── DnD handlers ──────────────────────────────────────────────────────
+
+  function handleDragStart(event: DragStartEvent) {
+    const entry = (event.active.data.current as { entry: QueueEntry } | undefined)?.entry
+    setActiveDrag(entry ?? null)
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    setActiveDrag(null)
+    if (!over || !active) return
+
+    const tableNumber = parseInt((over.id as string).replace("table-", ""))
+    const entry = (active.data.current as { entry: QueueEntry } | undefined)?.entry
+    if (!entry || isNaN(tableNumber)) return
+
+    if (localOccupants.has(tableNumber)) return
+
+    const apiTable = tables.find(t => t.table_number === tableNumber)
+    if (apiTable) {
+      fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" }).then(() => refreshAll())
+    } else {
+      seat(entry.id)
+    }
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
+  }
+
+  // Floor availability
+  const floorOccupied = FLOOR_PLAN.filter(pos => {
+    if (localOccupants.has(pos.number)) return true
+    const t = tables.find(t => t.table_number === pos.number)
+    return !!t && t.status !== "available"
+  }).length
+  const available   = FLOOR_PLAN.length - floorOccupied
+  const readyList   = queue.filter(q => q.status === "ready")
+  const waitingList = queue.filter(q => q.status === "waiting")
+
+  // Reservations to show in sidebar: window of 3hr future + 45min past, sorted by urgency
+  const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
+  const activeRes = todayReservations
+    .filter(r => {
+      const [h, m] = r.time.split(":").map(Number)
+      const [y, mo, d] = r.date.split("-").map(Number)
+      const resTime = new Date(y, mo - 1, d, h, m)
+      const diffMin = (resTime.getTime() - now.getTime()) / 60_000
+      return diffMin > -45 && diffMin < 180
+    })
+    .sort((a, b) => {
+      const ua = urgencyOrder[getResUrgency(a.date, a.time, now)]
+      const ub = urgencyOrder[getResUrgency(b.date, b.time, now)]
+      if (ua !== ub) return ua - ub
+      return a.time.localeCompare(b.time)
+    })
+
+  // Live clock string
+  const clockStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907" }}>
+
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <header
+          className="flex items-center justify-between px-5 h-12 shrink-0"
+          style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.18)", backdropFilter: "blur(20px)" }}
+        >
+          <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
+            {/* Walter's 303 logo */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/walters-logo.png"
+              alt="Walter's 303"
+              style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }}
+            />
+
+            <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
+
+            {/* Stats */}
+            <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
+                <span className="text-xs" style={{ color: "rgba(255,185,100,0.50)" }}>/{FLOOR_PLAN.length}</span>
+                <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,200,150,0.60)" }}>free</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(255,200,150,0.60)" }}>{waitingList.length}</span>
+                <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.60)" }}>waiting</span>
+              </div>
+              {readyList.length > 0 && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)" }}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <span className="text-xs font-bold" style={{ color: "#22c55e" }}>{readyList.length} ready</span>
+                </div>
+              )}
+              {avgWait > 0 && (
+                <div className="hidden md:flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
+                  <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.60)" }}>~</span>
+                  <span className="text-xs font-semibold tabular-nums" style={{ color: "rgba(255,220,180,0.80)" }}>{avgWait}m</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Live clock */}
+            <span
+              className="hidden sm:block text-[11px] tabular-nums font-medium px-2"
+              style={{ color: "rgba(255,200,150,0.65)", letterSpacing: "0.04em" }}
+            >
+              {clockStr}
+            </span>
+            <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+              <CalendarDays className="w-3 h-3" /> Reservations
+            </Link>
+            <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+              <LayoutDashboard className="w-3 h-3" /> Admin
+            </Link>
+            <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
+              {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+            </div>
+            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.55)" }}>
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </header>
+
+        {/* ── Body ───────────────────────────────────────────────────── */}
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* ── Queue sidebar ─────────────────────────────────────── */}
+          <div
+            className="flex flex-col shrink-0 overflow-hidden"
+            style={{
+              width: 272,
+              borderRight: "1px solid rgba(255,185,100,0.16)",
+              background: "#0C0907",
+            }}
+          >
+
+            {/* ── Today's reservations ──────────────────────────── */}
+            {activeRes.length > 0 && (
+              <div
+                style={{
+                  padding: "8px 12px 8px",
+                  borderBottom: "1px solid rgba(255,185,100,0.16)",
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, padding: "0 2px" }}>
+                  <CalendarDays style={{ width: 9, height: 9, color: "rgba(99,179,237,0.80)" }} />
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: "0.16em",
+                    color: "rgba(99,179,237,0.75)", textTransform: "uppercase",
+                  }}>
+                    Reservations · {activeRes.length}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {activeRes.map(res => {
+                    const urgency = getResUrgency(res.date, res.time, now)
+                    const isLate     = urgency === "late"
+                    const isNow      = urgency === "now"
+                    const isArriving = urgency === "arriving"
+
+                    return (
+                      <div
+                        key={res.id}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "7px 9px", borderRadius: 9,
+                          background: isLate
+                            ? "rgba(239,68,68,0.12)"
+                            : isNow
+                            ? "rgba(249,115,22,0.10)"
+                            : isArriving
+                            ? "rgba(251,191,36,0.08)"
+                            : "rgba(99,179,237,0.06)",
+                          border: `1px solid ${isLate
+                            ? "rgba(239,68,68,0.45)"
+                            : isNow
+                            ? "rgba(249,115,22,0.40)"
+                            : isArriving
+                            ? "rgba(251,191,36,0.35)"
+                            : "rgba(99,179,237,0.22)"}`,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 12, fontWeight: 600,
+                            color: "rgba(255,248,240,0.97)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            marginBottom: 2,
+                          }}>
+                            {res.guest_name}
+                          </div>
+                          <div style={{
+                            fontSize: 10, display: "flex", gap: 5, alignItems: "center",
+                            color: "rgba(255,200,150,0.70)",
+                          }}>
+                            <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
+                            <span>·</span>
+                            <span>{res.party_size}p</span>
+                            {isArriving && (
+                              <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
+                                ARRIVING
+                              </span>
+                            )}
+                            {isNow && (
+                              <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
+                                DUE NOW
+                              </span>
+                            )}
+                            {isLate && (
+                              <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
+                                LATE
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => setResPicker(res)}
+                          style={{
+                            height: 24, padding: "0 8px", borderRadius: 6, border: "none",
+                            cursor: "pointer", fontSize: 9, fontWeight: 800,
+                            letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
+                            background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                          }}
+                        >
+                          Check In
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Ready section */}
+            {readyList.length > 0 && (
+              <div className="px-3 pt-3 pb-1 shrink-0">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(34,197,94,0.90)" }}>
+                    Ready · {readyList.length}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {readyList.map(e => (
+                    <DraggableQueueCard key={e.id} entry={e}
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Divider */}
+            {readyList.length > 0 && waitingList.length > 0 && (
+              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.14)" }} />
+            )}
+
+            {/* Waiting section */}
+            <div className="px-3 pt-2 flex-1 overflow-y-auto">
+              <div className="flex items-center gap-2 mb-2 px-1">
+                {waitingList.length > 0 && <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />}
+                <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
+                  {waitingList.length > 0 ? `Waiting · ${waitingList.length}` : "Queue"}
+                </span>
+              </div>
+
+              {queue.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
+                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
+                  <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
+                </div>
+              ) : waitingList.length === 0 ? (
+                <div className="flex items-center justify-center py-8" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
+                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.50)" }}>No one else waiting</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5 pb-24">
+                  {waitingList.map(e => (
+                    <DraggableQueueCard key={e.id} entry={e}
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Sidebar footer */}
+            <div className="px-4 py-3 shrink-0" style={{ borderTop: "1px solid rgba(255,185,100,0.14)" }}>
+              <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.40)" }}>
+                Updated {lastSync.toLocaleTimeString()}
+              </p>
+            </div>
+          </div>
+
+          {/* ── Floor map (desktop only) ───────────────────────────── */}
+          <div className="flex-1 overflow-hidden hidden lg:flex">
+            <FloorMap
+              tables={tables}
+              localOccupants={localOccupants}
+              onClear={clearTable}
+            />
+          </div>
+
+          {/* ── Mobile: no floor map — full queue ─────────────────── */}
+          <div className="flex-1 lg:hidden overflow-y-auto p-4 flex flex-col gap-4">
+            <p className="text-xs text-center py-8" style={{ color: "rgba(255,200,150,0.50)" }}>
+              Floor map available on larger screens
+            </p>
+          </div>
+        </div>
+
+        {/* ── Add Guest FAB ─────────────────────────────────────────── */}
+        <button
+          onClick={() => setShowAdd(true)}
+          className="fixed bottom-6 right-6 flex items-center gap-2 h-11 px-5 rounded-full text-xs font-black tracking-[0.1em] uppercase shadow-2xl transition-all active:scale-95 hover:scale-[1.03] z-30"
+          style={{ background: "#D9321C", color: "white", boxShadow: "0 4px 28px rgba(217,50,28,0.4)" }}
+        >
+          <Plus className="w-3.5 h-3.5" /> Add Guest
+        </button>
+
+        {showAdd && <AddGuestDrawer onClose={() => setShowAdd(false)} onAdded={refreshAll} />}
+
+        {/* Queue seat picker */}
+        {seatPicker && (
+          <SeatTablePicker
+            guest={seatPicker}
+            tables={tables}
+            localOccupants={localOccupants}
+            onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
+            onClose={() => setSeatPicker(null)}
+          />
+        )}
+
+        {/* Reservation check-in picker */}
+        {resPicker && (
+          <SeatTablePicker
+            guest={{ name: resPicker.guest_name, party_size: resPicker.party_size }}
+            tables={tables}
+            localOccupants={localOccupants}
+            onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
+            onClose={() => setResPicker(null)}
+          />
+        )}
+      </div>
+
+      {/* ── Drag overlay ──────────────────────────────────────────── */}
+      <DragOverlay dropAnimation={null}>
+        {activeDragEntry && <DragGhost entry={activeDragEntry} />}
+      </DragOverlay>
+    </DndContext>
+  )
+}

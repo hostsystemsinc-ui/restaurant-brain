@@ -257,15 +257,33 @@ export default function SchedulingPanel() {
   const [activeCell, setActiveCell] = useState<{ slotId: string; day: number } | null>(null)
   const [copied,     setCopied]     = useState(false)
 
-  // 7Shifts publish state
+  // Platform + publish state
+  const [schedPlatform, setSchedPlatform] = useState("7shifts")
   const [shiftCo,    setShiftCo]    = useState<{ id: number; name: string } | null>(null)
   const [publishing, setPublishing] = useState(false)
   const [pubResult,  setPubResult]  = useState<{ ok: boolean; msg: string } | null>(null)
 
+  // Platforms that support live API publishing through HOST
+  const PUBLISH_SUPPORTED = ["7shifts"]
+  const canPublish = PUBLISH_SUPPORTED.includes(schedPlatform) && shiftCo !== null
+
+  // Display names for each platform
+  const PLATFORM_NAMES: Record<string, string> = {
+    "7shifts":      "7Shifts",
+    "homebase":     "Homebase",
+    "wheniwork":    "When I Work",
+    "deputy":       "Deputy",
+    "sling":        "Sling",
+    "hotschedules": "HotSchedules",
+  }
+  const platformName = PLATFORM_NAMES[schedPlatform] ?? "Scheduling App"
+
   useEffect(() => {
     try {
-      const co = localStorage.getItem("host_7shifts_company")
-      if (co) setShiftCo(JSON.parse(co))
+      const platform = localStorage.getItem("host_scheduling_platform")
+      const co       = localStorage.getItem("host_7shifts_company")
+      if (platform) setSchedPlatform(platform)
+      if (co)       setShiftCo(JSON.parse(co))
     } catch {}
   }, [])
 
@@ -502,7 +520,7 @@ export default function SchedulingPanel() {
         >
           {copied
             ? <><Check style={{ width: 12, height: 12 }} /> Copied!</>
-            : <><Copy style={{ width: 12, height: 12 }} /> Copy for 7Shifts</>
+            : <><Copy style={{ width: 12, height: 12 }} /> Copy for {platformName}</>
           }
         </button>
 
@@ -523,34 +541,37 @@ export default function SchedulingPanel() {
           <Download style={{ width: 12, height: 12 }} /> Download CSV
         </button>
 
-        {/* Publish */}
-        <button
-          onClick={shiftCo ? publishTo7Shifts : undefined}
-          disabled={publishing}
-          title={shiftCo ? `Push to ${shiftCo.name} on 7Shifts` : "Connect 7Shifts in Admin → Inputs to enable"}
-          style={{
-            height: 32, padding: "0 18px", borderRadius: 7,
-            border: "none", color: "#fff",
-            fontSize: 12, fontWeight: 700, cursor: shiftCo ? "pointer" : "default",
-            letterSpacing: "0.02em",
-            background: pubResult?.ok
-              ? "#16A34A"
-              : publishing
-              ? "#B91C1C"
-              : shiftCo
-              ? "#D9321C"
-              : "#94A3B8",
-            transition: "background 0.2s",
-            display: "flex", alignItems: "center", gap: 6,
-          }}
-        >
-          {publishing
-            ? <><Loader2 style={{ width: 12, height: 12, animation: "spin 1s linear infinite" }} /> Publishing…</>
-            : pubResult?.ok
-            ? pubResult.msg
-            : "Publish Schedule"
-          }
-        </button>
+        {/* Publish — only shown for platforms with live API support */}
+        {canPublish || schedPlatform === "7shifts" ? (
+          <button
+            onClick={canPublish ? publishTo7Shifts : undefined}
+            disabled={publishing || !canPublish}
+            title={canPublish ? `Push to ${shiftCo!.name} on ${platformName}` : `Connect ${platformName} in Admin → Inputs to enable`}
+            style={{
+              height: 32, padding: "0 18px", borderRadius: 7,
+              border: "none", color: "#fff",
+              fontSize: 12, fontWeight: 700,
+              cursor: canPublish && !publishing ? "pointer" : "default",
+              letterSpacing: "0.02em",
+              background: pubResult?.ok
+                ? "#16A34A"
+                : publishing
+                ? "#B91C1C"
+                : canPublish
+                ? "#D9321C"
+                : "#94A3B8",
+              transition: "background 0.2s",
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {publishing
+              ? <><Loader2 style={{ width: 12, height: 12, animation: "spin 1s linear infinite" }} /> Publishing…</>
+              : pubResult?.ok
+              ? pubResult.msg
+              : "Publish Schedule"
+            }
+          </button>
+        ) : null}
       </div>
 
       {/* ── Grid ────────────────────────────────────────────────────────────── */}
@@ -775,7 +796,7 @@ export default function SchedulingPanel() {
         <Info style={{ width: 12, height: 12, color: "#D97706", flexShrink: 0 }} />
         <span style={{ fontSize: 11, color: "#92400E" }}>
           <strong>HOST AI</strong> pre-filled this schedule from your queue data &amp; reservation history.
-          Tap any empty cell to add a shift · Click <strong>×</strong> on a pill to remove it · Add positions with the <strong>+ Add</strong> buttons · <strong>Copy for 7Shifts</strong> to paste as text · <strong>Download CSV</strong> to import directly into 7Shifts.
+          Tap any empty cell to add a shift · Click <strong>×</strong> on a pill to remove it · Add positions with the <strong>+ Add</strong> buttons · <strong>Copy for {platformName}</strong> to paste as text · <strong>Download CSV</strong> to import into {platformName}.
         </span>
       </div>
     </div>
