@@ -36,6 +36,9 @@ export function middleware(request: NextRequest) {
   // Root — serve portal page as-is
   if (segments.length === 0) return NextResponse.next()
 
+  // Static file (has a file extension, e.g. /walters-logo.png, /manifest.json) — pass through
+  if (/\.[a-zA-Z0-9]+$/.test(segments[0])) return NextResponse.next()
+
   // Reserved path — pass through unchanged
   if (RESERVED.has(segments[0])) return NextResponse.next()
 
