@@ -603,11 +603,27 @@ def sync_ical(req: SyncIcalRequest):
             uid         = str(component.get("uid", ""))
             description = str(component.get("description", ""))
 
-            # Try to parse party/cover count from description (OpenTable includes it)
-            party_size  = 2
-            size_match  = re.search(r"(\d+)\s*(guest|cover|person|party|pax)", description.lower())
-            if size_match:
-                party_size = int(size_match.group(1))
+            # ── Party size: try SUMMARY "(4)" first (OpenTable standard format),
+            #    then fall back to DESCRIPTION text patterns.
+            party_size = 2
+            # 1) OpenTable SUMMARY format: "Smith, John (4)" or "John Smith (4 guests)"
+            summary_size = re.search(r"\((\d+)(?:\s*(?:guest|cover|person|pax|p))?\)", summary, re.IGNORECASE)
+            if summary_size:
+                party_size = int(summary_size.group(1))
+            else:
+                # 2) DESCRIPTION patterns: "4 guests", "party of 4", "covers: 4", "party size: 4"
+                desc_size = re.search(
+                    r"(?:party(?:\s+of|\s+size[:\s]+)?|covers?[:\s]+|guests?[:\s]+|pax[:\s]+)(\d+)"
+                    r"|(\d+)\s*(?:guest|cover|person|party|pax)",
+                    description.lower()
+                )
+                if desc_size:
+                    party_size = int(desc_size.group(1) or desc_size.group(2))
+
+            # Clean guest name: strip trailing "(4)" or "(4 guests)" appended by OpenTable
+            guest_name = re.sub(r"\s*\(\d+(?:\s*(?:guest|cover|person|pax|p))?\)\s*$", "", summary, flags=re.IGNORECASE).strip()
+            if not guest_name:
+                guest_name = summary  # fallback if regex ate the whole string
 
             # Upsert by external_uid so re-syncing is idempotent
             existing = (
@@ -618,7 +634,7 @@ def sync_ical(req: SyncIcalRequest):
                 .execute()
             )
             payload = {
-                "guest_name": summary,
+                "guest_name": guest_name,
                 "party_size": party_size,
                 "date":       date_str,
                 "time":       time_str,
