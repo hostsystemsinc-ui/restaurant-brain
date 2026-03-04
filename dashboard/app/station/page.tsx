@@ -274,30 +274,51 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear,
+  pos, table, occupant, onClear, isDraggingOccupant,
 }: {
   pos: FloorPos
   table?: Table
   occupant?: LocalOccupant
   onClear?: () => void
+  isDraggingOccupant?: boolean
 }) {
   const isOccupied = !!occupant || (!!table && table.status !== "available")
-  const canDrop = !isOccupied
+  const hasLocalOccupant = !!occupant
+  // When dragging an occupant, allow dropping on any table without a local occupant
+  const canReceiveDrop = isDraggingOccupant ? !hasLocalOccupant : !isOccupied
   const noTable = !table
-  const avail = canDrop
+  const avail = !isOccupied
 
-  const { setNodeRef, isOver } = useDroppable({
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `table-${pos.number}`,
-    disabled: !canDrop,
+    disabled: !canReceiveDrop,
   })
 
-  const bg = isOver && avail
+  // Make occupied (local) tables draggable so staff can move guests between tables
+  const {
+    setNodeRef: setDragRef,
+    listeners: dragListeners,
+    attributes: dragAttrs,
+    isDragging,
+  } = useDraggable({
+    id: `occupant-${pos.number}`,
+    data: { type: "occupant", tableNumber: pos.number, occupant },
+    disabled: !hasLocalOccupant,
+  })
+
+  // Combine droppable + draggable refs onto the same DOM node
+  const setNodeRef = useCallback((el: HTMLElement | null) => {
+    setDropRef(el)
+    setDragRef(el)
+  }, [setDropRef, setDragRef])
+
+  const bg = isOver && canReceiveDrop
     ? "rgba(34,197,94,0.45)"
     : isOccupied ? "rgba(239,68,68,0.28)"
     : noTable ? "rgba(255,255,255,0.07)"
     : "rgba(34,197,94,0.22)"
 
-  const borderColor = isOver && avail
+  const borderColor = isOver && canReceiveDrop
     ? "#22c55e"
     : isOccupied ? "rgba(239,68,68,0.90)"
     : noTable ? "rgba(255,255,255,0.32)"
@@ -308,6 +329,8 @@ function DroppableFloorTable({
   return (
     <div
       ref={setNodeRef}
+      {...(hasLocalOccupant ? dragListeners : {})}
+      {...(hasLocalOccupant ? dragAttrs : {})}
       style={{
         position: "absolute",
         left: `${(pos.x / CANVAS_W * 100).toFixed(3)}%`,
@@ -315,9 +338,10 @@ function DroppableFloorTable({
         width: `${(pos.w / CANVAS_W * 100).toFixed(3)}%`,
         height: `${(pos.h / CANVAS_H * 100).toFixed(3)}%`,
         borderRadius,
+        clipPath: pos.shape === "round" ? "circle(50%)" : undefined,
         background: bg,
         border: `1.5px solid ${borderColor}`,
-        boxShadow: isOver && avail
+        boxShadow: isOver && canReceiveDrop
           ? "0 0 0 4px rgba(34,197,94,0.35), inset 0 0 20px rgba(34,197,94,0.10)"
           : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
           : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
@@ -329,9 +353,10 @@ function DroppableFloorTable({
         justifyContent: "center",
         gap: 2,
         overflow: "hidden",
-        cursor: isOccupied && onClear ? "pointer" : canDrop ? "copy" : "default",
+        cursor: hasLocalOccupant ? "grab" : isOccupied && onClear ? "pointer" : canReceiveDrop ? "copy" : "default",
+        opacity: isDragging ? 0.4 : 1,
       }}
-      onClick={isOccupied && onClear ? onClear : undefined}
+      onClick={isOccupied && onClear && !hasLocalOccupant ? onClear : undefined}
     >
       {isOccupied && onClear ? (
         <button
@@ -339,8 +364,8 @@ function DroppableFloorTable({
           onClick={e => { e.stopPropagation(); onClear() }}
           style={{
             position: "absolute",
-            top: pos.shape === "round" ? "10%" : 4,
-            right: pos.shape === "round" ? "10%" : 4,
+            top: pos.shape === "round" ? "18%" : 4,
+            right: pos.shape === "round" ? "18%" : 4,
             width: 16, height: 16,
             borderRadius: "50%",
             background: "rgba(239,68,68,0.75)",
@@ -362,8 +387,8 @@ function DroppableFloorTable({
       ) : (
         <div style={{
           position: "absolute",
-          top: pos.shape === "round" ? "16%" : 7,
-          right: pos.shape === "round" ? "16%" : 7,
+          top: pos.shape === "round" ? "18%" : 7,
+          right: pos.shape === "round" ? "18%" : 7,
           width: 6, height: 6,
           borderRadius: "50%",
           background: noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
@@ -371,7 +396,7 @@ function DroppableFloorTable({
         }} />
       )}
 
-      {isOver && avail ? (
+      {isOver && canReceiveDrop ? (
         <span style={{
           fontSize: 11,
           fontWeight: 800,
@@ -429,11 +454,12 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear,
+  tables, localOccupants, onClear, isDraggingOccupant,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
   onClear: (tableId: string | undefined, tableNumber: number) => void
+  isDraggingOccupant: boolean
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -534,6 +560,7 @@ function FloorMap({
                 table={table}
                 occupant={occupant}
                 onClear={() => onClear(table?.id, pos.number)}
+                isDraggingOccupant={isDraggingOccupant}
               />
             )
           })}
@@ -745,6 +772,7 @@ export default function HostDashboard() {
   const [showAdd, setShowAdd]             = useState(false)
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
+  const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
   const [resPicker, setResPicker]         = useState<Reservation | null>(null)
   const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
@@ -849,28 +877,54 @@ export default function HostDashboard() {
   // ── DnD handlers ──────────────────────────────────────────────────────
 
   function handleDragStart(event: DragStartEvent) {
-    const entry = (event.active.data.current as { entry: QueueEntry } | undefined)?.entry
-    setActiveDrag(entry ?? null)
+    const data = event.active.data.current as Record<string, unknown> | undefined
+    if (data?.type === "occupant") {
+      setActiveDragOccupant({ tableNumber: data.tableNumber as number, occupant: data.occupant as LocalOccupant })
+      setActiveDrag(null)
+    } else {
+      setActiveDrag((data as { entry?: QueueEntry } | undefined)?.entry ?? null)
+      setActiveDragOccupant(null)
+    }
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     setActiveDrag(null)
+    setActiveDragOccupant(null)
     if (!over || !active) return
 
-    const tableNumber = parseInt((over.id as string).replace("table-", ""))
-    const entry = (active.data.current as { entry: QueueEntry } | undefined)?.entry
-    if (!entry || isNaN(tableNumber)) return
+    const targetTable = parseInt((over.id as string).replace("table-", ""))
+    if (isNaN(targetTable)) return
 
-    if (localOccupants.has(tableNumber)) return
+    const data = active.data.current as Record<string, unknown> | undefined
 
-    const apiTable = tables.find(t => t.table_number === tableNumber)
+    // Table-to-table: move a seated guest to another table (swap if both occupied)
+    if (data?.type === "occupant") {
+      const sourceTable = data.tableNumber as number
+      const occupant = data.occupant as LocalOccupant
+      if (sourceTable === targetTable) return
+      setLocalOccupants(prev => {
+        const next = new Map(prev)
+        next.delete(sourceTable)
+        const displaced = prev.get(targetTable)
+        if (displaced) next.set(sourceTable, displaced)
+        next.set(targetTable, occupant)
+        return next
+      })
+      return
+    }
+
+    // Queue-to-table: seat a waiting guest at a table
+    const entry = (data as { entry?: QueueEntry } | undefined)?.entry
+    if (!entry) return
+    if (localOccupants.has(targetTable)) return
+    const apiTable = tables.find(t => t.table_number === targetTable)
     if (apiTable) {
       fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" }).then(() => refreshAll())
     } else {
       seat(entry.id)
     }
-    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
+    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
   }
 
   // Floor availability
@@ -1156,6 +1210,7 @@ export default function HostDashboard() {
               tables={tables}
               localOccupants={localOccupants}
               onClear={clearTable}
+              isDraggingOccupant={!!activeDragOccupant}
             />
           </div>
 
@@ -1204,6 +1259,21 @@ export default function HostDashboard() {
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null}>
         {activeDragEntry && <DragGhost entry={activeDragEntry} />}
+        {activeDragOccupant && (
+          <div style={{
+            background: "rgba(239,68,68,0.35)",
+            border: "1.5px solid rgba(239,68,68,0.90)",
+            borderRadius: 10,
+            padding: "6px 12px",
+            color: "rgba(255,240,220,0.97)",
+            fontSize: 11,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+          }}>
+            {activeDragOccupant.occupant.name} · {activeDragOccupant.occupant.party_size}p
+          </div>
+        )}
       </DragOverlay>
     </DndContext>
   )

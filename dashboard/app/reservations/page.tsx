@@ -781,12 +781,12 @@ export default function ReservationsPage() {
             <RefreshCw style={{ width: 12, height: 12 }} />
           </button>
 
-          <Link href="/" style={{ textDecoration: "none" }}>
+          <Link href="/walters303/station" style={{ textDecoration: "none" }}>
             <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
               ← Host View
             </button>
           </Link>
-          <Link href="/admin" style={{ textDecoration: "none" }}>
+          <Link href="/walters303" style={{ textDecoration: "none" }}>
             <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
               <LayoutDashboard style={{ width: 11, height: 11 }} /> Admin
             </button>
