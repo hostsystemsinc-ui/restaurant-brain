@@ -1786,7 +1786,7 @@ function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => vo
             Reservations
           </button>
         </Link>
-        <Link href="/" style={{ textDecoration: "none" }}>
+        <Link href="/station" style={{ textDecoration: "none" }}>
           <button style={{
             width: "100%", display: "flex", alignItems: "center", gap: 8,
             padding: "9px 12px", border: `1px solid ${C.border}`, borderRadius: 8,
