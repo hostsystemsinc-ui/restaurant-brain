@@ -9,7 +9,14 @@ export default function LoginPage() {
   const [passwordFocused, setPasswordFocused] = useState(false);
 
   const handleSignIn = () => {
-    console.log("Sign in attempted", { email, password });
+    // For demo: any non-empty email/password routes to Walter's303 dashboard
+    if (email.trim() && password.trim()) {
+      window.location.href = "/walters303"
+    } else {
+      // Shake the inputs or just re-focus
+      const el = document.querySelector("input[type='email']") as HTMLInputElement | null
+      el?.focus()
+    }
   };
 
   const handleContinueWithout = () => {
@@ -193,7 +200,7 @@ export default function LoginPage() {
         </button>
       </div>
 
-      <p style={footerStyle}>Walter&apos;s303 · Denver, CO</p>
+      <p style={footerStyle}>HOST · Restaurant Operating System · hostplatform.net</p>
     </div>
   );
 }

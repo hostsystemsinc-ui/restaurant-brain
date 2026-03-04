@@ -49,7 +49,7 @@ interface Restaurant {
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [
-  { id: "walters303",    name: "Walter's 303",      city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-01-15", mrr: 149, seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 312, isLive: true,  dashboardUrl: "/admin" },
+  { id: "walters303",    name: "Walter's 303",      city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-01-15", mrr: 149, seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 312, isLive: true,  dashboardUrl: "/walters303" },
   { id: "capital",      name: "The Capital Grille", city: "Denver, CO", plan: "Enterprise", status: "Active", since: "2025-02-01", mrr: 399, seatedToday: 47, avgWait: 18, queueNow: 6, coversThisWeek: 312, nfcTaps: 541 },
   { id: "panzano",      name: "Panzano",            city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-02-14", mrr: 149, seatedToday: 31, avgWait: 12, queueNow: 3, coversThisWeek: 198, nfcTaps: 287 },
   { id: "elways",       name: "Elway's Cherry Creek",city: "Denver, CO",plan: "Trial",      status: "Trial",  since: "2025-03-01", mrr: 0,   seatedToday: 22, avgWait: 21, queueNow: 4, coversThisWeek: 134, nfcTaps: 89  },
