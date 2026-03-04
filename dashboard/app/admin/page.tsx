@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import {
   LayoutDashboard, TrendingUp, TableProperties, Users,
@@ -219,13 +219,14 @@ function Btn({
     border: "none", cursor: disabled ? "default" : "pointer",
     fontWeight: 600, borderRadius: 8,
     transition: "opacity 0.12s",
-    padding: small ? "6px 10px" : "8px 14px",
+    padding: small ? "8px 14px" : "10px 18px",
     fontSize: small ? 12 : 13,
+    minHeight: small ? 36 : 42,
     opacity: disabled ? 0.45 : 1,
   }
   const styles: Record<string, React.CSSProperties> = {
     primary:   { background: C.accent, color: "#fff" },
-    secondary: { background: C.surface, color: C.text2, border: `1px solid ${C.border}` },
+    secondary: { background: "transparent", color: C.text2, border: "1.5px solid rgba(15,23,42,0.22)" },
     ghost:     { background: "transparent", color: C.muted },
   }
   return (
@@ -302,13 +303,34 @@ const TD_STYLE: React.CSSProperties = {
 // ── Page: Overview ─────────────────────────────────────────────────────────────
 
 function OverviewPage({
-  tables, queue, insights, online, lastSync, onRefresh, localOccupants,
+  tables, queue, insights, online, lastSync, onRefresh, localOccupants, onMoveGuest,
 }: {
   tables: Table[]; queue: QueueEntry[]; insights: Insights | null
   online: boolean; lastSync: Date; onRefresh: () => void
   localOccupants: Map<number, LocalOcc>
+  onMoveGuest: (from: number, to: number) => void
 }) {
-  const [copied, setCopied] = useState(false)
+  const [copied,     setCopied]     = useState(false)
+  const [dragSource, setDragSource] = useState<number | null>(null)
+  const [dragTarget, setDragTarget] = useState<number | null>(null)
+  const dragTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const startLongPress = (num: number) => {
+    if (!localOccupants.has(num)) return
+    dragTimer.current = setTimeout(() => setDragSource(num), 520)
+  }
+  const cancelLongPress = () => {
+    if (dragTimer.current) { clearTimeout(dragTimer.current); dragTimer.current = null }
+  }
+  const commitMove = () => {
+    if (dragSource !== null && dragTarget !== null && dragTarget !== dragSource) {
+      onMoveGuest(dragSource, dragTarget)
+    }
+    setDragSource(null); setDragTarget(null); cancelLongPress()
+  }
+  const cancelDrag = () => {
+    setDragSource(null); setDragTarget(null); cancelLongPress()
+  }
   const joinUrl = typeof window !== "undefined"
     ? `${window.location.origin}/join?r=272a8876-e4e6-4867-831d-0525db80a8db`
     : "https://restaurant-brain-production.up.railway.app/join"
@@ -437,36 +459,76 @@ function OverviewPage({
 
       {/* Tables grid */}
       <Card>
-        <CardHeader title="Table Status" action={<span style={{ fontSize: 12, color: C.muted }}>{available} of 16 available</span>} />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10 }}>
+        <CardHeader
+          title="Table Status"
+          action={
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {dragSource !== null && (
+                <span style={{ fontSize: 11, color: C.orange, fontWeight: 600 }}>
+                  Moving T{dragSource} — drop on a free table
+                </span>
+              )}
+              {dragSource === null && (
+                <span style={{ fontSize: 11, color: C.muted }}>Hold an occupied table to move a guest</span>
+              )}
+              <span style={{ fontSize: 12, color: C.muted }}>{available} of 16 available</span>
+            </div>
+          }
+        />
+        <div
+          style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 10, userSelect: "none" }}
+          onPointerUp={commitMove}
+          onPointerLeave={cancelDrag}
+        >
           {Array.from({ length: 16 }, (_, i) => {
-            const num = i + 1
-            const t = tables.find(t => t.table_number === num)
+            const num      = i + 1
+            const t        = tables.find(t => t.table_number === num)
             const localOcc = localOccupants.get(num)
             const apiOccupied = !!t && t.status !== "available"
-            const avail = !apiOccupied && !localOcc
+            const avail    = !apiOccupied && !localOcc
+            const isSource = dragSource === num
+            const isTarget = dragTarget === num && dragSource !== null && avail
+            const canDrop  = dragSource !== null && avail
+
             return (
               <div
                 key={num}
+                onPointerDown={() => startLongPress(num)}
+                onPointerUp={commitMove}
+                onPointerCancel={cancelDrag}
+                onPointerEnter={() => { if (dragSource !== null) setDragTarget(num) }}
                 style={{
-                  padding: "8px 4px",
+                  padding: "10px 4px",
                   borderRadius: 8,
-                  border: `1px solid ${avail ? C.greenBorder : C.redBorder}`,
-                  background: avail ? C.greenBg : C.redBg,
+                  border: `1.5px solid ${
+                    isTarget  ? C.green       :
+                    isSource  ? C.orange      :
+                    canDrop   ? C.greenBorder :
+                    avail     ? C.greenBorder : C.redBorder
+                  }`,
+                  background: isTarget ? C.greenBg : isSource ? C.orangeBg : avail ? C.greenBg : C.redBg,
                   textAlign: "center",
+                  cursor: localOcc ? (dragSource === null ? "grab" : "grabbing") : "default",
+                  transform: isSource ? "scale(0.93)" : "scale(1)",
+                  transition: "transform 0.12s, background 0.15s, border-color 0.15s",
+                  touchAction: "none",
+                  boxShadow: isTarget ? `0 0 0 2px ${C.green}40` : "none",
                 }}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, color: avail ? C.green : C.red }}>T{num}</div>
+                <div style={{
+                  fontSize: 12, fontWeight: 800,
+                  color: isTarget ? C.green : isSource ? C.orange : avail ? C.green : C.red,
+                }}>T{num}</div>
                 {localOcc ? (
                   <>
-                    <div style={{ fontSize: 9, color: C.red, marginTop: 1, fontWeight: 700, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ fontSize: 9, color: isSource ? C.orange : C.red, marginTop: 1, fontWeight: 700, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {localOcc.name}
                     </div>
-                    <div style={{ fontSize: 9, color: C.red, fontWeight: 600 }}>{localOcc.party_size}p</div>
+                    <div style={{ fontSize: 9, color: isSource ? C.orange : C.red, fontWeight: 600 }}>{localOcc.party_size}p</div>
                   </>
                 ) : (
-                  <div style={{ fontSize: 9, color: avail ? C.green : C.red, marginTop: 2, fontWeight: 600 }}>
-                    {avail ? "Free" : "Occupied"}
+                  <div style={{ fontSize: 9, color: isTarget ? C.green : avail ? C.green : C.red, marginTop: 2, fontWeight: 600 }}>
+                    {isTarget ? "Drop here" : avail ? "Free" : "Occupied"}
                   </div>
                 )}
               </div>
@@ -1769,6 +1831,18 @@ export default function AdminPage() {
     return () => window.removeEventListener("storage", onStorage)
   }, [])
 
+  const moveGuest = useCallback((from: number, to: number) => {
+    setLocalOccupants(prev => {
+      const next = new Map(prev)
+      const occ = next.get(from)
+      if (!occ) return prev
+      next.delete(from)
+      next.set(to, occ)
+      try { localStorage.setItem("host_occupants", JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }, [])
+
   const fetchAll = useCallback(async () => {
     try {
       const [tRes, qRes, iRes] = await Promise.all([
@@ -1806,7 +1880,7 @@ export default function AdminPage() {
           <OverviewPage
             tables={tables} queue={queue} insights={insights}
             online={online} lastSync={lastSync} onRefresh={fetchAll}
-            localOccupants={localOccupants}
+            localOccupants={localOccupants} onMoveGuest={moveGuest}
           />
         )}
         {page === "analytics" && <AnalyticsPage />}

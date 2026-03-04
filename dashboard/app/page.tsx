@@ -235,7 +235,7 @@ export default function HostHomePage() {
               borderRadius: 6, padding: "4px 12px", fontSize: 11,
               color: "rgba(255,255,255,0.3)", textAlign: "center",
             }}>
-              host-digital.com/admin
+              hostplatform.net/admin
             </div>
           </div>
           {/* Dashboard preview */}
@@ -550,7 +550,7 @@ export default function HostHomePage() {
           </span>
         </div>
         <div style={{ fontSize: 12, color: "rgba(255,255,255,0.2)" }}>
-          host-digital.com
+          hostplatform.net
         </div>
       </footer>
 

@@ -153,14 +153,14 @@ export default function OwnerPage() {
 
       <div style={{
         background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 20, padding: "44px 40px", width: 400, maxWidth: "92vw",
+        borderRadius: 10, padding: "44px 40px", width: 400, maxWidth: "92vw",
         display: "flex", flexDirection: "column", gap: 28,
         backdropFilter: "blur(20px)", boxShadow: "0 40px 80px rgba(0,0,0,0.5)",
         position: "relative",
       }}>
         {/* Logo */}
         <div style={{ textAlign: "center", paddingBottom: 4 }}>
-          <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", fontFamily: fontSerif, letterSpacing: "-0.02em", lineHeight: 1 }}>
+          <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", fontFamily: "'Arial Black', Arial, Helvetica, sans-serif", letterSpacing: "-0.04em", lineHeight: 1 }}>
             HOST
           </div>
           <div style={{ fontSize: 10, fontWeight: 600, color: D.muted, letterSpacing: "0.18em", marginTop: 6, textTransform: "uppercase" }}>
@@ -249,7 +249,7 @@ export default function OwnerPage() {
           }}>
             <Zap style={{ width: 14, height: 14, color: "#fff", fill: "#fff" }} />
           </div>
-          <span style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: fontSerif, letterSpacing: "0.01em" }}>HOST</span>
+          <span style={{ fontSize: 20, fontWeight: 900, color: "#fff", fontFamily: "'Arial Black', Arial, Helvetica, sans-serif", letterSpacing: "-0.03em" }}>HOST</span>
           <span style={{
             fontSize: 9, fontWeight: 700, letterSpacing: "0.1em",
             background: D.purpleBg, color: D.purple, border: `1px solid ${D.purpleBorder}`,
@@ -321,7 +321,7 @@ export default function OwnerPage() {
           ].map(({ icon: Icon, label, value, color, bg, border }) => (
             <div key={label} style={{
               background: D.surface, border: `1px solid ${D.border}`,
-              borderRadius: 14, padding: "18px 20px",
+              borderRadius: 8, padding: "18px 20px",
               display: "flex", flexDirection: "column", gap: 12,
             }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -341,7 +341,7 @@ export default function OwnerPage() {
         <div style={{
           background: "linear-gradient(135deg, rgba(217,50,28,0.12), rgba(217,50,28,0.04))",
           border: `1px solid ${D.accentBorder}`,
-          borderRadius: 14, padding: "20px 28px", marginBottom: 24,
+          borderRadius: 8, padding: "20px 28px", marginBottom: 24,
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -380,7 +380,7 @@ export default function OwnerPage() {
                   ? "linear-gradient(135deg, rgba(34,197,94,0.05), rgba(34,197,94,0.02))"
                   : D.surface,
                 border: `1px solid ${r.isLive ? D.greenBorder : D.border}`,
-                borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 16,
+                borderRadius: 8, padding: 22, display: "flex", flexDirection: "column", gap: 16,
               }}>
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -405,10 +405,10 @@ export default function OwnerPage() {
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", padding: "3px 8px", borderRadius: 99, background: ps.bg, color: ps.color, border: `1px solid ${ps.border}` }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", padding: "3px 8px", borderRadius: 4, background: ps.bg, color: ps.color, border: `1px solid ${ps.border}` }}>
                       {r.plan.toUpperCase()}
                     </span>
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 99, color: ss.color, background: `${ss.dot}12`, border: `1px solid ${ss.dot}30`, display: "flex", alignItems: "center", gap: 3 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, color: ss.color, background: `${ss.dot}12`, border: `1px solid ${ss.dot}30`, display: "flex", alignItems: "center", gap: 3 }}>
                       <CircleDot style={{ width: 7, height: 7 }} />{r.status}
                     </span>
                   </div>
@@ -462,7 +462,7 @@ export default function OwnerPage() {
         {/* Bottom row */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 24 }}>
           {/* Revenue */}
-          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "22px 24px" }}>
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "22px 24px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: D.blueBg, border: `1px solid ${D.blueBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <DollarSign style={{ width: 13, height: 13, color: D.blue }} />
@@ -491,7 +491,7 @@ export default function OwnerPage() {
           </div>
 
           {/* Activity */}
-          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "22px 24px" }}>
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "22px 24px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
               <div style={{ width: 30, height: 30, borderRadius: 8, background: D.greenBg, border: `1px solid ${D.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <TrendingUp style={{ width: 13, height: 13, color: D.green }} />
@@ -508,7 +508,7 @@ export default function OwnerPage() {
               ].map((ev, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{
-                    width: 22, height: 22, borderRadius: 99, flexShrink: 0,
+                    width: 22, height: 22, borderRadius: 4, flexShrink: 0,
                     background: ev.type === "upgrade" ? D.blueBg : ev.type === "trial" ? D.orangeBg : D.greenBg,
                     border: `1px solid ${ev.type === "upgrade" ? D.blueBorder : ev.type === "trial" ? D.orangeBorder : D.greenBorder}`,
                     display: "flex", alignItems: "center", justifyContent: "center",
@@ -528,7 +528,7 @@ export default function OwnerPage() {
         </div>
 
         {/* Plan distribution */}
-        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "22px 24px" }}>
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "22px 24px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
             <div style={{ width: 30, height: 30, borderRadius: 8, background: D.purpleBg, border: `1px solid ${D.purpleBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <BarChart3 style={{ width: 13, height: 13, color: D.purple }} />
