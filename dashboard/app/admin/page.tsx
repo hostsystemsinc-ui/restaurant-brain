@@ -999,6 +999,11 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
   const [otherConnecting,  setOtherConnecting]  = useState(false)
   const [otherErr,         setOtherErr]         = useState<string | null>(null)
 
+  // Square POS OAuth state
+  const [squareData,       setSquareData]       = useState<{ access_token: string; merchant_id: string; merchant_name: string; expires_at: string | null } | null>(null)
+  const [squareConnecting, setSquareConnecting] = useState(false)
+  const [squareErr,        setSquareErr]        = useState<string | null>(null)
+
   useEffect(() => {
     fetch(`${API}/settings`)
       .then(r => r.json())
@@ -1024,7 +1029,36 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
         if (raw) try { loaded[pid] = JSON.parse(raw) } catch {}
       }
       if (Object.keys(loaded).length) setOtherCos(loaded)
+
+      // Load Square POS connection
+      const rawSq = localStorage.getItem("host_square")
+      if (rawSq) try { setSquareData(JSON.parse(rawSq)) } catch {}
     } catch {}
+
+    // Handle Square OAuth redirect (?sq=connected or ?sq=error)
+    const sqParam = new URLSearchParams(window.location.search).get("sq")
+    if (sqParam === "connected") {
+      setSquareConnecting(true)
+      window.history.replaceState({}, "", window.location.pathname)
+      fetch("/api/square/session")
+        .then(r => r.json())
+        .then(d => {
+          if (d.access_token) {
+            localStorage.setItem("host_square", JSON.stringify(d))
+            setSquareData(d)
+          } else {
+            setSquareErr("Square connected but no token was returned — please try again.")
+          }
+          setSquareConnecting(false)
+        })
+        .catch(() => {
+          setSquareErr("Connection failed. Please try again.")
+          setSquareConnecting(false)
+        })
+    } else if (sqParam === "error") {
+      setSquareErr("Square connection failed — please try again.")
+      window.history.replaceState({}, "", window.location.pathname)
+    }
   }, [])
 
   const saveUrl = async () => {
@@ -1179,29 +1213,44 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
     setOtherKey(""); setOtherErr(null)
   }
 
+  // Square POS helpers
+  function connectSquare() {
+    const clientId = process.env.NEXT_PUBLIC_SQUARE_CLIENT_ID
+    if (!clientId) return
+    const state       = Math.random().toString(36).slice(2)
+    sessionStorage.setItem("sq_state", state)
+    const scopes      = encodeURIComponent("ORDERS_READ PAYMENTS_READ MERCHANT_PROFILE_READ")
+    const redirectUri = encodeURIComponent(`${window.location.origin}/api/square/callback`)
+    window.location.href =
+      `https://connect.squareup.com/oauth2/authorize?client_id=${clientId}&scope=${scopes}&session=false&state=${state}&redirect_uri=${redirectUri}`
+  }
+
+  function disconnectSquare() {
+    localStorage.removeItem("host_square")
+    setSquareData(null); setSquareErr(null)
+  }
+
   // Scheduling platform config
   const SCHED_PLATFORMS: Record<string, {
     name: string; color: string; canConnect: boolean; canPublish: boolean
     planNote?: string; keyPath: string; csvImport: string
     proxyRoute: string; proxyHeader: string
-    verifyEndpoint: string
+    verifyEndpoint: string; settingsUrl: string
   }> = {
-    "7shifts":     { name: "7Shifts",     color: "#7C3AED", canConnect: true,  canPublish: true,  planNote: "Requires The Works plan or above",       keyPath: "Settings → Integrations → API Keys → Generate New Key",         csvImport: "Schedule → Import",                    proxyRoute: "/api/7shifts",   proxyHeader: "x-7shifts-key",  verifyEndpoint: "/company"        },
-    "homebase":    { name: "Homebase",    color: "#FF6B35", canConnect: true,  canPublish: false, planNote: "Free plan supported",                    keyPath: "Settings → Integrations → API Access → Generate Token",         csvImport: "Schedule → Import Shifts → Upload CSV", proxyRoute: "/api/homebase",  proxyHeader: "x-homebase-key", verifyEndpoint: "/v1/businesses"  },
-    "wheniwork":   { name: "When I Work", color: "#00B2A9", canConnect: true,  canPublish: false,                                                    keyPath: "Profile → Integrations → API Tokens → Create Token",            csvImport: "Scheduler → Import → Upload CSV",      proxyRoute: "/api/wheniwork", proxyHeader: "x-wiw-key",      verifyEndpoint: "/account"        },
-    "deputy":      { name: "Deputy",      color: "#3B82F6", canConnect: false, canPublish: false,                                                    keyPath: "Business Settings → Integrations → API → Create API Token",     csvImport: "Scheduling → Import → CSV Upload",     proxyRoute: "",               proxyHeader: "",               verifyEndpoint: ""                },
-    "sling":       { name: "Sling",       color: "#F97316", canConnect: false, canPublish: false,                                                    keyPath: "N/A — use CSV import",                                          csvImport: "Schedule → More → Import CSV",         proxyRoute: "",               proxyHeader: "",               verifyEndpoint: ""                },
-    "hotschedules":{ name: "HotSchedules",color: "#DC2626", canConnect: false, canPublish: false, planNote: "Enterprise — contact your account rep", keyPath: "Admin → Integrations → API Management → Create Key",            csvImport: "Schedule → Actions → Import via CSV",  proxyRoute: "",               proxyHeader: "",               verifyEndpoint: ""                },
+    "7shifts":     { name: "7Shifts",     color: "#7C3AED", canConnect: true,  canPublish: true,  planNote: "Requires The Works plan ($43+/mo)",      keyPath: "Settings → Integrations → API Keys → Generate New Key",     csvImport: "Schedule → Import",                    proxyRoute: "/api/7shifts",   proxyHeader: "x-7shifts-key",  verifyEndpoint: "/company",       settingsUrl: "https://app.7shifts.com"              },
+    "homebase":    { name: "Homebase",    color: "#FF6B35", canConnect: true,  canPublish: false, planNote: "Essentials plan or above required",       keyPath: "Account Settings → Security → API Tokens → Generate Token", csvImport: "Schedule → Import Shifts → Upload CSV", proxyRoute: "/api/homebase",  proxyHeader: "x-homebase-key", verifyEndpoint: "/v1/businesses", settingsUrl: "https://app.joinhomebase.com"          },
+    "wheniwork":   { name: "When I Work", color: "#00B2A9", canConnect: true,  canPublish: false, planNote: "Standard plan or above required",         keyPath: "Profile → Developer → API Tokens → Create Token",           csvImport: "Scheduler → Import → Upload CSV",      proxyRoute: "/api/wheniwork", proxyHeader: "x-wiw-key",      verifyEndpoint: "/account",       settingsUrl: "https://app.wheniwork.com"             },
+    "deputy":      { name: "Deputy",      color: "#3B82F6", canConnect: false, canPublish: false,                                                     keyPath: "Business Settings → Integrations → API → Create Token",      csvImport: "Scheduling → Import → CSV Upload",     proxyRoute: "",               proxyHeader: "",               verifyEndpoint: "",               settingsUrl: "https://once.deputy.com/my/apps/api"  },
+    "sling":       { name: "Sling",       color: "#F97316", canConnect: false, canPublish: false,                                                     keyPath: "N/A — Sling has no public API",                               csvImport: "Schedule → More → Import CSV",         proxyRoute: "",               proxyHeader: "",               verifyEndpoint: "",               settingsUrl: "https://app.getsling.com"              },
+    "hotschedules":{ name: "HotSchedules",color: "#DC2626", canConnect: false, canPublish: false, planNote: "Enterprise only — contact account rep",  keyPath: "Admin → Integrations → API Management → Create Key",         csvImport: "Schedule → Actions → Import via CSV",  proxyRoute: "",               proxyHeader: "",               verifyEndpoint: "",               settingsUrl: ""                                      },
   }
 
   const PLATFORMS: Record<string, { name: string; hint: string }> = {
-    resy:        { name: "Resy",               hint: "Resy OS → Settings → Integrations → Calendar Export → Copy iCal Link" },
-    sevenrooms:  { name: "SevenRooms",         hint: "SevenRooms → Reporting → Export → Calendar Integration → iCal URL" },
-    tock:        { name: "Tock",               hint: "Tock → Restaurant Settings → Calendar Sync → Export URL" },
-    toasttables: { name: "Toast Tables",       hint: "Toast → Restaurant → Reservations → Calendar → Export iCal URL" },
-    square:      { name: "Square",             hint: "Square Dashboard → Appointments → Settings → Calendar Sync → iCal Feed" },
-    yelp:        { name: "Yelp Reservations",  hint: "Yelp for Business → Reservations → Settings → Calendar → Export iCal" },
-    other:       { name: "Other / Generic",    hint: "Paste any iCal (.ics) feed URL from your reservation management platform." },
+    resy:        { name: "Resy",         hint: "ResyOS → Settings → Integrations → Calendar Export → Copy iCal Link" },
+    sevenrooms:  { name: "SevenRooms",   hint: "SevenRooms → Settings → Calendar Sync → iCal Export URL" },
+    tock:        { name: "Tock",         hint: "Tock → Admin Settings → Restaurant Info → Calendar Export → Copy URL" },
+    toasttables: { name: "Toast Tables", hint: "Toast Backend → Guests → Reservations → Settings → Calendar Export → iCal URL" },
+    other:       { name: "Other",        hint: "Paste any standard iCal (.ics) feed URL from your reservation platform." },
   }
 
   const CAL_BTNS = [
@@ -1478,16 +1527,24 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <div>
-                      <button
-                        onClick={() => setShowHowTo(v => !v)}
-                        style={{
-                          background: "none", border: "none", cursor: "pointer",
-                          fontSize: 11, fontWeight: 600, color: sp.color, padding: 0,
-                          display: "flex", alignItems: "center", gap: 5,
-                        }}
-                      >
-                        {showHowTo ? "▲" : "▼"} Where to find your API key
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                        <button
+                          onClick={() => setShowHowTo(v => !v)}
+                          style={{
+                            background: "none", border: "none", cursor: "pointer",
+                            fontSize: 11, fontWeight: 600, color: sp.color, padding: 0,
+                            display: "flex", alignItems: "center", gap: 5,
+                          }}
+                        >
+                          {showHowTo ? "▲" : "▼"} Where to find your API key
+                        </button>
+                        {sp.settingsUrl && (
+                          <a href={sp.settingsUrl} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 10, color: C.accent, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}>
+                            Open {sp.name} <ExternalLink style={{ width: 9, height: 9 }} />
+                          </a>
+                        )}
+                      </div>
                       {showHowTo && (
                         <ol style={{ margin: "10px 0 0 16px", padding: 0, fontSize: 11, color: C.text2, lineHeight: 2 }}>
                           <li>Log in to <strong>7Shifts</strong></li>
@@ -1571,16 +1628,24 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
                     /* ── Not connected — API key input ── */
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       <div>
-                        <button
-                          onClick={() => setShowHowTo(v => !v)}
-                          style={{
-                            background: "none", border: "none", cursor: "pointer",
-                            fontSize: 11, fontWeight: 600, color: sp.color, padding: 0,
-                            display: "flex", alignItems: "center", gap: 5,
-                          }}
-                        >
-                          {showHowTo ? "▲" : "▼"} Where to find your API key
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                          <button
+                            onClick={() => setShowHowTo(v => !v)}
+                            style={{
+                              background: "none", border: "none", cursor: "pointer",
+                              fontSize: 11, fontWeight: 600, color: sp.color, padding: 0,
+                              display: "flex", alignItems: "center", gap: 5,
+                            }}
+                          >
+                            {showHowTo ? "▲" : "▼"} Where to find your API key
+                          </button>
+                          {sp.settingsUrl && (
+                            <a href={sp.settingsUrl} target="_blank" rel="noreferrer"
+                              style={{ fontSize: 10, color: C.accent, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}>
+                              Open {sp.name} <ExternalLink style={{ width: 9, height: 9 }} />
+                            </a>
+                          )}
+                        </div>
                         {showHowTo && (
                           <div style={{ margin: "10px 0 0", fontSize: 11, color: C.text2, lineHeight: 2 }}>
                             <strong>{sp.name}:</strong> {sp.keyPath}
@@ -1667,28 +1732,152 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
           )
         })()}
 
-        {/* ── POS ── */}
-        <div style={{ ...boxStyle, opacity: 0.65 }}>
+        {/* ── POS System ── */}
+        <div style={boxStyle}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={iconBoxStyle(C.bg)}>
-              <CreditCard style={{ width: 20, height: 20, color: C.muted }} />
+            <div style={iconBoxStyle(squareData ? C.greenBg : "rgba(0,0,0,0.04)")}>
+              <CreditCard style={{ width: 20, height: 20, color: squareData ? C.green : C.muted }} />
             </div>
-            <div>
+            <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>POS System</div>
-              <div style={{ fontSize: 11, color: C.muted }}>Toast · Square · Clover</div>
+              <div style={{ fontSize: 11, color: C.muted }}>Auto-close tables · sync covers to analytics</div>
             </div>
+            {squareData && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+                background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`, whiteSpace: "nowrap",
+              }}>● Connected</span>
+            )}
+            {squareConnecting && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+                background: C.orangeBg, color: C.orange, border: `1px solid ${C.orangeBorder}`, whiteSpace: "nowrap",
+              }}>Connecting…</span>
+            )}
           </div>
-          <div style={{ textAlign: "center", padding: "20px 0" }}>
-            <span style={{
-              fontSize: 11, padding: "3px 12px", borderRadius: 99, fontWeight: 700,
-              background: C.orangeBg, color: C.orange, border: `1px solid ${C.orangeBorder}`,
-            }}>
-              Coming Soon
-            </span>
+
+          {/* ── Square ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#FF6900", flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Square</span>
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: "0.04em",
+                background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
+                borderRadius: 4, padding: "1px 6px",
+              }}>Free · Recommended</span>
+            </div>
+
+            {squareData ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{
+                  background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                  borderRadius: 8, padding: "12px 14px",
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.green }}>{squareData.merchant_name}</div>
+                  <div style={{ fontSize: 11, color: C.green, opacity: 0.8, marginTop: 2 }}>
+                    Reading orders, payments &amp; covers from Square
+                  </div>
+                </div>
+                <button onClick={disconnectSquare} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.muted, padding: 0, textAlign: "left" }}>
+                  Disconnect Square
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <p style={{ fontSize: 11, color: C.text2, margin: 0, lineHeight: 1.55 }}>
+                  Full OAuth · reads orders, payments &amp; covers. Auto-closes tables when checks are paid. Free developer account — no fees.
+                </p>
+                {process.env.NEXT_PUBLIC_SQUARE_CLIENT_ID ? (
+                  <Btn onClick={connectSquare} variant="primary" small
+                    disabled={squareConnecting}
+                    icon={squareConnecting ? Loader2 : undefined}
+                  >
+                    {squareConnecting ? "Connecting…" : "Connect with Square"}
+                  </Btn>
+                ) : (
+                  <div style={{
+                    background: C.orangeBg, border: `1px solid ${C.orangeBorder}`,
+                    borderRadius: 8, padding: "12px 14px",
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.orange, marginBottom: 6 }}>
+                      One-time setup required (5 min, free)
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: 16, fontSize: 10, color: C.text2, lineHeight: 2 }}>
+                      <li>Create a free app at{" "}
+                        <a href="https://developer.squareup.com/apps" target="_blank" rel="noreferrer"
+                          style={{ color: C.accent, fontWeight: 600 }}>developer.squareup.com</a>
+                      </li>
+                      <li>Add OAuth redirect URL:{" "}
+                        <code style={{ fontSize: 9, background: "rgba(0,0,0,0.06)", padding: "1px 5px", borderRadius: 3 }}>
+                          https://hostplatform.net/api/square/callback
+                        </code>
+                      </li>
+                      <li>Add to Railway env vars:{" "}
+                        <code style={{ fontSize: 9, background: "rgba(0,0,0,0.06)", padding: "1px 5px", borderRadius: 3 }}>NEXT_PUBLIC_SQUARE_CLIENT_ID</code>
+                        {" "}&amp;{" "}
+                        <code style={{ fontSize: 9, background: "rgba(0,0,0,0.06)", padding: "1px 5px", borderRadius: 3 }}>SQUARE_CLIENT_SECRET</code>
+                      </li>
+                    </ol>
+                  </div>
+                )}
+                {squareErr && (
+                  <p style={{ fontSize: 11, color: C.red, margin: 0 }}>{squareErr}</p>
+                )}
+              </div>
+            )}
           </div>
-          <p style={{ fontSize: 11, color: C.muted, margin: 0, lineHeight: 1.6 }}>
-            Connect your point-of-sale to automatically close tables when checks are paid and sync covers to your analytics.
-          </p>
+
+          <div style={{ borderTop: `1px solid ${C.border}` }} />
+
+          {/* ── Clover ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#00A651", flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Clover</span>
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  background: C.orangeBg, color: C.orange, border: `1px solid ${C.orangeBorder}`,
+                  borderRadius: 4, padding: "1px 6px",
+                }}>Setup Required</span>
+              </div>
+              <a href="https://docs.clover.com/" target="_blank" rel="noreferrer"
+                style={{ fontSize: 10, color: C.accent, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}>
+                Docs <ExternalLink style={{ width: 9, height: 9 }} />
+              </a>
+            </div>
+            <p style={{ fontSize: 10, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+              Full OAuth available. Register a free developer app at{" "}
+              <a href="https://www.clover.com/global-developer-home" target="_blank" rel="noreferrer"
+                style={{ color: C.accent }}>clover.com/global-developer-home</a>{" "}
+              — requires sandbox testing before live use.
+            </p>
+          </div>
+
+          <div style={{ borderTop: `1px solid ${C.border}` }} />
+
+          {/* ── Toast ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#E91E1E", flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>Toast</span>
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  background: C.redBg, color: C.red, border: `1px solid ${C.redBorder}`,
+                  borderRadius: 4, padding: "1px 6px",
+                }}>Partner Program Required</span>
+              </div>
+              <a href="https://doc.toasttab.com/openapi/general/overview/" target="_blank" rel="noreferrer"
+                style={{ fontSize: 10, color: C.muted, textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}>
+                Docs <ExternalLink style={{ width: 9, height: 9 }} />
+              </a>
+            </div>
+            <p style={{ fontSize: 10, color: C.muted, margin: 0, lineHeight: 1.6 }}>
+              API gated behind Toast&apos;s Partner Program — requires an application, approval, and revenue-share fees. Not practical for independent owners.
+            </p>
+          </div>
         </div>
 
         {/* ── Camera AI ── */}
