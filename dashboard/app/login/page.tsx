@@ -13,7 +13,7 @@ export default function LoginPage() {
   };
 
   const handleContinueWithout = () => {
-    window.location.href = "/admin";
+    window.location.href = "/walters303";
   };
 
   const pageStyle: React.CSSProperties = {

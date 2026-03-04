@@ -333,7 +333,7 @@ function OverviewPage({
   }
   const joinUrl = typeof window !== "undefined"
     ? `${window.location.origin}/join?r=272a8876-e4e6-4867-831d-0525db80a8db`
-    : "https://restaurant-brain-production.up.railway.app/join"
+    : "https://hostplatform.net/walters303/join"
 
   const copy = () => {
     navigator.clipboard.writeText(joinUrl)
@@ -1786,7 +1786,7 @@ function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => vo
             Reservations
           </button>
         </Link>
-        <Link href="/station" style={{ textDecoration: "none" }}>
+        <Link href="/walters303/station" style={{ textDecoration: "none" }}>
           <button style={{
             width: "100%", display: "flex", alignItems: "center", gap: 8,
             padding: "9px 12px", border: `1px solid ${C.border}`, borderRadius: 8,
