@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { Loader2, X, UtensilsCrossed } from "lucide-react"
+import { X, UtensilsCrossed } from "lucide-react"
 
 const API = "https://restaurant-brain-production.up.railway.app"
 
@@ -129,11 +129,9 @@ export default function WaitPage() {
   }
 
   if (!entry) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "#000" }}>
-        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "rgba(255,255,255,0.3)" }} />
-      </div>
-    )
+    // Blank black screen — no spinner — so the white join animation flows
+    // seamlessly into the dark wait page without an intermediate loading flash.
+    return <div style={{ height: "100dvh", background: "#000" }} />
   }
 
   const { status, name, party_size, parties_ahead, wait_estimate, quoted_wait } = entry
