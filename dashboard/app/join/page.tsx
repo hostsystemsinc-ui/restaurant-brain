@@ -105,11 +105,7 @@ export default function JoinPage() {
           from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes fadeOut {
-          0%   { opacity: 1; }
-          70%  { opacity: 1; }
-          100% { opacity: 0; }
-        }
+
       `}</style>
 
       {/* ── HOST wordmark ── */}
@@ -262,7 +258,7 @@ export default function JoinPage() {
             display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center",
             background: "#000",
-            animation: "overlayIn 0.28s cubic-bezier(0.4, 0, 0.2, 1) both, fadeOut 1.05s 0s ease-in-out forwards",
+            animation: "overlayIn 0.28s cubic-bezier(0.4, 0, 0.2, 1) both",
           }}
         >
           {/* Sub-label */}
