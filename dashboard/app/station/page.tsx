@@ -129,12 +129,14 @@ const SOURCE_LABELS: Record<string, string> = {
 // ── Draggable Queue Card ───────────────────────────────────────────────────────
 
 function DraggableQueueCard({
-  entry, onSeat, onNotify, onRemove,
+  entry, onSeat, onNotify, onRemove, isSelected, onSelect,
 }: {
   entry: QueueEntry
   onSeat: () => void
   onNotify: () => void
   onRemove: () => void
+  isSelected?: boolean
+  onSelect?: () => void
 }) {
   const isReady = entry.status === "ready"
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -147,12 +149,14 @@ function DraggableQueueCard({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      onClick={() => { if (!isDragging) onSelect?.() }}
       style={{
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
         touchAction: "none",
-        background: isReady ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
-        border: `1px solid ${isReady ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.16)"}`,
+        background: isSelected ? "rgba(255,220,100,0.09)" : isReady ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
+        border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.16)"}`,
+        boxShadow: isSelected ? "0 0 0 2px rgba(255,220,100,0.18), inset 0 0 10px rgba(255,220,100,0.05)" : undefined,
         borderRadius: 12,
         cursor: isDragging ? "grabbing" : "grab",
         display: "flex",
@@ -208,37 +212,37 @@ function DraggableQueueCard({
       </div>
 
       {/* Action buttons — stopPropagation prevents drag from starting on click */}
-      <div className="flex items-center gap-0.5 shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
         <button
           onPointerDown={e => e.stopPropagation()}
-          onClick={onSeat}
-          className="h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:brightness-125"
+          onClick={e => { e.stopPropagation(); onSeat() }}
+          className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
           style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}
           title="Seat"
         >
-          <CheckCircle2 className="w-3.5 h-3.5" />
+          <CheckCircle2 className="w-5 h-5" />
         </button>
         {!isReady ? (
           <button
             onPointerDown={e => e.stopPropagation()}
-            onClick={onNotify}
-            className="h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:brightness-125"
+            onClick={e => { e.stopPropagation(); onNotify() }}
+            className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
             style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }}
             title="Notify"
           >
-            <BellRing className="w-3.5 h-3.5" />
+            <BellRing className="w-5 h-5" />
           </button>
         ) : (
-          <div className="h-7 w-7" />
+          <div className="h-11 w-11" />
         )}
         <button
           onPointerDown={e => e.stopPropagation()}
-          onClick={onRemove}
-          className="h-7 w-7 flex items-center justify-center rounded-lg transition-all active:scale-95 hover:bg-red-500/10 hover:text-red-400"
+          onClick={e => { e.stopPropagation(); onRemove() }}
+          className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:bg-red-500/10 hover:text-red-400"
           style={{ color: "rgba(255,200,150,0.48)" }}
           title="Remove"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-5 h-5" />
         </button>
       </div>
     </div>
@@ -274,13 +278,15 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear, isDraggingOccupant,
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect,
 }: {
   pos: FloorPos
   table?: Table
   occupant?: LocalOccupant
   onClear?: () => void
   isDraggingOccupant?: boolean
+  isSelectMode?: boolean
+  onSeatFromSelect?: () => void
 }) {
   const isOccupied = !!occupant || (!!table && table.status !== "available")
   const hasLocalOccupant = !!occupant
@@ -312,14 +318,20 @@ function DroppableFloorTable({
     setDragRef(el)
   }, [setDropRef, setDragRef])
 
+  const isSelectTarget = !!isSelectMode && !isOccupied
+
   const bg = isOver && canReceiveDrop
-    ? "rgba(34,197,94,0.45)"
+    ? "rgba(34,197,94,0.55)"
+    : isSelectTarget
+    ? "rgba(34,197,94,0.38)"
     : isOccupied ? "rgba(239,68,68,0.28)"
     : noTable ? "rgba(255,255,255,0.07)"
     : "rgba(34,197,94,0.22)"
 
   const borderColor = isOver && canReceiveDrop
     ? "#22c55e"
+    : isSelectTarget
+    ? "#4ade80"
     : isOccupied ? "rgba(239,68,68,0.90)"
     : noTable ? "rgba(255,255,255,0.32)"
     : "rgba(34,197,94,0.82)"
@@ -353,10 +365,16 @@ function DroppableFloorTable({
         justifyContent: "center",
         gap: 2,
         overflow: "hidden",
-        cursor: hasLocalOccupant ? "grab" : isOccupied && onClear ? "pointer" : canReceiveDrop ? "copy" : "default",
+        cursor: hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : isOccupied && onClear ? "pointer" : canReceiveDrop ? "copy" : "default",
         opacity: isDragging ? 0.4 : 1,
       }}
-      onClick={isOccupied && onClear && !hasLocalOccupant ? onClear : undefined}
+      onClick={
+        isSelectTarget && onSeatFromSelect
+          ? onSeatFromSelect
+          : isOccupied && onClear && !hasLocalOccupant
+          ? onClear
+          : undefined
+      }
     >
       {isOccupied && onClear ? (
         <button
@@ -454,12 +472,14 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
   onClear: (tableId: string | undefined, tableNumber: number) => void
   isDraggingOccupant: boolean
+  selectedEntry?: QueueEntry | null
+  onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -561,6 +581,8 @@ function FloorMap({
                 occupant={occupant}
                 onClear={() => onClear(table?.id, pos.number)}
                 isDraggingOccupant={isDraggingOccupant}
+                isSelectMode={!!selectedEntry}
+                onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
               />
             )
           })}
@@ -579,7 +601,7 @@ function FloorMap({
         whiteSpace: "nowrap",
         pointerEvents: "none",
       }}>
-        Drag guests from the queue to seat them
+        Tap a guest to select · tap a table to seat · or drag directly
       </div>
     </div>
   )
@@ -753,7 +775,7 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
         {error && <p className="text-xs text-red-400 mb-4 text-center">{error}</p>}
 
         <button onClick={submit} disabled={loading}
-          className="w-full py-3.5 rounded-xl text-xs font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
+          className="w-full py-5 rounded-xl text-sm font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
           style={{ background: loading ? "rgba(255,185,100,0.08)" : "#D9321C", color: "white" }}>
           {loading ? "Adding…" : "Add to Queue"}
         </button>
@@ -776,6 +798,8 @@ export default function HostDashboard() {
   const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
   const [resPicker, setResPicker]         = useState<Reservation | null>(null)
   const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
+  const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
+  const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [now, setNow]                     = useState(() => new Date())
   const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
     try {
@@ -835,6 +859,7 @@ export default function HostDashboard() {
 
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
+    setSelectedEntry(null)
   }, [])
 
   const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
@@ -877,6 +902,7 @@ export default function HostDashboard() {
   // ── DnD handlers ──────────────────────────────────────────────────────
 
   function handleDragStart(event: DragStartEvent) {
+    setSelectedEntry(null)
     const data = event.active.data.current as Record<string, unknown> | undefined
     if (data?.type === "occupant") {
       setActiveDragOccupant({ tableNumber: data.tableNumber as number, occupant: data.occupant as LocalOccupant })
@@ -1157,6 +1183,8 @@ export default function HostDashboard() {
                 <div className="flex flex-col gap-1.5">
                   {readyList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
+                      isSelected={selectedEntry?.id === e.id}
+                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                   ))}
                 </div>
@@ -1190,6 +1218,8 @@ export default function HostDashboard() {
                 <div className="flex flex-col gap-1.5 pb-24">
                   {waitingList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
+                      isSelected={selectedEntry?.id === e.id}
+                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
                   ))}
                 </div>
@@ -1209,8 +1239,18 @@ export default function HostDashboard() {
             <FloorMap
               tables={tables}
               localOccupants={localOccupants}
-              onClear={clearTable}
+              onClear={(tableId, tableNumber) => {
+                const occupant = localOccupants.get(tableNumber)
+                if (occupant) setClearConfirm({ tableId, tableNumber, occupant })
+                else clearTable(tableId, tableNumber)
+              }}
               isDraggingOccupant={!!activeDragOccupant}
+              selectedEntry={selectedEntry}
+              onSeatFromSelect={(tableNumber, tableId) => {
+                if (!selectedEntry) return
+                confirmSeat(selectedEntry, tableNumber, tableId)
+                setSelectedEntry(null)
+              }}
             />
           </div>
 
@@ -1225,13 +1265,93 @@ export default function HostDashboard() {
         {/* ── Add Guest FAB ─────────────────────────────────────────── */}
         <button
           onClick={() => setShowAdd(true)}
-          className="fixed bottom-6 right-6 flex items-center gap-2 h-11 px-5 rounded-full text-xs font-black tracking-[0.1em] uppercase shadow-2xl transition-all active:scale-95 hover:scale-[1.03] z-30"
+          className="fixed bottom-6 right-6 flex items-center gap-2.5 h-16 px-8 rounded-full text-sm font-black tracking-[0.1em] uppercase shadow-2xl transition-all active:scale-95 hover:scale-[1.03] z-30"
           style={{ background: "#D9321C", color: "white", boxShadow: "0 4px 28px rgba(217,50,28,0.4)" }}
         >
-          <Plus className="w-3.5 h-3.5" /> Add Guest
+          <Plus className="w-5 h-5" /> Add Guest
         </button>
 
         {showAdd && <AddGuestDrawer onClose={() => setShowAdd(false)} onAdded={refreshAll} />}
+
+        {/* ── Selected guest hint bar ───────────────────────────── */}
+        {selectedEntry && (
+          <div
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-4 py-2.5 rounded-full"
+            style={{
+              background: "rgba(12,6,3,0.93)",
+              border: "1px solid rgba(255,220,100,0.38)",
+              backdropFilter: "blur(12px)",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.55)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span className="text-xs font-bold" style={{ color: "rgba(255,220,100,0.95)" }}>
+              {selectedEntry.name || "Guest"} · {selectedEntry.party_size}p
+            </span>
+            <span className="text-[10px]" style={{ color: "rgba(255,220,100,0.48)" }}>
+              — tap a table to seat
+            </span>
+            <button
+              onClick={() => setSelectedEntry(null)}
+              className="w-5 h-5 flex items-center justify-center rounded-full ml-1 transition-all hover:bg-yellow-400/10"
+              style={{ color: "rgba(255,220,100,0.6)" }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* ── Clear Table Confirmation ──────────────────────────── */}
+        {clearConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              onClick={() => setClearConfirm(null)}
+            />
+            <div
+              className="relative w-full max-w-xs mx-4 rounded-2xl p-6"
+              style={{ background: "#100C09", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}
+            >
+              <p className="text-sm font-bold mb-2" style={{ color: "rgba(255,248,240,0.92)" }}>
+                Clear Table?
+              </p>
+              <p className="text-xs mb-6" style={{ color: "rgba(255,200,150,0.55)" }}>
+                Remove{" "}
+                <strong style={{ color: "rgba(255,248,240,0.88)" }}>
+                  {clearConfirm.occupant.name}
+                </strong>{" "}
+                ({clearConfirm.occupant.party_size}p) from the floor map?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setClearConfirm(null)}
+                  className="flex-1 py-3 rounded-xl text-xs font-bold tracking-wide transition-all hover:brightness-125"
+                  style={{
+                    background: "rgba(255,185,100,0.06)",
+                    color: "rgba(255,200,150,0.55)",
+                    border: "1px solid rgba(255,185,100,0.10)",
+                  }}
+                >
+                  Keep
+                </button>
+                <button
+                  onClick={() => {
+                    clearTable(clearConfirm.tableId, clearConfirm.tableNumber)
+                    setClearConfirm(null)
+                  }}
+                  className="flex-1 py-3 rounded-xl text-xs font-bold tracking-wide transition-all hover:brightness-125"
+                  style={{
+                    background: "rgba(239,68,68,0.15)",
+                    color: "#ef4444",
+                    border: "1px solid rgba(239,68,68,0.32)",
+                  }}
+                >
+                  Clear Table
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Queue seat picker */}
         {seatPicker && (
