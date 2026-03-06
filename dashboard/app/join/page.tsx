@@ -22,6 +22,7 @@ export default function JoinPage() {
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState("")
   const [live,      setLive]      = useState<LiveInfo | null>(null)
+  const [joined,    setJoined]    = useState(false)   // transition overlay
 
   const fetchLive = useCallback(async () => {
     try {
@@ -32,14 +33,12 @@ export default function JoinPage() {
       const tables   = tablesRes.ok   ? await tablesRes.json()   : []
       const insights = insightsRes.ok ? await insightsRes.json() : null
 
-      // Count how many API tables are occupied, subtract from full floor plan of 16
       const apiOccupied = Array.isArray(tables)
         ? tables.filter((t: { status: string }) => t.status !== "available").length
         : 0
       const available = Math.max(0, TOTAL_TABLES - apiOccupied)
-
-      const ahead   = insights?.parties_waiting ?? 0
-      const waitMin = insights?.avg_wait_estimate > 0 ? insights.avg_wait_estimate : null
+      const ahead     = insights?.parties_waiting ?? 0
+      const waitMin   = insights?.avg_wait_estimate > 0 ? insights.avg_wait_estimate : null
 
       setLive({ available, waitMin, ahead })
     } catch {
@@ -71,19 +70,49 @@ export default function JoinPage() {
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
-      router.push(`/wait/${data.entry.id}`)
+
+      // Show brand transition animation, then navigate
+      setJoined(true)
+      setTimeout(() => {
+        router.push(`/wait/${data.entry.id}`)
+      }, 1050)
     } catch {
       setError("Something went wrong. Please try again.")
       setLoading(false)
     }
   }
 
+  // Suppress unused variable warning — RESTAURANT used in the identity section concept
+  void RESTAURANT
+
   return (
     <div
       className="flex flex-col"
       style={{ height: "100dvh", background: "#000", color: "#fff", overflow: "hidden" }}
     >
-      {/* ── HOST wordmark — alone at the top ─────────────────────────── */}
+      {/* ── Keyframe animations ── */}
+      <style>{`
+        @keyframes overlayIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes logoStamp {
+          0%   { opacity: 0; transform: scale(0.88) translateY(4px); }
+          60%  { opacity: 1; transform: scale(1.03) translateY(0); }
+          100% { opacity: 1; transform: scale(1)    translateY(0); }
+        }
+        @keyframes subtleUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeOut {
+          0%   { opacity: 1; }
+          70%  { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `}</style>
+
+      {/* ── HOST wordmark ── */}
       <div className="flex flex-col items-center px-8 pt-12 pb-5 shrink-0">
         <p
           className="text-xs tracking-[0.4em] uppercase mb-2"
@@ -96,12 +125,11 @@ export default function JoinPage() {
         </h1>
       </div>
 
-      {/* ── Flexible gap — grows to push party size down ─────────────── */}
+      {/* ── Flex spacer ── */}
       <div className="flex-1" style={{ maxHeight: "72px" }} />
 
-      {/* ── Restaurant identity ───────────────────────────────────────── */}
+      {/* ── Restaurant identity ── */}
       <div className="flex flex-col items-center px-8 pb-5 shrink-0">
-        {/* Logo box */}
         <div
           className="mb-3 overflow-hidden"
           style={{
@@ -132,7 +160,7 @@ export default function JoinPage() {
         )}
       </div>
 
-      {/* ── Party size ───────────────────────────────────────────────── */}
+      {/* ── Party size ── */}
       <div className="flex flex-col items-center gap-3 py-5 px-8 shrink-0">
         <p className="text-xs tracking-[0.3em] uppercase" style={{ color: "rgba(255,255,255,0.65)" }}>
           Party Size
@@ -164,7 +192,7 @@ export default function JoinPage() {
         </div>
       </div>
 
-      {/* ── Fields: fill remaining space ─────────────────────────────── */}
+      {/* ── Fields ── */}
       <div className="flex-1 flex flex-col justify-center gap-6 px-8">
         {/* Name */}
         <div className="flex flex-col gap-2">
@@ -202,7 +230,7 @@ export default function JoinPage() {
         </div>
       </div>
 
-      {/* ── CTA — pinned to bottom ────────────────────────────────────── */}
+      {/* ── CTA ── */}
       <div className="px-8 pb-8 pt-4 shrink-0">
         {error && (
           <p className="text-sm text-center mb-4" style={{ color: "rgba(255,80,80,0.9)" }}>
@@ -211,20 +239,75 @@ export default function JoinPage() {
         )}
         <button
           onClick={submit}
-          disabled={loading}
+          disabled={loading || joined}
           className="w-full rounded-2xl text-base font-bold tracking-[0.15em] uppercase transition-all active:scale-[0.98] flex items-center justify-center gap-2"
           style={{
             height:     "64px",
-            background: loading ? "rgba(255,255,255,0.35)" : "white",
+            background: loading || joined ? "rgba(255,255,255,0.35)" : "white",
             color:      "black",
           }}
         >
-          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Join the Waitlist"}
+          {loading && !joined ? <Loader2 className="w-5 h-5 animate-spin" /> : "Join the Waitlist"}
         </button>
         <p className="text-xs text-center mt-4" style={{ color: "rgba(255,255,255,0.2)" }}>
           HOST · No app download needed
         </p>
       </div>
+
+      {/* ── Join transition overlay ── */}
+      {joined && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 100,
+            display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            background: "white",
+            animation: "overlayIn 0.28s cubic-bezier(0.4, 0, 0.2, 1) both, fadeOut 1.05s 0s ease-in-out forwards",
+          }}
+        >
+          {/* Sub-label */}
+          <p
+            style={{
+              fontSize: 10,
+              letterSpacing: "0.55em",
+              textTransform: "uppercase",
+              color: "rgba(0,0,0,0.38)",
+              marginBottom: 14,
+              animation: "subtleUp 0.45s 0.18s ease-out both",
+            }}
+          >
+            You&apos;re in the queue
+          </p>
+
+          {/* HOST stamp */}
+          <p
+            style={{
+              fontSize: 76,
+              fontWeight: 900,
+              letterSpacing: "0.28em",
+              color: "#000",
+              lineHeight: 1,
+              animation: "logoStamp 0.5s 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+            }}
+          >
+            HOST
+          </p>
+
+          {/* Foot note */}
+          <p
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.18em",
+              color: "rgba(0,0,0,0.3)",
+              marginTop: 20,
+              animation: "subtleUp 0.45s 0.45s ease-out both",
+            }}
+          >
+            {phone.trim() ? "We\u2019ll text you when it\u2019s time." : "Check back anytime."}
+          </p>
+        </div>
+      )}
+
     </div>
   )
 }
