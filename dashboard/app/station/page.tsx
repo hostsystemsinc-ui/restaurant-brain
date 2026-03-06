@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import Link from "next/link"
 import {
   Users, Clock, CheckCircle2, BellRing,
@@ -160,90 +160,98 @@ function DraggableQueueCard({
         borderRadius: 12,
         cursor: isDragging ? "grabbing" : "grab",
         display: "flex",
-        alignItems: "center",
-        gap: 10,
+        flexDirection: "column",
+        gap: 6,
         padding: "10px 12px",
       }}
     >
-      {/* Grip */}
-      <GripVertical
-        className="w-3.5 h-3.5 shrink-0"
-        style={{ color: "rgba(255,200,150,0.45)" }}
-      />
+      {/* ── Row 1: grip + position + name ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <GripVertical
+          className="w-3.5 h-3.5 shrink-0"
+          style={{ color: "rgba(255,200,150,0.45)" }}
+        />
 
-      {/* Position badge */}
-      <div
-        className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums"
-        style={{
-          background: isReady ? "rgba(34,197,94,0.20)" : "rgba(255,185,100,0.12)",
-          color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)",
-        }}
-      >
-        {entry.position ?? "—"}
-      </div>
+        {/* Position badge */}
+        <div
+          className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums"
+          style={{
+            background: isReady ? "rgba(34,197,94,0.20)" : "rgba(255,185,100,0.12)",
+            color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)",
+          }}
+        >
+          {entry.position ?? "—"}
+        </div>
 
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
+        {/* Name + READY badge */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
           <span
-            className="font-semibold text-[13px] leading-snug truncate"
-            style={{ color: isReady ? "#86efac" : "rgba(255,248,240,0.97)" }}
+            style={{
+              fontWeight: 600, fontSize: 14, lineHeight: 1.3,
+              color: isReady ? "#86efac" : "rgba(255,248,240,0.97)",
+              wordBreak: "break-word",
+            }}
           >
             {entry.name || "Guest"}
           </span>
           {isReady && (
             <span
-              className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded shrink-0 animate-pulse"
+              className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0"
               style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}
             >
               READY
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1.5 mt-0.5" style={{ color: "rgba(255,200,150,0.70)", fontSize: 11 }}>
-          <span className="flex items-center gap-0.5">
+      </div>
+
+      {/* ── Row 2: guests/time + action buttons ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 38 }}>
+        {/* Meta info */}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, color: "rgba(255,200,150,0.70)", fontSize: 11 }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
             <Users className="w-2.5 h-2.5" />{entry.party_size}p
           </span>
-          <span style={{ color: "rgba(255,185,100,0.45)" }}>·</span>
-          <span className="flex items-center gap-0.5">
+          <span style={{ color: "rgba(255,185,100,0.40)" }}>·</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
             <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
           </span>
         </div>
-      </div>
 
-      {/* Action buttons — stopPropagation prevents drag from starting on click */}
-      <div className="flex items-center gap-1 shrink-0">
-        <button
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onSeat() }}
-          className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-          style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}
-          title="Seat"
-        >
-          <CheckCircle2 className="w-5 h-5" />
-        </button>
-        {!isReady ? (
+        {/* Action buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <button
             onPointerDown={e => e.stopPropagation()}
-            onClick={e => { e.stopPropagation(); onNotify() }}
+            onClick={e => { e.stopPropagation(); onSeat() }}
             className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }}
-            title="Notify"
+            style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }}
+            title="Seat"
           >
-            <BellRing className="w-5 h-5" />
+            <CheckCircle2 className="w-5 h-5" />
           </button>
-        ) : (
-          <div className="h-11 w-11" />
-        )}
-        <button
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onRemove() }}
-          className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:bg-red-500/10 hover:text-red-400"
-          style={{ color: "rgba(255,200,150,0.48)" }}
-          title="Remove"
-        >
-          <X className="w-5 h-5" />
-        </button>
+          {!isReady ? (
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => { e.stopPropagation(); onNotify() }}
+              className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+              style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }}
+              title="Notify"
+            >
+              <BellRing className="w-5 h-5" />
+            </button>
+          ) : (
+            <div className="h-11 w-11" />
+          )}
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onRemove() }}
+            className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:bg-red-500/10 hover:text-red-400"
+            style={{ color: "rgba(255,200,150,0.48)" }}
+            title="Remove"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -800,6 +808,34 @@ export default function HostDashboard() {
   const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [sidebarW, setSidebarW]           = useState(300)
+  const isResizing = useRef(false)
+  const resizeStartX = useRef(0)
+  const resizeStartW = useRef(0)
+
+  const handleResizePointerMove = useCallback((e: PointerEvent) => {
+    if (!isResizing.current) return
+    const delta = e.clientX - resizeStartX.current
+    setSidebarW(Math.max(220, Math.min(520, resizeStartW.current + delta)))
+  }, [])
+
+  const handleResizePointerUp = useCallback(() => {
+    isResizing.current = false
+    document.removeEventListener("pointermove", handleResizePointerMove)
+    document.removeEventListener("pointerup", handleResizePointerUp)
+    document.body.style.cursor = ""
+    document.body.style.userSelect = ""
+  }, [handleResizePointerMove])
+
+  const startResize = useCallback((e: React.PointerEvent) => {
+    isResizing.current = true
+    resizeStartX.current = e.clientX
+    resizeStartW.current = sidebarW
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+    document.addEventListener("pointermove", handleResizePointerMove)
+    document.addEventListener("pointerup", handleResizePointerUp)
+  }, [sidebarW, handleResizePointerMove, handleResizePointerUp])
   const [now, setNow]                     = useState(() => new Date())
   const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
     try {
@@ -1061,15 +1097,37 @@ export default function HostDashboard() {
         {/* ── Body ───────────────────────────────────────────────────── */}
         <div className="flex flex-1 overflow-hidden">
 
-          {/* ── Queue sidebar ─────────────────────────────────────── */}
+          {/* ── Queue sidebar (resizable) ──────────────────────── */}
           <div
             className="flex flex-col shrink-0 overflow-hidden"
             style={{
-              width: 272,
-              borderRight: "1px solid rgba(255,185,100,0.16)",
+              width: sidebarW,
+              position: "relative",
               background: "#0C0907",
             }}
           >
+            {/* Drag-to-resize handle */}
+            <div
+              onPointerDown={startResize}
+              style={{
+                position: "absolute", right: 0, top: 0, bottom: 0, width: 6,
+                cursor: "col-resize", zIndex: 20,
+                background: "transparent",
+                borderRight: "1px solid rgba(255,185,100,0.16)",
+              }}
+              title="Drag to resize"
+            >
+              {/* Visual grip dots */}
+              <div style={{
+                position: "absolute", top: "50%", left: "50%",
+                transform: "translate(-50%, -50%)",
+                display: "flex", flexDirection: "column", gap: 3,
+              }}>
+                {[0,1,2].map(i => (
+                  <div key={i} style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(255,185,100,0.28)" }} />
+                ))}
+              </div>
+            </div>
 
             {/* ── Today's reservations ──────────────────────────── */}
             {activeRes.length > 0 && (

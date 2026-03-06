@@ -7,7 +7,7 @@ import {
   Download, Wifi, WifiOff, RefreshCw, Copy, Check,
   ExternalLink, Search, ArrowLeft, Sparkles,
   Settings2, CalendarDays, Camera, CreditCard, Loader2,
-  CalendarCheck,
+  CalendarCheck, ScrollText,
 } from "lucide-react"
 import SchedulingPanel from "./SchedulingPanel"
 import {
@@ -53,7 +53,7 @@ interface Insights {
   ai_insights: string | null
 }
 
-type Page = "overview" | "analytics" | "tables" | "guests" | "inputs" | "schedule"
+type Page = "overview" | "analytics" | "tables" | "guests" | "inputs" | "schedule" | "terms"
 type TimeFrame = "today" | "7d" | "30d" | "90d"
 
 interface LocalOcc { name: string; party_size: number }
@@ -1909,6 +1909,463 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
   )
 }
 
+// ── Page: Terms & Conditions ───────────────────────────────────────────────────
+
+function TermsPage() {
+  const EFFECTIVE = "March 1, 2025"
+  const ENTITY    = "HOST Systems Inc."
+  const EMAIL     = "legal@hostplatform.net"
+  const ADDRESS   = "Denver, Colorado, United States"
+
+  const sectionStyle: React.CSSProperties = { marginBottom: 36 }
+  const h2Style: React.CSSProperties = {
+    fontSize: 15, fontWeight: 800, color: C.text,
+    margin: "0 0 10px", paddingBottom: 8,
+    borderBottom: `1px solid ${C.border}`,
+  }
+  const h3Style: React.CSSProperties = { fontSize: 13, fontWeight: 700, color: C.text, margin: "16px 0 6px" }
+  const pStyle: React.CSSProperties  = { fontSize: 13, color: C.text2, lineHeight: 1.7, margin: "0 0 10px" }
+  const liStyle: React.CSSProperties = { fontSize: 13, color: C.text2, lineHeight: 1.7, marginBottom: 5 }
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <ScrollText style={{ width: 20, height: 20, color: C.accent, flexShrink: 0 }} />
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: 0 }}>
+            Terms &amp; Conditions
+          </h1>
+        </div>
+        <p style={{ fontSize: 13, color: C.muted, margin: 0 }}>
+          {ENTITY} · Effective Date: {EFFECTIVE}
+        </p>
+        <div style={{
+          marginTop: 16, padding: "12px 16px", borderRadius: 8,
+          background: "#FFF7ED", border: "1px solid #FED7AA",
+        }}>
+          <p style={{ fontSize: 12, color: "#92400E", margin: 0, lineHeight: 1.6 }}>
+            <strong>Please read these Terms carefully.</strong> By accessing or using the HOST platform
+            ("Service"), you agree to be bound by these Terms on behalf of yourself and the business
+            entity you represent. If you do not agree, you may not use the Service.
+          </p>
+        </div>
+      </div>
+
+      {/* 1. Definitions */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>1. Definitions</h2>
+        <p style={pStyle}>
+          As used in these Terms, the following definitions apply:
+        </p>
+        <ul style={{ margin: "0 0 10px", paddingLeft: 22 }}>
+          <li style={liStyle}><strong>"HOST" / "we" / "us"</strong> refers to {ENTITY}, the provider of the HOST restaurant management platform.</li>
+          <li style={liStyle}><strong>"Service"</strong> refers to the HOST software platform, including the web application, hostess station interface, guest-facing queue and waitlist pages, administrative dashboard, analytics tools, scheduling features, and all associated APIs and integrations.</li>
+          <li style={liStyle}><strong>"Subscriber" / "you"</strong> refers to the restaurant, hospitality business, or individual that has registered for and uses the Service.</li>
+          <li style={liStyle}><strong>"Guest Data"</strong> refers to information collected about your restaurant guests, including names, phone numbers, party sizes, wait times, and seating records.</li>
+          <li style={liStyle}><strong>"Subscription"</strong> refers to the paid or trial access plan under which you use the Service.</li>
+        </ul>
+      </div>
+
+      {/* 2. Description of Service */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>2. Description of Service</h2>
+        <p style={pStyle}>
+          HOST provides a cloud-based restaurant operations platform designed to help hospitality
+          businesses manage waitlists and queues, view real-time table availability, coordinate
+          reservations, access operational analytics, generate AI-assisted staff scheduling
+          recommendations, and integrate with third-party point-of-sale, scheduling, and reservation
+          systems (collectively, the "Service").
+        </p>
+        <p style={pStyle}>
+          The Service is provided on a software-as-a-service ("SaaS") basis. We reserve the right to
+          update, modify, or discontinue any feature of the Service at any time with reasonable prior
+          notice where practicable.
+        </p>
+      </div>
+
+      {/* 3. Account Registration */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>3. Account Registration &amp; Access</h2>
+        <h3 style={h3Style}>3.1 Eligibility</h3>
+        <p style={pStyle}>
+          You must be at least 18 years old and authorized to enter into legally binding contracts on
+          behalf of the business entity you represent. By registering, you represent that all information
+          you provide is accurate and complete.
+        </p>
+        <h3 style={h3Style}>3.2 Account Security</h3>
+        <p style={pStyle}>
+          You are responsible for maintaining the confidentiality of your account credentials. You agree
+          to notify HOST immediately at {EMAIL} if you suspect unauthorized access. HOST is not liable for
+          any losses arising from unauthorized use of your account due to your failure to safeguard
+          credentials.
+        </p>
+        <h3 style={h3Style}>3.3 Authorized Users</h3>
+        <p style={pStyle}>
+          You may grant access to employees and staff ("Authorized Users") within your Subscription
+          limits. You are responsible for all activity by Authorized Users and must ensure they comply
+          with these Terms.
+        </p>
+      </div>
+
+      {/* 4. Subscription and Billing */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>4. Subscription &amp; Billing</h2>
+        <h3 style={h3Style}>4.1 Subscription Plans</h3>
+        <p style={pStyle}>
+          HOST offers subscription plans on a monthly or annual basis, as described on our pricing page.
+          Features available to you depend on your selected plan. HOST reserves the right to modify plan
+          pricing or features upon 30 days' written notice.
+        </p>
+        <h3 style={h3Style}>4.2 Payment</h3>
+        <p style={pStyle}>
+          Subscriptions are billed in advance. By providing payment information, you authorize HOST (or
+          its payment processor) to charge the applicable fees on a recurring basis. All fees are in
+          U.S. dollars and are non-refundable except as expressly stated herein or required by
+          applicable law.
+        </p>
+        <h3 style={h3Style}>4.3 Free Trials</h3>
+        <p style={pStyle}>
+          HOST may offer a free trial period. At the end of the trial, your account will automatically
+          convert to a paid subscription unless you cancel before the trial expires.
+        </p>
+        <h3 style={h3Style}>4.4 Taxes</h3>
+        <p style={pStyle}>
+          You are responsible for all applicable taxes, levies, or duties imposed by taxing authorities
+          in connection with your use of the Service, excluding taxes based solely on HOST's income.
+        </p>
+        <h3 style={h3Style}>4.5 Late Payment &amp; Suspension</h3>
+        <p style={pStyle}>
+          If payment is not received by the due date, HOST may suspend access to the Service after
+          providing 7 days' written notice. Restoration of access may be subject to a reactivation fee.
+        </p>
+      </div>
+
+      {/* 5. Restaurant and Guest Data */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>5. Restaurant Data &amp; Guest Information</h2>
+        <h3 style={h3Style}>5.1 Your Data Ownership</h3>
+        <p style={pStyle}>
+          You retain all ownership of your restaurant's operational data and Guest Data entered into or
+          generated through the Service. You grant HOST a limited, non-exclusive license to process,
+          store, and display your data solely to provide and improve the Service.
+        </p>
+        <h3 style={h3Style}>5.2 Guest Data Responsibilities</h3>
+        <p style={pStyle}>
+          You are solely responsible for ensuring that your collection, use, and storage of Guest Data
+          complies with all applicable laws and regulations, including but not limited to the Colorado
+          Privacy Act (CPA), the California Consumer Privacy Act (CCPA), and any other applicable
+          state or federal privacy laws. You must provide appropriate notice to guests regarding data
+          collection and obtain any required consents.
+        </p>
+        <h3 style={h3Style}>5.3 SMS Notifications</h3>
+        <p style={pStyle}>
+          The Service includes optional SMS notification features. You are responsible for obtaining
+          all required consents from guests before sending SMS messages through the Service. By enabling
+          SMS features, you represent that you have obtained such consents and will comply with the
+          Telephone Consumer Protection Act (TCPA), CAN-SPAM Act, and all applicable carrier guidelines.
+          HOST is not liable for violations arising from your use of SMS features.
+        </p>
+        <h3 style={h3Style}>5.4 Data Retention &amp; Export</h3>
+        <p style={pStyle}>
+          Upon termination of your account, HOST will retain your data for 90 days, during which you
+          may export it via the administrative dashboard. After this period, your data may be
+          permanently deleted. HOST is not responsible for data lost due to failure to export prior
+          to deletion.
+        </p>
+        <h3 style={h3Style}>5.5 Aggregated Analytics</h3>
+        <p style={pStyle}>
+          HOST may use de-identified, aggregated data derived from your use of the Service to improve
+          the platform, develop new features, and for internal analytics purposes. Such data will not
+          identify you or your guests individually.
+        </p>
+      </div>
+
+      {/* 6. Intellectual Property */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>6. Intellectual Property</h2>
+        <h3 style={h3Style}>6.1 HOST Ownership</h3>
+        <p style={pStyle}>
+          The Service, including all software, algorithms, user interface designs, documentation,
+          trademarks, and branding (the "HOST IP"), is and remains the exclusive property of {ENTITY}.
+          These Terms do not grant you any rights in or to the HOST IP except the limited license
+          expressly set forth herein.
+        </p>
+        <h3 style={h3Style}>6.2 Limited License to You</h3>
+        <p style={pStyle}>
+          Subject to these Terms and payment of applicable fees, HOST grants you a limited,
+          non-exclusive, non-transferable, non-sublicensable license to access and use the Service
+          solely for your internal business operations during the subscription term.
+        </p>
+        <h3 style={h3Style}>6.3 Restrictions</h3>
+        <p style={pStyle}>You agree not to:</p>
+        <ul style={{ margin: "0 0 10px", paddingLeft: 22 }}>
+          <li style={liStyle}>Copy, modify, distribute, sell, or sublicense any portion of the Service;</li>
+          <li style={liStyle}>Reverse engineer, disassemble, or decompile the software;</li>
+          <li style={liStyle}>Remove or alter any proprietary notices, labels, or marks;</li>
+          <li style={liStyle}>Use the Service to build a competing product or service;</li>
+          <li style={liStyle}>Access the Service by any automated means (scraping, bots) except via authorized APIs.</li>
+        </ul>
+        <h3 style={h3Style}>6.4 Feedback</h3>
+        <p style={pStyle}>
+          If you provide HOST with feedback, suggestions, or ideas about the Service, you grant HOST
+          a perpetual, irrevocable, royalty-free license to use such feedback for any purpose without
+          obligation or compensation to you.
+        </p>
+      </div>
+
+      {/* 7. Privacy */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>7. Privacy &amp; Data Security</h2>
+        <p style={pStyle}>
+          HOST's collection and use of personal information is governed by our Privacy Policy,
+          incorporated herein by reference. HOST implements industry-standard technical and
+          organizational measures to protect data against unauthorized access, alteration, or
+          destruction. However, no method of transmission or storage is 100% secure, and HOST
+          cannot guarantee absolute security.
+        </p>
+        <p style={pStyle}>
+          In the event of a data breach affecting your Guest Data, HOST will notify you without
+          undue delay and no later than as required by applicable law, and will cooperate reasonably
+          in your response efforts.
+        </p>
+      </div>
+
+      {/* 8. Third-Party Integrations */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>8. Third-Party Integrations</h2>
+        <p style={pStyle}>
+          The Service may integrate with third-party platforms including but not limited to Square,
+          Clover, Toast, 7Shifts, Homebase, WhenIWork, OpenTable, and Resy (collectively,
+          "Third-Party Services"). Your use of Third-Party Services is subject to those services'
+          own terms and privacy policies. HOST is not responsible for the availability, accuracy,
+          or practices of any Third-Party Service.
+        </p>
+        <p style={pStyle}>
+          When you connect a Third-Party Service through HOST, you authorize HOST to exchange data
+          with that service on your behalf. You represent that you have the right to grant this
+          authorization and that doing so does not violate the Third-Party Service's terms.
+        </p>
+      </div>
+
+      {/* 9. Acceptable Use */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>9. Acceptable Use Policy</h2>
+        <p style={pStyle}>You agree not to use the Service to:</p>
+        <ul style={{ margin: "0 0 10px", paddingLeft: 22 }}>
+          <li style={liStyle}>Violate any applicable law, regulation, or third-party rights;</li>
+          <li style={liStyle}>Transmit unsolicited commercial communications or spam;</li>
+          <li style={liStyle}>Upload or distribute malware, viruses, or other harmful code;</li>
+          <li style={liStyle}>Interfere with or disrupt the integrity or performance of the Service;</li>
+          <li style={liStyle}>Attempt unauthorized access to HOST systems, accounts, or data;</li>
+          <li style={liStyle}>Collect or harvest data from the Service without HOST's express written consent;</li>
+          <li style={liStyle}>Impersonate any person or entity or misrepresent your affiliation.</li>
+        </ul>
+        <p style={pStyle}>
+          HOST reserves the right to investigate suspected violations and, where appropriate, suspend or
+          terminate access without prior notice.
+        </p>
+      </div>
+
+      {/* 10. Service Availability */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>10. Service Availability</h2>
+        <p style={pStyle}>
+          HOST will use commercially reasonable efforts to maintain Service availability of at least
+          99.5% measured monthly, excluding scheduled maintenance windows. HOST will endeavor to
+          provide advance notice of scheduled maintenance. Unplanned outages may occur and HOST is
+          not liable for any resulting operational disruptions.
+        </p>
+      </div>
+
+      {/* 11. Disclaimers */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>11. Disclaimers</h2>
+        <p style={pStyle}>
+          THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EXPRESS
+          OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+          PARTICULAR PURPOSE, NON-INFRINGEMENT, OR UNINTERRUPTED OR ERROR-FREE OPERATION. HOST DOES
+          NOT WARRANT THAT THE SERVICE WILL MEET YOUR SPECIFIC REQUIREMENTS OR THAT AI-GENERATED
+          SCHEDULING RECOMMENDATIONS WILL BE ACCURATE OR SUITABLE FOR YOUR OPERATIONS.
+        </p>
+        <p style={pStyle}>
+          Some jurisdictions do not allow the exclusion of implied warranties, so the above exclusions
+          may not apply to you in full.
+        </p>
+      </div>
+
+      {/* 12. Limitation of Liability */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>12. Limitation of Liability</h2>
+        <p style={pStyle}>
+          TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL HOST, ITS OFFICERS,
+          DIRECTORS, EMPLOYEES, OR AFFILIATES BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
+          CONSEQUENTIAL, PUNITIVE, OR EXEMPLARY DAMAGES, INCLUDING LOSS OF PROFITS, REVENUE, DATA,
+          GOODWILL, OR BUSINESS INTERRUPTION, ARISING FROM OR RELATED TO YOUR USE OF OR INABILITY
+          TO USE THE SERVICE.
+        </p>
+        <p style={pStyle}>
+          HOST's total cumulative liability to you for all claims arising from or related to the
+          Service will not exceed the greater of: (a) the total fees paid by you to HOST in the
+          twelve (12) months immediately preceding the claim, or (b) one hundred U.S. dollars ($100).
+        </p>
+        <p style={pStyle}>
+          These limitations apply regardless of the theory of liability (contract, tort, statute,
+          or otherwise) and even if HOST has been advised of the possibility of such damages.
+        </p>
+      </div>
+
+      {/* 13. Indemnification */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>13. Indemnification</h2>
+        <p style={pStyle}>
+          You agree to defend, indemnify, and hold harmless {ENTITY} and its officers, directors,
+          employees, agents, and successors from and against any claims, liabilities, damages,
+          judgments, losses, costs, and expenses (including reasonable attorneys' fees) arising out of
+          or relating to: (a) your use of the Service; (b) your violation of these Terms;
+          (c) your violation of any applicable law or third-party right; (d) any Guest Data you
+          collect or process through the Service; or (e) your use of Third-Party Integrations.
+        </p>
+      </div>
+
+      {/* 14. Term and Termination */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>14. Term &amp; Termination</h2>
+        <h3 style={h3Style}>14.1 Term</h3>
+        <p style={pStyle}>
+          These Terms are effective upon your first access to or use of the Service and remain in
+          effect until your Subscription is terminated.
+        </p>
+        <h3 style={h3Style}>14.2 Termination by You</h3>
+        <p style={pStyle}>
+          You may cancel your Subscription at any time through your account settings or by
+          contacting {EMAIL}. Cancellation takes effect at the end of the current billing period.
+          No refunds are provided for unused portions of a billing period.
+        </p>
+        <h3 style={h3Style}>14.3 Termination by HOST</h3>
+        <p style={pStyle}>
+          HOST may terminate or suspend your account immediately upon written notice if you: (a) breach
+          these Terms and fail to cure such breach within 10 days of notice; (b) become insolvent or
+          file for bankruptcy; (c) engage in conduct that HOST reasonably believes may harm HOST, the
+          Service, or other users; or (d) fail to pay any amounts due.
+        </p>
+        <h3 style={h3Style}>14.4 Effect of Termination</h3>
+        <p style={pStyle}>
+          Upon termination, your right to access the Service immediately ceases. Sections 5.4, 6, 11,
+          12, 13, 15, and 16 of these Terms survive termination indefinitely.
+        </p>
+      </div>
+
+      {/* 15. Governing Law */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>15. Governing Law &amp; Dispute Resolution</h2>
+        <h3 style={h3Style}>15.1 Governing Law</h3>
+        <p style={pStyle}>
+          These Terms are governed by and construed in accordance with the laws of the State of
+          Colorado, without regard to its conflict-of-law provisions.
+        </p>
+        <h3 style={h3Style}>15.2 Dispute Resolution</h3>
+        <p style={pStyle}>
+          The parties will attempt to resolve any dispute through good-faith negotiation for a period
+          of 30 days before initiating formal proceedings. If negotiation fails, disputes will be
+          resolved by binding arbitration in Denver, Colorado, administered by the American Arbitration
+          Association (AAA) under its Commercial Arbitration Rules, except that either party may seek
+          injunctive or other equitable relief in a court of competent jurisdiction.
+        </p>
+        <h3 style={h3Style}>15.3 Class Action Waiver</h3>
+        <p style={pStyle}>
+          You waive any right to participate in a class action lawsuit or class-wide arbitration
+          against HOST with respect to any claim covered by these Terms.
+        </p>
+      </div>
+
+      {/* 16. Changes to Terms */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>16. Changes to These Terms</h2>
+        <p style={pStyle}>
+          HOST reserves the right to modify these Terms at any time. For material changes, HOST will
+          provide at least 30 days' advance notice via email to your registered address or via a
+          prominent notice within the Service. Your continued use of the Service after the effective
+          date of any changes constitutes acceptance of the updated Terms. If you do not agree to
+          the modified Terms, you must cancel your Subscription before the effective date.
+        </p>
+      </div>
+
+      {/* 17. General */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>17. General Provisions</h2>
+        <h3 style={h3Style}>17.1 Entire Agreement</h3>
+        <p style={pStyle}>
+          These Terms, together with our Privacy Policy and any applicable Order Form or Statement of
+          Work, constitute the entire agreement between you and HOST regarding the Service and supersede
+          all prior agreements, representations, or negotiations.
+        </p>
+        <h3 style={h3Style}>17.2 Severability</h3>
+        <p style={pStyle}>
+          If any provision of these Terms is held to be invalid or unenforceable, it will be modified
+          to the minimum extent necessary to make it enforceable, and the remaining provisions will
+          continue in full force and effect.
+        </p>
+        <h3 style={h3Style}>17.3 Waiver</h3>
+        <p style={pStyle}>
+          HOST's failure to enforce any right or provision of these Terms will not be deemed a waiver
+          of that right or provision.
+        </p>
+        <h3 style={h3Style}>17.4 Assignment</h3>
+        <p style={pStyle}>
+          You may not assign your rights or obligations under these Terms without HOST's prior written
+          consent. HOST may assign these Terms freely in connection with a merger, acquisition, or
+          sale of assets.
+        </p>
+        <h3 style={h3Style}>17.5 Force Majeure</h3>
+        <p style={pStyle}>
+          Neither party will be liable for delays or failures in performance resulting from causes
+          beyond their reasonable control, including natural disasters, acts of government, power
+          failures, internet disruptions, or pandemics.
+        </p>
+      </div>
+
+      {/* 18. Contact */}
+      <div style={sectionStyle}>
+        <h2 style={h2Style}>18. Contact Information</h2>
+        <p style={pStyle}>
+          For legal inquiries or questions about these Terms, please contact:
+        </p>
+        <div style={{
+          padding: "16px 20px", borderRadius: 8,
+          background: C.bg, border: `1px solid ${C.border}`,
+        }}>
+          <p style={{ fontSize: 13, color: C.text, fontWeight: 700, margin: "0 0 4px" }}>{ENTITY}</p>
+          <p style={{ fontSize: 13, color: C.text2, margin: "0 0 4px" }}>{ADDRESS}</p>
+          <p style={{ fontSize: 13, color: C.text2, margin: 0 }}>
+            Email:{" "}
+            <a href={`mailto:${EMAIL}`} style={{ color: C.accent, textDecoration: "none" }}>
+              {EMAIL}
+            </a>
+          </p>
+        </div>
+      </div>
+
+      {/* Footer note */}
+      <div style={{
+        marginTop: 8, padding: "14px 18px", borderRadius: 8,
+        background: "#F0FDF4", border: "1px solid #BBF7D0",
+      }}>
+        <p style={{ fontSize: 12, color: "#166534", margin: 0, lineHeight: 1.6 }}>
+          <strong>Note to Walter's303:</strong> These Terms govern your subscription to HOST and your
+          obligations as a restaurant operator using the platform. We recommend reviewing them with
+          qualified legal counsel to ensure they meet your specific operational and jurisdictional
+          requirements.
+        </p>
+      </div>
+
+      <p style={{ fontSize: 11, color: C.muted, textAlign: "center", marginTop: 32, marginBottom: 8 }}>
+        © {new Date().getFullYear()} {ENTITY} · All rights reserved · Effective {EFFECTIVE}
+      </p>
+    </div>
+  )
+}
+
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 
 const NAV: { label: string; page: Page; Icon: React.ElementType }[] = [
@@ -1918,6 +2375,7 @@ const NAV: { label: string; page: Page; Icon: React.ElementType }[] = [
   { label: "Guests",    page: "guests",    Icon: Users            },
   { label: "Schedule",  page: "schedule",  Icon: CalendarCheck    },
   { label: "Inputs",    page: "inputs",    Icon: Settings2        },
+  { label: "Terms",     page: "terms",     Icon: ScrollText       },
 ]
 
 function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => void }) {
@@ -2063,6 +2521,7 @@ export default function AdminPage() {
         flex: 1,
         overflowY: page === "schedule" ? "hidden" : "auto",
         padding: page === "schedule" ? 0 : "32px 36px",
+        // Terms page uses its own internal max-width container
         display: "flex", flexDirection: "column",
       }}>
         {page === "overview"  && (
@@ -2077,6 +2536,7 @@ export default function AdminPage() {
         {page === "guests"    && <GuestsPage queue={queue} />}
         {page === "schedule"  && <SchedulingPanel />}
         {page === "inputs"    && <InputsPage setPage={setPage} />}
+        {page === "terms"     && <TermsPage />}
       </main>
     </div>
   )
