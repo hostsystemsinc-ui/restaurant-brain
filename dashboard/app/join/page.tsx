@@ -261,7 +261,7 @@ export default function JoinPage() {
             position: "fixed", inset: 0, zIndex: 100,
             display: "flex", flexDirection: "column",
             alignItems: "center", justifyContent: "center",
-            background: "white",
+            background: "#000",
             animation: "overlayIn 0.28s cubic-bezier(0.4, 0, 0.2, 1) both, fadeOut 1.05s 0s ease-in-out forwards",
           }}
         >
@@ -271,7 +271,7 @@ export default function JoinPage() {
               fontSize: 10,
               letterSpacing: "0.55em",
               textTransform: "uppercase",
-              color: "rgba(0,0,0,0.38)",
+              color: "rgba(255,255,255,0.38)",
               marginBottom: 14,
               animation: "subtleUp 0.45s 0.18s ease-out both",
             }}
@@ -285,7 +285,7 @@ export default function JoinPage() {
               fontSize: 76,
               fontWeight: 900,
               letterSpacing: "0.28em",
-              color: "#000",
+              color: "#fff",
               lineHeight: 1,
               animation: "logoStamp 0.5s 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both",
             }}
@@ -298,7 +298,7 @@ export default function JoinPage() {
             style={{
               fontSize: 11,
               letterSpacing: "0.18em",
-              color: "rgba(0,0,0,0.3)",
+              color: "rgba(255,255,255,0.3)",
               marginTop: 20,
               animation: "subtleUp 0.45s 0.45s ease-out both",
             }}
