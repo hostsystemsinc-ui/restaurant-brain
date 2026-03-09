@@ -77,10 +77,11 @@ const MENU_SECTIONS = [
 
 export default function WaitPage() {
   const { id } = useParams<{ id: string }>()
-  const [entry,    setEntry]    = useState<Entry | null>(null)
-  const [error,    setError]    = useState(false)
-  const [msgIdx,   setMsgIdx]   = useState(0)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [entry,       setEntry]       = useState<Entry | null>(null)
+  const [error,       setError]       = useState(false)
+  const [msgIdx,      setMsgIdx]      = useState(0)
+  const [menuOpen,    setMenuOpen]    = useState(false)
+  const [leavePrompt, setLeavePrompt] = useState(false)
 
   const fetchEntry = useCallback(async () => {
     try {
@@ -268,13 +269,76 @@ export default function WaitPage() {
         )}
 
         {!isSeated && !isReady && (
-          <a
-            href="/join"
-            className="block w-full py-4 rounded-2xl text-sm font-medium tracking-widest uppercase text-center transition-all"
-            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)" }}
+          <button
+            onClick={() => setLeavePrompt(true)}
+            className="w-full py-4 rounded-2xl text-sm font-medium tracking-widest uppercase text-center transition-all active:scale-[0.98]"
+            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.28)", border: "none", cursor: "pointer" }}
           >
             Leave &amp; Rejoin Later
-          </a>
+          </button>
+        )}
+
+        {/* ── Leave confirmation overlay ── */}
+        {leavePrompt && (
+          <>
+            <div
+              onClick={() => setLeavePrompt(false)}
+              style={{
+                position: "fixed", inset: 0, zIndex: 60,
+                background: "rgba(0,0,0,0.72)",
+                backdropFilter: "blur(6px)",
+                WebkitBackdropFilter: "blur(6px)",
+              }}
+            />
+            <div style={{
+              position: "fixed", left: "50%", top: "50%", zIndex: 70,
+              transform: "translate(-50%, -50%)",
+              width: "calc(100% - 40px)", maxWidth: 340,
+              background: "#111",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 22,
+              padding: "28px 24px 24px",
+              textAlign: "center",
+            }}>
+              <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: "0 0 8px", letterSpacing: "-0.01em" }}>
+                Leave the waitlist?
+              </p>
+              <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", margin: "0 0 28px", lineHeight: 1.5 }}>
+                You'll lose your spot and will need to rejoin from the beginning.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <a
+                  href="/join"
+                  style={{
+                    display: "block", width: "100%", padding: "15px 0",
+                    borderRadius: 14, textDecoration: "none",
+                    background: "rgba(239,68,68,0.15)",
+                    border: "1px solid rgba(239,68,68,0.35)",
+                    color: "#f87171",
+                    fontSize: 14, fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  Yes, leave the waitlist
+                </a>
+                <button
+                  onClick={() => setLeavePrompt(false)}
+                  style={{
+                    width: "100%", padding: "15px 0",
+                    borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
+                    background: "rgba(255,255,255,0.06)",
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 14, fontWeight: 700,
+                    letterSpacing: "0.04em",
+                    cursor: "pointer",
+                  }}
+                >
+                  Stay — keep my spot
+                </button>
+              </div>
+            </div>
+          </>
         )}
 
         <p className="text-xs text-center mt-1" style={{ color: "rgba(255,255,255,0.1)" }}>
