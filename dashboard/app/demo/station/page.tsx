@@ -737,49 +737,49 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
       <div
-        className="relative w-full sm:w-[400px] rounded-t-3xl sm:rounded-2xl p-6"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
+        className="relative w-full sm:w-[580px] rounded-t-3xl sm:rounded-3xl p-8"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.12)", zIndex: 1 }}
       >
-        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.12)" }} />
-        <div className="flex items-center justify-between mb-7">
-          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-7" style={{ background: "rgba(255,185,100,0.18)" }} />
+        <div className="flex items-center justify-between mb-8">
+          <span className="text-base font-black tracking-[0.18em] uppercase" style={{ color: "rgba(255,240,220,0.92)" }}>
             Add Guest
           </span>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-white/8" style={{ color: "rgba(255,200,150,0.25)" }}>
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors hover:bg-white/8" style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}>
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.28)" }}>Party Size</p>
-        <div className="flex items-center gap-6 mb-7">
+        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-4" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
+        <div className="flex items-center justify-between mb-8 px-2">
           <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-lg hover:bg-white/8 transition-colors"
-            style={{ border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,200,150,0.35)" }}>−</button>
-          <span className="text-5xl font-extralight w-12 text-center tabular-nums" style={{ color: "rgba(255,248,240,0.92)" }}>{partySize}</span>
+            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl font-light transition-all active:scale-95 hover:brightness-125"
+            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
+          <span className="text-[88px] font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)", minWidth: 120, textAlign: "center" }}>{partySize}</span>
           <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-lg hover:bg-white/8 transition-colors"
-            style={{ border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,200,150,0.35)" }}>+</button>
+            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl font-light transition-all active:scale-95 hover:brightness-125"
+            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
         </div>
 
-        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.28)" }}>Name</p>
+        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Name</p>
         <input type="text" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
-          className="w-full px-4 py-3 rounded-xl text-sm placeholder-white/15 outline-none mb-4"
-          style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,248,240,0.88)" }} />
+          className="w-full rounded-2xl outline-none mb-5"
+          style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 18, padding: "18px 20px" }} />
 
-        <p className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.28)" }}>
-          Phone <span style={{ color: "rgba(255,200,150,0.14)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>
+          Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
         </p>
         <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
-          className="w-full px-4 py-3 rounded-xl text-sm placeholder-white/15 outline-none mb-6"
-          style={{ background: "rgba(255,185,100,0.04)", border: "1px solid rgba(255,185,100,0.09)", color: "rgba(255,248,240,0.88)" }} />
+          className="w-full rounded-2xl outline-none mb-7"
+          style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 18, padding: "18px 20px" }} />
 
-        {error && <p className="text-xs text-red-400 mb-4 text-center">{error}</p>}
+        {error && <p className="text-sm text-red-400 mb-5 text-center font-medium">{error}</p>}
 
         <button onClick={submit} disabled={loading}
-          className="w-full py-5 rounded-xl text-sm font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#D9321C", color: "white" }}>
+          className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
+          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#D9321C", color: "white", fontSize: 16, padding: "22px 0" }}>
           {loading ? "Adding…" : "Add to Queue"}
         </button>
       </div>
