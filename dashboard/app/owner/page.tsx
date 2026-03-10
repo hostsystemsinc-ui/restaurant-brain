@@ -35,8 +35,9 @@ const D = {
   purpleBorder: "rgba(168,85,247,0.22)",
 }
 
-const WALTERS_API   = "https://restaurant-brain-production.up.railway.app"
-const OWNER_PASS    = "hostowner2025"
+const WALTERS_API    = "https://restaurant-brain-production.up.railway.app"
+const OWNER_PASS     = "hostowner2025"
+const DEMO_RID       = "dec0cafe-0000-4000-8000-000000000001"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Restaurant {
@@ -45,11 +46,12 @@ interface Restaurant {
   status: "Active" | "Trial" | "Paused"
   since: string; mrr: number
   seatedToday: number; avgWait: number; queueNow: number; coversThisWeek: number
-  nfcTaps: number; isLive?: boolean; dashboardUrl?: string
+  nfcTaps: number; isLive?: boolean; liveRid?: string; dashboardUrl?: string
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [
   { id: "walters303",    name: "Walter's 303",      city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-01-15", mrr: 149, seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 312, isLive: true,  dashboardUrl: "/walters303" },
+  { id: "demo",          name: "Demo Restaurant",   city: "Denver, CO", plan: "Trial",      status: "Trial",  since: "2026-03-10", mrr: 0,   seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 0,   isLive: true,  liveRid: DEMO_RID, dashboardUrl: "/demo/station" },
   { id: "capital",      name: "The Capital Grille", city: "Denver, CO", plan: "Enterprise", status: "Active", since: "2025-02-01", mrr: 399, seatedToday: 47, avgWait: 18, queueNow: 6, coversThisWeek: 312, nfcTaps: 541 },
   { id: "panzano",      name: "Panzano",            city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-02-14", mrr: 149, seatedToday: 31, avgWait: 12, queueNow: 3, coversThisWeek: 198, nfcTaps: 287 },
   { id: "elways",       name: "Elway's Cherry Creek",city: "Denver, CO",plan: "Trial",      status: "Trial",  since: "2025-03-01", mrr: 0,   seatedToday: 22, avgWait: 21, queueNow: 4, coversThisWeek: 134, nfcTaps: 89  },
@@ -96,21 +98,32 @@ export default function OwnerPage() {
   const fetchLive = useCallback(async () => {
     setLoading(true)
     try {
-      const [insRes, qRes] = await Promise.all([
-        fetch(`${WALTERS_API}/insights`),
-        fetch(`${WALTERS_API}/queue`),
-      ])
-      const ins = insRes.ok ? await insRes.json() : null
-      const q   = qRes.ok  ? await qRes.json()   : null
+      // Fetch live data for every restaurant that has isLive: true
+      // Walter's uses no restaurant_id param; others use liveRid
+      const liveRestaurants = MOCK_RESTAURANTS.filter(r => r.isLive)
+      const results = await Promise.all(
+        liveRestaurants.map(async r => {
+          const rid    = r.liveRid ? `?restaurant_id=${r.liveRid}` : ""
+          const [insRes, qRes] = await Promise.all([
+            fetch(`${WALTERS_API}/insights${rid}`),
+            fetch(`${WALTERS_API}/queue${rid}`),
+          ])
+          const ins = insRes.ok ? await insRes.json() : null
+          const q   = qRes.ok  ? await qRes.json()   : []
+          return {
+            id:             r.id,
+            seatedToday:    ins?.parties_seated_today ?? r.seatedToday,
+            avgWait:        Math.round(ins?.avg_wait_estimate ?? r.avgWait),
+            queueNow:       Array.isArray(q) ? q.filter((e: { status: string }) => ["waiting","ready"].includes(e.status)).length : r.queueNow,
+            coversThisWeek: ins?.covers_this_week ?? r.coversThisWeek,
+          }
+        })
+      )
+      const liveMap = new Map(results.map(r => [r.id, r]))
       setRestaurants(prev => prev.map(r => {
-        if (!r.isLive) return r
-        return {
-          ...r,
-          seatedToday:    ins?.parties_seated_today ?? r.seatedToday,
-          avgWait:        Math.round(ins?.avg_wait_estimate ?? r.avgWait),
-          queueNow:       q?.queue ? q.queue.filter((e: { status: string }) => ["waiting","ready"].includes(e.status)).length : r.queueNow,
-          coversThisWeek: ins?.covers_this_week ?? r.coversThisWeek,
-        }
+        const live = liveMap.get(r.id)
+        if (!live) return r
+        return { ...r, ...live }
       }))
       setLastRefresh(new Date())
     } catch {}
