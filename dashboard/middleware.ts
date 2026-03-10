@@ -18,6 +18,7 @@ import type { NextRequest } from "next/server"
 const RESERVED = new Set([
   "owner",
   "login",
+  "demo",
   "api",
   "admin",
   "station",

@@ -11,7 +11,8 @@ from datetime import datetime
 # ── Environment ─────────────────────────────────────────────────────────────
 SUPABASE_URL  = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY  = os.environ.get("SUPABASE_KEY")
-RESTAURANT_ID = os.environ.get("RESTAURANT_ID")
+RESTAURANT_ID      = os.environ.get("RESTAURANT_ID")
+DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 TWILIO_SID    = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN", "")
@@ -23,7 +24,7 @@ app = FastAPI(title="Restaurant Brain API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://hostplatform.net", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -32,11 +33,12 @@ app.add_middleware(
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
 class JoinQueueRequest(BaseModel):
-    name:       Optional[str] = None
-    party_size: int
-    phone:      Optional[str] = None
-    preference: Optional[str] = "asap"  # asap | 15min | 30min | HH:MM
-    source:     Optional[str] = "nfc"   # nfc | host | phone | web
+    name:          Optional[str] = None
+    party_size:    int
+    phone:         Optional[str] = None
+    preference:    Optional[str] = "asap"  # asap | 15min | 30min | HH:MM
+    source:        Optional[str] = "nfc"   # nfc | host | phone | web
+    restaurant_id: Optional[str] = None    # override env RESTAURANT_ID
 
 class CameraEventRequest(BaseModel):
     zone:         str
@@ -52,14 +54,15 @@ class ThroughputEventRequest(BaseModel):
     metadata: Optional[dict] = None
 
 class ReservationRequest(BaseModel):
-    guest_name: str
-    party_size: int           = 2
-    date:       str           # YYYY-MM-DD
-    time:       str           # HH:MM (24-hour)
-    phone:      Optional[str] = None
-    email:      Optional[str] = None
-    notes:      Optional[str] = None
-    source:     Optional[str] = "host"
+    guest_name:    str
+    party_size:    int           = 2
+    date:          str           # YYYY-MM-DD
+    time:          str           # HH:MM (24-hour)
+    phone:         Optional[str] = None
+    email:         Optional[str] = None
+    notes:         Optional[str] = None
+    source:        Optional[str] = "host"
+    restaurant_id: Optional[str] = None   # override env RESTAURANT_ID
 
 class SettingsRequest(BaseModel):
     opentable_ical_url: Optional[str] = None
@@ -101,20 +104,24 @@ def _send_sms(to_phone: str, body: str) -> bool:
     except Exception:
         return False
 
-def _active_queue() -> list:
+def _rid(req_id: Optional[str] = None) -> str:
+    """Return req_id if provided, otherwise fall back to the env RESTAURANT_ID."""
+    return req_id or RESTAURANT_ID
+
+def _active_queue(rid: Optional[str] = None) -> list:
     return (
         supabase.table("queue_entries")
         .select("*")
-        .eq("restaurant_id", RESTAURANT_ID)
+        .eq("restaurant_id", _rid(rid))
         .in_("status", ["waiting", "ready"])
         .order("created_at")
         .execute()
         .data
     )
 
-def _wait_estimate(parties_ahead: int, party_size: int = 2) -> int:
+def _wait_estimate(parties_ahead: int, party_size: int = 2, rid: Optional[str] = None) -> int:
     try:
-        tables    = supabase.table("tables").select("status, capacity").eq("restaurant_id", RESTAURANT_ID).execute().data
+        tables    = supabase.table("tables").select("status, capacity").eq("restaurant_id", _rid(rid)).execute().data
         available = [t for t in tables if t["status"] == "available"]
         if parties_ahead == 0 and available:
             return 0
@@ -180,20 +187,21 @@ def debug_twilio():
         return {"configured": True, "auth_ok": False, "error": str(e)}
 
 @app.get("/restaurant")
-def get_restaurant():
-    res = supabase.table("restaurants").select("*").eq("id", RESTAURANT_ID).execute()
+def get_restaurant(restaurant_id: Optional[str] = None):
+    rid = _rid(restaurant_id)
+    res = supabase.table("restaurants").select("*").eq("id", rid).execute()
     if res.data:
         return res.data[0]
-    return {"id": RESTAURANT_ID, "name": "Restaurant"}
+    return {"id": rid, "name": "Restaurant"}
 
 # ── Tables ───────────────────────────────────────────────────────────────────
 
 @app.get("/tables")
-def get_tables():
+def get_tables(restaurant_id: Optional[str] = None):
     return (
         supabase.table("tables")
         .select("*")
-        .eq("restaurant_id", RESTAURANT_ID)
+        .eq("restaurant_id", _rid(restaurant_id))
         .order("table_number")
         .execute()
         .data
@@ -216,11 +224,12 @@ def clear_table_legacy(table_id: str):
 # ── Queue ────────────────────────────────────────────────────────────────────
 
 @app.get("/queue")
-def get_queue():
-    entries = _active_queue()
+def get_queue(restaurant_id: Optional[str] = None):
+    rid = _rid(restaurant_id)
+    entries = _active_queue(rid)
     for i, e in enumerate(entries):
         e["position"]      = i + 1
-        e["wait_estimate"] = _wait_estimate(i, e.get("party_size", 2))
+        e["wait_estimate"] = _wait_estimate(i, e.get("party_size", 2), rid)
     return entries
 
 @app.get("/waitlist")  # legacy
@@ -230,11 +239,12 @@ def get_waitlist_legacy():
 @app.post("/queue/join")
 def join_queue(req: JoinQueueRequest):
     try:
-        queue    = _active_queue()
+        rid      = _rid(req.restaurant_id)
+        queue    = _active_queue(rid)
         ahead    = len(queue)
-        wait_est = _wait_estimate(ahead, req.party_size)
+        wait_est = _wait_estimate(ahead, req.party_size, rid)
         entry    = supabase.table("queue_entries").insert({
-            "restaurant_id": RESTAURANT_ID,
+            "restaurant_id": rid,
             "name":          req.name or "Guest",
             "party_size":    req.party_size,
             "phone":         req.phone,
@@ -246,7 +256,7 @@ def join_queue(req: JoinQueueRequest):
         }).execute()
         try:
             supabase.table("wait_quotes").insert({
-                "restaurant_id": RESTAURANT_ID,
+                "restaurant_id": rid,
                 "party_size":    req.party_size,
                 "quoted_minutes": wait_est,
                 "model_version": "v1-rule",
@@ -359,10 +369,11 @@ def seat_next():
 # ── Insights ─────────────────────────────────────────────────────────────────
 
 @app.get("/insights")
-def get_insights():
+def get_insights(restaurant_id: Optional[str] = None):
     try:
-        tables = supabase.table("tables").select("*").eq("restaurant_id", RESTAURANT_ID).execute().data
-        queue  = _active_queue()
+        rid    = _rid(restaurant_id)
+        tables = supabase.table("tables").select("*").eq("restaurant_id", rid).execute().data
+        queue  = _active_queue(rid)
 
         available   = sum(1 for t in tables if t["status"] == "available")
         occupied    = len(tables) - available
@@ -374,7 +385,7 @@ def get_insights():
             "tables_occupied":      occupied,
             "parties_waiting":      waiting,
             "parties_ready":        len(queue) - waiting,
-            "avg_wait_estimate":    _wait_estimate(waiting),
+            "avg_wait_estimate":    _wait_estimate(waiting, rid=rid),
             "capacity_utilization": round(occupied / len(tables) * 100) if tables else 0,
             "ai_insights":          _ai_insights(tables, queue),
         }
@@ -427,9 +438,9 @@ def log_throughput(req: ThroughputEventRequest):
 #   CREATE INDEX IF NOT EXISTS reservations_external_uid    ON reservations(restaurant_id, external_uid);
 
 @app.get("/reservations")
-def get_reservations(date: Optional[str] = None):
+def get_reservations(date: Optional[str] = None, restaurant_id: Optional[str] = None):
     try:
-        q = supabase.table("reservations").select("*").eq("restaurant_id", RESTAURANT_ID)
+        q = supabase.table("reservations").select("*").eq("restaurant_id", _rid(restaurant_id))
         if date:
             q = q.eq("date", date)
         return q.order("time").execute().data
@@ -440,7 +451,7 @@ def get_reservations(date: Optional[str] = None):
 def create_reservation(req: ReservationRequest):
     try:
         data = supabase.table("reservations").insert({
-            "restaurant_id": RESTAURANT_ID,
+            "restaurant_id": _rid(req.restaurant_id),
             "guest_name":    req.guest_name,
             "party_size":    req.party_size,
             "date":          req.date,
@@ -686,3 +697,26 @@ def setup():
         }).execute()
 
     return {"status": "setup complete", "restaurant_id": RESTAURANT_ID}
+
+@app.post("/setup-demo")
+def setup_demo():
+    """Seed the Demo Restaurant with 16 tables. Safe to call multiple times."""
+    rid = DEMO_RESTAURANT_ID
+    if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
+        supabase.table("restaurants").insert({
+            "id": rid, "name": "Demo Restaurant", "slug": "demo"
+        }).execute()
+
+    if not supabase.table("tables").select("id").eq("restaurant_id", rid).execute().data:
+        supabase.table("tables").insert([
+            {"restaurant_id": rid, "table_number": i+1, "capacity": c, "status": "available"}
+            for i, c in enumerate([2,2,2,4,4,4,6,6,6,4,4,4,1,1,1,1])
+        ]).execute()
+
+    if not supabase.table("nfc_tags").select("id").eq("restaurant_id", rid).execute().data:
+        supabase.table("nfc_tags").insert({
+            "restaurant_id": rid, "token": rid,
+            "location_name": "Front Entrance", "active": True,
+        }).execute()
+
+    return {"status": "demo setup complete", "restaurant_id": rid, "join_url": "https://hostplatform.net/demo/join"}

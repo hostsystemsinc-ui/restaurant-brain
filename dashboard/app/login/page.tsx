@@ -3,20 +3,28 @@
 import { useState } from "react";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [emailFocused, setEmailFocused] = useState(false);
+  const [usernameFocused, setUsernameFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const [error, setError] = useState("");
 
   const handleSignIn = () => {
-    // For demo: any non-empty email/password routes to Walter's303 dashboard
-    if (email.trim() && password.trim()) {
-      window.location.href = "/walters303"
-    } else {
-      // Shake the inputs or just re-focus
-      const el = document.querySelector("input[type='email']") as HTMLInputElement | null
-      el?.focus()
+    setError("");
+    const u = username.trim().toLowerCase();
+    const p = password.trim();
+    if (!u || !p) {
+      setError("Please enter a username and password.");
+      return;
     }
+    // Demo restaurant login
+    if (u === "demo" && p === "demo") {
+      sessionStorage.setItem("host_demo_authed", "1");
+      window.location.href = "/demo/station";
+      return;
+    }
+    // Walter's — any other non-empty credentials
+    window.location.href = "/walters303";
   };
 
   const handleContinueWithout = () => {
@@ -167,13 +175,14 @@ export default function LoginPage() {
         <p style={cardSubtextStyle}>Sign in to your restaurant dashboard</p>
 
         <input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onFocus={() => setEmailFocused(true)}
-          onBlur={() => setEmailFocused(false)}
-          style={inputStyle(emailFocused)}
+          type="text"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSignIn()}
+          onFocus={() => setUsernameFocused(true)}
+          onBlur={() => setUsernameFocused(false)}
+          style={inputStyle(usernameFocused)}
         />
         <input
           type="password"
@@ -184,6 +193,12 @@ export default function LoginPage() {
           onBlur={() => setPasswordFocused(false)}
           style={inputStyle(passwordFocused)}
         />
+
+        {error && (
+          <p style={{ color: "#f87171", fontSize: "12px", marginBottom: "10px", textAlign: "center" }}>
+            {error}
+          </p>
+        )}
 
         <button style={signInButtonStyle} onClick={handleSignIn}>
           Sign In
