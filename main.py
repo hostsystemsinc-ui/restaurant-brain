@@ -359,6 +359,15 @@ def remove_entry(entry_id: str):
     supabase.table("queue_entries").update({"status": "removed"}).eq("id", entry_id).execute()
     return {"status": "removed"}
 
+@app.patch("/queue/{entry_id}/wait")
+def update_wait(entry_id: str, minutes: int):
+    """Update the quoted wait time for a queue entry (host-set estimate)."""
+    res = supabase.table("queue_entries").select("id").eq("id", entry_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    supabase.table("queue_entries").update({"quoted_wait": minutes, "updated_at": _now()}).eq("id", entry_id).execute()
+    return {"status": "updated", "quoted_wait": minutes}
+
 @app.post("/seat-next")  # legacy
 def seat_next():
     res = supabase.table("queue_entries").select("*").eq("restaurant_id", RESTAURANT_ID).eq("status", "waiting").order("created_at").limit(1).execute()

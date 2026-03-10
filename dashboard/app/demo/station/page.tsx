@@ -125,10 +125,106 @@ function getResUrgency(dateStr: string, timeStr: string, now: Date): ResUrgency 
   return "late"
 }
 
+// ── Wait Time Modal ────────────────────────────────────────────────────────────
+
+function WaitTimeModal({
+  entryId, defaultMinutes, onClose,
+}: {
+  entryId: string
+  defaultMinutes: number
+  onClose: () => void
+}) {
+  const [minutes, setMinutes] = useState(defaultMinutes || 15)
+  const [saving,  setSaving]  = useState(false)
+  const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await fetch(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" })
+    } catch {}
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[480px] rounded-t-3xl sm:rounded-3xl p-8"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
+
+        <p className="text-xs font-black tracking-[0.22em] uppercase mb-1" style={{ color: "rgba(255,200,150,0.45)" }}>
+          Estimated Wait
+        </p>
+        <p className="text-sm mb-7" style={{ color: "rgba(255,200,150,0.28)" }}>
+          The guest will see this count down live on their phone.
+        </p>
+
+        {/* Stepper */}
+        <div className="flex items-center justify-between mb-6 px-2">
+          <button
+            onClick={() => setMinutes(m => Math.max(1, m - 1))}
+            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125"
+            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}
+          >−</button>
+          <div className="text-center">
+            <span className="text-7xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>
+              {minutes}
+            </span>
+            <span className="block text-sm mt-1" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
+          </div>
+          <button
+            onClick={() => setMinutes(m => Math.min(120, m + 1))}
+            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125"
+            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}
+          >+</button>
+        </div>
+
+        {/* Preset chips */}
+        <div className="flex gap-2 justify-center mb-8 flex-wrap">
+          {PRESETS.map(p => (
+            <button
+              key={p}
+              onClick={() => setMinutes(p)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95"
+              style={{
+                background: minutes === p ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.06)",
+                border: `1px solid ${minutes === p ? "rgba(255,185,100,0.45)" : "rgba(255,185,100,0.12)"}`,
+                color: minutes === p ? "rgba(255,220,180,0.95)" : "rgba(255,200,150,0.45)",
+              }}
+            >
+              {p}m
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={save}
+          disabled={saving}
+          className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
+          style={{ background: "#D9321C", color: "white", fontSize: 16, padding: "20px 0" }}
+        >
+          {saving ? "Saving…" : "Set Wait Time"}
+        </button>
+        <button
+          onClick={onClose}
+          className="w-full mt-3 py-3 text-sm transition-all"
+          style={{ color: "rgba(255,200,150,0.28)", background: "none", border: "none", cursor: "pointer" }}
+        >
+          Skip for now
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Draggable Queue Card ───────────────────────────────────────────────────────
 
 function DraggableQueueCard({
-  entry, onSeat, onNotify, onRemove, isSelected, onSelect,
+  entry, onSeat, onNotify, onRemove, isSelected, onSelect, onEditWait,
 }: {
   entry: QueueEntry
   onSeat: () => void
@@ -136,6 +232,7 @@ function DraggableQueueCard({
   onRemove: () => void
   isSelected?: boolean
   onSelect?: () => void
+  onEditWait?: () => void
 }) {
   const isReady = entry.status === "ready"
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -215,6 +312,20 @@ function DraggableQueueCard({
           <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
             <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
           </span>
+          <span style={{ color: "rgba(255,185,100,0.40)" }}>·</span>
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onEditWait?.() }}
+            title="Edit wait time"
+            style={{
+              display: "flex", alignItems: "center", gap: 3,
+              color: entry.quoted_wait != null ? "rgba(255,220,150,0.85)" : "rgba(255,185,100,0.38)",
+              fontSize: 11, background: "none", border: "none", cursor: "pointer", padding: 0,
+              textDecoration: entry.quoted_wait == null ? "underline dotted rgba(255,185,100,0.35)" : "none",
+            }}
+          >
+            ~{entry.quoted_wait != null ? `${entry.quoted_wait}m` : "set wait"}
+          </button>
         </div>
 
         {/* Action buttons */}
@@ -702,7 +813,7 @@ function SeatTablePicker({
 
 // ── Add Guest Drawer ───────────────────────────────────────────────────────────
 
-function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number) => void }) {
   const [name, setName]           = useState("")
   const [partySize, setPartySize] = useState(2)
   const [phone, setPhone]         = useState("")
@@ -725,7 +836,8 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: ()
         }),
       })
       if (!r.ok) throw new Error()
-      onAdded(); onClose()
+      const data = await r.json()
+      onAdded(data.entry?.id ?? "", data.wait_estimate ?? 15)
     } catch {
       setError("Could not add guest.")
     } finally {
@@ -797,6 +909,7 @@ export default function DemoHostDashboard() {
   const [online, setOnline]               = useState(true)
   const [lastSync, setLastSync]           = useState(new Date())
   const [showAdd, setShowAdd]             = useState(false)
+  const [waitModal, setWaitModal]         = useState<{ id: string; defaultMinutes: number } | null>(null)
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
@@ -1261,7 +1374,8 @@ export default function DemoHostDashboard() {
                     <DraggableQueueCard key={e.id} entry={e}
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)}
+                      onEditWait={() => setWaitModal({ id: e.id, defaultMinutes: e.quoted_wait ?? e.wait_estimate ?? 15 })} />
                   ))}
                 </div>
               </div>
@@ -1296,7 +1410,8 @@ export default function DemoHostDashboard() {
                     <DraggableQueueCard key={e.id} entry={e}
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)} />
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)} onRemove={() => remove(e.id)}
+                      onEditWait={() => setWaitModal({ id: e.id, defaultMinutes: e.quoted_wait ?? e.wait_estimate ?? 15 })} />
                   ))}
                 </div>
               )}
@@ -1347,7 +1462,20 @@ export default function DemoHostDashboard() {
           <Plus className="w-5 h-5" /> Add Guest
         </button>
 
-        {showAdd && <AddGuestDrawer onClose={() => setShowAdd(false)} onAdded={refreshAll} />}
+        {showAdd && (
+          <AddGuestDrawer
+            onClose={() => setShowAdd(false)}
+            onAdded={(id, mins) => { setShowAdd(false); setWaitModal({ id, defaultMinutes: mins }); refreshAll() }}
+          />
+        )}
+
+        {waitModal && (
+          <WaitTimeModal
+            entryId={waitModal.id}
+            defaultMinutes={waitModal.defaultMinutes}
+            onClose={() => { setWaitModal(null); refreshAll() }}
+          />
+        )}
 
         {/* ── Selected guest hint bar ───────────────────────────── */}
         {selectedEntry && (

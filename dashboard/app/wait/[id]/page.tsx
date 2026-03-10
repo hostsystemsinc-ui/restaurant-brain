@@ -82,6 +82,7 @@ export default function WaitPage() {
   const [msgIdx,      setMsgIdx]      = useState(0)
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [leavePrompt, setLeavePrompt] = useState(false)
+  const [displayWait, setDisplayWait] = useState(0)
 
   const fetchEntry = useCallback(async () => {
     try {
@@ -96,6 +97,20 @@ export default function WaitPage() {
     const poll = setInterval(fetchEntry, 5000)
     return () => clearInterval(poll)
   }, [fetchEntry])
+
+  // Sync displayWait from server data whenever it arrives
+  useEffect(() => {
+    if (entry) {
+      setDisplayWait(entry.wait_estimate ?? entry.quoted_wait ?? 0)
+    }
+  }, [entry?.wait_estimate, entry?.quoted_wait])
+
+  // Client-side 1-minute countdown so the timer visibly ticks between server polls
+  useEffect(() => {
+    if (entry?.status !== "waiting") return
+    const t = setInterval(() => setDisplayWait(prev => Math.max(0, prev - 1)), 60_000)
+    return () => clearInterval(t)
+  }, [entry?.status])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {
@@ -135,14 +150,13 @@ export default function WaitPage() {
     return <div style={{ height: "100dvh", background: "#000" }} />
   }
 
-  const { status, name, party_size, parties_ahead, wait_estimate, quoted_wait } = entry
+  const { status, name, party_size, parties_ahead, quoted_wait } = entry
   const isReady  = status === "ready"
   const isSeated = status === "seated"
-  const wait     = wait_estimate ?? quoted_wait ?? 0
   const original = (quoted_wait ?? 30) || 30
   const progress = isReady || isSeated
     ? 100
-    : Math.min(92, Math.max(5, ((original - wait) / original) * 100))
+    : Math.min(92, Math.max(5, ((original - displayWait) / original) * 100))
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#000", color: "#fff" }}>
@@ -206,7 +220,7 @@ export default function WaitPage() {
             </div>
             <div className="flex justify-between text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>
               <span>Arrived</span>
-              <span>{isReady ? "Ready" : wait > 0 ? `~${wait} min` : "Almost"}</span>
+              <span>{isReady ? "Ready" : displayWait > 0 ? `~${displayWait} min` : "Almost"}</span>
               <span>Seated</span>
             </div>
           </div>
@@ -225,7 +239,7 @@ export default function WaitPage() {
             <div className="text-right">
               <p className="text-xs tracking-[0.15em] uppercase mb-1" style={{ color: "rgba(255,255,255,0.3)" }}>Est. wait</p>
               <p className="text-2xl font-light" style={{ color: isReady ? "white" : "rgba(255,255,255,0.7)" }}>
-                {isReady ? "Now" : wait > 0 ? `${wait}m` : "—"}
+                {isReady ? "Now" : displayWait > 0 ? `${displayWait}m` : "—"}
               </p>
             </div>
           </div>
