@@ -192,7 +192,7 @@ function GuestEditModal({
   onSaved: () => void
   onRemoved: () => void
 }) {
-  const [minutes,   setMinutes]   = useState(entry.quoted_wait ?? entry.wait_estimate ?? 15)
+  const [minutes,   setMinutes]   = useState(entry.quoted_wait || entry.wait_estimate || 15)
   const [partySize, setPartySize] = useState(entry.party_size)
   const [phone,     setPhone]     = useState(entry.phone ?? "")
   const [saving,    setSaving]    = useState(false)
@@ -319,10 +319,11 @@ function DraggableQueueCard({
   const [displayWait, setDisplayWait] = useState(entry.quoted_wait ?? entry.wait_estimate ?? 0)
   useEffect(() => { setDisplayWait(entry.quoted_wait ?? entry.wait_estimate ?? 0) }, [entry.quoted_wait, entry.wait_estimate])
   useEffect(() => {
-    if (!entry.quoted_wait) return
+    const target = entry.quoted_wait ?? entry.wait_estimate
+    if (!target) return
     const t = setInterval(() => setDisplayWait(p => Math.max(0, p - 1)), 60_000)
     return () => clearInterval(t)
-  }, [entry.quoted_wait])
+  }, [entry.quoted_wait, entry.wait_estimate])
 
   return (
     <div

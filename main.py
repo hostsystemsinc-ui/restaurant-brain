@@ -255,7 +255,7 @@ def join_queue(req: JoinQueueRequest):
             "phone":         req.phone,
             "source":        req.source or "nfc",
             "status":        "waiting",
-            "quoted_wait":   wait_est,
+            "quoted_wait":   None,   # hostess sets this manually via WaitTimeModal/GuestEdit
             "arrival_time":  _now(),
             "notes":         req.preference or "asap",
         }).execute()
