@@ -282,15 +282,19 @@ function GuestEditModal({
   const handlePause = async () => {
     const willBePaused = !paused
     setPaused(willBePaused)
-    if (willBePaused) {
-      try {
-        await fetch(`${API}/queue/${entry.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ quoted_wait: countdown }),
-        })
-      } catch {}
-    }
+    try {
+      await fetch(`${API}/queue/${entry.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // When pausing: freeze the quoted_wait at the current countdown and mark paused.
+        // When resuming: clear the paused flag so the iOS guest bar starts moving again.
+        body: JSON.stringify(
+          willBePaused
+            ? { quoted_wait: countdown, paused: true }
+            : { paused: false }
+        ),
+      })
+    } catch {}
   }
 
   const remove = async () => {
