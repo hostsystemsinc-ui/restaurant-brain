@@ -73,6 +73,7 @@ interface QueueEntry {
   source: string
   quoted_wait: number | null
   wait_estimate?: number
+  remaining_wait?: number
   arrival_time: string
   position?: number
   phone: string | null
@@ -185,19 +186,33 @@ function WaitTimeModal({
 // ── Guest Edit Modal ────────────────────────────────────────────────────────────
 
 function GuestEditModal({
-  entry, onClose, onSaved, onRemoved,
+  entry, displayWait, onClose, onSaved, onRemoved,
 }: {
   entry: QueueEntry
+  displayWait: number
   onClose: () => void
   onSaved: () => void
   onRemoved: () => void
 }) {
-  const [minutes,   setMinutes]   = useState(entry.quoted_wait || entry.wait_estimate || 15)
+  // "Set new estimate" stepper — starts at the current remaining time so the host sees
+  // exactly how much is left and can tweak from there rather than from the original quote.
+  const [minutes,   setMinutes]   = useState(displayWait || entry.quoted_wait || entry.wait_estimate || 15)
   const [partySize, setPartySize] = useState(entry.party_size)
   const [phone,     setPhone]     = useState(entry.phone ?? "")
   const [saving,    setSaving]    = useState(false)
   const [removing,  setRemoving]  = useState(false)
+  const [paused,    setPaused]    = useState(false)
+  // Live countdown shown at the top of the modal so the host can see time ticking down
+  const [countdown, setCountdown] = useState(displayWait)
   const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  // Tick the in-modal countdown every 60 s (mirrors real time unless paused)
+  useEffect(() => {
+    if (paused) return
+    if (!countdown) return
+    const t = setInterval(() => setCountdown(p => Math.max(0, p - 1)), 60_000)
+    return () => clearInterval(t)
+  }, [paused, countdown])
 
   const save = async () => {
     setSaving(true)
@@ -221,6 +236,9 @@ function GuestEditModal({
     onClose()
   }
 
+  // Colour-code the remaining-time badge
+  const countdownColor = countdown <= 0 ? "#22c55e" : countdown <= 5 ? "#f97316" : "rgba(251,191,36,0.90)"
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
@@ -229,7 +247,7 @@ function GuestEditModal({
           <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
 
           {/* Header */}
-          <div className="flex items-start justify-between mb-7">
+          <div className="flex items-start justify-between mb-5">
             <div>
               <p className="text-xs font-black tracking-[0.22em] uppercase mb-0.5" style={{ color: "rgba(255,200,150,0.45)" }}>Edit Guest</p>
               <p className="text-xl font-semibold" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
@@ -239,8 +257,34 @@ function GuestEditModal({
             </button>
           </div>
 
-          {/* ── Wait Time ── */}
-          <p className="text-xs font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Estimated Wait</p>
+          {/* ── Time remaining banner ── */}
+          {(entry.quoted_wait != null || entry.wait_estimate != null) && (
+            <div className="flex items-center justify-between rounded-2xl mb-6 px-5 py-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.13)" }}>
+              <div>
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-0.5" style={{ color: "rgba(255,200,150,0.40)" }}>Time Remaining</p>
+                <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: countdownColor }}>
+                  {countdown > 0 ? `${countdown} min` : "Ready to seat"}
+                </p>
+                {paused && (
+                  <p className="text-[10px] font-bold tracking-[0.15em] uppercase mt-1" style={{ color: "rgba(249,115,22,0.7)" }}>⏸ Paused</p>
+                )}
+              </div>
+              <button
+                onClick={() => setPaused(p => !p)}
+                className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold tracking-[0.1em] uppercase transition-all active:scale-95 hover:brightness-110"
+                style={{
+                  background: paused ? "rgba(34,197,94,0.12)" : "rgba(249,115,22,0.10)",
+                  color:      paused ? "#22c55e"              : "#f97316",
+                  border: `1px solid ${paused ? "rgba(34,197,94,0.25)" : "rgba(249,115,22,0.20)"}`,
+                }}
+              >
+                {paused ? "▶ Resume" : "⏸ Pause"}
+              </button>
+            </div>
+          )}
+
+          {/* ── Set new estimate ── */}
+          <p className="text-xs font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Set New Estimate</p>
           <div className="flex items-center justify-between mb-4 px-2">
             <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
             <div className="text-center">
@@ -307,7 +351,7 @@ function DraggableQueueCard({
   onNotify: () => void
   isSelected?: boolean
   onSelect?: () => void
-  onEdit?: () => void
+  onEdit?: (displayWait: number) => void
 }) {
   const isReady = entry.status === "ready"
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -315,15 +359,20 @@ function DraggableQueueCard({
     data: { entry },
   })
 
-  // Per-card live countdown — quoted_wait (hostess-set) takes priority over server auto-calc
-  const [displayWait, setDisplayWait] = useState(entry.quoted_wait ?? entry.wait_estimate ?? 0)
-  useEffect(() => { setDisplayWait(entry.quoted_wait ?? entry.wait_estimate ?? 0) }, [entry.quoted_wait, entry.wait_estimate])
+  // Per-card live countdown.
+  // remaining_wait = server-computed "minutes truly left" (quoted_wait minus elapsed time since
+  // updated_at). Falls back to wait_estimate when no quoted_wait has been set.
+  // We use it as ground truth on every poll; a 60-second client tick provides visual smoothness.
+  const [displayWait, setDisplayWait] = useState(entry.remaining_wait ?? entry.wait_estimate ?? 0)
   useEffect(() => {
-    const target = entry.quoted_wait ?? entry.wait_estimate
+    setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
+  }, [entry.remaining_wait, entry.wait_estimate])
+  useEffect(() => {
+    const target = entry.remaining_wait ?? entry.wait_estimate
     if (!target) return
     const t = setInterval(() => setDisplayWait(p => Math.max(0, p - 1)), 60_000)
     return () => clearInterval(t)
-  }, [entry.quoted_wait, entry.wait_estimate])
+  }, [entry.remaining_wait, entry.wait_estimate])
 
   return (
     <div
@@ -397,7 +446,7 @@ function DraggableQueueCard({
         ) : (
           <div className="h-10 w-10" />
         )}
-        <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.() }}
+        <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
           className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
           style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.14)" }} title="Edit guest">
           <Pencil className="w-4 h-4" />
@@ -952,7 +1001,7 @@ export default function HostDashboard() {
   const [lastSync, setLastSync]           = useState(new Date())
   const [showAdd, setShowAdd]             = useState(false)
   const [waitModal, setWaitModal]         = useState<{ id: string; defaultMinutes: number } | null>(null)
-  const [editModal, setEditModal]         = useState<QueueEntry | null>(null)
+  const [editModal, setEditModal]         = useState<{ entry: QueueEntry; displayWait: number } | null>(null)
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
@@ -1391,7 +1440,7 @@ export default function HostDashboard() {
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={() => setEditModal(e)} />
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })} />
                   ))}
                 </div>
               </div>
@@ -1427,7 +1476,7 @@ export default function HostDashboard() {
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={() => setEditModal(e)} />
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })} />
                   ))}
                 </div>
               )}
@@ -1504,7 +1553,8 @@ export default function HostDashboard() {
 
         {editModal && (
           <GuestEditModal
-            entry={editModal}
+            entry={editModal.entry}
+            displayWait={editModal.displayWait}
             onClose={() => setEditModal(null)}
             onSaved={() => { setEditModal(null); refreshAll() }}
             onRemoved={() => { setEditModal(null); refreshAll() }}

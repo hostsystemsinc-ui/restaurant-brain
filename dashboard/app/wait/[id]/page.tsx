@@ -15,6 +15,7 @@ interface Entry {
   parties_ahead?: number
   wait_estimate?: number
   quoted_wait?: number
+  remaining_wait?: number
   arrival_time: string
   notes?: string
 }
@@ -99,22 +100,23 @@ export default function WaitPage() {
   }, [fetchEntry])
 
   // Sync displayWait from server data whenever it arrives.
-  // quoted_wait (hostess-set) takes priority — wait_estimate is just the auto-calc fallback.
+  // remaining_wait = server-computed remaining time (quoted_wait minus elapsed since updated_at).
+  // Falls back to wait_estimate (position-based auto-calc) when no quoted_wait is set.
   useEffect(() => {
     if (entry) {
-      setDisplayWait(entry.quoted_wait ?? entry.wait_estimate ?? 0)
+      setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
     }
-  }, [entry?.quoted_wait, entry?.wait_estimate])
+  }, [entry?.remaining_wait, entry?.wait_estimate])
 
   // Client-side 1-minute countdown so the timer visibly ticks between server polls.
-  // Resets when the hostess changes the quoted time (new value arrives via server poll).
+  // Resets whenever the server sends a new remaining_wait (hostess changed the estimate).
   useEffect(() => {
     if (entry?.status !== "waiting") return
     if (!displayWait) return
     const t = setInterval(() => setDisplayWait(prev => Math.max(0, prev - 1)), 60_000)
     return () => clearInterval(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.status, entry?.quoted_wait, entry?.wait_estimate])
+  }, [entry?.status, entry?.remaining_wait, entry?.wait_estimate])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {

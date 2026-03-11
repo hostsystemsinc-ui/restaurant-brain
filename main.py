@@ -6,7 +6,7 @@ from fastapi.responses import Response
 from supabase import create_client
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 # ── Environment ─────────────────────────────────────────────────────────────
 SUPABASE_URL  = os.environ.get("SUPABASE_URL")
@@ -137,6 +137,25 @@ def _wait_estimate(parties_ahead: int, party_size: int = 2, rid: Optional[str] =
     except Exception:
         return max(5, parties_ahead * 20)
 
+def _remaining_wait(entry: dict) -> int:
+    """
+    Return how many minutes are truly left for this guest.
+    If the hostess set a quoted_wait, count down from when she set it (updated_at).
+    Otherwise fall back to the position-based wait_estimate.
+    """
+    qw = entry.get("quoted_wait")
+    if qw is None:
+        return entry.get("wait_estimate") or 0
+    updated_str = entry.get("updated_at")
+    if not updated_str:
+        return qw
+    try:
+        updated_dt  = datetime.fromisoformat(updated_str.replace("Z", "+00:00"))
+        elapsed_min = int((datetime.now(timezone.utc) - updated_dt).total_seconds() / 60)
+        return max(0, qw - elapsed_min)
+    except Exception:
+        return qw
+
 def _ai_insights(tables: list, queue: list) -> Optional[str]:
     if not ANTHROPIC_KEY:
         return None
@@ -233,8 +252,9 @@ def get_queue(restaurant_id: Optional[str] = None):
     rid = _rid(restaurant_id)
     entries = _active_queue(rid)
     for i, e in enumerate(entries):
-        e["position"]      = i + 1
-        e["wait_estimate"] = _wait_estimate(i, e.get("party_size", 2), rid)
+        e["position"]       = i + 1
+        e["wait_estimate"]  = _wait_estimate(i, e.get("party_size", 2), rid)
+        e["remaining_wait"] = _remaining_wait(e)
     return entries
 
 @app.get("/waitlist")  # legacy
@@ -285,9 +305,10 @@ def get_entry(entry_id: str):
     if entry["status"] in ("waiting", "ready"):
         all_ids  = [e["id"] for e in _active_queue()]
         position = (all_ids.index(entry_id) + 1) if entry_id in all_ids else 1
-        entry["position"]      = position
-        entry["parties_ahead"] = position - 1
-        entry["wait_estimate"] = _wait_estimate(position - 1, entry.get("party_size", 2))
+        entry["position"]       = position
+        entry["parties_ahead"]  = position - 1
+        entry["wait_estimate"]  = _wait_estimate(position - 1, entry.get("party_size", 2))
+        entry["remaining_wait"] = _remaining_wait(entry)
     return entry
 
 @app.post("/queue/{entry_id}/seat")
@@ -379,9 +400,10 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
     res = supabase.table("queue_entries").select("id").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
-    update: dict = {"updated_at": _now()}
+    update: dict = {}
     if req.quoted_wait is not None:
         update["quoted_wait"] = req.quoted_wait
+        update["updated_at"]  = _now()   # only move the timer anchor when wait time changes
     if req.party_size is not None:
         update["party_size"] = req.party_size
     if req.phone is not None:
