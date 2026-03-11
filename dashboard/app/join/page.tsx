@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Minus, Plus, Loader2 } from "lucide-react"
 
-const API          = "https://restaurant-brain-production.up.railway.app"
-const RESTAURANT   = "Walter's303"
-const TOTAL_TABLES = 16
+const API              = "https://restaurant-brain-production.up.railway.app"
+const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
+const RESTAURANT       = "Walter's303"
+const TOTAL_TABLES     = 16
 
 interface LiveInfo {
   available: number
@@ -27,8 +28,8 @@ export default function JoinPage() {
   const fetchLive = useCallback(async () => {
     try {
       const [tablesRes, insightsRes] = await Promise.all([
-        fetch(`${API}/tables`),
-        fetch(`${API}/insights`),
+        fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`),
+        fetch(`${API}/insights?restaurant_id=${DEMO_RESTAURANT_ID}`),
       ])
       const tables   = tablesRes.ok   ? await tablesRes.json()   : []
       const insights = insightsRes.ok ? await insightsRes.json() : null
@@ -65,7 +66,7 @@ export default function JoinPage() {
           phone:         phone.trim() || null,
           preference:    "asap",
           source:        "nfc",
-          restaurant_id: "272a8876-e4e6-4867-831d-0525db80a8db",
+          restaurant_id: DEMO_RESTAURANT_ID,
         }),
       })
       if (!res.ok) throw new Error()

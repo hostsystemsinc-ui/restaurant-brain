@@ -87,7 +87,8 @@ export default function WaitPage() {
 
   const fetchEntry = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/queue/${id}`)
+      // cache: "no-store" = always get a fresh response, never serve a browser-cached reply
+      const r = await fetch(`${API}/queue/${id}`, { cache: "no-store" })
       if (!r.ok) { setError(true); return }
       setEntry(await r.json())
     } catch { setError(true) }
@@ -95,28 +96,31 @@ export default function WaitPage() {
 
   useEffect(() => {
     fetchEntry()
-    const poll = setInterval(fetchEntry, 5000)
+    const poll = setInterval(fetchEntry, 3000)   // 3s keeps host→guest sync snappy
     return () => clearInterval(poll)
   }, [fetchEntry])
 
-  // Sync displayWait from server data whenever it arrives.
-  // remaining_wait = server-computed remaining time (quoted_wait minus elapsed since updated_at).
-  // Falls back to wait_estimate (position-based auto-calc) when no quoted_wait is set.
+  // Sync displayWait from server data whenever anything relevant changes.
+  // remaining_wait = server-computed remaining time (quoted_wait − elapsed since updated_at).
+  // Falls back to wait_estimate when no quoted_wait has been set.
+  // Also watching quoted_wait directly catches the moment the host changes the value,
+  // even in the edge-case where remaining_wait coincidentally equals the previous value.
   useEffect(() => {
     if (entry) {
       setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
     }
-  }, [entry?.remaining_wait, entry?.wait_estimate])
+  }, [entry?.remaining_wait, entry?.wait_estimate, entry?.quoted_wait])
 
-  // Client-side 1-minute countdown so the timer visibly ticks between server polls.
-  // Resets whenever the server sends a new remaining_wait (hostess changed the estimate).
+  // Client-side 1-minute countdown so the timer ticks visibly between server polls.
+  // The effect re-runs (clearing + restarting the interval) whenever the host changes
+  // the quoted_wait, remaining_wait, or wait_estimate — guaranteeing a clean reset.
   useEffect(() => {
     if (entry?.status !== "waiting") return
     if (!displayWait) return
     const t = setInterval(() => setDisplayWait(prev => Math.max(0, prev - 1)), 60_000)
     return () => clearInterval(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.status, entry?.remaining_wait, entry?.wait_estimate])
+  }, [entry?.status, entry?.remaining_wait, entry?.wait_estimate, entry?.quoted_wait])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {
