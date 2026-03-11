@@ -1003,6 +1003,7 @@ export default function DemoHostDashboard() {
   const [queue, setQueue]                 = useState<QueueEntry[]>([])
   const [online, setOnline]               = useState(true)
   const [lastSync, setLastSync]           = useState(new Date())
+  const [ghStatus, setGhStatus]           = useState<"good"|"degraded"|"bad">("good")
   const [showAdd, setShowAdd]             = useState(false)
   const [waitModal, setWaitModal]         = useState<{ id: string; defaultMinutes: number } | null>(null)
   const [editModal, setEditModal]         = useState<QueueEntry | null>(null)
@@ -1028,6 +1029,24 @@ export default function DemoHostDashboard() {
       setAuthed(true)
     }
   }, [router])
+
+  // Poll GitHub + Railway status to derive real system health
+  useEffect(() => {
+    if (!authed) return
+    async function checkServices() {
+      try {
+        const r = await fetch("https://www.githubstatus.com/api/v2/status.json", { cache: "no-store" })
+        const d = await r.json()
+        const ind: string = d?.status?.indicator ?? "none"
+        if (ind === "major" || ind === "critical") setGhStatus("bad")
+        else if (ind === "minor")                  setGhStatus("degraded")
+        else                                       setGhStatus("good")
+      } catch { /* network-only error — ignore, keep last known */ }
+    }
+    checkServices()
+    const t = setInterval(checkServices, 5 * 60_000)
+    return () => clearInterval(t)
+  }, [authed])
 
   const handleResizePointerMove = useCallback((e: PointerEvent) => {
     if (!isResizing.current) return
@@ -1513,33 +1532,33 @@ export default function DemoHostDashboard() {
               )}
             </div>
 
-            {/* Sidebar footer — system health */}
-            <div className="px-4 pt-3 pb-4 shrink-0" style={{ borderTop: "1px solid rgba(255,185,100,0.14)" }}>
-              {/* Row 1: sync time + status dot */}
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.40)" }}>
-                  Synced {lastSync.toLocaleTimeString()}
-                </p>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: online ? "#22c55e" : "#ef4444", boxShadow: online ? "0 0 4px rgba(34,197,94,0.7)" : "0 0 4px rgba(239,68,68,0.7)" }} />
-                  <span className="text-[10px] font-semibold" style={{ color: online ? "rgba(34,197,94,0.75)" : "rgba(239,68,68,0.75)" }}>{online ? "System OK" : "Offline"}</span>
-                </div>
-              </div>
-              {/* Row 2: health tiles */}
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: "API", value: online ? "Live" : "Down", ok: online },
-                  { label: "DB", value: online ? "Connected" : "Unknown", ok: online },
-                  { label: "Queue", value: `${queue.length} active`, ok: true },
-                ].map(item => (
-                  <div key={item.label} className="rounded-lg px-2 py-1.5 flex flex-col gap-0.5"
-                    style={{ background: item.ok ? "rgba(34,197,94,0.06)" : "rgba(239,68,68,0.08)", border: `1px solid ${item.ok ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.20)"}` }}>
-                    <span className="text-[9px] font-bold tracking-[0.12em] uppercase" style={{ color: item.ok ? "rgba(34,197,94,0.55)" : "rgba(239,68,68,0.55)" }}>{item.label}</span>
-                    <span className="text-[10px] font-semibold tabular-nums leading-tight" style={{ color: item.ok ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>{item.value}</span>
+            {/* Sidebar footer — system health (3-state) */}
+            {(() => {
+              const level: "green"|"yellow"|"red" =
+                !online ? "red" :
+                ghStatus === "bad" ? "red" :
+                ghStatus === "degraded" ? "yellow" :
+                "green"
+              const dot   = level === "green" ? "#22c55e" : level === "yellow" ? "#f59e0b" : "#ef4444"
+              const label = level === "green" ? "System Good" : level === "yellow" ? "System Check" : "System Down"
+              return (
+                <div className="px-4 py-3 shrink-0 flex items-center justify-between"
+                  style={{ borderTop: "1px solid rgba(255,185,100,0.14)" }}>
+                  <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.35)" }}>
+                    Synced {lastSync.toLocaleTimeString()}
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full" style={{
+                      background: dot,
+                      boxShadow: `0 0 5px ${dot}CC`,
+                    }} />
+                    <span className="text-[10px] font-semibold" style={{ color: dot + "CC" }}>
+                      {label}
+                    </span>
                   </div>
-                ))}
-              </div>
-            </div>
+                </div>
+              )
+            })()}
           </div>
 
           {/* ── Floor map (desktop only) ───────────────────────────── */}

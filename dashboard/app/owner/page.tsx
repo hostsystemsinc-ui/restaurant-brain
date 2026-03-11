@@ -6,6 +6,7 @@ import {
   AlertCircle, ArrowUpRight, RefreshCw, LogOut, Eye,
   EyeOff, Loader2, BarChart3, Zap, CircleDot, Star,
   Activity, DollarSign, MapPin, ArrowRight, Shield,
+  Server, Github, Database, CalendarDays, Clock, Link2, Link2Off,
 } from "lucide-react"
 
 // ── Dark design tokens (matches HOST landing page) ─────────────────────────────
@@ -91,6 +92,16 @@ export default function OwnerPage() {
   const [loading,     setLoading]     = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
+  // ── System health state ──
+  type SvcStatus = "up"|"degraded"|"down"|"checking"
+  const [apiPing,    setApiPing]    = useState<number | null>(null)
+  const [railwaySvc, setRailwaySvc] = useState<SvcStatus>("checking")
+  const [githubSvc,  setGithubSvc]  = useState<SvcStatus>("checking")
+  const [dbSvc,      setDbSvc]      = useState<SvcStatus>("checking")
+  const [integrations, setIntegrations] = useState<Record<string, boolean>>({
+    "7shifts": false, homebase: false, wheniwork: false, square: false, opentable: false,
+  })
+
   useEffect(() => {
     if (sessionStorage.getItem("host_owner_authed") === "1") setAuthed(true)
   }, [])
@@ -131,6 +142,53 @@ export default function OwnerPage() {
   }, [])
 
   useEffect(() => { if (authed) fetchLive() }, [authed, fetchLive])
+
+  // Poll infrastructure status + read integrations from localStorage
+  useEffect(() => {
+    if (!authed) return
+
+    async function checkHealth() {
+      // 1. HOST API (Railway) — measure response time
+      const t0 = Date.now()
+      try {
+        const r = await fetch(`${WALTERS_API}/queue?restaurant_id=${DEMO_RID}`, { cache: "no-store" })
+        const ms = Date.now() - t0
+        setApiPing(ms)
+        setRailwaySvc(r.ok ? (ms > 2000 ? "degraded" : "up") : "down")
+        setDbSvc(r.ok ? "up" : "down")
+      } catch {
+        setApiPing(null)
+        setRailwaySvc("down")
+        setDbSvc("down")
+      }
+
+      // 2. GitHub status (public CORS-friendly API)
+      try {
+        const r = await fetch("https://www.githubstatus.com/api/v2/status.json", { cache: "no-store" })
+        const d = await r.json()
+        const ind: string = d?.status?.indicator ?? "none"
+        setGithubSvc(ind === "none" ? "up" : ind === "minor" ? "degraded" : "down")
+      } catch {
+        setGithubSvc("down")
+      }
+    }
+
+    // 3. Read integrations from localStorage (client-only)
+    function readIntegrations() {
+      setIntegrations({
+        "7shifts":  !!localStorage.getItem("host_7shifts_company"),
+        homebase:   !!localStorage.getItem("host_homebase_company"),
+        wheniwork:  !!localStorage.getItem("host_wheniwork_company"),
+        square:     !!localStorage.getItem("host_square"),
+        opentable:  !!localStorage.getItem("host_opentable_url"),
+      })
+    }
+
+    checkHealth()
+    readIntegrations()
+    const t = setInterval(checkHealth, 5 * 60_000)
+    return () => clearInterval(t)
+  }, [authed])
 
   function tryLogin() {
     if (passInput.trim() === OWNER_PASS) {
@@ -561,6 +619,147 @@ export default function OwnerPage() {
             })}
           </div>
         </div>
+
+        {/* ── System Health ─────────────────────────────────────────── */}
+        {(() => {
+          function svcColor(s: SvcStatus) {
+            return s === "up" ? D.green : s === "degraded" ? D.orange : s === "down" ? D.accent : D.muted
+          }
+          function svcBg(s: SvcStatus) {
+            return s === "up" ? D.greenBg : s === "degraded" ? D.orangeBg : s === "down" ? D.accentBg : D.surface
+          }
+          function svcBorder(s: SvcStatus) {
+            return s === "up" ? D.greenBorder : s === "degraded" ? D.orangeBorder : s === "down" ? D.accentBorder : D.border
+          }
+          function svcLabel(s: SvcStatus) {
+            return s === "checking" ? "Checking…" : s === "up" ? "Operational" : s === "degraded" ? "Degraded" : "Down"
+          }
+
+          const infraItems: { icon: React.ElementType; label: string; status: SvcStatus; detail: string }[] = [
+            {
+              icon: Server,
+              label: "Railway",
+              status: railwaySvc,
+              detail: railwaySvc === "up" ? "Hosting HOST API" : railwaySvc === "degraded" ? "Slow response" : "Unreachable",
+            },
+            {
+              icon: Github,
+              label: "GitHub",
+              status: githubSvc,
+              detail: githubSvc === "up" ? "Deployments & CI" : githubSvc === "degraded" ? "Minor incident" : "Service incident",
+            },
+            {
+              icon: Database,
+              label: "Database",
+              status: dbSvc,
+              detail: dbSvc === "up" ? "Supabase connected" : dbSvc === "degraded" ? "Slow queries" : "Unreachable",
+            },
+            {
+              icon: Activity,
+              label: "HOST API",
+              status: railwaySvc,
+              detail: apiPing !== null ? `${apiPing} ms response` : "No response",
+            },
+          ]
+
+          const integList: { label: string; key: string; icon: React.ElementType; hint: string }[] = [
+            { label: "7Shifts",   key: "7shifts",   icon: CalendarDays, hint: "Staff scheduling"     },
+            { label: "Homebase",  key: "homebase",  icon: Clock,        hint: "Staff scheduling"     },
+            { label: "WhenIWork", key: "wheniwork", icon: Clock,        hint: "Staff scheduling"     },
+            { label: "Square",    key: "square",    icon: Zap,          hint: "Point of sale"        },
+            { label: "OpenTable", key: "opentable", icon: CalendarDays, hint: "Reservations iCal"    },
+          ]
+
+          return (
+            <div style={{ marginTop: 24 }}>
+              {/* Section label */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.14em", textTransform: "uppercase" }}>System Health</div>
+                <div style={{ flex: 1, height: 1, background: D.border }} />
+                {railwaySvc !== "checking" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{
+                      width: 7, height: 7, borderRadius: "50%",
+                      background: svcColor(railwaySvc === "up" && githubSvc === "up" ? "up" : railwaySvc === "down" || githubSvc === "down" ? "down" : "degraded"),
+                      boxShadow: `0 0 5px ${svcColor(railwaySvc === "up" && githubSvc === "up" ? "up" : railwaySvc === "down" || githubSvc === "down" ? "down" : "degraded")}88`,
+                    }} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: D.muted }}>
+                      {railwaySvc === "up" && githubSvc === "up" ? "All Systems Operational" :
+                       railwaySvc === "down" || githubSvc === "down" ? "Service Disruption" : "Partial Degradation"}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Infrastructure grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+                {infraItems.map(({ icon: Icon, label, status, detail }) => (
+                  <div key={label} style={{
+                    background: svcBg(status), border: `1px solid ${svcBorder(status)}`,
+                    borderRadius: 8, padding: "16px 18px",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(255,255,255,0.06)", border: `1px solid ${svcBorder(status)}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <Icon style={{ width: 13, height: 13, color: svcColor(status) }} />
+                      </div>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 4,
+                        background: `${svcColor(status)}18`, color: svcColor(status), border: `1px solid ${svcBorder(status)}`,
+                      }}>
+                        {svcLabel(status)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: D.text, marginBottom: 2 }}>{label}</div>
+                    <div style={{ fontSize: 10, color: D.muted }}>{detail}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Integrations */}
+              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "20px 24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 7, background: D.purpleBg, border: `1px solid ${D.purpleBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Shield style={{ width: 12, height: 12, color: D.purple }} />
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: D.text, fontFamily: fontSerif, letterSpacing: "-0.01em" }}>
+                    Connected Integrations
+                  </div>
+                  <div style={{ fontSize: 11, color: D.muted, marginLeft: 4 }}>· from Admin → Inputs</div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+                  {integList.map(({ label, key, icon: Icon, hint }) => {
+                    const connected = integrations[key]
+                    return (
+                      <div key={key} style={{
+                        borderRadius: 8, padding: "14px 16px",
+                        background: connected ? D.greenBg : "rgba(255,255,255,0.02)",
+                        border: `1px solid ${connected ? D.greenBorder : D.border}`,
+                        display: "flex", flexDirection: "column", gap: 8,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <Icon style={{ width: 14, height: 14, color: connected ? D.green : D.muted }} />
+                          {connected
+                            ? <Link2    style={{ width: 10, height: 10, color: D.green }} />
+                            : <Link2Off style={{ width: 10, height: 10, color: D.muted }} />}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: connected ? D.text : D.muted }}>{label}</div>
+                          <div style={{ fontSize: 9, color: D.muted, marginTop: 1 }}>{hint}</div>
+                        </div>
+                        <div style={{
+                          fontSize: 8, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
+                          color: connected ? D.green : D.muted,
+                        }}>
+                          {connected ? "● Connected" : "○ Not linked"}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Footer */}
         <div style={{ marginTop: 40, paddingTop: 24, borderTop: `1px solid ${D.border}`, textAlign: "center" }}>
