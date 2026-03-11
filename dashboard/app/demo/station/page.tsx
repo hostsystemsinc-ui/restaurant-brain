@@ -367,9 +367,9 @@ function DraggableQueueCard({
     data: { entry },
   })
 
-  // Per-card live countdown
-  const [displayWait, setDisplayWait] = useState(entry.wait_estimate ?? entry.quoted_wait ?? 0)
-  useEffect(() => { setDisplayWait(entry.wait_estimate ?? entry.quoted_wait ?? 0) }, [entry.wait_estimate, entry.quoted_wait])
+  // Per-card live countdown — quoted_wait (hostess-set) takes priority over server auto-calc
+  const [displayWait, setDisplayWait] = useState(entry.quoted_wait ?? entry.wait_estimate ?? 0)
+  useEffect(() => { setDisplayWait(entry.quoted_wait ?? entry.wait_estimate ?? 0) }, [entry.quoted_wait, entry.wait_estimate])
   useEffect(() => {
     if (!entry.quoted_wait) return
     const t = setInterval(() => setDisplayWait(p => Math.max(0, p - 1)), 60_000)
@@ -413,50 +413,46 @@ function DraggableQueueCard({
         </div>
       </div>
 
-      {/* ── Row 2: meta + countdown + action buttons ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 38 }}>
+      {/* ── Row 2: meta info ── */}
+      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,200,150,0.65)" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          <Users className="w-2.5 h-2.5" />{entry.party_size}p
+        </span>
+        <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
+        </span>
+        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
+          <>
+            <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
+            <span style={{ fontWeight: 700, color: displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
+              ~{displayWait > 0 ? `${displayWait}m` : "now"}
+            </span>
+          </>
+        )}
+      </div>
 
-        {/* Left: party · waited · countdown */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,200,150,0.65)" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            <Users className="w-2.5 h-2.5" />{entry.party_size}p
-          </span>
-          <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
-          </span>
-          {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
-            <>
-              <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
-              <span style={{ fontWeight: 700, color: displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
-                ~{displayWait > 0 ? `${displayWait}m` : "now"}
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Right: seat · notify · edit */}
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSeat() }}
-            className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }} title="Seat">
-            <CheckCircle2 className="w-5 h-5" />
+      {/* ── Row 3: action buttons (always full width, never clipped) ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+        <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSeat() }}
+          className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+          style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }} title="Seat">
+          <CheckCircle2 className="w-5 h-5" />
+        </button>
+        {!isReady ? (
+          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onNotify() }}
+            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }} title="Notify ready">
+            <BellRing className="w-5 h-5" />
           </button>
-          {!isReady ? (
-            <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onNotify() }}
-              className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-              style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }} title="Notify ready">
-              <BellRing className="w-5 h-5" />
-            </button>
-          ) : (
-            <div className="h-11 w-11" />
-          )}
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.() }}
-            className="h-11 w-11 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.14)" }} title="Edit guest">
-            <Pencil className="w-4 h-4" />
-          </button>
-        </div>
+        ) : (
+          <div className="h-10 w-10" />
+        )}
+        <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.() }}
+          className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+          style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.14)" }} title="Edit guest">
+          <Pencil className="w-4 h-4" />
+        </button>
       </div>
     </div>
   )

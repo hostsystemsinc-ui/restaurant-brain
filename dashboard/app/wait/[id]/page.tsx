@@ -98,19 +98,23 @@ export default function WaitPage() {
     return () => clearInterval(poll)
   }, [fetchEntry])
 
-  // Sync displayWait from server data whenever it arrives
+  // Sync displayWait from server data whenever it arrives.
+  // quoted_wait (hostess-set) takes priority — wait_estimate is just the auto-calc fallback.
   useEffect(() => {
     if (entry) {
-      setDisplayWait(entry.wait_estimate ?? entry.quoted_wait ?? 0)
+      setDisplayWait(entry.quoted_wait ?? entry.wait_estimate ?? 0)
     }
-  }, [entry?.wait_estimate, entry?.quoted_wait])
+  }, [entry?.quoted_wait, entry?.wait_estimate])
 
-  // Client-side 1-minute countdown so the timer visibly ticks between server polls
+  // Client-side 1-minute countdown so the timer visibly ticks between server polls.
+  // Resets when the hostess changes the quoted time (new value arrives via server poll).
   useEffect(() => {
     if (entry?.status !== "waiting") return
+    if (!displayWait) return
     const t = setInterval(() => setDisplayWait(prev => Math.max(0, prev - 1)), 60_000)
     return () => clearInterval(t)
-  }, [entry?.status])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry?.status, entry?.quoted_wait, entry?.wait_estimate])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {
