@@ -83,6 +83,7 @@ export default function WaitPage() {
   const [msgIdx,      setMsgIdx]      = useState(0)
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [leavePrompt, setLeavePrompt] = useState(false)
+  const [leaving,     setLeaving]     = useState(false)
   const [displayWait, setDisplayWait] = useState(0)
   const [elapsedSec,  setElapsedSec]  = useState(0)
 
@@ -94,6 +95,12 @@ export default function WaitPage() {
       setEntry(await r.json())
     } catch { setError(true) }
   }, [id])
+
+  const handleLeave = async () => {
+    setLeaving(true)
+    try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch { /* best-effort */ }
+    window.location.href = "/join"
+  }
 
   useEffect(() => {
     fetchEntry()
@@ -355,21 +362,22 @@ export default function WaitPage() {
                 You'll lose your spot and will need to rejoin from the beginning.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <a
-                  href="/join"
+                <button
+                  onClick={handleLeave}
+                  disabled={leaving}
                   style={{
-                    display: "block", width: "100%", padding: "15px 0",
-                    borderRadius: 14, textDecoration: "none",
+                    width: "100%", padding: "15px 0",
+                    borderRadius: 14, border: "1px solid rgba(239,68,68,0.35)",
                     background: "rgba(239,68,68,0.15)",
-                    border: "1px solid rgba(239,68,68,0.35)",
                     color: "#f87171",
                     fontSize: 14, fontWeight: 700,
                     letterSpacing: "0.04em",
-                    boxSizing: "border-box",
+                    cursor: leaving ? "default" : "pointer",
+                    opacity: leaving ? 0.6 : 1,
                   }}
                 >
-                  Yes, leave the waitlist
-                </a>
+                  {leaving ? "Leaving…" : "Yes, leave the waitlist"}
+                </button>
                 <button
                   onClick={() => setLeavePrompt(false)}
                   style={{
