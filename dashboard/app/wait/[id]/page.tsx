@@ -16,6 +16,7 @@ interface Entry {
   wait_estimate?: number
   quoted_wait?: number
   remaining_wait?: number
+  wait_set_at?: string    // ISO timestamp set by server when host writes quoted_wait
   arrival_time: string
   notes?: string
 }
@@ -99,7 +100,8 @@ export default function WaitPage() {
   const handleLeave = async () => {
     setLeaving(true)
     try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch { /* best-effort */ }
-    window.location.href = "/join"
+    // Optimistically flip to removed — polling will confirm; no redirect to join page
+    setEntry(prev => prev ? { ...prev, status: "removed" } : null)
   }
 
   useEffect(() => {
@@ -108,14 +110,18 @@ export default function WaitPage() {
     return () => clearInterval(poll)
   }, [fetchEntry])
 
-  // Sync displayWait + elapsedSec from localStorage on every new quoted_wait.
-  // localStorage key "timer_{id}_{qw}" records Date.now() the first time that
-  // specific value is seen — so page refreshes resume mid-countdown correctly,
-  // and a host change (new qw) always starts fresh from 0 elapsed.
+  // Sync displayWait + elapsedSec when quoted_wait or wait_set_at changes.
+  // Key: "timer_{id}_{wait_set_at}" — wait_set_at is a server-stamped ISO string that
+  // changes every time the host writes a new quoted_wait, even to the same value.
+  // This guarantees a clean reset when the host resets the timer.
+  // Falls back to "timer_{id}_{qw}" if server restarted and wait_set_at is absent.
+  // No fallback to wait_estimate — host must explicitly set a time.
   useEffect(() => {
     if (!entry) return
     if (entry.quoted_wait != null && entry.quoted_wait > 0) {
-      const lsKey = `timer_${entry.id}_${entry.quoted_wait}`
+      const lsKey = entry.wait_set_at
+        ? `timer_${entry.id}_${entry.wait_set_at}`
+        : `timer_${entry.id}_${entry.quoted_wait}`
       if (!localStorage.getItem(lsKey)) {
         localStorage.setItem(lsKey, String(Date.now()))
       }
@@ -125,18 +131,19 @@ export default function WaitPage() {
       setDisplayWait(Math.max(0, entry.quoted_wait - Math.floor(sec / 60)))
     } else {
       setElapsedSec(0)
-      setDisplayWait(entry.wait_estimate ?? 0)
+      setDisplayWait(0)   // no time shown until host explicitly sets quoted_wait
     }
-  }, [entry?.id, entry?.quoted_wait, entry?.wait_estimate])
+  }, [entry?.id, entry?.quoted_wait, entry?.wait_set_at])
 
   // Per-second tick: keeps elapsedSec (→ smooth progress bar) and
-  // displayWait (→ minute label) accurate without waiting for a server poll.
-  // Restarts cleanly whenever the host sets a new quoted_wait.
+  // displayWait (→ minute label) accurate. Restarts on any timer change.
   useEffect(() => {
     if (entry?.status !== "waiting") return
     const qw = entry.quoted_wait
     if (!qw) return
-    const lsKey = `timer_${entry.id}_${qw}`
+    const lsKey = entry.wait_set_at
+      ? `timer_${entry.id}_${entry.wait_set_at}`
+      : `timer_${entry.id}_${qw}`
     const t = setInterval(() => {
       const stored = localStorage.getItem(lsKey)
       if (!stored) return
@@ -146,7 +153,7 @@ export default function WaitPage() {
     }, 1000)
     return () => clearInterval(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.status, entry?.quoted_wait, entry?.id])
+  }, [entry?.status, entry?.quoted_wait, entry?.wait_set_at, entry?.id])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {
@@ -187,17 +194,51 @@ export default function WaitPage() {
   }
 
   const { status, name, party_size, parties_ahead, quoted_wait } = entry
-  const isReady  = status === "ready"
-  const isSeated = status === "seated"
+  const isReady   = status === "ready"
+  const isSeated  = status === "seated"
+  const isRemoved = status === "removed"
+
+  // ── Removed / left waitlist screen ────────────────────────────────────────
+  if (isRemoved) {
+    return (
+      <div style={{
+        height: "100dvh", background: "#000", color: "#fff",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        padding: "40px 32px", textAlign: "center",
+      }}>
+        <p style={{ fontSize: 10, letterSpacing: "0.45em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 18 }}>
+          Powered by
+        </p>
+        <p style={{ fontSize: 52, fontWeight: 900, letterSpacing: "0.3em", color: "#fff", lineHeight: 1, margin: "0 0 36px" }}>
+          HOST
+        </p>
+        <div style={{ width: 32, height: 1, background: "rgba(255,255,255,0.12)", marginBottom: 36 }} />
+        <p style={{ fontSize: 26, fontWeight: 300, color: "rgba(255,255,255,0.9)", margin: "0 0 10px", letterSpacing: "-0.01em" }}>
+          Thanks for visiting.
+        </p>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", margin: "0 0 56px", letterSpacing: "0.05em" }}>
+          Walter&apos;s303
+        </p>
+        <a
+          href="/join"
+          style={{ fontSize: 12, color: "rgba(255,255,255,0.22)", textDecoration: "none", letterSpacing: "0.12em", textTransform: "uppercase" }}
+        >
+          Rejoin the waitlist →
+        </a>
+      </div>
+    )
+  }
+
   // When the host has set a quoted_wait, derive progress from precise elapsed seconds
   // so the bar moves smoothly every second instead of jumping every minute.
-  // Falls back to position-based estimate when no quoted_wait is set.
-  const totalSec = (quoted_wait ?? 30) * 60
+  // Before the host sets a time: show a static 4% sliver (arrival indicator only).
+  const totalSec = (quoted_wait ?? 1) * 60
   const progress = isReady || isSeated
     ? 100
     : quoted_wait
       ? Math.min(97, Math.max(2, (elapsedSec / totalSec) * 100))
-      : Math.min(90, Math.max(5, ((30 - displayWait) / 30) * 100))
+      : 4   // static arrival indicator — no countdown until host sets a time
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#000", color: "#fff" }}>
@@ -261,7 +302,7 @@ export default function WaitPage() {
             </div>
             <div className="flex justify-between text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>
               <span>Arrived</span>
-              <span>{isReady ? "Ready" : displayWait > 0 ? `~${displayWait} min` : "Almost"}</span>
+              <span>{isReady ? "Ready" : (quoted_wait && displayWait > 0) ? `~${displayWait} min` : ""}</span>
               <span>Seated</span>
             </div>
           </div>
@@ -278,9 +319,11 @@ export default function WaitPage() {
               <p className="text-2xl font-light">{party_size}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs tracking-[0.15em] uppercase mb-1" style={{ color: "rgba(255,255,255,0.3)" }}>Est. wait</p>
+              <p className="text-xs tracking-[0.15em] uppercase mb-1" style={{ color: "rgba(255,255,255,0.3)" }}>
+                {quoted_wait ? "Wait time" : "Est. wait"}
+              </p>
               <p className="text-2xl font-light" style={{ color: isReady ? "white" : "rgba(255,255,255,0.7)" }}>
-                {isReady ? "Now" : displayWait > 0 ? `${displayWait}m` : "—"}
+                {isReady ? "Now" : (quoted_wait && displayWait > 0) ? `${displayWait}m` : "—"}
               </p>
             </div>
           </div>
@@ -295,7 +338,9 @@ export default function WaitPage() {
             ? "Thank you for dining with us."
             : isReady
               ? "Please make your way to the front and let the host know you're here."
-              : WAITING_MESSAGES[msgIdx]}
+              : quoted_wait
+                ? WAITING_MESSAGES[msgIdx]
+                : "Your host will confirm your wait time shortly."}
         </p>
 
       </div>

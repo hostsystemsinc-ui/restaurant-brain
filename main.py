@@ -20,6 +20,11 @@ TWILIO_FROM   = os.environ.get("TWILIO_FROM_NUMBER", "")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# In-memory: tracks the ISO timestamp when a host last set quoted_wait for each entry.
+# Used by the guest page to detect a timer reset even when the new value equals the old one.
+# Cleared on server restart (acceptable — guests resume with best-effort timing).
+_wait_set_at: dict = {}
+
 app = FastAPI(title="Restaurant Brain API")
 
 app.add_middleware(
@@ -246,6 +251,7 @@ def get_queue(restaurant_id: Optional[str] = None):
         e["position"]       = i + 1
         e["wait_estimate"]  = _wait_estimate(i, e.get("party_size", 2), rid)
         e["remaining_wait"] = _remaining_wait(e)
+        e["wait_set_at"]    = _wait_set_at.get(e["id"])
     return entries
 
 @app.get("/waitlist")  # legacy
@@ -302,6 +308,7 @@ def get_entry(entry_id: str):
         entry["parties_ahead"]  = position - 1
         entry["wait_estimate"]  = _wait_estimate(position - 1, entry.get("party_size", 2), entry_rid)
         entry["remaining_wait"] = _remaining_wait(entry)
+        entry["wait_set_at"]    = _wait_set_at.get(entry_id)
     return entry
 
 @app.post("/queue/{entry_id}/seat")
@@ -384,8 +391,10 @@ def update_wait(entry_id: str, minutes: int):
     res = supabase.table("queue_entries").select("id").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
+    now = _now()
+    _wait_set_at[entry_id] = now
     supabase.table("queue_entries").update({"quoted_wait": minutes}).eq("id", entry_id).execute()
-    return {"status": "updated", "quoted_wait": minutes}
+    return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now}
 
 @app.patch("/queue/{entry_id}")
 def update_entry(entry_id: str, req: QueueUpdateRequest):
@@ -396,6 +405,7 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
     update: dict = {}
     if req.quoted_wait is not None:
         update["quoted_wait"] = req.quoted_wait
+        _wait_set_at[entry_id] = _now()
     if req.party_size is not None:
         update["party_size"] = req.party_size
     if req.phone is not None:
