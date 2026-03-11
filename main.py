@@ -64,6 +64,11 @@ class ReservationRequest(BaseModel):
     source:        Optional[str] = "host"
     restaurant_id: Optional[str] = None   # override env RESTAURANT_ID
 
+class QueueUpdateRequest(BaseModel):
+    quoted_wait: Optional[int] = None
+    party_size:  Optional[int] = None
+    phone:       Optional[str] = None
+
 class SettingsRequest(BaseModel):
     opentable_ical_url: Optional[str] = None
 
@@ -367,6 +372,22 @@ def update_wait(entry_id: str, minutes: int):
         raise HTTPException(status_code=404, detail="Entry not found")
     supabase.table("queue_entries").update({"quoted_wait": minutes, "updated_at": _now()}).eq("id", entry_id).execute()
     return {"status": "updated", "quoted_wait": minutes}
+
+@app.patch("/queue/{entry_id}")
+def update_entry(entry_id: str, req: QueueUpdateRequest):
+    """Update editable fields on a queue entry (party size, phone, quoted wait)."""
+    res = supabase.table("queue_entries").select("id").eq("id", entry_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    update: dict = {"updated_at": _now()}
+    if req.quoted_wait is not None:
+        update["quoted_wait"] = req.quoted_wait
+    if req.party_size is not None:
+        update["party_size"] = req.party_size
+    if req.phone is not None:
+        update["phone"] = req.phone or None
+    supabase.table("queue_entries").update(update).eq("id", entry_id).execute()
+    return {"status": "updated"}
 
 @app.post("/seat-next")  # legacy
 def seat_next():
