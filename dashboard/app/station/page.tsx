@@ -6,7 +6,7 @@ import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
   LayoutDashboard, GripVertical, CalendarDays, CalendarCheck,
-  Pencil, Activity,
+  Pencil, Activity, Trash2,
 } from "lucide-react"
 import {
   DndContext, DragOverlay,
@@ -344,7 +344,7 @@ function GuestEditModal({
 // ── Draggable Queue Card ───────────────────────────────────────────────────────
 
 function DraggableQueueCard({
-  entry, onSeat, onNotify, isSelected, onSelect, onEdit,
+  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved,
 }: {
   entry: QueueEntry
   onSeat: () => void
@@ -352,12 +352,22 @@ function DraggableQueueCard({
   isSelected?: boolean
   onSelect?: () => void
   onEdit?: (displayWait: number) => void
+  onRemoved?: () => void
 }) {
   const isReady = entry.status === "ready"
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [removing,      setRemoving]      = useState(false)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: entry.id,
     data: { entry },
   })
+
+  const handleRemove = async () => {
+    setRemoving(true)
+    try { await fetch(`${API}/queue/${entry.id}/remove`, { method: "POST" }) } catch {}
+    setRemoving(false)
+    onRemoved?.()
+  }
 
   // Per-card live countdown.
   // remaining_wait = server-computed "minutes truly left" (quoted_wait minus elapsed time since
@@ -420,38 +430,59 @@ function DraggableQueueCard({
         <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
         </span>
-        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
+        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && displayWait > 0 && (
           <>
             <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
             <span style={{ fontWeight: 700, color: displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
-              ~{displayWait > 0 ? `${displayWait}m` : "now"}
+              ~{displayWait}m
             </span>
           </>
         )}
       </div>
 
-      {/* ── Row 3: action buttons (always full width, never clipped) ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-        <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSeat() }}
-          className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-          style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }} title="Seat">
-          <CheckCircle2 className="w-5 h-5" />
-        </button>
-        {!isReady ? (
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onNotify() }}
-            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }} title="Notify ready">
-            <BellRing className="w-5 h-5" />
+      {/* ── Row 3: action buttons or delete confirm ── */}
+      {confirmDelete ? (
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+          <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1 }}>Remove {entry.name || "guest"}?</span>
+          <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
+            className="h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95"
+            style={{ background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
+            Cancel
           </button>
-        ) : (
-          <div className="h-10 w-10" />
-        )}
-        <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
-          className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-          style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.14)" }} title="Edit guest">
-          <Pencil className="w-4 h-4" />
-        </button>
-      </div>
+          <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
+            className="h-8 px-3 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+            style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
+            {removing ? "…" : "Remove"}
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSeat() }}
+            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }} title="Seat">
+            <CheckCircle2 className="w-5 h-5" />
+          </button>
+          {!isReady ? (
+            <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onNotify() }}
+              className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+              style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }} title="Notify ready">
+              <BellRing className="w-5 h-5" />
+            </button>
+          ) : (
+            <div className="h-10 w-10" />
+          )}
+          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.14)" }} title="Edit guest">
+            <Pencil className="w-4 h-4" />
+          </button>
+          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.14)" }} title="Remove guest">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -1440,7 +1471,8 @@ export default function HostDashboard() {
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })} />
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onRemoved={() => refreshAll()} />
                   ))}
                 </div>
               </div>
@@ -1476,7 +1508,8 @@ export default function HostDashboard() {
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })} />
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onRemoved={() => refreshAll()} />
                   ))}
                 </div>
               )}

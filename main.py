@@ -303,11 +303,13 @@ def get_entry(entry_id: str):
         raise HTTPException(status_code=404, detail="Entry not found")
     entry = res.data[0]
     if entry["status"] in ("waiting", "ready"):
-        all_ids  = [e["id"] for e in _active_queue()]
+        # Use the entry's own restaurant_id so demo and real restaurants have correct positions
+        entry_rid = entry.get("restaurant_id")
+        all_ids  = [e["id"] for e in _active_queue(entry_rid)]
         position = (all_ids.index(entry_id) + 1) if entry_id in all_ids else 1
         entry["position"]       = position
         entry["parties_ahead"]  = position - 1
-        entry["wait_estimate"]  = _wait_estimate(position - 1, entry.get("party_size", 2))
+        entry["wait_estimate"]  = _wait_estimate(position - 1, entry.get("party_size", 2), entry_rid)
         entry["remaining_wait"] = _remaining_wait(entry)
     return entry
 
