@@ -84,6 +84,7 @@ export default function WaitPage() {
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [leavePrompt, setLeavePrompt] = useState(false)
   const [displayWait, setDisplayWait] = useState(0)
+  const [elapsedSec,  setElapsedSec]  = useState(0)
 
   const fetchEntry = useCallback(async () => {
     try {
@@ -100,11 +101,10 @@ export default function WaitPage() {
     return () => clearInterval(poll)
   }, [fetchEntry])
 
-  // Sync displayWait from server data using localStorage for refresh resilience.
-  // When a new quoted_wait arrives (host changed the timer), we record Date.now() in
-  // localStorage keyed by "timer_{id}_{quotedWait}". On subsequent renders / page
-  // refreshes, we recompute displayWait = max(0, quotedWait - elapsedSinceStored).
-  // A different quoted_wait → different key → clean reset with no elapsed subtraction.
+  // Sync displayWait + elapsedSec from localStorage on every new quoted_wait.
+  // localStorage key "timer_{id}_{qw}" records Date.now() the first time that
+  // specific value is seen — so page refreshes resume mid-countdown correctly,
+  // and a host change (new qw) always starts fresh from 0 elapsed.
   useEffect(() => {
     if (!entry) return
     if (entry.quoted_wait != null && entry.quoted_wait > 0) {
@@ -113,22 +113,33 @@ export default function WaitPage() {
         localStorage.setItem(lsKey, String(Date.now()))
       }
       const storedStart = Number(localStorage.getItem(lsKey))
-      const elapsedMin  = Math.floor((Date.now() - storedStart) / 60_000)
-      setDisplayWait(Math.max(0, entry.quoted_wait - elapsedMin))
+      const sec = Math.floor((Date.now() - storedStart) / 1000)
+      setElapsedSec(sec)
+      setDisplayWait(Math.max(0, entry.quoted_wait - Math.floor(sec / 60)))
     } else {
+      setElapsedSec(0)
       setDisplayWait(entry.wait_estimate ?? 0)
     }
   }, [entry?.id, entry?.quoted_wait, entry?.wait_estimate])
 
-  // Client-side 1-minute countdown so the timer ticks between server polls.
-  // Restarts whenever the host changes quoted_wait or wait_estimate.
+  // Per-second tick: keeps elapsedSec (→ smooth progress bar) and
+  // displayWait (→ minute label) accurate without waiting for a server poll.
+  // Restarts cleanly whenever the host sets a new quoted_wait.
   useEffect(() => {
     if (entry?.status !== "waiting") return
-    if (!displayWait) return
-    const t = setInterval(() => setDisplayWait(prev => Math.max(0, prev - 1)), 60_000)
+    const qw = entry.quoted_wait
+    if (!qw) return
+    const lsKey = `timer_${entry.id}_${qw}`
+    const t = setInterval(() => {
+      const stored = localStorage.getItem(lsKey)
+      if (!stored) return
+      const sec = Math.floor((Date.now() - Number(stored)) / 1000)
+      setElapsedSec(sec)
+      setDisplayWait(Math.max(0, qw - Math.floor(sec / 60)))
+    }, 1000)
     return () => clearInterval(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.status, entry?.quoted_wait, entry?.wait_estimate])
+  }, [entry?.status, entry?.quoted_wait, entry?.id])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {
@@ -171,10 +182,15 @@ export default function WaitPage() {
   const { status, name, party_size, parties_ahead, quoted_wait } = entry
   const isReady  = status === "ready"
   const isSeated = status === "seated"
-  const original = (quoted_wait ?? 30) || 30
+  // When the host has set a quoted_wait, derive progress from precise elapsed seconds
+  // so the bar moves smoothly every second instead of jumping every minute.
+  // Falls back to position-based estimate when no quoted_wait is set.
+  const totalSec = (quoted_wait ?? 30) * 60
   const progress = isReady || isSeated
     ? 100
-    : Math.min(92, Math.max(5, ((original - displayWait) / original) * 100))
+    : quoted_wait
+      ? Math.min(97, Math.max(2, (elapsedSec / totalSec) * 100))
+      : Math.min(90, Math.max(5, ((30 - displayWait) / 30) * 100))
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#000", color: "#fff" }}>
@@ -232,7 +248,7 @@ export default function WaitPage() {
           <div className="flex flex-col gap-3">
             <div className="w-full h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
               <div
-                className="h-full rounded-full transition-all duration-[1500ms] ease-in-out"
+                className="h-full rounded-full transition-all duration-[1000ms] ease-linear"
                 style={{ width: `${progress}%`, background: isReady ? "white" : "rgba(255,255,255,0.6)" }}
               />
             </div>

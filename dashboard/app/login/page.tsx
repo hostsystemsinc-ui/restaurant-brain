@@ -27,10 +27,6 @@ export default function LoginPage() {
     window.location.href = "/walters303";
   };
 
-  const handleContinueWithout = () => {
-    window.location.href = "/walters303";
-  };
-
   const pageStyle: React.CSSProperties = {
     backgroundColor: "#080C10",
     minHeight: "100vh",
@@ -124,36 +120,6 @@ export default function LoginPage() {
     marginBottom: "20px",
   };
 
-  const orDividerContainerStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    marginBottom: "16px",
-  };
-
-  const orDividerLineStyle: React.CSSProperties = {
-    flex: 1,
-    height: "1px",
-    backgroundColor: "rgba(255,255,255,0.08)",
-  };
-
-  const orTextStyle: React.CSSProperties = {
-    fontSize: "12px",
-    color: "rgba(255,255,255,0.25)",
-    flexShrink: 0,
-  };
-
-  const continueButtonStyle: React.CSSProperties = {
-    width: "100%",
-    background: "none",
-    border: "none",
-    color: "rgba(255,255,255,0.45)",
-    fontSize: "13px",
-    cursor: "pointer",
-    textAlign: "center",
-    padding: "6px 0",
-  };
-
   const footerStyle: React.CSSProperties = {
     fontSize: "11px",
     color: "rgba(255,255,255,0.20)",
@@ -202,16 +168,6 @@ export default function LoginPage() {
 
         <button style={signInButtonStyle} onClick={handleSignIn}>
           Sign In
-        </button>
-
-        <div style={orDividerContainerStyle}>
-          <div style={orDividerLineStyle} />
-          <span style={orTextStyle}>or</span>
-          <div style={orDividerLineStyle} />
-        </div>
-
-        <button style={continueButtonStyle} onClick={handleContinueWithout}>
-          Continue without signing in →
         </button>
       </div>
 
