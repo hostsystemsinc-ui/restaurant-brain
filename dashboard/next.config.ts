@@ -12,6 +12,15 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      // Proxy all backend API calls through the Next.js server to avoid CORS
+      {
+        source: "/api/brain/:path*",
+        destination: "https://restaurant-brain-production.up.railway.app/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;
