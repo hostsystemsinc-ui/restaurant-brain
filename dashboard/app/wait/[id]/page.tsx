@@ -100,27 +100,35 @@ export default function WaitPage() {
     return () => clearInterval(poll)
   }, [fetchEntry])
 
-  // Sync displayWait from server data whenever anything relevant changes.
-  // remaining_wait = server-computed remaining time (quoted_wait − elapsed since updated_at).
-  // Falls back to wait_estimate when no quoted_wait has been set.
-  // Also watching quoted_wait directly catches the moment the host changes the value,
-  // even in the edge-case where remaining_wait coincidentally equals the previous value.
+  // Sync displayWait from server data using localStorage for refresh resilience.
+  // When a new quoted_wait arrives (host changed the timer), we record Date.now() in
+  // localStorage keyed by "timer_{id}_{quotedWait}". On subsequent renders / page
+  // refreshes, we recompute displayWait = max(0, quotedWait - elapsedSinceStored).
+  // A different quoted_wait → different key → clean reset with no elapsed subtraction.
   useEffect(() => {
-    if (entry) {
-      setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
+    if (!entry) return
+    if (entry.quoted_wait != null && entry.quoted_wait > 0) {
+      const lsKey = `timer_${entry.id}_${entry.quoted_wait}`
+      if (!localStorage.getItem(lsKey)) {
+        localStorage.setItem(lsKey, String(Date.now()))
+      }
+      const storedStart = Number(localStorage.getItem(lsKey))
+      const elapsedMin  = Math.floor((Date.now() - storedStart) / 60_000)
+      setDisplayWait(Math.max(0, entry.quoted_wait - elapsedMin))
+    } else {
+      setDisplayWait(entry.wait_estimate ?? 0)
     }
-  }, [entry?.remaining_wait, entry?.wait_estimate, entry?.quoted_wait])
+  }, [entry?.id, entry?.quoted_wait, entry?.wait_estimate])
 
-  // Client-side 1-minute countdown so the timer ticks visibly between server polls.
-  // The effect re-runs (clearing + restarting the interval) whenever the host changes
-  // the quoted_wait, remaining_wait, or wait_estimate — guaranteeing a clean reset.
+  // Client-side 1-minute countdown so the timer ticks between server polls.
+  // Restarts whenever the host changes quoted_wait or wait_estimate.
   useEffect(() => {
     if (entry?.status !== "waiting") return
     if (!displayWait) return
     const t = setInterval(() => setDisplayWait(prev => Math.max(0, prev - 1)), 60_000)
     return () => clearInterval(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.status, entry?.remaining_wait, entry?.wait_estimate, entry?.quoted_wait])
+  }, [entry?.status, entry?.quoted_wait, entry?.wait_estimate])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {

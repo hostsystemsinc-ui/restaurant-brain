@@ -139,22 +139,13 @@ def _wait_estimate(parties_ahead: int, party_size: int = 2, rid: Optional[str] =
 
 def _remaining_wait(entry: dict) -> int:
     """
-    Return how many minutes are truly left for this guest.
-    If the hostess set a quoted_wait, count down from when she set it (updated_at).
-    Otherwise fall back to the position-based wait_estimate.
+    Return the quoted wait set by the host, or fall back to position-based estimate.
+    Elapsed time countdown is handled client-side (localStorage keyed by entry+quoted_wait).
     """
     qw = entry.get("quoted_wait")
     if qw is None:
         return entry.get("wait_estimate") or 0
-    updated_str = entry.get("updated_at")
-    if not updated_str:
-        return qw
-    try:
-        updated_dt  = datetime.fromisoformat(updated_str.replace("Z", "+00:00"))
-        elapsed_min = int((datetime.now(timezone.utc) - updated_dt).total_seconds() / 60)
-        return max(0, qw - elapsed_min)
-    except Exception:
-        return qw
+    return qw
 
 def _ai_insights(tables: list, queue: list) -> Optional[str]:
     if not ANTHROPIC_KEY:
@@ -393,7 +384,7 @@ def update_wait(entry_id: str, minutes: int):
     res = supabase.table("queue_entries").select("id").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
-    supabase.table("queue_entries").update({"quoted_wait": minutes, "updated_at": _now()}).eq("id", entry_id).execute()
+    supabase.table("queue_entries").update({"quoted_wait": minutes}).eq("id", entry_id).execute()
     return {"status": "updated", "quoted_wait": minutes}
 
 @app.patch("/queue/{entry_id}")
@@ -405,11 +396,12 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
     update: dict = {}
     if req.quoted_wait is not None:
         update["quoted_wait"] = req.quoted_wait
-        update["updated_at"]  = _now()   # only move the timer anchor when wait time changes
     if req.party_size is not None:
         update["party_size"] = req.party_size
     if req.phone is not None:
         update["phone"] = req.phone or None
+    if not update:
+        return {"status": "nothing_to_update"}
     supabase.table("queue_entries").update(update).eq("id", entry_id).execute()
     return {"status": "updated"}
 
