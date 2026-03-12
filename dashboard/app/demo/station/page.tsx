@@ -93,6 +93,27 @@ interface Reservation {
   time:       string   // "HH:MM" or "HH:MM:SS"
   status:     string
   phone:      string | null
+  notes?:     string | null
+}
+
+// Table pre-assigned to an upcoming reservation (local-only, persisted in localStorage)
+interface ReservedTable { resId: string; guestName: string; time: string }
+
+// Toast notification system
+type ToastItem = { id: number; msg: string; type: "ok" | "err" | "warn" }
+let _toastSeq = 0
+let _dispatchToast: ((msg: string, type: ToastItem["type"]) => void) | null = null
+function showToast(msg: string, type: ToastItem["type"] = "ok") { _dispatchToast?.(msg, type) }
+
+// fetch with AbortController timeout (default 10 s)
+async function fetchT(url: string, opts: RequestInit = {}, ms = 10_000): Promise<Response> {
+  const ctrl = new AbortController()
+  const tid  = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal })
+  } finally {
+    clearTimeout(tid)
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -142,8 +163,14 @@ function WaitTimeModal({
   const save = async () => {
     setSaving(true)
     try {
-      await fetch(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" })
-    } catch {}
+      const r = await fetchT(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" })
+      if (!r.ok) throw new Error("server")
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && e.name === "AbortError"
+      showToast(isTimeout ? "Request timed out — try again." : "Could not update wait time.", "err")
+      setSaving(false)
+      return
+    }
     setSaving(false)
     onClose()
   }
@@ -268,12 +295,18 @@ function GuestEditModal({
   const save = async () => {
     setSaving(true)
     try {
-      await fetch(`${API}/queue/${entry.id}`, {
+      const r = await fetchT(`${API}/queue/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ quoted_wait: minutes, party_size: partySize, phone: phone.trim() || null, notes: notes.trim() || null }),
       })
-    } catch {}
+      if (!r.ok) throw new Error("server")
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && e.name === "AbortError"
+      showToast(isTimeout ? "Request timed out — try again." : "Could not save changes.", "err")
+      setSaving(false)
+      return   // Don't close modal on error
+    }
     setSaving(false)
     onSaved()
     onClose()
@@ -283,23 +316,31 @@ function GuestEditModal({
     const willBePaused = !paused
     setPaused(willBePaused)
     try {
-      await fetch(`${API}/queue/${entry.id}`, {
+      const r = await fetchT(`${API}/queue/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // When pausing: freeze the quoted_wait at the current countdown and mark paused.
-        // When resuming: clear the paused flag so the iOS guest bar starts moving again.
         body: JSON.stringify(
           willBePaused
             ? { quoted_wait: countdown, paused: true }
             : { paused: false }
         ),
       })
-    } catch {}
+      if (!r.ok) throw new Error()
+    } catch {
+      setPaused(!willBePaused) // revert toggle on failure
+    }
   }
 
   const remove = async () => {
     setRemoving(true)
-    try { await fetch(`${API}/queue/${entry.id}/remove`, { method: "POST" }) } catch {}
+    try {
+      const r = await fetchT(`${API}/queue/${entry.id}/remove`, { method: "POST" })
+      if (!r.ok) throw new Error()
+    } catch {
+      showToast("Could not remove guest.", "err")
+      setRemoving(false)
+      return   // Don't close modal on error
+    }
     setRemoving(false)
     onRemoved()
     onClose()
@@ -618,7 +659,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect,
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, reservation,
 }: {
   pos: FloorPos
   table?: Table
@@ -627,10 +668,13 @@ function DroppableFloorTable({
   isDraggingOccupant?: boolean
   isSelectMode?: boolean
   onSeatFromSelect?: () => void
+  reservation?: ReservedTable   // pre-assigned to upcoming reservation → yellow
 }) {
-  const isOccupied = !!occupant || (!!table && table.status !== "available")
+  const isOccupied     = !!occupant || (!!table && table.status !== "available")
   const hasLocalOccupant = !!occupant
-  const canReceiveDrop = isDraggingOccupant ? !hasLocalOccupant : !isOccupied
+  const hasReservation = !!reservation && !isOccupied  // show reserved only if not already occupied
+  // Reserved tables block drops; they cannot be used for walk-ins
+  const canReceiveDrop = hasReservation ? false : (isDraggingOccupant ? !hasLocalOccupant : !isOccupied)
   const noTable = !table
   const avail = !isOccupied
 
@@ -655,10 +699,12 @@ function DroppableFloorTable({
     setDragRef(el)
   }, [setDropRef, setDragRef])
 
-  const isSelectTarget = !!isSelectMode && !isOccupied
+  const isSelectTarget = !!isSelectMode && !isOccupied && !hasReservation
 
   const bg = isOver && canReceiveDrop
     ? "rgba(34,197,94,0.55)"
+    : hasReservation
+    ? "rgba(251,191,36,0.16)"
     : isSelectTarget
     ? "rgba(34,197,94,0.38)"
     : isOccupied ? "rgba(239,68,68,0.28)"
@@ -667,6 +713,8 @@ function DroppableFloorTable({
 
   const borderColor = isOver && canReceiveDrop
     ? "#22c55e"
+    : hasReservation
+    ? "rgba(251,191,36,0.75)"
     : isSelectTarget
     ? "#4ade80"
     : isOccupied ? "rgba(239,68,68,0.90)"
@@ -692,6 +740,7 @@ function DroppableFloorTable({
         border: `1.5px solid ${borderColor}`,
         boxShadow: isOver && canReceiveDrop
           ? "0 0 0 4px rgba(34,197,94,0.35), inset 0 0 20px rgba(34,197,94,0.10)"
+          : hasReservation ? "0 0 0 2px rgba(251,191,36,0.20), inset 0 0 12px rgba(251,191,36,0.06)"
           : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
           : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
           : "none",
@@ -746,7 +795,7 @@ function DroppableFloorTable({
           right: pos.shape === "round" ? "18%" : 7,
           width: 6, height: 6,
           borderRadius: "50%",
-          background: noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
+          background: hasReservation ? "rgba(251,191,36,0.80)" : noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
           opacity: 0.85,
         }} />
       )}
@@ -760,6 +809,26 @@ function DroppableFloorTable({
         }}>
           DROP
         </span>
+      ) : hasReservation ? (
+        <>
+          <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.12em", color: "rgba(251,191,36,0.60)", textTransform: "uppercase" }}>
+            Rsvd
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 11 : 9,
+            fontWeight: 700,
+            color: "rgba(255,228,150,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 3,
+            overflow: "hidden",
+          }}>
+            {reservation!.guestName.split(" ")[0]}
+          </span>
+          <span style={{ fontSize: 8, color: "rgba(251,191,36,0.75)" }}>
+            {fmt12Res(reservation!.time)}
+          </span>
+        </>
       ) : occupant ? (
         <>
           <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,200,150,0.75)", letterSpacing: "0.1em" }}>
@@ -809,7 +878,7 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, reservedTables,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -817,6 +886,7 @@ function FloorMap({
   isDraggingOccupant: boolean
   selectedEntry?: QueueEntry | null
   onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
+  reservedTables?: Map<number, ReservedTable>
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -916,6 +986,7 @@ function FloorMap({
                 pos={pos}
                 table={table}
                 occupant={occupant}
+                reservation={reservedTables?.get(pos.number)}
                 onClear={() => onClear(table?.id, pos.number)}
                 isDraggingOccupant={isDraggingOccupant}
                 isSelectMode={!!selectedEntry}
@@ -947,20 +1018,23 @@ function FloorMap({
 // ── Seat Table Picker ──────────────────────────────────────────────────────────
 
 function SeatTablePicker({
-  guest,
-  tables,
-  localOccupants,
-  onConfirm,
-  onClose,
+  guest, tables, localOccupants, onConfirm, onClose,
+  reservedTables, excludeResId, mode = "seat",
 }: {
   guest: { name: string | null; party_size: number }
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
   onConfirm: (tableNumber: number, tableId: string | undefined) => void
   onClose: () => void
+  reservedTables?: Map<number, ReservedTable>
+  excludeResId?: string   // allow re-selecting the table already held by this reservation
+  mode?: "seat" | "reserve"
 }) {
   const available = FLOOR_PLAN.filter(pos => {
     if (localOccupants.has(pos.number)) return false
+    // Exclude tables reserved for OTHER reservations
+    const resInfo = reservedTables?.get(pos.number)
+    if (resInfo && resInfo.resId !== excludeResId) return false
     const t = tables.find(t => t.table_number === pos.number)
     return !t || t.status === "available"
   })
@@ -976,14 +1050,15 @@ function SeatTablePicker({
 
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
-            Seat Guest
+            {mode === "reserve" ? "Reserve Table" : "Seat Guest"}
           </span>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
         <p className="text-xs mb-6" style={{ color: "rgba(255,200,150,0.3)" }}>
-          {guest.name || "Guest"} · {guest.party_size}p — choose a table
+          {guest.name || "Guest"} · {guest.party_size}p —{" "}
+          {mode === "reserve" ? "choose a table to hold" : "choose a table"}
         </p>
 
         {available.length === 0 ? (
@@ -1121,6 +1196,31 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (e
   )
 }
 
+// ── Toast renderer ─────────────────────────────────────────────────────────────
+
+function Toasts({ items }: { items: ToastItem[] }) {
+  if (!items.length) return null
+  return (
+    <div style={{ position: "fixed", bottom: 108, right: 24, zIndex: 300, display: "flex", flexDirection: "column", gap: 7, alignItems: "flex-end", pointerEvents: "none" }}>
+      {items.map(t => (
+        <div key={t.id} style={{
+          padding: "9px 16px",
+          borderRadius: 10,
+          background: t.type === "ok"  ? "rgba(34,197,94,0.16)"  : t.type === "err" ? "rgba(239,68,68,0.18)"  : "rgba(251,191,36,0.14)",
+          border:     `1px solid ${t.type === "ok" ? "rgba(34,197,94,0.48)" : t.type === "err" ? "rgba(239,68,68,0.48)" : "rgba(251,191,36,0.48)"}`,
+          backdropFilter: "blur(12px)",
+          color:  t.type === "ok" ? "#22c55e" : t.type === "err" ? "#f87171" : "#fbbf24",
+          fontSize: 12, fontWeight: 600,
+          maxWidth: 300,
+          boxShadow: "0 4px 18px rgba(0,0,0,0.40)",
+        }}>
+          {t.msg}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function DemoHostDashboard() {
@@ -1144,6 +1244,16 @@ export default function DemoHostDashboard() {
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [sidebarW, setSidebarW]           = useState(300)
   const [linkCopied, setLinkCopied]       = useState(false)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [toasts, setToasts]               = useState<ToastItem[]>([])
+  const [resTblPicker, setResTblPicker]   = useState<Reservation | null>(null)
+  const [reservedTables, setReservedTables] = useState<Map<number, ReservedTable>>(() => {
+    try {
+      const s = localStorage.getItem("host_demo_reserved_tables")
+      return s ? new Map(JSON.parse(s) as [number, ReservedTable][]) : new Map()
+    } catch { return new Map() }
+  })
+  const toastSeqRef = useRef(0)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartW = useRef(0)
@@ -1156,6 +1266,21 @@ export default function DemoHostDashboard() {
       setAuthed(true)
     }
   }, [router])
+
+  // Wire module-level toast dispatcher to component state
+  useEffect(() => {
+    _dispatchToast = (msg, type) => {
+      const id = ++toastSeqRef.current
+      setToasts(p => [...p, { id, msg, type }])
+      setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500)
+    }
+    return () => { _dispatchToast = null }
+  }, [])
+
+  // Persist reserved table pre-assignments
+  useEffect(() => {
+    try { localStorage.setItem("host_demo_reserved_tables", JSON.stringify([...reservedTables])) } catch {}
+  }, [reservedTables])
 
   // Poll GitHub + Railway status to derive real system health
   useEffect(() => {
@@ -1224,7 +1349,13 @@ export default function DemoHostDashboard() {
   }, [])
 
   const fetchTables   = useCallback(async () => { try { const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`);   if (r.ok) setTables(await r.json()) } catch {} }, [])
-  const fetchQueue    = useCallback(async () => { try { const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`);    if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) } } catch { setOnline(false) } }, [])
+  const fetchQueue    = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) }
+    } catch { setOnline(false) }
+    finally   { setIsInitialLoad(false) }
+  }, [])
   const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights?restaurant_id=${DEMO_RESTAURANT_ID}`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
   const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
 
@@ -1252,9 +1383,18 @@ export default function DemoHostDashboard() {
     return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt) }
   }, [refreshAll, fetchInsights, fetchReservations, authed])
 
-  const seat   = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }); refreshAll() }, [refreshAll])
-  const notify = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }); refreshAll() }, [refreshAll])
-  const remove = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }); refreshAll() }, [refreshAll])
+  const seat   = useCallback(async (id: string) => {
+    try { const r = await fetchT(`${API}/queue/${id}/seat`,   { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
+    catch { showToast("Could not seat guest — try again.", "err") }
+  }, [refreshAll])
+  const notify = useCallback(async (id: string) => {
+    try { const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
+    catch { showToast("Could not notify guest.", "err") }
+  }, [refreshAll])
+  const remove = useCallback(async (id: string) => {
+    try { const r = await fetchT(`${API}/queue/${id}/remove`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
+    catch { showToast("Could not remove guest.", "err") }
+  }, [refreshAll])
 
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
@@ -1263,26 +1403,43 @@ export default function DemoHostDashboard() {
 
   const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
     setSeatPicker(null)
-    if (tableId) {
-      await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
-    } else {
-      await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
+    // Capacity warning (non-blocking — host may still want to proceed)
+    const apiTable = tables.find(t => tableId ? t.id === tableId : t.table_number === tableNumber)
+    if (apiTable && entry.party_size > apiTable.capacity) {
+      showToast(`⚠️ Table ${tableNumber} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
+    }
+    try {
+      const r = tableId
+        ? await fetchT(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
+        : await fetchT(`${API}/queue/${entry.id}/seat`, { method: "POST" })
+      if (!r.ok) throw new Error()
+    } catch {
+      showToast("Could not seat guest — please try again.", "err")
+      return
     }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
+    // Clear any reservation pre-assignment for this table
+    setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+    showToast(`${entry.name || "Guest"} seated at Table ${tableNumber}`)
     refreshAll()
-  }, [refreshAll])
+  }, [refreshAll, tables])
 
   const checkInConfirm = useCallback(async (res: Reservation, tableNumber: number, tableId: string | undefined) => {
     setResPicker(null)
-    try {
-      await fetch(`${API}/reservations/${res.id}/status?status=seated`, { method: "PATCH" })
-    } catch {}
+    try { await fetchT(`${API}/reservations/${res.id}/status?status=seated`, { method: "PATCH" }) } catch {}
     setTodayRes(prev => prev.filter(r => r.id !== res.id))
+    // Clear this reservation's pre-assignment
+    setReservedTables(prev => {
+      const next = new Map(prev)
+      for (const [tNum, info] of next) { if (info.resId === res.id) { next.delete(tNum); break } }
+      return next
+    })
     if (tableId) {
-      try { await fetch(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
+      try { await fetchT(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
       fetchTables()
     }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
+    showToast(`${res.guest_name} checked in at Table ${tableNumber}`)
   }, [fetchTables])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
@@ -1292,6 +1449,20 @@ export default function DemoHostDashboard() {
       fetchTables()
     }
   }, [fetchTables])
+
+  // Returns the pre-assigned table number for a given reservation, if any
+  const tableForRes = useCallback((resId: string): number | undefined => {
+    for (const [tNum, info] of reservedTables) { if (info.resId === resId) return tNum }
+    return undefined
+  }, [reservedTables])
+
+  // Pre-assign a table to a reservation (turns it yellow on the floor map)
+  const assignResTable = useCallback((res: Reservation, tableNumber: number) => {
+    setReservedTables(prev => new Map(prev).set(tableNumber, {
+      resId: res.id, guestName: res.guest_name, time: res.time,
+    }))
+    showToast(`Table ${tableNumber} held for ${res.guest_name} at ${fmt12Res(res.time)}`)
+  }, [])
 
   function handleDragStart(event: DragStartEvent) {
     setSelectedEntry(null)
@@ -1335,12 +1506,18 @@ export default function DemoHostDashboard() {
     if (!entry) return
     if (localOccupants.has(targetTable)) return
     const apiTable = tables.find(t => t.table_number === targetTable)
+    if (apiTable && entry.party_size > apiTable.capacity) {
+      showToast(`⚠️ Table ${targetTable} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
+    }
     if (apiTable) {
-      fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" }).then(() => refreshAll())
+      fetchT(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
+        .then(r => { if (!r.ok) showToast("Could not seat guest.", "err"); else refreshAll() })
+        .catch(() => showToast("Could not seat guest.", "err"))
     } else {
       seat(entry.id)
     }
     setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
+    setReservedTables(prev => { const n = new Map(prev); n.delete(targetTable); return n })
   }
 
   const floorOccupied = FLOOR_PLAN.filter(pos => {
@@ -1521,12 +1698,16 @@ export default function DemoHostDashboard() {
                     const isLate     = urgency === "late"
                     const isNow      = urgency === "now"
                     const isArriving = urgency === "arriving"
+                    const assignedTableNum = tableForRes(res.id)
+                    const assignedApiTable = assignedTableNum !== undefined
+                      ? tables.find(t => t.table_number === assignedTableNum)
+                      : undefined
 
                     return (
                       <div
                         key={res.id}
                         style={{
-                          display: "flex", alignItems: "center", gap: 8,
+                          display: "flex", alignItems: "flex-start", gap: 8,
                           padding: "7px 9px", borderRadius: 9,
                           background: isLate
                             ? "rgba(239,68,68,0.12)"
@@ -1554,41 +1735,74 @@ export default function DemoHostDashboard() {
                             {res.guest_name}
                           </div>
                           <div style={{
-                            fontSize: 10, display: "flex", gap: 5, alignItems: "center",
+                            fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap",
                             color: "rgba(255,200,150,0.70)",
                           }}>
                             <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
                             <span>·</span>
                             <span>{res.party_size}p</span>
-                            {isArriving && (
-                              <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
-                                ARRIVING
-                              </span>
-                            )}
-                            {isNow && (
-                              <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
-                                DUE NOW
-                              </span>
-                            )}
-                            {isLate && (
-                              <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
-                                LATE
+                            {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
+                            {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
+                            {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
+                            {/* Pre-assigned table badge */}
+                            {assignedTableNum !== undefined && (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(251,191,36,0.95)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 4, padding: "1px 5px" }}>
+                                  T{assignedTableNum}
+                                </span>
+                                <button
+                                  onPointerDown={e => e.stopPropagation()}
+                                  onClick={e => { e.stopPropagation(); setReservedTables(prev => { const n = new Map(prev); n.delete(assignedTableNum); return n }) }}
+                                  style={{ fontSize: 10, color: "rgba(251,191,36,0.45)", cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1 }}
+                                  title="Clear table assignment"
+                                >✕</button>
                               </span>
                             )}
                           </div>
+                          {/* Notes — visible on the card so staff never misses them */}
+                          {res.notes && (
+                            <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              📝 {res.notes}
+                            </div>
+                          )}
                         </div>
 
-                        <button
-                          onClick={() => setResPicker(res)}
-                          style={{
-                            height: 24, padding: "0 8px", borderRadius: 6, border: "none",
-                            cursor: "pointer", fontSize: 9, fontWeight: 800,
-                            letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
-                            background: "rgba(34,197,94,0.12)", color: "#22c55e",
-                          }}
-                        >
-                          Check In
-                        </button>
+                        {/* Action buttons column */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", flexShrink: 0 }}>
+                          {/* Check In — auto-uses pre-assigned table if set */}
+                          <button
+                            onClick={() => {
+                              if (assignedTableNum !== undefined) {
+                                checkInConfirm(res, assignedTableNum, assignedApiTable?.id)
+                              } else {
+                                setResPicker(res)
+                              }
+                            }}
+                            style={{
+                              height: 24, padding: "0 8px", borderRadius: 6, border: "none",
+                              cursor: "pointer", fontSize: 9, fontWeight: 800,
+                              letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
+                              background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                            }}
+                          >
+                            {assignedTableNum !== undefined ? `Check In → T${assignedTableNum}` : "Check In"}
+                          </button>
+                          {/* Assign Table — only shown when no table is pre-assigned */}
+                          {assignedTableNum === undefined && (
+                            <button
+                              onClick={() => setResTblPicker(res)}
+                              style={{
+                                height: 20, padding: "0 7px", borderRadius: 5,
+                                border: "1px solid rgba(251,191,36,0.28)",
+                                cursor: "pointer", fontSize: 8, fontWeight: 700,
+                                letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
+                                background: "rgba(251,191,36,0.06)", color: "rgba(251,191,36,0.75)",
+                              }}
+                            >
+                              Assign Table
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )
                   })}
@@ -1632,7 +1846,11 @@ export default function DemoHostDashboard() {
                 </span>
               </div>
 
-              {queue.length === 0 ? (
+              {isInitialLoad ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,185,100,0.18)", borderTopColor: "rgba(255,185,100,0.65)" }} />
+                </div>
+              ) : queue.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
                   <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
                   <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
@@ -1689,6 +1907,7 @@ export default function DemoHostDashboard() {
             <FloorMap
               tables={tables}
               localOccupants={localOccupants}
+              reservedTables={reservedTables}
               onClear={(tableId, tableNumber) => {
                 const occupant = localOccupants.get(tableNumber)
                 if (occupant) setClearConfirm({ tableId, tableNumber, occupant })
@@ -1822,11 +2041,30 @@ export default function DemoHostDashboard() {
             guest={{ name: resPicker.guest_name, party_size: resPicker.party_size }}
             tables={tables}
             localOccupants={localOccupants}
+            reservedTables={reservedTables}
+            excludeResId={resPicker.id}
             onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
             onClose={() => setResPicker(null)}
           />
         )}
+
+        {/* Reservation table pre-assignment picker */}
+        {resTblPicker && (
+          <SeatTablePicker
+            guest={{ name: resTblPicker.guest_name, party_size: resTblPicker.party_size }}
+            tables={tables}
+            localOccupants={localOccupants}
+            reservedTables={reservedTables}
+            excludeResId={resTblPicker.id}
+            mode="reserve"
+            onConfirm={(tableNumber) => { assignResTable(resTblPicker, tableNumber); setResTblPicker(null) }}
+            onClose={() => setResTblPicker(null)}
+          />
+        )}
       </div>
+
+      {/* Toast notifications */}
+      <Toasts items={toasts} />
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null}>
