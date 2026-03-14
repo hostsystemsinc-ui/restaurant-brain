@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
-import { X, UtensilsCrossed } from "lucide-react"
+import { X, UtensilsCrossed, Users, Clock } from "lucide-react"
 
 const API = "https://restaurant-brain-production.up.railway.app"
 
@@ -29,7 +29,7 @@ const WAITING_MESSAGES = [
   "You can leave and come back — we've got your spot.",
 ]
 
-// ── Menu data — update these to match Walter's actual menu ──────────────────
+// ── Menu data ────────────────────────────────────────────────────────────────
 const MENU_SECTIONS = [
   {
     title: "Starters",
@@ -90,7 +90,6 @@ export default function WaitPage() {
 
   const fetchEntry = useCallback(async () => {
     try {
-      // cache: "no-store" = always get a fresh response, never serve a browser-cached reply
       const r = await fetch(`${API}/queue/${id}`, { cache: "no-store" })
       if (!r.ok) { setError(true); return }
       setEntry(await r.json())
@@ -100,22 +99,16 @@ export default function WaitPage() {
   const handleLeave = async () => {
     setLeaving(true)
     try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch { /* best-effort */ }
-    // Optimistically flip to removed — polling will confirm; no redirect to join page
     setEntry(prev => prev ? { ...prev, status: "removed" } : null)
   }
 
   useEffect(() => {
     fetchEntry()
-    const poll = setInterval(fetchEntry, 3000)   // 3s keeps host→guest sync snappy
+    const poll = setInterval(fetchEntry, 3000)
     return () => clearInterval(poll)
   }, [fetchEntry])
 
-  // Sync displayWait + elapsedSec when quoted_wait or wait_set_at changes.
-  // Key: "timer_{id}_{wait_set_at}" — wait_set_at is a server-stamped ISO string that
-  // changes every time the host writes a new quoted_wait, even to the same value.
-  // This guarantees a clean reset when the host resets the timer.
-  // Falls back to "timer_{id}_{qw}" if server restarted and wait_set_at is absent.
-  // No fallback to wait_estimate — host must explicitly set a time.
+  // Sync displayWait + elapsedSec when quoted_wait or wait_set_at changes
   useEffect(() => {
     if (!entry) return
     if (entry.quoted_wait != null && entry.quoted_wait > 0) {
@@ -131,12 +124,11 @@ export default function WaitPage() {
       setDisplayWait(Math.max(0, entry.quoted_wait - Math.floor(sec / 60)))
     } else {
       setElapsedSec(0)
-      setDisplayWait(0)   // no time shown until host explicitly sets quoted_wait
+      setDisplayWait(0)
     }
   }, [entry?.id, entry?.quoted_wait, entry?.wait_set_at])
 
-  // Per-second tick: keeps elapsedSec (→ smooth progress bar) and
-  // displayWait (→ minute label) accurate. Restarts on any timer change.
+  // Per-second tick for smooth progress bar and minute countdown
   useEffect(() => {
     if (entry?.status !== "waiting") return
     const qw = entry.quoted_wait
@@ -168,18 +160,33 @@ export default function WaitPage() {
     return () => { document.body.style.overflow = "" }
   }, [menuOpen])
 
+  // ── Error state ────────────────────────────────────────────────────────────
   if (error) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-8" style={{ background: "#000", color: "#fff" }}>
-        <p className="text-xs tracking-[0.3em] uppercase mb-8" style={{ color: "rgba(255,255,255,0.85)" }}>HOST</p>
-        <p className="text-lg font-medium">Entry not found</p>
-        <p className="text-sm mt-2 mb-8" style={{ color: "rgba(255,255,255,0.35)" }}>
+      <div style={{
+        height: "100dvh", background: "#000", color: "#fff",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        padding: "40px 32px", textAlign: "center",
+      }}>
+        <p style={{ fontSize: 10, letterSpacing: "0.45em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 14 }}>
+          Powered by
+        </p>
+        <p style={{ fontSize: 36, fontWeight: 900, letterSpacing: "0.3em", color: "#fff", lineHeight: 1, margin: "0 0 32px" }}>
+          HOST
+        </p>
+        <p style={{ fontSize: 18, fontWeight: 500, color: "rgba(255,255,255,0.85)", margin: "0 0 8px" }}>Entry not found</p>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.35)", margin: "0 0 48px", lineHeight: 1.5 }}>
           This waitlist entry may have expired.
         </p>
         <a
           href="/join"
-          className="px-8 py-3 rounded-2xl text-sm font-semibold tracking-widest uppercase"
-          style={{ background: "white", color: "black" }}
+          style={{
+            padding: "14px 32px", borderRadius: 14,
+            background: "white", color: "black",
+            fontSize: 13, fontWeight: 700, letterSpacing: "0.06em",
+            textDecoration: "none",
+          }}
         >
           Rejoin
         </a>
@@ -187,9 +194,8 @@ export default function WaitPage() {
     )
   }
 
+  // ── Loading state ──────────────────────────────────────────────────────────
   if (!entry) {
-    // Blank black screen — no spinner — so the white join animation flows
-    // seamlessly into the dark wait page without an intermediate loading flash.
     return <div style={{ height: "100dvh", background: "#000" }} />
   }
 
@@ -198,7 +204,7 @@ export default function WaitPage() {
   const isSeated  = status === "seated"
   const isRemoved = status === "removed"
 
-  // ── Removed / left waitlist screen ────────────────────────────────────────
+  // ── Removed state ──────────────────────────────────────────────────────────
   if (isRemoved) {
     return (
       <div style={{
@@ -230,20 +236,247 @@ export default function WaitPage() {
     )
   }
 
-  // When the host has set a quoted_wait, derive progress from precise elapsed seconds
-  // so the bar moves smoothly every second instead of jumping every minute.
-  // Before the host sets a time: show a static 4% sliver (arrival indicator only).
+  // Progress: smooth per-second movement when host sets a time, static sliver before that
   const totalSec = (quoted_wait ?? 1) * 60
   const progress = isReady || isSeated
     ? 100
     : quoted_wait
-      ? Math.min(97, Math.max(2, (elapsedSec / totalSec) * 100))
-      : 4   // static arrival indicator — no countdown until host sets a time
+      ? Math.min(97, Math.max(3, (elapsedSec / totalSec) * 100))
+      : 4
+
+  // ── Seated state ───────────────────────────────────────────────────────────
+  if (isSeated) {
+    return (
+      <div style={{
+        height: "100dvh", background: "#000", color: "#fff",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        padding: "0 28px", textAlign: "center",
+      }}>
+        <style>{`
+          @keyframes pulseBlue {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.3); }
+            50%       { box-shadow: 0 0 0 18px rgba(59,130,246,0); }
+          }
+        `}</style>
+
+        {/* Blue pulsing circle */}
+        <div style={{
+          width: 88, height: 88, borderRadius: "50%",
+          background: "rgba(59,130,246,0.12)",
+          border: "2px solid rgba(59,130,246,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#60a5fa",
+          marginBottom: 32,
+          animation: "pulseBlue 2.4s ease-in-out infinite",
+        }}>
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+        </div>
+
+        {/* Headline */}
+        <h1 style={{
+          fontSize: 34, fontWeight: 300, letterSpacing: "-0.02em",
+          color: "#fff", margin: "0 0 10px", lineHeight: 1.15,
+        }}>
+          Enjoy your meal.
+        </h1>
+        <p style={{ fontSize: 15, color: "#93c5fd", fontWeight: 500, margin: "0 0 32px", letterSpacing: "0.02em" }}>
+          You&apos;ve been seated
+        </p>
+
+        {/* Divider */}
+        <div style={{ width: 40, height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 32 }} />
+
+        {/* Thank you message */}
+        <p style={{
+          fontSize: 14, color: "rgba(255,255,255,0.35)",
+          lineHeight: 1.65, maxWidth: 240,
+        }}>
+          Thank you for dining with us at Walter&apos;s303. We hope to see you again soon.
+        </p>
+
+        {/* Footer label */}
+        <p style={{
+          position: "absolute", bottom: 32,
+          fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase",
+          color: "rgba(255,255,255,0.1)",
+        }}>
+          HOST
+        </p>
+      </div>
+    )
+  }
+
+  // ── Ready state ────────────────────────────────────────────────────────────
+  if (isReady) {
+    return (
+      <div style={{
+        height: "100dvh", background: "#000", color: "#fff",
+        display: "flex", flexDirection: "column",
+        overflow: "hidden",
+      }}>
+        <style>{`
+          @keyframes pulseGreen {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.35); }
+            50%       { box-shadow: 0 0 0 22px rgba(34,197,94,0); }
+          }
+          @keyframes sheetUp {
+            from { transform: translateY(100%); }
+            to   { transform: translateY(0); }
+          }
+          @keyframes backdropIn {
+            from { opacity: 0; }
+            to   { opacity: 1; }
+          }
+          @keyframes menuItemIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
+
+        {/* Top HOST wordmark */}
+        <div style={{ padding: "52px 28px 0", flexShrink: 0 }}>
+          <p style={{
+            fontSize: 11, fontWeight: 900, letterSpacing: "0.35em",
+            textTransform: "uppercase", color: "#fff",
+          }}>HOST</p>
+        </div>
+
+        {/* Main content */}
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "0 28px", textAlign: "center", gap: 0,
+        }}>
+
+          {/* Green pulsing circle */}
+          <div style={{
+            width: 88, height: 88, borderRadius: "50%",
+            background: "rgba(34,197,94,0.12)",
+            border: "2px solid rgba(34,197,94,0.45)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#22c55e",
+            marginBottom: 28,
+            animation: "pulseGreen 2s ease-in-out infinite",
+          }}>
+            <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+
+          {/* Headline */}
+          <h1 style={{
+            fontSize: 28, fontWeight: 700, color: "#fff",
+            margin: "0 0 8px", letterSpacing: "-0.01em",
+          }}>
+            Your table is ready!
+          </h1>
+          <p style={{ fontSize: 15, color: "#22c55e", fontWeight: 600, margin: "0 0 28px" }}>
+            Head to the host stand
+          </p>
+
+          {/* Full green progress bar */}
+          <div style={{ width: "100%", marginBottom: 6 }}>
+            <div style={{
+              width: "100%", height: 8, borderRadius: 99,
+              background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 6,
+            }}>
+              <div style={{
+                width: "100%", height: "100%", borderRadius: 99,
+                background: "linear-gradient(90deg, #22c55e, #86efac)",
+                transition: "width 1.2s ease",
+              }} />
+            </div>
+            <div style={{
+              display: "flex", justifyContent: "space-between",
+              fontSize: 10, color: "rgba(255,255,255,0.25)",
+            }}>
+              <span>Arrived</span>
+              <span>Seated</span>
+            </div>
+          </div>
+
+          {/* Stat cards */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr",
+            gap: 10, width: "100%", marginTop: 20, marginBottom: 20,
+          }}>
+            <div style={{
+              background: "#141414", border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 14, padding: "14px 16px",
+            }}>
+              <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Party</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#fff" }}>
+                <Users size={14} style={{ opacity: 0.5 }} />
+                {party_size}
+              </div>
+            </div>
+            <div style={{
+              background: "#141414", border: "1px solid rgba(34,197,94,0.2)",
+              borderRadius: 14, padding: "14px 16px",
+            }}>
+              <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Wait</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#22c55e" }}>
+                <Clock size={14} style={{ opacity: 0.7 }} />
+                Now
+              </div>
+            </div>
+          </div>
+
+          {/* Message card */}
+          <div style={{
+            background: "rgba(34,197,94,0.07)",
+            border: "1px solid rgba(34,197,94,0.18)",
+            borderRadius: 14, padding: "14px 18px", width: "100%",
+          }}>
+            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
+              Please make your way to the front and let the host know you&apos;re here.
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "0 28px 40px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+          <button
+            onClick={() => setMenuOpen(true)}
+            style={{
+              width: "100%", height: 54,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 14, cursor: "pointer",
+              color: "rgba(255,255,255,0.7)",
+              fontSize: 14, fontWeight: 600, letterSpacing: "0.04em",
+            }}
+          >
+            <UtensilsCrossed size={15} style={{ opacity: 0.7 }} />
+            Check Out the Menu
+          </button>
+          <p style={{ textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.1)", letterSpacing: "0.2em", textTransform: "uppercase" }}>
+            Updates automatically · HOST
+          </p>
+        </div>
+
+        {/* Menu Drawer */}
+        {menuOpen && <MenuDrawer onClose={() => setMenuOpen(false)} />}
+      </div>
+    )
+  }
+
+  // ── Waiting state ──────────────────────────────────────────────────────────
+  const partiesLabel = parties_ahead === 0
+    ? "You're next up!"
+    : `${parties_ahead} ${parties_ahead === 1 ? "party" : "parties"} ahead of you`
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#000", color: "#fff" }}>
-
-      {/* ── Keyframe animations ── */}
+    <div style={{
+      height: "100dvh", background: "#000", color: "#fff",
+      display: "flex", flexDirection: "column",
+      overflow: "hidden",
+    }}>
       <style>{`
         @keyframes sheetUp {
           from { transform: translateY(100%); }
@@ -257,304 +490,320 @@ export default function WaitPage() {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        @keyframes fadeMsg {
+          0%   { opacity: 0; transform: translateY(4px); }
+          15%  { opacity: 1; transform: translateY(0); }
+          85%  { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-4px); }
+        }
       `}</style>
 
-      {/* ── Top bar ── */}
-      <div className="px-8 pt-12 pb-0">
-        <p className="text-xs tracking-[0.3em] uppercase font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>HOST</p>
+      {/* Top HOST wordmark */}
+      <div style={{ padding: "52px 28px 0", flexShrink: 0 }}>
+        <p style={{
+          fontSize: 11, fontWeight: 900, letterSpacing: "0.35em",
+          textTransform: "uppercase", color: "#fff",
+        }}>HOST</p>
       </div>
 
-      {/* ── Main ── */}
-      <div className="flex-1 flex flex-col justify-center px-8 gap-10">
+      {/* Main content */}
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        padding: "0 28px", justifyContent: "center", gap: 22,
+      }}>
 
-        {/* Status headline */}
+        {/* Name + parties ahead */}
         <div>
-          {isSeated ? (
-            <>
-              <p className="text-xs tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>Enjoy your meal</p>
-              <h2 className="text-4xl font-light">You&apos;ve been seated.</h2>
-            </>
-          ) : isReady ? (
-            <>
-              <p className="text-xs tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>Your table is ready</p>
-              <h2 className="text-4xl font-light">Head to the host stand.</h2>
-            </>
-          ) : (
-            <>
-              <p className="text-xs tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.3)" }}>
-                {parties_ahead === 0 ? "You're next" : `${parties_ahead} ${parties_ahead === 1 ? "party" : "parties"} ahead`}
-              </p>
-              <h2 className="text-4xl font-light">
-                {name && name !== "Guest" ? `Hi, ${name}.` : "You're in line."}
-              </h2>
-            </>
-          )}
+          <h1 style={{
+            fontSize: 30, fontWeight: 700, color: "#fff",
+            margin: "0 0 6px", letterSpacing: "-0.02em",
+          }}>
+            {name && name !== "Guest" ? `Hi, ${name}!` : "You're in line."}
+          </h1>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", margin: 0, letterSpacing: "0.02em" }}>
+            {partiesLabel}
+          </p>
         </div>
 
-        {/* Progress bar */}
-        {!isSeated && (
-          <div className="flex flex-col gap-3">
-            <div className="w-full h-0.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
-              <div
-                className="h-full rounded-full transition-all duration-[1000ms] ease-linear"
-                style={{ width: `${progress}%`, background: isReady ? "white" : "rgba(255,255,255,0.6)" }}
-              />
-            </div>
-            <div className="flex justify-between text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>
-              <span>Arrived</span>
-              <span>{isReady ? "Ready" : (quoted_wait && displayWait > 0) ? `~${displayWait} min` : ""}</span>
-              <span>Seated</span>
+        {/* Orange progress bar */}
+        <div>
+          <div style={{
+            width: "100%", height: 8, borderRadius: 99,
+            background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 7,
+          }}>
+            <div style={{
+              width: `${progress}%`, height: "100%", borderRadius: 99,
+              background: "linear-gradient(90deg, #f97316, #fb923c)",
+              transition: "width 1s linear",
+            }} />
+          </div>
+          <div style={{
+            display: "flex", justifyContent: "space-between",
+            fontSize: 10, color: "rgba(255,255,255,0.25)",
+          }}>
+            <span>Arrived</span>
+            <span>
+              {quoted_wait && displayWait > 0 ? `~${displayWait} min remaining` : ""}
+            </span>
+            <span>Seated</span>
+          </div>
+        </div>
+
+        {/* Stat cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{
+            background: "#141414", border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 14, padding: "14px 16px",
+          }}>
+            <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Party</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#fff" }}>
+              <Users size={14} style={{ opacity: 0.5 }} />
+              {party_size}
             </div>
           </div>
-        )}
+          <div style={{
+            background: "#141414", border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 14, padding: "14px 16px",
+          }}>
+            <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Est. Wait</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#f97316" }}>
+              <Clock size={14} style={{ opacity: 0.8 }} />
+              {quoted_wait && displayWait > 0 ? `~${displayWait}m` : "—"}
+            </div>
+          </div>
+        </div>
 
-        {/* Info row */}
-        {!isSeated && (
-          <div
-            className="flex items-center justify-between py-5 border-t border-b"
-            style={{ borderColor: "rgba(255,255,255,0.08)" }}
+        {/* Rotating message card */}
+        <div style={{
+          background: "#141414", border: "1px solid rgba(255,255,255,0.06)",
+          borderRadius: 14, padding: "14px 18px",
+        }}>
+          <p
+            key={msgIdx}
+            style={{
+              fontSize: 13, color: "rgba(255,255,255,0.5)",
+              lineHeight: 1.6, margin: 0,
+              animation: "fadeMsg 8s ease-in-out",
+            }}
           >
-            <div>
-              <p className="text-xs tracking-[0.15em] uppercase mb-1" style={{ color: "rgba(255,255,255,0.3)" }}>Party</p>
-              <p className="text-2xl font-light">{party_size}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs tracking-[0.15em] uppercase mb-1" style={{ color: "rgba(255,255,255,0.3)" }}>
-                {quoted_wait ? "Wait time" : "Est. wait"}
-              </p>
-              <p className="text-2xl font-light" style={{ color: isReady ? "white" : "rgba(255,255,255,0.7)" }}>
-                {isReady ? "Now" : (quoted_wait && displayWait > 0) ? `${displayWait}m` : "—"}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Status message */}
-        <p
-          className="text-sm leading-relaxed transition-opacity duration-500"
-          style={{ color: "rgba(255,255,255,0.4)" }}
-        >
-          {isSeated
-            ? "Thank you for dining with us."
-            : isReady
-              ? "Please make your way to the front and let the host know you're here."
-              : quoted_wait
-                ? WAITING_MESSAGES[msgIdx]
-                : "Your host will confirm your wait time shortly."}
-        </p>
+            {quoted_wait
+              ? WAITING_MESSAGES[msgIdx]
+              : "Your host will confirm your wait time shortly."}
+          </p>
+        </div>
 
       </div>
 
-      {/* ── Footer ── */}
-      <div className="px-8 pb-12 pt-4 flex flex-col gap-3">
+      {/* Footer */}
+      <div style={{ padding: "0 28px 40px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <button
+          onClick={() => setMenuOpen(true)}
+          style={{
+            width: "100%", height: 54,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.12)",
+            borderRadius: 14, cursor: "pointer",
+            color: "rgba(255,255,255,0.7)",
+            fontSize: 14, fontWeight: 600, letterSpacing: "0.04em",
+          }}
+        >
+          <UtensilsCrossed size={15} style={{ opacity: 0.7 }} />
+          Check Out the Menu
+        </button>
 
-        {/* Menu button */}
-        {!isSeated && (
-          <button
-            onClick={() => setMenuOpen(true)}
-            className="w-full flex items-center justify-center gap-2 rounded-2xl transition-all active:scale-[0.98]"
-            style={{
-              height: "58px",
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.14)",
-              color: "rgba(255,255,255,0.75)",
-              fontSize: 14,
-              fontWeight: 600,
-              letterSpacing: "0.06em",
-            }}
-          >
-            <UtensilsCrossed className="w-4 h-4" style={{ opacity: 0.7 }} />
-            Check Out the Menu
-          </button>
-        )}
+        <button
+          onClick={() => setLeavePrompt(true)}
+          style={{
+            width: "100%", padding: "14px 0",
+            background: "transparent", border: "none",
+            color: "rgba(255,255,255,0.22)",
+            fontSize: 12, fontWeight: 500,
+            letterSpacing: "0.1em", textTransform: "uppercase",
+            cursor: "pointer",
+          }}
+        >
+          Leave &amp; Rejoin Later
+        </button>
 
-        {!isSeated && !isReady && (
-          <button
-            onClick={() => setLeavePrompt(true)}
-            className="w-full py-4 rounded-2xl text-sm font-medium tracking-widest uppercase text-center transition-all active:scale-[0.98]"
-            style={{ background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.28)", border: "none", cursor: "pointer" }}
-          >
-            Leave &amp; Rejoin Later
-          </button>
-        )}
-
-        {/* ── Leave confirmation overlay ── */}
-        {leavePrompt && (
-          <>
-            <div
-              onClick={() => setLeavePrompt(false)}
-              style={{
-                position: "fixed", inset: 0, zIndex: 60,
-                background: "rgba(0,0,0,0.72)",
-                backdropFilter: "blur(6px)",
-                WebkitBackdropFilter: "blur(6px)",
-              }}
-            />
-            <div style={{
-              position: "fixed", left: "50%", top: "50%", zIndex: 70,
-              transform: "translate(-50%, -50%)",
-              width: "calc(100% - 40px)", maxWidth: 340,
-              background: "#111",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 22,
-              padding: "28px 24px 24px",
-              textAlign: "center",
-            }}>
-              <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: "0 0 8px", letterSpacing: "-0.01em" }}>
-                Leave the waitlist?
-              </p>
-              <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", margin: "0 0 28px", lineHeight: 1.5 }}>
-                You'll lose your spot and will need to rejoin from the beginning.
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <button
-                  onClick={handleLeave}
-                  disabled={leaving}
-                  style={{
-                    width: "100%", padding: "15px 0",
-                    borderRadius: 14, border: "1px solid rgba(239,68,68,0.35)",
-                    background: "rgba(239,68,68,0.15)",
-                    color: "#f87171",
-                    fontSize: 14, fontWeight: 700,
-                    letterSpacing: "0.04em",
-                    cursor: leaving ? "default" : "pointer",
-                    opacity: leaving ? 0.6 : 1,
-                  }}
-                >
-                  {leaving ? "Leaving…" : "Yes, leave the waitlist"}
-                </button>
-                <button
-                  onClick={() => setLeavePrompt(false)}
-                  style={{
-                    width: "100%", padding: "15px 0",
-                    borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "rgba(255,255,255,0.85)",
-                    fontSize: 14, fontWeight: 700,
-                    letterSpacing: "0.04em",
-                    cursor: "pointer",
-                  }}
-                >
-                  Stay — keep my spot
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-
-        <p className="text-xs text-center mt-1" style={{ color: "rgba(255,255,255,0.1)" }}>
+        <p style={{ textAlign: "center", fontSize: 10, color: "rgba(255,255,255,0.1)", letterSpacing: "0.2em", textTransform: "uppercase", margin: 0 }}>
           Updates automatically · HOST
         </p>
       </div>
 
-      {/* ── Menu Drawer ── */}
-      {menuOpen && (
+      {/* Leave confirmation overlay */}
+      {leavePrompt && (
         <>
-          {/* Backdrop */}
           <div
-            onClick={() => setMenuOpen(false)}
+            onClick={() => setLeavePrompt(false)}
             style={{
-              position: "fixed", inset: 0, zIndex: 40,
-              background: "rgba(0,0,0,0.6)",
-              backdropFilter: "blur(4px)",
-              WebkitBackdropFilter: "blur(4px)",
-              animation: "backdropIn 0.3s ease-out both",
+              position: "fixed", inset: 0, zIndex: 60,
+              background: "rgba(0,0,0,0.72)",
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
             }}
           />
-
-          {/* Sheet */}
-          <div
-            style={{
-              position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
-              height: "88dvh",
-              background: "#0D0D0D",
-              borderRadius: "22px 22px 0 0",
-              border: "1px solid rgba(255,255,255,0.09)",
-              borderBottom: "none",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-              animation: "sheetUp 0.42s cubic-bezier(0.32, 0.72, 0, 1) both",
-            }}
-          >
-            {/* Drag handle */}
-            <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 4, flexShrink: 0 }}>
-              <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
-            </div>
-
-            {/* Sheet header */}
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "14px 24px 16px",
-              borderBottom: "1px solid rgba(255,255,255,0.07)",
-              flexShrink: 0,
-            }}>
-              <div>
-                <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>
-                  Walter&apos;s303
-                </p>
-                <p style={{ fontSize: 22, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>Menu</p>
-              </div>
+          <div style={{
+            position: "fixed", left: "50%", top: "50%", zIndex: 70,
+            transform: "translate(-50%, -50%)",
+            width: "calc(100% - 40px)", maxWidth: 340,
+            background: "#111",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 22,
+            padding: "28px 24px 24px",
+            textAlign: "center",
+          }}>
+            <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", margin: "0 0 8px", letterSpacing: "-0.01em" }}>
+              Leave the waitlist?
+            </p>
+            <p style={{ fontSize: 14, color: "rgba(255,255,255,0.45)", margin: "0 0 28px", lineHeight: 1.5 }}>
+              You&apos;ll lose your spot and will need to rejoin from the beginning.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
-                onClick={() => setMenuOpen(false)}
+                onClick={handleLeave}
+                disabled={leaving}
                 style={{
-                  width: 36, height: 36, borderRadius: "50%",
-                  background: "rgba(255,255,255,0.07)",
-                  border: "none", cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "rgba(255,255,255,0.6)",
+                  width: "100%", padding: "15px 0",
+                  borderRadius: 14, border: "1px solid rgba(239,68,68,0.35)",
+                  background: "rgba(239,68,68,0.15)",
+                  color: "#f87171",
+                  fontSize: 14, fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  cursor: leaving ? "default" : "pointer",
+                  opacity: leaving ? 0.6 : 1,
                 }}
               >
-                <X className="w-4 h-4" />
+                {leaving ? "Leaving…" : "Yes, leave the waitlist"}
               </button>
-            </div>
-
-            {/* Scrollable menu */}
-            <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as never, padding: "8px 0 40px" }}>
-              {MENU_SECTIONS.map((section, si) => (
-                <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.4s ${si * 0.06}s ease-out both` }}>
-                  {/* Section label */}
-                  <p style={{
-                    fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase",
-                    color: "rgba(255,255,255,0.35)", fontWeight: 700,
-                    marginBottom: 14,
-                  }}>
-                    {section.title}
-                  </p>
-
-                  {/* Items */}
-                  {section.items.map((item, ii) => (
-                    <div key={item.name}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 3 }}>{item.name}</p>
-                          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.desc}</p>
-                        </div>
-                        <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>
-                          {item.price}
-                        </p>
-                      </div>
-                      {ii < section.items.length - 1 && (
-                        <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />
-                      )}
-                    </div>
-                  ))}
-
-                  {/* Section divider */}
-                  {si < MENU_SECTIONS.length - 1 && (
-                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />
-                  )}
-                </div>
-              ))}
-
-              <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.15)", padding: "28px 24px 0", letterSpacing: "0.1em" }}>
-                Ask your server about daily specials &amp; dietary options
-              </p>
+              <button
+                onClick={() => setLeavePrompt(false)}
+                style={{
+                  width: "100%", padding: "15px 0",
+                  borderRadius: 14, border: "1px solid rgba(255,255,255,0.1)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.85)",
+                  fontSize: 14, fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  cursor: "pointer",
+                }}
+              >
+                Stay — keep my spot
+              </button>
             </div>
           </div>
         </>
       )}
 
+      {/* Menu Drawer */}
+      {menuOpen && <MenuDrawer onClose={() => setMenuOpen(false)} />}
     </div>
+  )
+}
+
+// ── Menu Drawer (shared across waiting + ready states) ─────────────────────
+function MenuDrawer({ onClose }: { onClose: () => void }) {
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 40,
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(4px)",
+          WebkitBackdropFilter: "blur(4px)",
+          animation: "backdropIn 0.3s ease-out both",
+        }}
+      />
+
+      {/* Sheet */}
+      <div
+        style={{
+          position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
+          height: "88dvh",
+          background: "#0D0D0D",
+          borderRadius: "22px 22px 0 0",
+          border: "1px solid rgba(255,255,255,0.09)",
+          borderBottom: "none",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          animation: "sheetUp 0.42s cubic-bezier(0.32, 0.72, 0, 1) both",
+        }}
+      >
+        {/* Drag handle */}
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 4, flexShrink: 0 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
+        </div>
+
+        {/* Sheet header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "14px 24px 16px",
+          borderBottom: "1px solid rgba(255,255,255,0.07)",
+          flexShrink: 0,
+        }}>
+          <div>
+            <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>
+              Walter&apos;s303
+            </p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>Menu</p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: "rgba(255,255,255,0.07)",
+              border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "rgba(255,255,255,0.6)",
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Scrollable menu */}
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as never, padding: "8px 0 40px" }}>
+          {MENU_SECTIONS.map((section, si) => (
+            <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.4s ${si * 0.06}s ease-out both` }}>
+              <p style={{
+                fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase",
+                color: "rgba(255,255,255,0.35)", fontWeight: 700,
+                marginBottom: 14,
+              }}>
+                {section.title}
+              </p>
+
+              {section.items.map((item, ii) => (
+                <div key={item.name}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 3 }}>{item.name}</p>
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.desc}</p>
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>
+                      {item.price}
+                    </p>
+                  </div>
+                  {ii < section.items.length - 1 && (
+                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />
+                  )}
+                </div>
+              ))}
+
+              {si < MENU_SECTIONS.length - 1 && (
+                <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />
+              )}
+            </div>
+          ))}
+
+          <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.15)", padding: "28px 24px 0", letterSpacing: "0.1em" }}>
+            Ask your server about daily specials &amp; dietary options
+          </p>
+        </div>
+      </div>
+    </>
   )
 }
