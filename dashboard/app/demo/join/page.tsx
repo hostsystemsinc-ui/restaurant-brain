@@ -68,7 +68,6 @@ export default function DemoJoinPage() {
   const [partySize,   setPartySize]   = useState(2)
   const [name,        setName]        = useState("")
   const [phone,       setPhone]       = useState("")
-  const [waitMinutes, setWaitMinutes] = useState(0)   // 0 = ASAP
   const [loading,     setLoading]     = useState(false)
   const [error,       setError]       = useState("")
   const [live,        setLive]        = useState<LiveInfo | null>(null)
@@ -119,7 +118,7 @@ export default function DemoJoinPage() {
           name:          name.trim(),
           party_size:    partySize,
           phone:         phone.trim() || null,
-          preference:    waitMinutes === 0 ? "asap" : `${waitMinutes}min`,
+          preference:    "asap",
           source:        "nfc",
           restaurant_id: DEMO_RESTAURANT_ID,
         }),
@@ -165,7 +164,6 @@ export default function DemoJoinPage() {
         .jf-input:focus { outline:none; border-color:rgba(255,255,255,0.35) !important; }
         .pm-btn:active:not(:disabled) { transform:scale(0.90) !important; }
         .cta-btn:active:not(:disabled) { transform:scale(0.98) !important; }
-        .wt-btn { transition: background .15s, color .15s, border-color .15s; }
         .menu-btn:active { transform:scale(0.97) !important; }
       `}</style>
 
@@ -219,33 +217,6 @@ export default function DemoJoinPage() {
             </span>
             <button className="pm-btn" onClick={() => setPartySize(s => Math.min(20, s + 1))} disabled={partySize >= 20}
               style={{ width: 42, height: 42, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.11)", color: partySize >= 20 ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.78)", fontSize: 20, cursor: partySize >= 20 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "transform .12s" }}>+</button>
-          </div>
-        </div>
-
-        {/* Preferred Wait — scrollable chip selector */}
-        <div style={{ flexShrink: 0 }}>
-          <div style={{ fontSize: ".58rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: "rgba(255,255,255,0.32)", marginBottom: 7 }}>
-            Preferred Wait
-          </div>
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none" as never, paddingBottom: 1 }}>
-            {(["ASAP", "5m", "10m", "15m", "20m", "30m", "45m"] as const).map((label) => {
-              const val = label === "ASAP" ? 0 : parseInt(label)
-              const active = waitMinutes === val
-              return (
-                <button key={label} className="wt-btn" onClick={() => setWaitMinutes(val)}
-                  style={{
-                    height: 42, padding: "0 15px",
-                    borderRadius: 11, flexShrink: 0,
-                    background: active ? "#fff" : "#111",
-                    border: `1px solid ${active ? "#fff" : "rgba(255,255,255,0.10)"}`,
-                    color: active ? "#000" : "rgba(255,255,255,0.42)",
-                    fontSize: ".82rem", fontWeight: active ? 800 : 500,
-                    cursor: "pointer",
-                  }}>
-                  {label}
-                </button>
-              )
-            })}
           </div>
         </div>
 

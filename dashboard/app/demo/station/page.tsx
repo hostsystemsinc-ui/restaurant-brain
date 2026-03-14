@@ -70,23 +70,38 @@ interface SeatingRecord {
   hour_of_day:     number  // 0–23
 }
 
-const HISTORY_KEY = "host_demo_seating_history"
-const MAX_HISTORY = 300
+const HISTORY_KEY      = "host_demo_seating_history"
+const HISTORY_DATE_KEY = "host_demo_seating_history_date"
+const MAX_HISTORY      = 300
+// Minimum seatings needed before suggestions are considered statistically valid
+const MIN_SAMPLES_FOR_SUGGESTION = 8
 
 function getHistory(): SeatingRecord[] {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") } catch { return [] }
+  try {
+    // Auto-wipe history every day (per-restaurant, no cross-day bleed)
+    const today    = new Date().toDateString()
+    const lastDate = localStorage.getItem(HISTORY_DATE_KEY)
+    if (lastDate && lastDate !== today) {
+      localStorage.removeItem(HISTORY_KEY)
+      localStorage.setItem(HISTORY_DATE_KEY, today)
+      return []
+    }
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]")
+  } catch { return [] }
 }
 function addToHistory(r: SeatingRecord) {
   try {
     const h = getHistory(); h.push(r)
     if (h.length > MAX_HISTORY) h.splice(0, h.length - MAX_HISTORY)
     localStorage.setItem(HISTORY_KEY, JSON.stringify(h))
+    localStorage.setItem(HISTORY_DATE_KEY, new Date().toDateString())
   } catch {}
 }
-// Weighted suggestion: favors same party size + nearby hour of day
+// Weighted suggestion: favors same party size + nearby hour of day.
+// Returns null until MIN_SAMPLES_FOR_SUGGESTION seatings have been recorded today.
 function suggestWait(partySize: number): number | null {
   const hist = getHistory()
-  if (hist.length < 3) return null
+  if (hist.length < MIN_SAMPLES_FOR_SUGGESTION) return null
   const hour = new Date().getHours()
   const scored = hist.flatMap(r => {
     const sd = Math.abs(r.party_size - partySize)
@@ -94,13 +109,17 @@ function suggestWait(partySize: number): number | null {
     if (sd > 4 || hd > 4) return []
     return [{ wait: r.quoted_wait, w: (sd === 0 ? 4 : sd === 1 ? 2 : 1) * (hd <= 1 ? 2 : 1) }]
   })
-  if (scored.length < 2) {
+  if (scored.length < 3) {
     const s = hist.filter(r => r.party_size === partySize)
-    if (!s.length) return null
+    if (s.length < 3) return null          // not enough exact-size data either
     return Math.round(s.reduce((a, r) => a + r.quoted_wait, 0) / s.length)
   }
   const tw = scored.reduce((a, r) => a + r.w, 0)
   return Math.round(scored.reduce((a, r) => a + r.wait * r.w, 0) / tw)
+}
+// How many seatings still needed before suggestions unlock
+function samplesNeeded(): number {
+  return Math.max(0, MIN_SAMPLES_FOR_SUGGESTION - getHistory().length)
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -665,44 +684,51 @@ function DraggableQueueCard({
 
       {/* ── Row 3: action buttons or delete confirm ── */}
       {confirmDelete ? (
-        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-          <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1 }}>Remove {entry.name || "guest"}?</span>
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5 }}>
+          <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1, alignSelf: "center" }}>
+            Remove {entry.name || "guest"}?
+          </span>
           <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
-            className="h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95"
+            className="h-9 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95"
             style={{ background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
             Cancel
           </button>
           <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
-            className="h-8 px-3 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+            className="h-9 px-3 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
             style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
             {removing ? "…" : "Remove"}
           </button>
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSeat() }}
-            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }} title="Seat">
-            <CheckCircle2 className="w-5 h-5" />
+        /* Full-width action row — buttons stretch to fill the card */
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 2 }}>
+          {/* Seat — primary, gets most space */}
+          <button onClick={e => { e.stopPropagation(); onSeat() }}
+            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 hover:brightness-125 font-bold"
+            style={{ flex: 2, height: 38, fontSize: 12, letterSpacing: "0.04em", background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.28)" }}>
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Seat
           </button>
+          {/* Notify (only when not yet ready) */}
           {!isReady ? (
-            <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onNotify() }}
-              className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-              style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }} title="Notify ready">
-              <BellRing className="w-5 h-5" />
+            <button onClick={e => { e.stopPropagation(); onNotify() }}
+              className="flex items-center justify-center gap-1 rounded-xl transition-all active:scale-95 hover:brightness-125 font-bold"
+              style={{ flex: 1, height: 38, fontSize: 11, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.25)" }}>
+              <BellRing className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Notify</span>
             </button>
-          ) : (
-            <div className="h-10 w-10" />
-          )}
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
-            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.14)" }} title="Edit guest">
-            <Pencil className="w-4 h-4" />
+          ) : null}
+          {/* Edit */}
+          <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+            className="flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ flex: 1, height: 38, background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.18)" }}>
+            <Pencil className="w-3.5 h-3.5" />
           </button>
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
-            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.14)" }} title="Remove guest">
-            <Trash2 className="w-4 h-4" />
+          {/* Remove */}
+          <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+            className="flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ flex: 1, height: 38, background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.18)" }}>
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -1268,13 +1294,32 @@ function SeatTablePicker({
 }
 
 // ── Add Guest Drawer ───────────────────────────────────────────────────────────
+// Renders as a panel covering only the sidebar — floor map stays fully interactive.
 
-function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number, partySize: number) => void }) {
-  const [name, setName]           = useState("")
+function AddGuestDrawer({
+  onClose, onAdded, globalWait, sidebarW,
+}: {
+  onClose: () => void
+  onAdded: (entryId: string) => void
+  globalWait: number | null
+  sidebarW: number
+}) {
+  const [name,      setName]      = useState("")
   const [partySize, setPartySize] = useState(2)
-  const [phone, setPhone]         = useState("")
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState("")
+  const [phone,     setPhone]     = useState("")
+  const [waitMins,  setWaitMins]  = useState<number | null>(globalWait ?? null)
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState("")
+  const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  // Recompute suggestion when party size changes; pre-select it if nothing chosen yet
+  const suggestion = suggestWait(partySize)
+  const needed     = samplesNeeded()
+  useEffect(() => {
+    if (globalWait !== null) { setWaitMins(globalWait); return }
+    if (suggestion !== null) setWaitMins(suggestion)
+    else setWaitMins(null)
+  }, [partySize, globalWait, suggestion])
 
   const submit = async () => {
     setLoading(true); setError("")
@@ -1293,62 +1338,170 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (e
       })
       if (!r.ok) throw new Error()
       const data = await r.json()
-      onAdded(data.entry?.id ?? "", data.wait_estimate ?? 15, partySize)
+      const entryId = data.entry?.id ?? ""
+      // Apply wait immediately if one was selected
+      if (waitMins && entryId) {
+        await fetchT(`${API}/queue/${entryId}/wait?minutes=${waitMins}`, { method: "PATCH" }).catch(() => {})
+        showToast(`${name.trim() || "Guest"} added · ${waitMins}m wait set`, "ok")
+      } else {
+        showToast(`${name.trim() || "Guest"} added to queue`, "ok")
+      }
+      onAdded(entryId)
     } catch {
-      setError("Could not add guest.")
-    } finally {
+      setError("Could not add guest — try again.")
       setLoading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
-      <div
-        className="relative w-full sm:w-[580px] rounded-t-3xl sm:rounded-3xl p-8"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.12)", zIndex: 1 }}
-      >
-        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-7" style={{ background: "rgba(255,185,100,0.18)" }} />
-        <div className="flex items-center justify-between mb-8">
-          <span className="text-base font-black tracking-[0.18em] uppercase" style={{ color: "rgba(255,240,220,0.92)" }}>
-            Add Guest
-          </span>
-          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors hover:bg-white/8" style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}>
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    /* Panel covers the sidebar only — floor map stays live behind it */
+    <div
+      style={{
+        position: "fixed",
+        top: 48,        // below header
+        left: 0,
+        bottom: 0,
+        width: sidebarW,
+        zIndex: 45,
+        background: "#0C0907",
+        borderTop: "1px solid rgba(255,185,100,0.22)",
+        borderRight: "1px solid rgba(255,185,100,0.18)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,185,100,0.12)", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,240,220,0.88)" }}>
+          Add Guest
+        </span>
+        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid rgba(255,185,100,0.14)", cursor: "pointer", color: "rgba(255,200,150,0.45)" }}>
+          <X style={{ width: 14, height: 14 }} />
+        </button>
+      </div>
 
-        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-4" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
-        <div className="flex items-center justify-between mb-8 px-2">
+      {/* ── Scrollable form body ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 0" }}>
+
+        {/* Party Size */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 8 }}>Party Size</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
           <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
-            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl font-light transition-all active:scale-95 hover:brightness-125"
-            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
-          <span className="text-[88px] font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)", minWidth: 120, textAlign: "center" }}>{partySize}</span>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>−</button>
+          <span style={{ fontSize: 62, fontWeight: 200, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+            {partySize}
+          </span>
           <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
-            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl font-light transition-all active:scale-95 hover:brightness-125"
-            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>+</button>
         </div>
 
-        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Name</p>
-        <input type="text" value={name} onChange={e => setName(e.target.value)}
+        {/* Name */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>Name</p>
+        <input
+          type="text" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
-          className="w-full rounded-2xl outline-none mb-5"
-          style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 18, padding: "18px 20px" }} />
+          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 12, outline: "none", boxSizing: "border-box" }}
+        />
 
-        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>
-          Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+        {/* Phone */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>
+          Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
         </p>
-        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+        <input
+          type="tel" value={phone} onChange={e => setPhone(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
-          className="w-full rounded-2xl outline-none mb-7"
-          style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 18, padding: "18px 20px" }} />
+          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+        />
 
-        {error && <p className="text-sm text-red-400 mb-5 text-center font-medium">{error}</p>}
+        {/* ── Quote Wait Time ── */}
+        <div style={{ borderTop: "1px solid rgba(255,185,100,0.12)", paddingTop: 12, marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", margin: 0 }}>
+              Quote Wait
+            </p>
+            {waitMins !== null && (
+              <button
+                onClick={() => setWaitMins(null)}
+                style={{ fontSize: 9, color: "rgba(255,200,150,0.30)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                skip →
+              </button>
+            )}
+          </div>
 
+          {/* HOST suggestion chip — only shows after enough data */}
+          {globalWait !== null ? (
+            <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 8, background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.22)", fontSize: 11, color: "rgba(255,220,160,0.80)" }}>
+              Using global wait: <strong style={{ color: "rgba(255,240,200,0.97)" }}>{globalWait}m</strong>
+            </div>
+          ) : suggestion !== null ? (
+            <div style={{ marginBottom: 10 }}>
+              <button
+                onClick={() => setWaitMins(suggestion)}
+                style={{
+                  width: "100%", padding: "8px 10px", borderRadius: 10, cursor: "pointer",
+                  background: waitMins === suggestion ? "rgba(251,191,36,0.18)" : "rgba(251,191,36,0.07)",
+                  border: `1.5px solid ${waitMins === suggestion ? "rgba(251,191,36,0.65)" : "rgba(251,191,36,0.22)"}`,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  transition: "all 0.12s",
+                }}
+              >
+                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(251,191,36,0.75)" }}>
+                  HOST Suggestion
+                </span>
+                <span style={{ fontSize: 22, fontWeight: 700, color: waitMins === suggestion ? "rgba(255,240,180,0.97)" : "rgba(255,220,140,0.75)", letterSpacing: "-0.02em" }}>
+                  {suggestion}<span style={{ fontSize: 11, fontWeight: 500, marginLeft: 3, color: "rgba(251,191,36,0.55)" }}>min</span>
+                </span>
+              </button>
+            </div>
+          ) : needed > 0 ? (
+            <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 8, background: "rgba(99,179,237,0.06)", border: "1px solid rgba(99,179,237,0.15)", fontSize: 10, color: "rgba(99,179,237,0.60)", lineHeight: 1.4 }}>
+              HOST suggestions unlock after {needed} more {needed === 1 ? "seating" : "seatings"}
+            </div>
+          ) : null}
+
+          {/* Presets */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, marginBottom: 10 }}>
+            {PRESETS.map(p => (
+              <button key={p} onClick={() => setWaitMins(p)}
+                style={{
+                  height: 34, borderRadius: 8, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  background: waitMins === p ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.05)",
+                  border: `1px solid ${waitMins === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.12)"}`,
+                  cursor: "pointer", transition: "all 0.1s",
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1, color: waitMins === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Fine-tune stepper */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
+            <button onClick={() => setWaitMins(m => Math.max(1, (m ?? 15) - 1))}
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
+            <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.25)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+              {waitMins ?? "—"}
+            </span>
+            <button onClick={() => setWaitMins(m => Math.min(120, (m ?? 14) + 1))}
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Footer: error + submit ── */}
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(255,185,100,0.10)", flexShrink: 0 }}>
+        {error && <p style={{ fontSize: 11, color: "rgba(248,113,113,0.90)", textAlign: "center", marginBottom: 8 }}>{error}</p>}
         <button onClick={submit} disabled={loading}
-          className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#D9321C", color: "white", fontSize: 16, padding: "22px 0" }}>
-          {loading ? "Adding…" : "Add to Queue"}
+          style={{
+            width: "100%", height: 48, borderRadius: 14, border: "none", cursor: loading ? "default" : "pointer",
+            background: loading ? "rgba(255,185,100,0.08)" : "#D9321C",
+            color: "white", fontSize: 13, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase",
+            opacity: loading ? 0.5 : 1, transition: "opacity 0.12s",
+          }}
+        >
+          {loading ? "Adding…" : waitMins ? `Add · ${waitMins}m wait` : "Add to Queue"}
         </button>
       </div>
     </div>
@@ -1548,13 +1701,45 @@ function HistoryDrawer({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {/* Footer — clear history */}
+        {/* Footer — export + clear */}
         {hist.length > 0 && (
-          <div className="px-6 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,185,100,0.10)" }}>
+          <div className="px-6 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,185,100,0.10)" }}>
+            {/* Export to CSV */}
             <button
-              onClick={() => { try { localStorage.removeItem(HISTORY_KEY) } catch {} onClose(); showToast("History cleared", "ok") }}
+              onClick={() => {
+                const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
+                const headers = ["Seated At","Party Size","Quoted Wait (min)","Actual Wait (min)","Day","Hour"]
+                const rows = hist.map(r => [
+                  new Date(r.seated_at).toLocaleString(),
+                  r.party_size,
+                  r.quoted_wait,
+                  r.actual_wait_min,
+                  DAYS[r.day_of_week],
+                  r.hour_of_day,
+                ])
+                const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n")
+                const blob = new Blob([csv], { type: "text/csv" })
+                const url  = URL.createObjectURL(blob)
+                const a    = document.createElement("a")
+                a.href     = url
+                a.download = `demo-restaurant-seating-${new Date().toLocaleDateString("en-CA")}.csv`
+                a.click()
+                URL.revokeObjectURL(url)
+                showToast("Exported to CSV", "ok")
+              }}
               className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
-              style={{ background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.50)", border: "1px solid rgba(239,68,68,0.14)", padding: "10px 0" }}
+              style={{ background: "rgba(34,197,94,0.07)", color: "rgba(34,197,94,0.65)", border: "1px solid rgba(34,197,94,0.18)", padding: "10px 0" }}
+            >
+              Export to CSV
+            </button>
+            {/* Clear */}
+            <button
+              onClick={() => {
+                try { localStorage.removeItem(HISTORY_KEY); localStorage.removeItem(HISTORY_DATE_KEY) } catch {}
+                onClose(); showToast("History cleared", "ok")
+              }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.45)", border: "1px solid rgba(239,68,68,0.12)", padding: "10px 0" }}
             >
               Clear History
             </button>
@@ -2547,21 +2732,12 @@ export default function DemoHostDashboard() {
 
         {showAdd && (
           <AddGuestDrawer
+            globalWait={globalWait}
+            sidebarW={sidebarW}
             onClose={() => setShowAdd(false)}
-            onAdded={(id, mins, size) => {
+            onAdded={(id) => {
               setShowAdd(false)
-              if (globalWait !== null) {
-                // Global wait is set — apply automatically, skip the modal
-                fetchT(`${API}/queue/${id}/wait?minutes=${globalWait}`, { method: "PATCH" })
-                  .then(() => showToast(`Guest added · ${globalWait}m wait set automatically`, "ok"))
-                  .catch(() => {})
-                refreshAll()
-              } else {
-                // No global wait — open modal pre-filled with suggestion (if available)
-                const suggested = suggestWait(size)
-                setWaitModal({ id, defaultMinutes: suggested ?? mins })
-                refreshAll()
-              }
+              refreshAll()
             }}
           />
         )}
