@@ -51,7 +51,7 @@ interface Restaurant {
 }
 
 const MOCK_RESTAURANTS: Restaurant[] = [
-  { id: "walters303",    name: "Walter's 303",      city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-01-15", mrr: 149, seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 312, isLive: true,  dashboardUrl: "/walters303" },
+  { id: "walters303",    name: "Walter's 303",      city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-01-15", mrr: 149, seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 312, isLive: true,  dashboardUrl: "/station" },
   { id: "demo",          name: "Demo Restaurant",   city: "Denver, CO", plan: "Trial",      status: "Trial",  since: "2026-03-10", mrr: 0,   seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 0,   isLive: true,  liveRid: DEMO_RID, dashboardUrl: "/demo/station" },
   { id: "capital",      name: "The Capital Grille", city: "Denver, CO", plan: "Enterprise", status: "Active", since: "2025-02-01", mrr: 399, seatedToday: 47, avgWait: 18, queueNow: 6, coversThisWeek: 312, nfcTaps: 541 },
   { id: "panzano",      name: "Panzano",            city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-02-14", mrr: 149, seatedToday: 31, avgWait: 12, queueNow: 3, coversThisWeek: 198, nfcTaps: 287 },
@@ -510,12 +510,18 @@ export default function OwnerPage() {
                       : <span style={{ fontSize: 10, fontWeight: 700, color: D.orange }}>Trial</span>}
                   </div>
                   {r.dashboardUrl ? (
-                    <a href={r.dashboardUrl} style={{
-                      display: "flex", alignItems: "center", gap: 5, padding: "7px 14px",
-                      borderRadius: 8, background: "linear-gradient(135deg, #D9321C, #A52010)",
-                      fontSize: 11, fontWeight: 700, color: "#fff", textDecoration: "none",
-                      boxShadow: "0 2px 12px rgba(217,50,28,0.25)",
-                    }}>
+                    <a
+                      href={r.dashboardUrl}
+                      onClick={() => {
+                        if (r.id === "demo") sessionStorage.setItem("host_demo_authed", "1")
+                      }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 5, padding: "7px 14px",
+                        borderRadius: 8, background: "linear-gradient(135deg, #D9321C, #A52010)",
+                        fontSize: 11, fontWeight: 700, color: "#fff", textDecoration: "none",
+                        boxShadow: "0 2px 12px rgba(217,50,28,0.25)",
+                      }}
+                    >
                       <ArrowUpRight style={{ width: 11, height: 11 }} />
                       Dashboard
                     </a>

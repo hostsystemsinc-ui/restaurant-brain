@@ -15,7 +15,11 @@ export default function ClientPortalLogin() {
     e.preventDefault()
     if (username === "demo" && password === "demo") {
       setLoading(true)
+      sessionStorage.setItem("host_demo_authed", "1")
       router.push("/demo/station")
+    } else if (username === "walters" && password === "walters303") {
+      setLoading(true)
+      router.push("/station")
     } else {
       setError("Incorrect username or password.")
     }
