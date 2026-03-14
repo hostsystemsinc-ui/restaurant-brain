@@ -14,6 +14,17 @@ const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+interface Table {
+  id: string
+  table_number: number
+  capacity: number
+  status: "available" | "occupied" | "reserved"
+}
+
+interface ReservedTable { resId: string; guestName: string; time: string }
+
+const RESERVED_TABLES_KEY = "host_demo_reserved_tables"
+
 interface Reservation {
   id:         string
   guest_name: string
@@ -280,121 +291,289 @@ const calBtnSt: React.CSSProperties = {
 
 // ── Reservation Card ───────────────────────────────────────────────────────────
 
-function ResCard({ res, onEdit, onDelete, onMarkNoShow, now }: {
+function ResCard({ res, onEdit, onDelete, onMarkNoShow, onAssignTable, onClearTable, assignedTableNum, now }: {
   res: Reservation
   onEdit: () => void
   onDelete: () => void
   onMarkNoShow?: () => void
+  onAssignTable?: () => void
+  onClearTable?: () => void
+  assignedTableNum?: number
   now: Date
 }) {
-  const today = toDateStr(new Date())
-  const isToday = res.date === today
+  const today    = toDateStr(new Date())
+  const isToday  = res.date === today
   const urgency: ResUrgency = (isToday && res.status === "confirmed")
     ? getResUrgency(res.date, res.time, now)
     : "upcoming"
 
-  const borderColor: Record<string, string> = {
-    confirmed: urgency === "late" ? "#ef4444" : urgency === "now" ? "#f97316" : urgency === "arriving" ? "#fbbf24" : GRN,
-    seated:    "#60a5fa",
-    cancelled: "rgba(255,200,150,0.50)",
-    "no-show": "rgba(255,200,150,0.50)",
-  }
+  const isActive    = res.status === "confirmed"
   const isCancelled = res.status === "cancelled" || res.status === "no-show"
+  const isUrgent    = urgency === "now" || urgency === "late" || urgency === "arriving"
+
+  const accentColor =
+    urgency === "late"     ? "#ef4444" :
+    urgency === "now"      ? "#f97316" :
+    urgency === "arriving" ? "#fbbf24" :
+    res.status === "seated"    ? "#60a5fa" :
+    isCancelled ? "rgba(255,200,150,0.35)" : GRN
+
   const [timePart, period] = fmt12(res.time).split(" ")
 
   return (
     <div style={{
-      display: "flex", alignItems: "stretch",
-      background: urgency === "late"
-        ? "rgba(239,68,68,0.04)"
-        : urgency === "now"
-        ? "rgba(249,115,22,0.03)"
-        : "rgba(255,185,100,0.025)",
-      borderRadius: 12, overflow: "hidden",
+      background: urgency === "late" ? "rgba(239,68,68,0.05)" : urgency === "now" ? "rgba(249,115,22,0.04)" : "rgba(255,185,100,0.025)",
+      borderRadius: 14, overflow: "hidden",
       border: `1px solid ${BR}`,
-      borderLeft: `3px solid ${borderColor[res.status] ?? GRN}`,
-      opacity: isCancelled ? 0.55 : 1,
+      borderLeft: `3px solid ${accentColor}`,
+      opacity: isCancelled ? 0.52 : 1,
       transition: "opacity 0.15s",
     }}>
-      {/* Time */}
-      <div style={{
-        width: 68, flexShrink: 0, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center", padding: "16px 0",
-        borderRight: `1px solid ${BR2}`,
-      }}>
-        <span style={{ fontSize: 19, fontWeight: 800, color: TX, lineHeight: 1 }}>{timePart}</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: MU, marginTop: 3, letterSpacing: "0.1em" }}>{period}</span>
+      {/* Main row */}
+      <div style={{ display: "flex", alignItems: "stretch" }}>
+        {/* Time column */}
+        <div style={{
+          width: 72, flexShrink: 0, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center", padding: "18px 0",
+          borderRight: `1px solid ${BR2}`,
+        }}>
+          <span style={{ fontSize: 20, fontWeight: 800, color: TX, lineHeight: 1 }}>{timePart}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: MU, marginTop: 3, letterSpacing: "0.1em" }}>{period}</span>
+        </div>
+
+        {/* Info */}
+        <div style={{ flex: 1, padding: "14px 16px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: TX }}>{res.guest_name}</span>
+            <StatusPill status={res.status} />
+            {urgency !== "upcoming" && isActive && <UrgencyBadge urgency={urgency} />}
+            {res.source === "opentable" && (
+              <span style={{
+                fontSize: 9, padding: "2px 7px", borderRadius: 4, fontWeight: 800,
+                background: "rgba(218,55,67,0.1)", color: "#DA3743",
+                border: "1px solid rgba(218,55,67,0.22)", letterSpacing: "0.08em",
+              }}>OPENTABLE</span>
+            )}
+            {/* Pre-assigned table badge */}
+            {assignedTableNum !== undefined && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                fontSize: 10, fontWeight: 800,
+                background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.95)",
+                border: "1px solid rgba(251,191,36,0.30)", borderRadius: 5,
+                padding: "1px 7px",
+              }}>
+                🪑 T{assignedTableNum}
+                <button
+                  onClick={e => { e.stopPropagation(); onClearTable?.() }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(251,191,36,0.55)", fontSize: 11, padding: 0, lineHeight: 1, marginLeft: 1 }}
+                  title="Clear table"
+                >✕</button>
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: TX2, display: "flex", alignItems: "center", gap: 4 }}>
+              <Users style={{ width: 11, height: 11 }} />{res.party_size} {res.party_size === 1 ? "guest" : "guests"}
+            </span>
+            {res.phone && (
+              <span style={{ fontSize: 12, color: TX2, display: "flex", alignItems: "center", gap: 4 }}>
+                <Phone style={{ width: 11, height: 11 }} />{res.phone}
+              </span>
+            )}
+            {res.notes && (
+              <span style={{ fontSize: 11, color: MU, fontStyle: "italic" }}>
+                {res.notes.length > 70 ? res.notes.slice(0, 70) + "…" : res.notes}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Edit / Delete icons */}
+        <div style={{
+          display: "flex", flexDirection: "column", justifyContent: "center", gap: 5,
+          padding: "0 12px", flexShrink: 0, borderLeft: `1px solid ${BR2}`,
+        }}>
+          <button onClick={onEdit}
+            style={{ width: 32, height: 32, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.14)", border: `1px solid ${BR}`, color: TX2 }}
+            title="Edit"><Edit2 style={{ width: 13, height: 13 }} />
+          </button>
+          <button onClick={onDelete}
+            style={{ width: 32, height: 32, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)", color: "#f87171" }}
+            title="Delete"><Trash2 style={{ width: 13, height: 13 }} />
+          </button>
+        </div>
       </div>
 
-      {/* Info */}
-      <div style={{ flex: 1, padding: "13px 16px", minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: TX }}>{res.guest_name}</span>
-          <StatusPill status={res.status} />
-          {urgency !== "upcoming" && res.status === "confirmed" && <UrgencyBadge urgency={urgency} />}
-          {res.source === "opentable" && (
-            <span style={{
-              fontSize: 9, padding: "2px 7px", borderRadius: 4, fontWeight: 800,
-              background: "rgba(218,55,67,0.1)", color: "#DA3743",
-              border: "1px solid rgba(218,55,67,0.22)", letterSpacing: "0.08em",
-            }}>
-              OPENTABLE
-            </span>
-          )}
-        </div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: TX2, display: "flex", alignItems: "center", gap: 4 }}>
-            <Users style={{ width: 11, height: 11 }} />
-            {res.party_size} {res.party_size === 1 ? "guest" : "guests"}
-          </span>
-          {res.phone && (
-            <span style={{ fontSize: 12, color: TX2, display: "flex", alignItems: "center", gap: 4 }}>
-              <Phone style={{ width: 11, height: 11 }} />
-              {res.phone}
-            </span>
-          )}
-          {res.notes && (
-            <span style={{ fontSize: 11, color: MU, fontStyle: "italic" }}>
-              {res.notes.length > 70 ? res.notes.slice(0, 70) + "…" : res.notes}
-            </span>
-          )}
-        </div>
+      {/* ── Action button row (today's confirmed reservations only) ── */}
+      {isActive && (
+        <div style={{
+          display: "flex", gap: 8, padding: "0 12px 12px",
+          borderTop: `1px solid ${BR2}`, paddingTop: 10,
+        }}>
+          {/* Assign / change table button */}
+          <button
+            onClick={onAssignTable}
+            style={{
+              flex: 1, height: 38, borderRadius: 10,
+              background: assignedTableNum !== undefined ? "rgba(251,191,36,0.10)" : "rgba(255,185,100,0.10)",
+              border: `1px solid ${assignedTableNum !== undefined ? "rgba(251,191,36,0.35)" : "rgba(255,185,100,0.22)"}`,
+              color: assignedTableNum !== undefined ? "rgba(251,191,36,0.90)" : MU,
+              fontSize: 12, fontWeight: 700,
+              cursor: "pointer", letterSpacing: "0.04em",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+          >
+            🪑 {assignedTableNum !== undefined ? `Change Table (T${assignedTableNum})` : "Assign Table"}
+          </button>
 
-        {/* Late quick-action */}
-        {urgency === "late" && res.status === "confirmed" && onMarkNoShow && (
-          <div style={{ marginTop: 8 }}>
+          {/* No Show button — visible when arriving / due now / late */}
+          {isUrgent && onMarkNoShow && (
             <button
               onClick={onMarkNoShow}
               style={{
-                height: 24, padding: "0 10px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.3)",
-                background: "rgba(239,68,68,0.08)", color: "#f87171",
-                fontSize: 10, fontWeight: 700, cursor: "pointer", letterSpacing: "0.08em",
+                height: 38, padding: "0 14px", borderRadius: 10,
+                background: "rgba(239,68,68,0.08)",
+                border: "1px solid rgba(239,68,68,0.25)",
+                color: "#f87171",
+                fontSize: 12, fontWeight: 700,
+                cursor: "pointer", letterSpacing: "0.04em",
+                whiteSpace: "nowrap" as never,
               }}
             >
-              Mark No-Show
+              No Show
             </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
-      {/* Actions */}
+// ── Reservation Table Picker ────────────────────────────────────────────────────
+
+function ResTablePicker({ res, tables, reservedTables, onConfirm, onClose }: {
+  res: Reservation
+  tables: Table[]
+  reservedTables: Map<number, ReservedTable>
+  onConfirm: (tableNum: number) => void
+  onClose: () => void
+}) {
+  const [selected, setSelected] = useState<number | null>(null)
+
+  // Determine which table is already reserved for THIS res (so we can allow re-selecting it)
+  const currentlyAssigned = (() => {
+    for (const [tNum, info] of reservedTables) { if (info.resId === res.id) return tNum }
+    return undefined
+  })()
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div
+        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.78)", backdropFilter: "blur(6px)" }}
+        onClick={onClose}
+      />
       <div style={{
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 5,
-        padding: "0 14px", flexShrink: 0, borderLeft: `1px solid ${BR2}`,
+        position: "relative", zIndex: 1,
+        background: SRF, border: `1px solid ${BR}`,
+        borderRadius: 20, padding: "24px",
+        width: "calc(100% - 40px)", maxWidth: 420,
+        boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
+        maxHeight: "80vh", display: "flex", flexDirection: "column",
       }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.18em", color: MU, textTransform: "uppercase", marginBottom: 3 }}>Assign Table</p>
+            <p style={{ fontSize: 17, fontWeight: 700, color: TX }}>
+              {res.guest_name} · {fmt12(res.time)} · {res.party_size}p
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ width: 34, height: 34, borderRadius: 9, border: `1px solid ${BR}`, background: "rgba(255,185,100,0.1)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: MU }}
+          >
+            <X style={{ width: 14, height: 14 }} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: 12, color: TX2, marginBottom: 18 }}>
+          Select a table to hold for this reservation. The table will appear highlighted on the host station floor map.
+        </p>
+
+        {/* Table grid */}
+        <div style={{ overflowY: "auto", flex: 1, marginBottom: 16 }}>
+          {tables.length === 0 ? (
+            <p style={{ fontSize: 12, color: MU, textAlign: "center", padding: "20px 0" }}>Loading tables…</p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              {[...tables]
+                .sort((a, b) => a.table_number - b.table_number)
+                .map(tbl => {
+                  const isOccupied   = tbl.status === "occupied"
+                  const isReservedBy = (() => { for (const [tNum, info] of reservedTables) { if (tNum === tbl.table_number && info.resId !== res.id) return info.guestName } return null })()
+                  const isSelected   = selected === tbl.table_number
+                  const isCurrent    = currentlyAssigned === tbl.table_number
+                  const isBlocked    = isOccupied || !!isReservedBy
+
+                  return (
+                    <button
+                      key={tbl.id}
+                      onClick={() => !isBlocked && setSelected(tbl.table_number)}
+                      disabled={isBlocked}
+                      style={{
+                        height: 64, borderRadius: 11, display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center", gap: 3,
+                        cursor: isBlocked ? "not-allowed" : "pointer",
+                        background: isSelected || isCurrent
+                          ? "rgba(251,191,36,0.18)"
+                          : isOccupied
+                          ? "rgba(239,68,68,0.08)"
+                          : isReservedBy
+                          ? "rgba(251,191,36,0.06)"
+                          : "rgba(255,185,100,0.08)",
+                        border: `1.5px solid ${
+                          isSelected || isCurrent
+                            ? "rgba(251,191,36,0.55)"
+                            : isOccupied
+                            ? "rgba(239,68,68,0.22)"
+                            : isReservedBy
+                            ? "rgba(251,191,36,0.25)"
+                            : "rgba(255,185,100,0.14)"
+                        }`,
+                        opacity: isBlocked ? 0.55 : 1,
+                        transition: "all 0.1s",
+                      }}
+                    >
+                      <span style={{ fontSize: 18, fontWeight: 800, color: isSelected || isCurrent ? "rgba(251,191,36,0.95)" : isOccupied ? "#f87171" : TX, lineHeight: 1 }}>
+                        {tbl.table_number}
+                      </span>
+                      <span style={{ fontSize: 9, color: isOccupied ? "#f87171" : isReservedBy ? "rgba(251,191,36,0.65)" : TX2, letterSpacing: "0.05em" }}>
+                        {isOccupied ? "OCCUPIED" : isReservedBy ? "HELD" : `${tbl.capacity}p`}
+                      </span>
+                    </button>
+                  )
+                })}
+            </div>
+          )}
+        </div>
+
+        {/* Confirm */}
         <button
-          onClick={onEdit}
-          style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.14)", border: `1px solid ${BR}`, color: TX2 }}
-          title="Edit"
+          onClick={() => { if (selected !== null) onConfirm(selected) }}
+          disabled={selected === null}
+          style={{
+            width: "100%", height: 46, borderRadius: 12,
+            background: selected !== null ? "rgba(251,191,36,0.18)" : "rgba(255,185,100,0.06)",
+            border: `1px solid ${selected !== null ? "rgba(251,191,36,0.45)" : BR}`,
+            color: selected !== null ? "rgba(251,191,36,0.95)" : "rgba(255,200,150,0.25)",
+            fontSize: 13, fontWeight: 800,
+            letterSpacing: "0.06em", textTransform: "uppercase",
+            cursor: selected !== null ? "pointer" : "default",
+            transition: "all 0.15s",
+          }}
         >
-          <Edit2 style={{ width: 12, height: 12 }} />
-        </button>
-        <button
-          onClick={onDelete}
-          style={{ width: 30, height: 30, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)", color: "#f87171" }}
-          title="Delete"
-        >
-          <Trash2 style={{ width: 12, height: 12 }} />
+          {selected !== null ? `Hold Table ${selected} for ${res.guest_name}` : "Select a Table"}
         </button>
       </div>
     </div>
@@ -639,7 +818,15 @@ export default function DemoReservationsPage() {
   const [deleteTarget,    setDeleteTarget]    = useState<string | null>(null)
   const [now,             setNow]             = useState(() => new Date())
   const [authed,          setAuthed]          = useState(false)
-  const [assignPrompt,    setAssignPrompt]    = useState<{ guest_name: string; time: string } | null>(null)
+  const [assignPrompt,    setAssignPrompt]    = useState<{ guest_name: string; time: string; resId?: string } | null>(null)
+  const [tables,          setTables]          = useState<Table[]>([])
+  const [tablePicker,     setTablePicker]     = useState<Reservation | null>(null)
+  const [reservedTables,  setReservedTables]  = useState<Map<number, ReservedTable>>(() => {
+    try {
+      const s = localStorage.getItem(RESERVED_TABLES_KEY)
+      return s ? new Map(JSON.parse(s) as [number, ReservedTable][]) : new Map()
+    } catch { return new Map() }
+  })
 
   // Auth gate
   useEffect(() => {
@@ -668,13 +855,49 @@ export default function DemoReservationsPage() {
     }
   }, [])
 
+  // Fetch tables for table picker
+  const fetchTables = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (r.ok) setTables(await r.json())
+    } catch {}
+  }, [])
+
   // On mount + auto-refresh every 30s
   useEffect(() => {
     if (!authed) return
     fetchAll()
+    fetchTables()
     const t = setInterval(fetchAll, 30_000)
     return () => clearInterval(t)
-  }, [fetchAll, authed])
+  }, [fetchAll, fetchTables, authed])
+
+  // Persist reserved table pre-assignments (shared with station via localStorage)
+  useEffect(() => {
+    try { localStorage.setItem(RESERVED_TABLES_KEY, JSON.stringify([...reservedTables])) } catch {}
+  }, [reservedTables])
+
+  // Returns pre-assigned table number for a reservation, if any
+  const tableForRes = useCallback((resId: string): number | undefined => {
+    for (const [tNum, info] of reservedTables) { if (info.resId === resId) return tNum }
+    return undefined
+  }, [reservedTables])
+
+  // Assign a table to a reservation (writes to shared localStorage)
+  const assignResTable = useCallback((res: Reservation, tableNumber: number) => {
+    setReservedTables(prev => new Map(prev).set(tableNumber, {
+      resId: res.id, guestName: res.guest_name, time: res.time,
+    }))
+  }, [])
+
+  // Clear table pre-assignment for a reservation
+  const clearResTable = useCallback((resId: string) => {
+    setReservedTables(prev => {
+      const next = new Map(prev)
+      for (const [tNum, info] of prev) { if (info.resId === resId) { next.delete(tNum); break } }
+      return next
+    })
+  }, [])
 
   // Day's reservations
   const dayRes = useMemo(() => {
@@ -993,9 +1216,12 @@ export default function DemoReservationsPage() {
                       <ResCard
                         res={res}
                         now={now}
+                        assignedTableNum={tableForRes(res.id)}
                         onEdit={() => setDrawer(res)}
                         onDelete={() => setDeleteTarget(res.id)}
                         onMarkNoShow={() => markNoShow(res.id)}
+                        onAssignTable={() => setTablePicker(res)}
+                        onClearTable={() => clearResTable(res.id)}
                       />
                     )}
                   </div>
@@ -1030,29 +1256,33 @@ export default function DemoReservationsPage() {
             width: "calc(100% - 48px)", maxWidth: 360,
             boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
           }}>
-            {/* Icon */}
-            <div style={{
-              width: 44, height: 44, borderRadius: 12,
-              background: "rgba(251,191,36,0.12)",
-              border: "1px solid rgba(251,191,36,0.28)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              marginBottom: 16, fontSize: 20,
-            }}>
-              🪑
-            </div>
-            {/* Headline */}
             <p style={{ fontSize: 16, fontWeight: 800, color: TX, marginBottom: 6, letterSpacing: "-0.01em" }}>
-              Assign a table?
+              Reservation saved!
             </p>
             <p style={{ fontSize: 13, color: MU, lineHeight: 1.55, marginBottom: 22 }}>
-              <strong style={{ color: TX }}>{assignPrompt.guest_name}</strong>&apos;s reservation at{" "}
-              <strong style={{ color: TX }}>{fmt12(assignPrompt.time)}</strong> is saved.
-              Head to the station to pre-assign their table.
+              Would you like to pre-assign a table for{" "}
+              <strong style={{ color: TX }}>{assignPrompt.guest_name}</strong> at{" "}
+              <strong style={{ color: TX }}>{fmt12(assignPrompt.time)}</strong>?
             </p>
-            {/* Buttons */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
-                onClick={() => { setAssignPrompt(null); router.push("/demo/station") }}
+                onClick={async () => {
+                  // Re-fetch to find the newly created reservation, then open table picker
+                  try {
+                    const r = await fetch(`${API}/reservations?restaurant_id=${DEMO_RESTAURANT_ID}`)
+                    if (r.ok) {
+                      const all: Reservation[] = await r.json()
+                      setAllReservations(all)
+                      const match = all.find(x =>
+                        x.guest_name === assignPrompt.guest_name &&
+                        x.time.startsWith(assignPrompt.time) &&
+                        x.status === "confirmed"
+                      )
+                      if (match) { setAssignPrompt(null); setTablePicker(match); return }
+                    }
+                  } catch {}
+                  setAssignPrompt(null)
+                }}
                 style={{
                   width: "100%", height: 46, borderRadius: 12,
                   background: "rgba(251,191,36,0.16)",
@@ -1063,7 +1293,7 @@ export default function DemoReservationsPage() {
                   cursor: "pointer",
                 }}
               >
-                Go to Station →
+                Assign Table
               </button>
               <button
                 onClick={() => setAssignPrompt(null)}
@@ -1081,6 +1311,17 @@ export default function DemoReservationsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Inline Table Picker ───────────────────────────────────────────── */}
+      {tablePicker !== null && (
+        <ResTablePicker
+          res={tablePicker}
+          tables={tables}
+          reservedTables={reservedTables}
+          onConfirm={(tableNum) => { assignResTable(tablePicker, tableNum); setTablePicker(null) }}
+          onClose={() => setTablePicker(null)}
+        />
       )}
     </div>
   )

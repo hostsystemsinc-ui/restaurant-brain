@@ -1684,7 +1684,7 @@ export default function DemoHostDashboard() {
       const [y, mo, d] = r.date.split("-").map(Number)
       const resTime = new Date(y, mo - 1, d, h, m)
       const diffMin = (resTime.getTime() - now.getTime()) / 60_000
-      return diffMin > -45 && diffMin < 180
+      return diffMin > -30 && diffMin < 60
     })
     .sort((a, b) => {
       const ua = urgencyOrder[getResUrgency(a.date, a.time, now)]
