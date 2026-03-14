@@ -8,12 +8,18 @@ export default function OwnerConsoleLogin() {
   const [password, setPassword]   = useState("")
   const [showPass, setShowPass]   = useState(false)
   const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState("")
   const router = useRouter()
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-    router.push("/admin")
+    if (password === "hostowner2025") {
+      setLoading(true)
+      sessionStorage.setItem("host_owner_authed", "1")
+      router.push("/owner")
+    } else {
+      setError("Incorrect password.")
+    }
   }
 
   return (
@@ -118,6 +124,12 @@ export default function OwnerConsoleLogin() {
               </button>
             </div>
           </div>
+
+          {error && (
+            <div style={{ fontSize: ".82rem", color: "#f87171", padding: "10px 14px", background: "rgba(239,68,68,0.08)", borderRadius: 8, border: "1px solid rgba(239,68,68,0.2)" }}>
+              {error}
+            </div>
+          )}
 
           <button
             type="submit"

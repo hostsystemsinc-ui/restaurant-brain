@@ -879,7 +879,7 @@ function DemoModal({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }} onClick={onClose} />
-      <div style={{ position: "relative", width: "100%", maxWidth: 480, background: "#0e1012", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 24, padding: "40px 36px", boxShadow: "0 40px 80px rgba(0,0,0,0.6)" }}>
+      <div className="demo-card" style={{ position: "relative", width: "100%", maxWidth: 480, background: "#0e1012", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 24, padding: "40px 36px", boxShadow: "0 40px 80px rgba(0,0,0,0.6)" }}>
         <button onClick={onClose} style={{ position: "absolute", top: 18, right: 18, background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.35)", padding: 4, display: "flex" }}>
           <Icon.X />
         </button>
@@ -903,7 +903,7 @@ function DemoModal({ onClose }: { onClose: () => void }) {
               <p style={{ fontSize: ".85rem", color: "rgba(255,255,255,0.4)", lineHeight: 1.6 }}>We&apos;ll reach out within 24 hours to set up a free walkthrough.</p>
             </div>
             <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="demo-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={{ display: "block", fontSize: ".76rem", color: "rgba(255,255,255,0.4)", marginBottom: 6, fontWeight: 600 }}>Your name <span style={{ color: "#ef4444" }}>*</span></label>
                   <input style={inputStyle} placeholder="Alex Rivera" value={form.name} onChange={set("name")}
@@ -923,7 +923,7 @@ function DemoModal({ onClose }: { onClose: () => void }) {
                   onFocus={e=>(e.currentTarget.style.borderColor="rgba(34,197,94,0.4)")}
                   onBlur={e=>(e.currentTarget.style.borderColor="rgba(255,255,255,0.1)")} />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div className="demo-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={{ display: "block", fontSize: ".76rem", color: "rgba(255,255,255,0.4)", marginBottom: 6, fontWeight: 600 }}>Phone</label>
                   <input type="tel" style={inputStyle} placeholder="(720) 555-0100" value={form.phone} onChange={set("phone")}
@@ -1021,6 +1021,31 @@ export default function MarketingPage() {
         ::-webkit-scrollbar-track { background:#060606; }
         ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.08); border-radius:99px; }
         input::placeholder,select::placeholder { color:rgba(255,255,255,.2); }
+
+        /* ─── Mobile Responsive ──────────────────────────────────── */
+        @media (max-width: 760px) {
+          nav.host-nav { padding-left: 20px !important; padding-right: 20px !important; }
+          .mob-px { padding-left: 20px !important; padding-right: 20px !important; }
+          .how-flow { grid-template-columns: 1fr !important; }
+          .how-arrow { display: none !important; }
+          .device-row { padding: 28px 20px 28px !important; gap: 16px !important; }
+          .ipad-hide { display: none !important; }
+          .stats-wrap { padding-left: 20px !important; padding-right: 20px !important; }
+          .stats-grid { grid-template-columns: repeat(2,1fr) !important; gap: 24px !important; }
+          .feat-grid { grid-template-columns: 1fr !important; }
+          .feat-detail { padding: 28px 20px 32px !important; }
+          .feat-detail-inner { flex-direction: column !important; gap: 24px !important; }
+          .steps-grid { grid-template-columns: 1fr !important; gap: 32px !important; }
+          .steps-line { display: none !important; }
+          .nfc-sec { grid-template-columns: 1fr !important; gap: 0 !important; padding-top: 60px !important; padding-bottom: 60px !important; }
+          .demo-card { padding: 28px 22px 32px !important; }
+          .demo-2col { grid-template-columns: 1fr !important; gap: 12px !important; }
+          .nav-demo-full { display: none !important; }
+          .nav-demo-short::after { content: "Demo"; }
+        }
+        @media (max-width: 480px) {
+          nav.host-nav .nav-login { display: none !important; }
+        }
       `}</style>
 
       {/* Fixed header wrapper — announcement + nav always on screen */}
@@ -1033,14 +1058,14 @@ export default function MarketingPage() {
       </div>
 
       {/* Nav */}
-      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 56px", height: 64, background: "rgba(6,6,6,0.92)", backdropFilter: "blur(24px) saturate(160%)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <nav className="host-nav" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 56px", height: 64, background: "rgba(6,6,6,0.92)", backdropFilter: "blur(24px) saturate(160%)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <Link href="/" style={{ textDecoration: "none" }}>
           <span style={{ fontWeight: 900, letterSpacing: ".22em", fontSize: ".88rem", color: "#fff" }}>HOST</span>
         </Link>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <Link href="/login" className="ghost-btn" style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none", fontSize: ".85rem", padding: "8px 16px", borderRadius: 8 }}>Log In</Link>
+          <Link href="/login" className="ghost-btn nav-login" style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none", fontSize: ".85rem", padding: "8px 16px", borderRadius: 8 }}>Log In</Link>
           <a href="#" onClick={openDemo} className="cta-btn" style={{ fontSize: ".85rem", padding: "9px 22px", borderRadius: 9, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-            Schedule Free Demo <Icon.Arrow />
+            <span className="nav-demo-full">Schedule Free Demo</span><span className="nav-demo-short" style={{ display: "none" }} /><Icon.Arrow />
           </a>
         </div>
       </nav>
@@ -1063,7 +1088,7 @@ export default function MarketingPage() {
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 60%, transparent 40%, rgba(0,0,0,0.55) 100%)", zIndex: 1, pointerEvents: "none" }} />
 
         {/* Hero content */}
-        <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 56px", maxWidth: 900, margin: "0 auto" }}>
+        <div className="mob-px" style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 56px", maxWidth: 900, margin: "0 auto" }}>
 
           {/* Big HOST wordmark */}
           <div style={{ animation: "herofade 0.8s ease 0.1s both" }}>
@@ -1121,7 +1146,7 @@ export default function MarketingPage() {
       </section>
 
       {/* ── How HOST Works ──────────────────────────────────────── */}
-      <section id="how-it-works" style={{ padding: "100px 56px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <section id="how-it-works" className="mob-px" style={{ padding: "100px 56px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div ref={howWorksRef} style={{ maxWidth: 1100, margin: "0 auto" }}>
           {/* Label + heading */}
           <div style={{ marginBottom: 80, textAlign: "center" }}>
@@ -1135,7 +1160,7 @@ export default function MarketingPage() {
           </div>
 
           {/* 3-step flow */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", gap: 0, alignItems: "start" }}>
+          <div className="how-flow" style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", gap: 0, alignItems: "start" }}>
 
             {/* Step 1 */}
             <div style={{ textAlign: "center", padding: "0 24px" }}>
@@ -1153,7 +1178,7 @@ export default function MarketingPage() {
             </div>
 
             {/* Arrow 1 */}
-            <div style={{ paddingTop: 32, color: "rgba(34,197,94,0.3)", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
+            <div className="how-arrow" style={{ paddingTop: 32, color: "rgba(34,197,94,0.3)", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
               </svg>
@@ -1175,7 +1200,7 @@ export default function MarketingPage() {
             </div>
 
             {/* Arrow 2 */}
-            <div style={{ paddingTop: 32, color: "rgba(34,197,94,0.3)", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
+            <div className="how-arrow" style={{ paddingTop: 32, color: "rgba(34,197,94,0.3)", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
               </svg>
@@ -1211,7 +1236,7 @@ export default function MarketingPage() {
 
       {/* ── Device Showcase ─────────────────────────────────────── */}
       <section id="devices" style={{ padding: "80px 40px 100px", position: "relative" }}>
-        <div ref={deviceRef} style={{ maxWidth: 1100, margin: "0 auto", background: "linear-gradient(180deg, rgba(34,197,94,0.03) 0%, rgba(8,10,12,0) 100%)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 30, padding: "56px 48px 44px", display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 28, flexWrap: "wrap", overflow: "hidden", position: "relative" }}>
+        <div ref={deviceRef} className="device-row" style={{ maxWidth: 1100, margin: "0 auto", background: "linear-gradient(180deg, rgba(34,197,94,0.03) 0%, rgba(8,10,12,0) 100%)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 30, padding: "56px 48px 44px", display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 28, flexWrap: "wrap", overflow: "hidden", position: "relative" }}>
           {/* SMS badge */}
           <div style={{ position: "absolute", top: 22, right: 28, background: "rgba(10,12,14,0.96)", border: "1px solid rgba(34,197,94,0.22)", borderRadius: 13, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 10px 36px rgba(0,0,0,.55)", animation: "fadein 0.5s ease 0.9s both" }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
@@ -1221,8 +1246,10 @@ export default function MarketingPage() {
             </div>
           </div>
 
-          {/* iPad — static, accurate */}
-          <IPadMockup />
+          {/* iPad — static, accurate (hidden on mobile) */}
+          <div className="ipad-hide">
+            <IPadMockup />
+          </div>
 
           {/* iPhone — static, accurate */}
           <div style={{ marginTop: 36 }}>
@@ -1232,8 +1259,8 @@ export default function MarketingPage() {
       </section>
 
       {/* Stats */}
-      <div ref={statsRef} style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "36px 56px" }}>
-        <div style={{ maxWidth: 1000, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", textAlign: "center", gap: 20 }}>
+      <div ref={statsRef} className="stats-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "36px 56px" }}>
+        <div className="stats-grid" style={{ maxWidth: 1000, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", textAlign: "center", gap: 20 }}>
           {[{n:2,s:" sec",l:"To join the list"},{n:40,s:"%",l:"Less perceived wait"},{n:3,s:"×",l:"Faster than paper"},{n:0,s:"",l:"App downloads needed"}].map(s=>(
             <div key={s.l}>
               <div style={{ fontSize: "2.5rem", fontWeight: 900, color: "#22c55e", letterSpacing: "-0.045em", lineHeight: 1, marginBottom: 7 }}><Counter to={s.n} suffix={s.s} /></div>
@@ -1244,7 +1271,7 @@ export default function MarketingPage() {
       </div>
 
       {/* Statement */}
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "80px 56px", textAlign: "center", position: "relative", overflow: "hidden" }}>
+      <div className="mob-px" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "80px 56px", textAlign: "center", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 50%, rgba(34,197,94,0.04) 0%, transparent 65%)", pointerEvents: "none" }} />
         <p style={{
           fontSize: "clamp(2.2rem, 5.5vw, 4.2rem)",
@@ -1262,7 +1289,7 @@ export default function MarketingPage() {
       </div>
 
       {/* Features */}
-      <section id="features" style={{ padding: "110px 56px", maxWidth: 1100, margin: "0 auto" }}>
+      <section id="features" className="mob-px" style={{ padding: "110px 56px", maxWidth: 1100, margin: "0 auto" }}>
         <div ref={featRef}>
           <div style={{ marginBottom: 64 }}>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, maxWidth: 520 }}>
@@ -1299,7 +1326,7 @@ export default function MarketingPage() {
             ]
             return (
               <>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 24, overflow: "hidden" }}>
+                <div className="feat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 24, overflow: "hidden" }}>
                   {features.map((f, i) => (
                     <div
                       key={f.title}
@@ -1328,7 +1355,7 @@ export default function MarketingPage() {
 
                 {/* Expanded detail panel */}
                 {activeFeature !== null && (
-                  <div style={{
+                  <div className="feat-detail" style={{
                     marginTop: 1,
                     background: "rgba(34,197,94,0.03)",
                     border: "1px solid rgba(34,197,94,0.15)",
@@ -1337,7 +1364,7 @@ export default function MarketingPage() {
                     padding: "40px 40px 44px",
                     animation: "badgein 0.3s ease both",
                   }}>
-                    <div style={{ display: "flex", gap: 48, flexWrap: "wrap" }}>
+                    <div className="feat-detail-inner" style={{ display: "flex", gap: 48, flexWrap: "wrap" }}>
                       <div style={{ flex: "1 1 280px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
                           <div style={{ color: "#22c55e", width: 28, height: 28 }}>{React.createElement(features[activeFeature].Icon)}</div>
@@ -1365,7 +1392,7 @@ export default function MarketingPage() {
       </section>
 
       {/* How It Works */}
-      <section id="how" style={{ padding: "80px 56px", background: "rgba(255,255,255,0.016)", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+      <section id="how" className="mob-px" style={{ padding: "80px 56px", background: "rgba(255,255,255,0.016)", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div ref={howRef}>
             <div style={{ marginBottom: 72 }}>
@@ -1375,8 +1402,8 @@ export default function MarketingPage() {
               <br /><span style={{ color: "rgba(255,255,255,0.22)", fontStyle: "normal", fontFamily: "inherit", fontSize: "0.92em" }}>Three steps.</span>
               </h2>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 60, position: "relative" }}>
-              <div style={{ position: "absolute", top: 27, left: 27, right: "calc((100% - 120px) / 3 - 27px)", height: 1, background: "linear-gradient(90deg, rgba(34,197,94,0.55), rgba(34,197,94,0.08))" }} />
+            <div className="steps-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 60, position: "relative" }}>
+              <div className="steps-line" style={{ position: "absolute", top: 27, left: 27, right: "calc((100% - 120px) / 3 - 27px)", height: 1, background: "linear-gradient(90deg, rgba(34,197,94,0.55), rgba(34,197,94,0.08))" }} />
               {[
                 { n:"1", title:"Guest taps or scans.", sub:"They tap the NFC puck or scan the QR code at the stand. Two seconds later, they're in the queue." },
                 { n:"2", title:"Host manages.",        sub:"Your iPad shows the live queue, table status, and wait times — all in one place." },
@@ -1397,7 +1424,7 @@ export default function MarketingPage() {
       </section>
 
       {/* ── Guest Journey Animation ─────────────────────────────── */}
-      <section style={{ padding: "110px 56px", maxWidth: 1100, margin: "0 auto" }}>
+      <section className="mob-px" style={{ padding: "110px 56px", maxWidth: 1100, margin: "0 auto" }}>
         <div ref={journeyRef}>
           <div style={{ marginBottom: 72, textAlign: "center" }}>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 16 }}>
@@ -1413,7 +1440,7 @@ export default function MarketingPage() {
       </section>
 
       {/* NFC + QR Spotlight */}
-      <section style={{ padding: "80px 56px 110px", maxWidth: 1100, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="nfc-sec mob-px" style={{ padding: "80px 56px 110px", maxWidth: 1100, margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 80, alignItems: "center", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div ref={nfcRef} style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 380 }}>
           <PuckTap />
         </div>
@@ -1441,7 +1468,7 @@ export default function MarketingPage() {
       </section>
 
       {/* Final CTA */}
-      <section style={{ padding: "130px 56px", textAlign: "center", position: "relative", overflow: "hidden", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <section className="mob-px" style={{ padding: "130px 56px", textAlign: "center", position: "relative", overflow: "hidden", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(34,197,94,0.07) 0%, transparent 55%)", pointerEvents: "none" }} />
         <div ref={ctaRef} style={{ position: "relative", zIndex: 1, maxWidth: 560, margin: "0 auto" }}>
           <h2 style={{ fontSize: "clamp(2.5rem,5.5vw,4.2rem)", fontWeight: 900, letterSpacing: "-0.045em", lineHeight: 0.98, marginBottom: 22 }}>
@@ -1460,7 +1487,7 @@ export default function MarketingPage() {
       </section>
 
       {/* Footer */}
-      <footer style={{ padding: "28px 56px", borderTop: "1px solid rgba(255,255,255,0.06)", background: "#080A0C" }}>
+      <footer className="mob-px" style={{ padding: "28px 56px", borderTop: "1px solid rgba(255,255,255,0.06)", background: "#080A0C" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <span style={{ fontWeight: 900, letterSpacing: ".22em", fontSize: ".82rem", color: "rgba(255,255,255,0.5)" }}>HOST</span>
           <span style={{ fontSize: ".82rem", color: "rgba(255,255,255,0.22)" }}>· a smarter waitlist</span>
