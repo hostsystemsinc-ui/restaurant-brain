@@ -1333,6 +1333,7 @@ export default function DemoHostDashboard() {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [toasts, setToasts]               = useState<ToastItem[]>([])
   const [resTblPicker, setResTblPicker]   = useState<Reservation | null>(null)
+  const [globalWait, setGlobalWait]       = useState<number | null>(null)
   const [reservedTables, setReservedTables] = useState<Map<number, ReservedTable>>(() => {
     try {
       const s = localStorage.getItem("host_demo_reserved_tables")
@@ -1477,6 +1478,24 @@ export default function DemoHostDashboard() {
     try { const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
     catch { showToast("Could not notify guest.", "err") }
   }, [refreshAll])
+
+  const applyGlobalWait = useCallback(async (mins: number | null) => {
+    setGlobalWait(mins)
+    if (mins === null) {
+      showToast("Wait time cleared", "ok")
+      return
+    }
+    const targets = queue.filter(e => e.status === "waiting")
+    if (targets.length === 0) {
+      showToast(`Wait set to ${mins}m — applies to new guests`, "ok")
+      return
+    }
+    await Promise.allSettled(
+      targets.map(e => fetchT(`${API}/queue/${e.id}/wait?minutes=${mins}`, { method: "PATCH" }))
+    )
+    showToast(`${mins}m wait set for ${targets.length} guest${targets.length !== 1 ? "s" : ""}`, "ok")
+    refreshAll()
+  }, [queue, refreshAll])
   const remove = useCallback(async (id: string) => {
     try { const r = await fetchT(`${API}/queue/${id}/remove`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
     catch { showToast("Could not remove guest.", "err") }
@@ -1776,6 +1795,53 @@ export default function DemoHostDashboard() {
               </div>
             </div>
 
+            {/* ── Global Wait Bar ───────────────────────────────── */}
+            <div style={{
+              padding: "7px 12px 8px",
+              borderBottom: "1px solid rgba(255,185,100,0.16)",
+              background: "rgba(255,185,100,0.02)",
+              flexShrink: 0,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: "0.18em",
+                  textTransform: "uppercase", color: "rgba(255,200,150,0.45)",
+                  flexShrink: 0,
+                }}>
+                  Wait
+                </span>
+                <div style={{ display: "flex", gap: 4, overflowX: "auto", scrollbarWidth: "none" as never }}>
+                  {([null, 5, 10, 15, 20, 30, 45] as (number | null)[]).map(m => {
+                    const active = globalWait === m
+                    const label  = m === null ? "—" : `${m}m`
+                    return (
+                      <button
+                        key={String(m)}
+                        onClick={() => applyGlobalWait(m)}
+                        style={{
+                          height: 24, padding: "0 9px",
+                          borderRadius: 7, flexShrink: 0,
+                          background: active ? "rgba(255,185,100,0.22)" : "rgba(255,185,100,0.05)",
+                          border: `1px solid ${active ? "rgba(255,185,100,0.60)" : "rgba(255,185,100,0.12)"}`,
+                          color: active ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.45)",
+                          fontSize: 11, fontWeight: active ? 800 : 500,
+                          cursor: "pointer", whiteSpace: "nowrap" as never,
+                          transition: "all 0.12s",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              {globalWait !== null && (
+                <p style={{ fontSize: 9, color: "rgba(255,185,100,0.38)", marginTop: 4, paddingLeft: 2 }}>
+                  {`${globalWait}m · auto-applied to new guests`}
+                </p>
+              )}
+            </div>
+
             {/* ── Today's reservations ──────────────────────────── */}
             {activeRes.length > 0 && (
               <div
@@ -2047,7 +2113,20 @@ export default function DemoHostDashboard() {
         {showAdd && (
           <AddGuestDrawer
             onClose={() => setShowAdd(false)}
-            onAdded={(id, mins) => { setShowAdd(false); setWaitModal({ id, defaultMinutes: mins }); refreshAll() }}
+            onAdded={(id, mins) => {
+              setShowAdd(false)
+              if (globalWait !== null) {
+                // Global wait is set — apply automatically, skip the modal
+                fetchT(`${API}/queue/${id}/wait?minutes=${globalWait}`, { method: "PATCH" })
+                  .then(() => showToast(`Guest added · ${globalWait}m wait set automatically`, "ok"))
+                  .catch(() => {})
+                refreshAll()
+              } else {
+                // No global wait — prompt host to set one
+                setWaitModal({ id, defaultMinutes: mins })
+                refreshAll()
+              }
+            }}
           />
         )}
 

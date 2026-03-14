@@ -295,7 +295,7 @@ export default function WaitPage() {
           fontSize: 14, color: "rgba(255,255,255,0.35)",
           lineHeight: 1.65, maxWidth: 240,
         }}>
-          Thank you for dining with us at Walter&apos;s303. We hope to see you again soon.
+          Thank you for dining with us tonight. We hope to see you again soon.
         </p>
 
         {/* Footer label */}

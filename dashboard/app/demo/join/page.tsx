@@ -154,44 +154,30 @@ export default function DemoJoinPage() {
           </div>
         </div>
 
-        {/* Preferred Wait — ASAP / + increments */}
+        {/* Preferred Wait — scrollable chip selector */}
         <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: ".58rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: "rgba(255,255,255,0.32)", marginBottom: 7 }}>
             Preferred Wait
           </div>
-          <div style={{ display: "flex", alignItems: "center", background: "#111", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 13, overflow: "hidden", height: 46 }}>
-
-            {/* ASAP button — highlighted when active */}
-            <button className="wt-btn" onClick={() => setWaitMinutes(0)}
-              style={{
-                flex: waitMinutes === 0 ? 1 : "none",
-                padding: waitMinutes === 0 ? "0 16px" : "0 14px",
-                height: "100%",
-                background: waitMinutes === 0 ? "rgba(255,255,255,0.12)" : "transparent",
-                border: "none",
-                borderRight: "1px solid rgba(255,255,255,0.08)",
-                color: waitMinutes === 0 ? "#fff" : "rgba(255,255,255,0.35)",
-                fontWeight: waitMinutes === 0 ? 800 : 500,
-                fontSize: ".76rem", letterSpacing: ".12em", textTransform: "uppercase",
-                cursor: "pointer", whiteSpace: "nowrap",
-              }}>
-              {waitMinutes === 0 ? "✓  ASAP" : "ASAP"}
-            </button>
-
-            {/* Time controls — shown when > 0 */}
-            {waitMinutes > 0 && (
-              <>
-                <button className="wt-btn" onClick={() => setWaitMinutes(w => w - 5 <= 0 ? 0 : w - 5)}
-                  style={{ padding: "0 14px", height: "100%", background: "transparent", border: "none", borderRight: "1px solid rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.65)", fontSize: 19, cursor: "pointer" }}>−</button>
-                <span style={{ flex: 1, textAlign: "center", fontSize: ".88rem", fontWeight: 700, color: "#fff", letterSpacing: "0.01em" }}>
-                  {waitMinutes} min
-                </span>
-              </>
-            )}
-
-            {/* + button */}
-            <button className="wt-btn" onClick={() => setWaitMinutes(w => Math.min(120, w + 5))} disabled={waitMinutes >= 120}
-              style={{ padding: "0 16px", height: "100%", background: "transparent", border: "none", borderLeft: waitMinutes === 0 ? "none" : "1px solid rgba(255,255,255,0.07)", color: waitMinutes >= 120 ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.65)", fontSize: 19, cursor: waitMinutes >= 120 ? "default" : "pointer" }}>+</button>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 1 }}>
+            {(["ASAP", "5m", "10m", "15m", "20m", "30m", "45m"] as const).map((label) => {
+              const val = label === "ASAP" ? 0 : parseInt(label)
+              const active = waitMinutes === val
+              return (
+                <button key={label} className="wt-btn" onClick={() => setWaitMinutes(val)}
+                  style={{
+                    height: 42, padding: "0 15px",
+                    borderRadius: 11, flexShrink: 0,
+                    background: active ? "#fff" : "#111",
+                    border: `1px solid ${active ? "#fff" : "rgba(255,255,255,0.10)"}`,
+                    color: active ? "#000" : "rgba(255,255,255,0.42)",
+                    fontSize: ".82rem", fontWeight: active ? 800 : 500,
+                    cursor: "pointer",
+                  }}>
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
