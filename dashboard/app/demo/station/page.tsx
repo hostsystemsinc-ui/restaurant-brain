@@ -1307,6 +1307,7 @@ function AddGuestDrawer({
   const [name,      setName]      = useState("")
   const [partySize, setPartySize] = useState(2)
   const [phone,     setPhone]     = useState("")
+  const [notes,     setNotes]     = useState("")
   const [waitMins,  setWaitMins]  = useState<number | null>(globalWait ?? null)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState("")
@@ -1331,6 +1332,7 @@ function AddGuestDrawer({
           name:          name.trim() || null,
           party_size:    partySize,
           phone:         phone.trim() || null,
+          notes:         notes.trim() || null,
           preference:    "asap",
           source:        "host",
           restaurant_id: DEMO_RESTAURANT_ID,
@@ -1411,6 +1413,16 @@ function AddGuestDrawer({
         <input
           type="tel" value={phone} onChange={e => setPhone(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
+          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+        />
+
+        {/* Notes */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>
+          Notes <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
+        </p>
+        <input
+          type="text" value={notes} onChange={e => setNotes(e.target.value)}
+          placeholder="Allergies, preferences, occasion…"
           style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
         />
 
@@ -2375,22 +2387,43 @@ export default function DemoHostDashboard() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {newGuestNotifs.map(n => (
                     <div key={n.id} style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      background: "rgba(99,179,237,0.07)",
-                      border: "1px solid rgba(99,179,237,0.20)",
-                      borderRadius: 9, padding: "6px 8px",
+                      background: "rgba(99,179,237,0.08)",
+                      border: "1px solid rgba(99,179,237,0.28)",
+                      borderRadius: 10, padding: "8px 8px 8px 10px",
                     }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,248,240,0.92)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {/* Top row: name + dismiss */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,248,240,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {n.name || "Guest"} · {n.party_size}p
                         </span>
-                        {n.suggested != null && (
-                          <span style={{ fontSize: 9, color: "rgba(99,179,237,0.60)", marginTop: 1, display: "block" }}>
-                            Suggested: {n.suggested}m
-                          </span>
-                        )}
+                        <button
+                          onClick={() => setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))}
+                          style={{ width: 18, height: 18, borderRadius: 4, background: "none", border: "none", cursor: "pointer", color: "rgba(255,200,150,0.30)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
+                        >
+                          <X style={{ width: 10, height: 10 }} />
+                        </button>
                       </div>
-                      <div style={{ display: "flex", gap: 3, alignItems: "center", flexShrink: 0 }}>
+                      {/* Bottom row: action buttons */}
+                      <div style={{ display: "flex", gap: 5 }}>
+                        {/* "Set Wait" — primary urgent action */}
+                        <button
+                          onClick={() => {
+                            setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))
+                            setWaitModal({ id: n.id, defaultMinutes: n.suggested ?? 15 })
+                          }}
+                          style={{
+                            flex: 1, height: 34, borderRadius: 8,
+                            background: "rgba(99,179,237,0.22)",
+                            border: "1.5px solid rgba(99,179,237,0.55)",
+                            color: "rgba(160,210,255,0.97)",
+                            fontSize: 11, fontWeight: 900,
+                            letterSpacing: "0.08em", textTransform: "uppercase",
+                            cursor: "pointer", whiteSpace: "nowrap" as never,
+                          }}
+                        >
+                          Set Wait
+                        </button>
+                        {/* One-tap confirm suggestion */}
                         {n.suggested != null && (
                           <button
                             onClick={() => {
@@ -2400,42 +2433,17 @@ export default function DemoHostDashboard() {
                               refreshAll()
                             }}
                             style={{
-                              height: 22, padding: "0 8px", borderRadius: 5,
-                              background: "rgba(99,179,237,0.16)",
-                              border: "1px solid rgba(99,179,237,0.40)",
-                              color: "rgba(99,179,237,0.95)",
-                              fontSize: 10, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" as never,
+                              flex: 1, height: 34, borderRadius: 8,
+                              background: "rgba(34,197,94,0.12)",
+                              border: "1.5px solid rgba(34,197,94,0.35)",
+                              color: "#4ade80",
+                              fontSize: 11, fontWeight: 800,
+                              cursor: "pointer", whiteSpace: "nowrap" as never,
                             }}
                           >
                             {n.suggested}m ✓
                           </button>
                         )}
-                        <button
-                          onClick={() => {
-                            setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))
-                            setWaitModal({ id: n.id, defaultMinutes: n.suggested ?? 15 })
-                          }}
-                          style={{
-                            height: 22, padding: "0 7px", borderRadius: 5,
-                            background: "rgba(255,185,100,0.07)",
-                            border: "1px solid rgba(255,185,100,0.20)",
-                            color: "rgba(255,200,150,0.65)",
-                            fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" as never,
-                          }}
-                        >
-                          Set
-                        </button>
-                        <button
-                          onClick={() => setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))}
-                          style={{
-                            width: 20, height: 20, borderRadius: 4,
-                            background: "none", border: "none",
-                            cursor: "pointer", color: "rgba(255,200,150,0.28)",
-                            display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
-                          }}
-                        >
-                          <X style={{ width: 10, height: 10 }} />
-                        </button>
                       </div>
                     </div>
                   ))}
