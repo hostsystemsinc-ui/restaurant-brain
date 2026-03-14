@@ -7,7 +7,7 @@ import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
   LayoutDashboard, GripVertical, CalendarDays, CalendarCheck,
-  Copy, Check, Pencil, Activity, Trash2,
+  Copy, Check, Pencil, Activity, Trash2, BarChart2,
 } from "lucide-react"
 import {
   DndContext, DragOverlay,
@@ -59,6 +59,50 @@ const FLOOR_PLAN: FloorPos[] = [
   { number: 16, shape: "round",  x: 748, y: 330, w: 60, h: 60,  section: "bar" },
 ]
 
+// ── Seating History + Suggestions ──────────────────────────────────────────────
+
+interface SeatingRecord {
+  party_size:      number
+  quoted_wait:     number
+  actual_wait_min: number  // minutes from arrival_time to seated
+  seated_at:       number  // unix ms
+  day_of_week:     number  // 0–6
+  hour_of_day:     number  // 0–23
+}
+
+const HISTORY_KEY = "host_demo_seating_history"
+const MAX_HISTORY = 300
+
+function getHistory(): SeatingRecord[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") } catch { return [] }
+}
+function addToHistory(r: SeatingRecord) {
+  try {
+    const h = getHistory(); h.push(r)
+    if (h.length > MAX_HISTORY) h.splice(0, h.length - MAX_HISTORY)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(h))
+  } catch {}
+}
+// Weighted suggestion: favors same party size + nearby hour of day
+function suggestWait(partySize: number): number | null {
+  const hist = getHistory()
+  if (hist.length < 3) return null
+  const hour = new Date().getHours()
+  const scored = hist.flatMap(r => {
+    const sd = Math.abs(r.party_size - partySize)
+    const hd = Math.min(Math.abs(r.hour_of_day - hour), 24 - Math.abs(r.hour_of_day - hour))
+    if (sd > 4 || hd > 4) return []
+    return [{ wait: r.quoted_wait, w: (sd === 0 ? 4 : sd === 1 ? 2 : 1) * (hd <= 1 ? 2 : 1) }]
+  })
+  if (scored.length < 2) {
+    const s = hist.filter(r => r.party_size === partySize)
+    if (!s.length) return null
+    return Math.round(s.reduce((a, r) => a + r.quoted_wait, 0) / s.length)
+  }
+  const tw = scored.reduce((a, r) => a + r.w, 0)
+  return Math.round(scored.reduce((a, r) => a + r.wait * r.w, 0) / tw)
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Table {
@@ -79,6 +123,7 @@ interface QueueEntry {
   remaining_wait?: number
   arrival_time: string
   position?: number
+  paused?: boolean
   phone: string | null
   notes: string | null
 }
@@ -374,30 +419,56 @@ function GuestEditModal({
             </button>
           </div>
 
-          {/* ── Time remaining ── */}
-          {(entry.quoted_wait != null || entry.wait_estimate != null) && (
-            <div className="flex items-center justify-between rounded-xl mb-3 px-4 py-2.5" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.13)" }}>
-              <div>
-                <p className="text-[9px] font-black tracking-[0.2em] uppercase mb-0.5" style={{ color: paused ? "rgba(249,115,22,0.65)" : "rgba(255,200,150,0.40)" }}>
-                  {paused ? "⏸ Paused" : "Time Remaining"}
-                </p>
-                <p className="text-2xl font-bold tabular-nums leading-none" style={{ color: countdownColor }}>
-                  {countdown > 0 ? `${countdown} min` : "Ready to seat"}
-                </p>
+          {/* ── Timer display: Quoted + Elapsed + bar + pause ── */}
+          {(entry.quoted_wait != null || entry.wait_estimate != null) && (() => {
+            const quoted   = entry.quoted_wait ?? entry.wait_estimate ?? 0
+            const elapsed  = Math.max(0, quoted - countdown)
+            const barPct   = quoted > 0 ? Math.min(100, (elapsed / quoted) * 100) : 0
+            const barColor = paused ? "rgba(249,115,22,0.55)" : countdown <= 0 ? "#22c55e" : "rgba(251,191,36,0.80)"
+            return (
+              <div className="rounded-xl mb-3 px-4 py-3" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.13)" }}>
+                {/* Progress bar */}
+                <div style={{ height: 5, background: "rgba(255,185,100,0.10)", borderRadius: 3, overflow: "hidden", marginBottom: 14 }}>
+                  <div style={{
+                    height: "100%", borderRadius: 3,
+                    width: `${barPct}%`,
+                    background: barColor,
+                    transition: paused ? "none" : "width 60s linear",
+                  }} />
+                </div>
+                {/* Quoted / Elapsed stats */}
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.40)", marginBottom: 3 }}>Quoted</p>
+                    <p style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em" }}>
+                      {quoted}<span style={{ fontSize: 12, color: "rgba(255,200,150,0.40)", marginLeft: 3 }}>min</span>
+                    </p>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: paused ? "rgba(249,115,22,0.60)" : "rgba(255,200,150,0.40)", marginBottom: 3 }}>
+                      {paused ? "⏸ Elapsed" : "Elapsed"}
+                    </p>
+                    <p style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: countdownColor, letterSpacing: "-0.02em" }}>
+                      {elapsed}<span style={{ fontSize: 12, color: "rgba(255,200,150,0.40)", marginLeft: 3 }}>min</span>
+                    </p>
+                  </div>
+                </div>
+                {/* Pause button — full width, prominent */}
+                <button
+                  onClick={handlePause}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] hover:brightness-110"
+                  style={{
+                    height: 44, fontSize: 13,
+                    background: paused ? "rgba(34,197,94,0.12)" : "rgba(249,115,22,0.10)",
+                    color:      paused ? "#22c55e"              : "#f97316",
+                    border: `1px solid ${paused ? "rgba(34,197,94,0.28)" : "rgba(249,115,22,0.22)"}`,
+                  }}
+                >
+                  {paused ? "▶  Resume Timer" : "⏸  Pause Timer"}
+                </button>
               </div>
-              <button
-                onClick={handlePause}
-                className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold tracking-[0.1em] uppercase transition-all active:scale-95 hover:brightness-110"
-                style={{
-                  background: paused ? "rgba(34,197,94,0.12)" : "rgba(249,115,22,0.10)",
-                  color:      paused ? "#22c55e"              : "#f97316",
-                  border: `1px solid ${paused ? "rgba(34,197,94,0.25)" : "rgba(249,115,22,0.20)"}`,
-                }}
-              >
-                {paused ? "▶ Resume" : "⏸ Pause"}
-              </button>
-            </div>
-          )}
+            )
+          })()}
 
           {/* ── Set estimate ── */}
           <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Set Estimate</p>
@@ -504,16 +575,18 @@ function DraggableQueueCard({
   // updated_at). Falls back to wait_estimate when no quoted_wait has been set.
   const [displayWait, setDisplayWait] = useState(entry.remaining_wait ?? entry.wait_estimate ?? 0)
   const quotedTotal = entry.quoted_wait ?? entry.wait_estimate ?? 0
-  const barPct = quotedTotal > 0 ? Math.max(0, Math.min(100, (displayWait / quotedTotal) * 100)) : 0
+  // Bar fills as time elapses (0% → 100%)
+  const elapsedMin = Math.max(0, quotedTotal - displayWait)
+  const barPct     = quotedTotal > 0 ? Math.min(100, (elapsedMin / quotedTotal) * 100) : 0
   useEffect(() => {
     setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
   }, [entry.remaining_wait, entry.wait_estimate])
   useEffect(() => {
     const target = entry.remaining_wait ?? entry.wait_estimate
-    if (!target) return
+    if (!target || entry.paused) return
     const t = setInterval(() => setDisplayWait(p => Math.max(0, p - 1)), 60_000)
     return () => clearInterval(t)
-  }, [entry.remaining_wait, entry.wait_estimate])
+  }, [entry.remaining_wait, entry.wait_estimate, entry.paused])
 
   return (
     <div
@@ -577,15 +650,15 @@ function DraggableQueueCard({
         </div>
       )}
 
-      {/* ── Progress bar: remaining time vs quoted total ── */}
+      {/* ── Progress bar: fills as time elapses ── */}
       {quotedTotal > 0 && !isReady && (
         <div style={{ marginTop: 6, height: 3, background: "rgba(255,185,100,0.08)", borderRadius: 2, overflow: "hidden" }}>
           <div style={{
             height: "100%",
             width: `${barPct}%`,
-            background: displayWait <= 0 ? "#22c55e" : displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.75)",
+            background: entry.paused ? "rgba(249,115,22,0.50)" : displayWait <= 0 ? "#22c55e" : displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.75)",
             borderRadius: 2,
-            transition: "width 60s linear",
+            transition: entry.paused ? "none" : "width 60s linear",
           }} />
         </div>
       )}
@@ -1196,7 +1269,7 @@ function SeatTablePicker({
 
 // ── Add Guest Drawer ───────────────────────────────────────────────────────────
 
-function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number) => void }) {
+function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number, partySize: number) => void }) {
   const [name, setName]           = useState("")
   const [partySize, setPartySize] = useState(2)
   const [phone, setPhone]         = useState("")
@@ -1220,7 +1293,7 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (e
       })
       if (!r.ok) throw new Error()
       const data = await r.json()
-      onAdded(data.entry?.id ?? "", data.wait_estimate ?? 15)
+      onAdded(data.entry?.id ?? "", data.wait_estimate ?? 15, partySize)
     } catch {
       setError("Could not add guest.")
     } finally {
@@ -1307,6 +1380,191 @@ function Toasts({ items }: { items: ToastItem[] }) {
   )
 }
 
+// ── History Drawer ─────────────────────────────────────────────────────────────
+
+function HistoryDrawer({ onClose }: { onClose: () => void }) {
+  const hist    = getHistory()
+  const todayMs = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime() })()
+  const todayHist = hist.filter(r => r.seated_at >= todayMs)
+
+  const avgQuoted = hist.length
+    ? Math.round(hist.reduce((a, r) => a + r.quoted_wait, 0) / hist.length)
+    : null
+  const avgActual = hist.length
+    ? Math.round(hist.reduce((a, r) => a + r.actual_wait_min, 0) / hist.length)
+    : null
+
+  // Busiest hour
+  const hourCounts: Record<number, number> = {}
+  hist.forEach(r => { hourCounts[r.hour_of_day] = (hourCounts[r.hour_of_day] ?? 0) + 1 })
+  let busiestHour: number | null = null
+  let busiestCount = 0
+  for (const [h, c] of Object.entries(hourCounts)) {
+    if (c > busiestCount) { busiestHour = Number(h); busiestCount = c }
+  }
+  const fmtHour = (h: number) => `${h % 12 || 12}${h >= 12 ? "PM" : "AM"}`
+
+  const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 8]
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-stretch sm:items-center justify-end">
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[400px] h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-2xl flex flex-col overflow-hidden"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0"
+          style={{ borderBottom: "1px solid rgba(255,185,100,0.12)" }}
+        >
+          <div>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase mb-0.5" style={{ color: "rgba(255,200,150,0.40)" }}>
+              Seating Intelligence
+            </p>
+            <p className="text-lg font-bold" style={{ color: "rgba(255,248,240,0.95)" }}>History</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 flex items-center justify-center rounded-xl"
+            style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
+          {hist.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <BarChart2 className="w-8 h-8" style={{ color: "rgba(255,185,100,0.25)" }} />
+              <p className="text-sm font-medium" style={{ color: "rgba(255,200,150,0.45)" }}>No seating history yet</p>
+              <p className="text-xs" style={{ color: "rgba(255,200,150,0.28)", maxWidth: 220 }}>
+                Seat guests from the queue to start building history. Suggestions improve over time.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Today */}
+              <div>
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
+                  Today · {todayHist.length} parties
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Parties", value: todayHist.length, unit: "" },
+                    { label: "Avg Quoted", value: avgQuoted, unit: "min" },
+                    { label: "Avg Actual", value: avgActual, unit: "min" },
+                  ].map(({ label, value, unit }) => (
+                    <div
+                      key={label}
+                      className="flex flex-col items-center justify-center rounded-xl py-4"
+                      style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}
+                    >
+                      <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em" }}>
+                        {value ?? "—"}
+                      </span>
+                      {unit && value != null && (
+                        <span style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 2 }}>{unit}</span>
+                      )}
+                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginTop: 5, textAlign: "center" }}>
+                        {label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* All-time */}
+              <div>
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
+                  All Time · {hist.length} parties
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {busiestHour !== null && (
+                    <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
+                      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>
+                        Busiest Hour
+                      </p>
+                      <p style={{ fontSize: 24, fontWeight: 700, color: "rgba(255,248,240,0.95)", lineHeight: 1, letterSpacing: "-0.02em" }}>
+                        {fmtHour(busiestHour)}
+                      </p>
+                      <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>{busiestCount} parties</p>
+                    </div>
+                  )}
+                  {avgQuoted != null && avgActual != null && (
+                    <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
+                      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>
+                        Accuracy
+                      </p>
+                      <p style={{
+                        fontSize: 24, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em",
+                        color: Math.abs(avgQuoted - avgActual) <= 3 ? "#22c55e" : "rgba(251,191,36,0.90)",
+                      }}>
+                        {Math.abs(avgQuoted - avgActual) <= 3 ? "Great" : avgActual > avgQuoted ? "Under" : "Over"}
+                      </p>
+                      <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>
+                        {Math.abs(avgQuoted - avgActual)}m {avgActual > avgQuoted ? "longer" : "shorter"} than quoted
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Per-party-size suggestions */}
+              <div>
+                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-1" style={{ color: "rgba(255,200,150,0.40)" }}>
+                  Suggested Wait Times
+                </p>
+                <p className="text-[10px] mb-3" style={{ color: "rgba(255,200,150,0.28)" }}>
+                  Based on {hist.length} seatings · adjusted for current time of day
+                </p>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {PARTY_SIZES.map(n => {
+                    const suggestion = suggestWait(n)
+                    return (
+                      <div
+                        key={n}
+                        className="flex flex-col items-center justify-center rounded-xl py-3"
+                        style={{
+                          background: suggestion ? "rgba(255,185,100,0.07)" : "rgba(255,185,100,0.03)",
+                          border: `1px solid ${suggestion ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.08)"}`,
+                        }}
+                      >
+                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 3 }}>
+                          {n}{n === 8 ? "+" : ""}p
+                        </span>
+                        <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, color: suggestion ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.22)", letterSpacing: "-0.02em" }}>
+                          {suggestion ?? "—"}
+                        </span>
+                        {suggestion != null && (
+                          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.35)", marginTop: 1 }}>min</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer — clear history */}
+        {hist.length > 0 && (
+          <div className="px-6 py-4 shrink-0" style={{ borderTop: "1px solid rgba(255,185,100,0.10)" }}>
+            <button
+              onClick={() => { try { localStorage.removeItem(HISTORY_KEY) } catch {} onClose(); showToast("History cleared", "ok") }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.50)", border: "1px solid rgba(239,68,68,0.14)", padding: "10px 0" }}
+            >
+              Clear History
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function DemoHostDashboard() {
@@ -1334,6 +1592,9 @@ export default function DemoHostDashboard() {
   const [toasts, setToasts]               = useState<ToastItem[]>([])
   const [resTblPicker, setResTblPicker]   = useState<Reservation | null>(null)
   const [globalWait, setGlobalWait]       = useState<number | null>(null)
+  const [historyOpen, setHistoryOpen]     = useState(false)
+  const [resSeatWarning, setResSeatWarning] = useState<{ entry: QueueEntry; tableNumber: number; tableId: string | undefined; resInfo: ReservedTable } | null>(null)
+  const [newGuestNotifs, setNewGuestNotifs] = useState<{ id: string; name: string; party_size: number; suggested: number | null }[]>([])
   const [reservedTables, setReservedTables] = useState<Map<number, ReservedTable>>(() => {
     try {
       const s = localStorage.getItem("host_demo_reserved_tables")
@@ -1369,6 +1630,13 @@ export default function DemoHostDashboard() {
 
   // Sync globalWait state → ref so fetchQueue can read it without stale closure
   useEffect(() => { globalWaitRef.current = globalWait }, [globalWait])
+
+  // Auto-clear new-guest notifs when guest is no longer waiting (seated / removed)
+  useEffect(() => {
+    if (newGuestNotifs.length === 0) return
+    const waitingIds = new Set(queue.filter(e => e.status === "waiting").map(e => e.id))
+    setNewGuestNotifs(prev => prev.filter(n => waitingIds.has(n.id)))
+  }, [queue]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist reserved table pre-assignments
   useEffect(() => {
@@ -1447,19 +1715,31 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (r.ok) {
         const data: QueueEntry[] = await r.json()
-        // Auto-apply global wait to any new waiting guests (NFC joiners, etc.)
+        // Detect new waiting guests who joined since last poll
         const gw = globalWaitRef.current
-        if (queueLoadedRef.current && gw !== null) {
+        if (queueLoadedRef.current) {
           const newEntries = data.filter(e =>
             e.status === "waiting" &&
             !seenIdsRef.current.has(e.id) &&
             !e.quoted_wait
           )
           if (newEntries.length > 0) {
-            for (const e of newEntries) {
-              fetchT(`${API}/queue/${e.id}/wait?minutes=${gw}`, { method: "PATCH" }).catch(() => {})
+            if (gw !== null) {
+              // Global wait set — auto-apply silently
+              for (const e of newEntries) {
+                fetchT(`${API}/queue/${e.id}/wait?minutes=${gw}`, { method: "PATCH" }).catch(() => {})
+              }
+              showToast(`${gw}m wait auto-applied to ${newEntries.length} new guest${newEntries.length !== 1 ? "s" : ""}`, "ok")
+            } else {
+              // No global wait — surface in notification tray for host to assign individually
+              setNewGuestNotifs(prev => {
+                const existingIds = new Set(prev.map(n => n.id))
+                const fresh = newEntries
+                  .filter(e => !existingIds.has(e.id))
+                  .map(e => ({ id: e.id, name: e.name, party_size: e.party_size, suggested: suggestWait(e.party_size) }))
+                return [...prev, ...fresh]
+              })
             }
-            showToast(`${gw}m wait auto-applied to ${newEntries.length} new guest${newEntries.length !== 1 ? "s" : ""}`, "ok")
           }
         }
         data.forEach(e => seenIdsRef.current.add(e.id))
@@ -1468,7 +1748,7 @@ export default function DemoHostDashboard() {
       }
     } catch { setOnline(false) }
     finally   { setIsInitialLoad(false) }
-  }, [])
+  }, [setNewGuestNotifs])
   const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights?restaurant_id=${DEMO_RESTAURANT_ID}`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
   const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
 
@@ -1532,20 +1812,12 @@ export default function DemoHostDashboard() {
     setSelectedEntry(null)
   }, [])
 
-  const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
-    setSeatPicker(null)
-    // Capacity warning (non-blocking — host may still want to proceed)
+  // Core seat action — called directly or after warning confirmation
+  const doSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
+    // Capacity warning (non-blocking)
     const apiTable = tables.find(t => tableId ? t.id === tableId : t.table_number === tableNumber)
     if (apiTable && entry.party_size > apiTable.capacity) {
       showToast(`⚠️ Table ${tableNumber} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
-    }
-    // Reservation warning (within 1-hour window)
-    const resTableInfo = reservedTables.get(tableNumber)
-    if (resTableInfo) {
-      const mins = getResMinutesUntil(resTableInfo.time, new Date())
-      if (mins > 0 && mins <= 60) {
-        showToast(`⚠️ Warning: ${resTableInfo.guestName} reserved this table at ${fmt12Res(resTableInfo.time)}`, "warn")
-      }
     }
     try {
       const r = tableId
@@ -1557,11 +1829,31 @@ export default function DemoHostDashboard() {
       return
     }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
-    // Clear any reservation pre-assignment for this table
     setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+    // Record seating history for suggestions
+    if (entry.quoted_wait) {
+      const arrivalMs    = new Date(entry.arrival_time).getTime()
+      const actualWait   = Math.round((Date.now() - arrivalMs) / 60_000)
+      const now          = new Date()
+      addToHistory({ party_size: entry.party_size, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, seated_at: Date.now(), day_of_week: now.getDay(), hour_of_day: now.getHours() })
+    }
     showToast(`${entry.name || "Guest"} seated at Table ${tableNumber}`)
     refreshAll()
-  }, [refreshAll, tables, reservedTables])
+  }, [refreshAll, tables])
+
+  const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
+    setSeatPicker(null)
+    // Reservation conflict — BLOCKING warning before seating
+    const resTableInfo = reservedTables.get(tableNumber)
+    if (resTableInfo) {
+      const mins = getResMinutesUntil(resTableInfo.time, new Date())
+      if (mins > -15 && mins <= 60) {
+        setResSeatWarning({ entry, tableNumber, tableId, resInfo: resTableInfo })
+        return
+      }
+    }
+    await doSeat(entry, tableNumber, tableId)
+  }, [doSeat, reservedTables])
 
   const checkInConfirm = useCallback(async (res: Reservation, tableNumber: number, tableId: string | undefined) => {
     setResPicker(null)
@@ -1774,6 +2066,14 @@ export default function DemoHostDashboard() {
               }
             </button>
 
+            <button
+              onClick={() => setHistoryOpen(true)}
+              className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors"
+              style={{ color: "rgba(255,200,150,0.65)" }}
+            >
+              <BarChart2 className="w-3 h-3" /> History
+            </button>
+
             <Link href="/demo/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>
@@ -1867,6 +2167,96 @@ export default function DemoHostDashboard() {
                 </p>
               )}
             </div>
+
+            {/* ── New guest notification tray ───────────────────── */}
+            {newGuestNotifs.length > 0 && globalWait === null && (
+              <div style={{
+                padding: "6px 10px",
+                borderBottom: "1px solid rgba(255,185,100,0.16)",
+                background: "rgba(99,179,237,0.04)",
+                flexShrink: 0,
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5, padding: "0 2px" }}>
+                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(99,179,237,0.75)" }}>
+                    🔔 New Guests · {newGuestNotifs.length}
+                  </span>
+                  <button
+                    onClick={() => setNewGuestNotifs([])}
+                    style={{ fontSize: 9, color: "rgba(255,200,150,0.35)", background: "none", border: "none", cursor: "pointer", padding: 0, letterSpacing: "0.05em" }}
+                  >
+                    dismiss all
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {newGuestNotifs.map(n => (
+                    <div key={n.id} style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      background: "rgba(99,179,237,0.07)",
+                      border: "1px solid rgba(99,179,237,0.20)",
+                      borderRadius: 9, padding: "6px 8px",
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,248,240,0.92)", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {n.name || "Guest"} · {n.party_size}p
+                        </span>
+                        {n.suggested != null && (
+                          <span style={{ fontSize: 9, color: "rgba(99,179,237,0.60)", marginTop: 1, display: "block" }}>
+                            Suggested: {n.suggested}m
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 3, alignItems: "center", flexShrink: 0 }}>
+                        {n.suggested != null && (
+                          <button
+                            onClick={() => {
+                              fetchT(`${API}/queue/${n.id}/wait?minutes=${n.suggested}`, { method: "PATCH" }).catch(() => {})
+                              setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))
+                              showToast(`${n.suggested}m set for ${n.name || "guest"}`, "ok")
+                              refreshAll()
+                            }}
+                            style={{
+                              height: 22, padding: "0 8px", borderRadius: 5,
+                              background: "rgba(99,179,237,0.16)",
+                              border: "1px solid rgba(99,179,237,0.40)",
+                              color: "rgba(99,179,237,0.95)",
+                              fontSize: 10, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" as never,
+                            }}
+                          >
+                            {n.suggested}m ✓
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))
+                            setWaitModal({ id: n.id, defaultMinutes: n.suggested ?? 15 })
+                          }}
+                          style={{
+                            height: 22, padding: "0 7px", borderRadius: 5,
+                            background: "rgba(255,185,100,0.07)",
+                            border: "1px solid rgba(255,185,100,0.20)",
+                            color: "rgba(255,200,150,0.65)",
+                            fontSize: 10, cursor: "pointer", whiteSpace: "nowrap" as never,
+                          }}
+                        >
+                          Set
+                        </button>
+                        <button
+                          onClick={() => setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))}
+                          style={{
+                            width: 20, height: 20, borderRadius: 4,
+                            background: "none", border: "none",
+                            cursor: "pointer", color: "rgba(255,200,150,0.28)",
+                            display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+                          }}
+                        >
+                          <X style={{ width: 10, height: 10 }} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* ── Today's reservations ──────────────────────────── */}
             {activeRes.length > 0 && (
@@ -2158,7 +2548,7 @@ export default function DemoHostDashboard() {
         {showAdd && (
           <AddGuestDrawer
             onClose={() => setShowAdd(false)}
-            onAdded={(id, mins) => {
+            onAdded={(id, mins, size) => {
               setShowAdd(false)
               if (globalWait !== null) {
                 // Global wait is set — apply automatically, skip the modal
@@ -2167,8 +2557,9 @@ export default function DemoHostDashboard() {
                   .catch(() => {})
                 refreshAll()
               } else {
-                // No global wait — prompt host to set one
-                setWaitModal({ id, defaultMinutes: mins })
+                // No global wait — open modal pre-filled with suggestion (if available)
+                const suggested = suggestWait(size)
+                setWaitModal({ id, defaultMinutes: suggested ?? mins })
                 refreshAll()
               }
             }}
@@ -2291,10 +2682,83 @@ export default function DemoHostDashboard() {
             onClose={() => setResTblPicker(null)}
           />
         )}
+
+        {/* ── Reservation seat warning modal (blocking) ─────────── */}
+        {resSeatWarning && (
+          <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
+            <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+            <div
+              className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-7"
+              style={{ background: "#100C09", border: "1px solid rgba(249,115,22,0.35)", zIndex: 1 }}
+            >
+              <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.18)" }} />
+
+              <div className="flex items-start gap-3 mb-5">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
+                  style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.35)" }}
+                >
+                  ⚠️
+                </div>
+                <div>
+                  <p className="font-bold text-sm mb-1" style={{ color: "rgba(255,240,220,0.97)" }}>Table Reserved</p>
+                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.55)", lineHeight: 1.5 }}>
+                    Table {resSeatWarning.tableNumber} is held for{" "}
+                    <strong style={{ color: "rgba(255,240,220,0.88)" }}>{resSeatWarning.resInfo.guestName}</strong>{" "}
+                    at <strong style={{ color: "rgba(249,115,22,0.95)" }}>{fmt12Res(resSeatWarning.resInfo.time)}</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mb-5 p-3 rounded-xl" style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.18)" }}>
+                <p className="text-xs" style={{ color: "rgba(255,200,150,0.60)", lineHeight: 1.5 }}>
+                  Seating{" "}
+                  <strong style={{ color: "rgba(255,240,220,0.88)" }}>{resSeatWarning.entry.name || "this guest"}</strong>{" "}
+                  ({resSeatWarning.entry.party_size}p) here may conflict with the upcoming reservation.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => {
+                    const w = resSeatWarning
+                    setResSeatWarning(null)
+                    doSeat(w.entry, w.tableNumber, w.tableId)
+                  }}
+                  className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] hover:brightness-110"
+                  style={{ background: "rgba(249,115,22,0.16)", color: "#f97316", border: "1px solid rgba(249,115,22,0.40)", fontSize: 14, padding: "16px 0" }}
+                >
+                  Seat Anyway
+                </button>
+                <button
+                  onClick={() => {
+                    const entry = resSeatWarning.entry
+                    setResSeatWarning(null)
+                    setSeatPicker(entry)
+                  }}
+                  className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] hover:brightness-110"
+                  style={{ background: "rgba(34,197,94,0.10)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.30)", fontSize: 14, padding: "16px 0" }}
+                >
+                  Choose Different Table
+                </button>
+                <button
+                  onClick={() => setResSeatWarning(null)}
+                  className="w-full py-3 text-xs transition-all"
+                  style={{ color: "rgba(255,200,150,0.28)", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Toast notifications */}
       <Toasts items={toasts} />
+
+      {/* History drawer */}
+      {historyOpen && <HistoryDrawer onClose={() => setHistoryOpen(false)} />}
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null}>
