@@ -333,6 +333,142 @@ function WaitTimeModal({
   )
 }
 
+// ── NFC Wait Panel (sidebar — floor map stays live) ─────────────────────────
+
+function NfcWaitPanel({
+  entryId, entryName, partySize, suggested, sidebarW, onClose,
+}: {
+  entryId:   string
+  entryName: string
+  partySize: number
+  suggested: number | null
+  sidebarW:  number
+  onClose:   () => void
+}) {
+  const [minutes, setMinutes] = useState(suggested ?? 15)
+  const [saving,  setSaving]  = useState(false)
+  const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const r = await fetchT(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" })
+      if (!r.ok) throw new Error("server")
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && e.name === "AbortError"
+      showToast(isTimeout ? "Request timed out — try again." : "Could not update wait time.", "err")
+      setSaving(false)
+      return
+    }
+    setSaving(false)
+    onClose()
+  }
+
+  return (
+    <div style={{
+      position: "fixed", top: 48, left: 0, bottom: 0,
+      width: sidebarW, zIndex: 46,
+      background: "#0C0907",
+      borderTop: "1px solid rgba(99,179,237,0.30)",
+      borderRight: "1px solid rgba(99,179,237,0.18)",
+      display: "flex", flexDirection: "column",
+      overflowY: "auto",
+    }}>
+      {/* Header */}
+      <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid rgba(99,179,237,0.14)", flexShrink: 0 }}>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(99,179,237,0.65)", marginBottom: 4 }}>
+          Quote Wait Time
+        </p>
+        <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,248,240,0.95)", margin: 0 }}>
+          {entryName || "Guest"} <span style={{ fontSize: 13, fontWeight: 400, color: "rgba(255,200,150,0.50)" }}>· {partySize}p</span>
+        </p>
+        <p style={{ fontSize: 11, color: "rgba(255,200,150,0.32)", marginTop: 4, marginBottom: 0 }}>
+          The guest will see this count down on their phone.
+        </p>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: "16px 14px", flex: 1 }}>
+        {/* HOST suggestion chip */}
+        {suggested !== null && (
+          <button
+            onClick={() => setMinutes(suggested)}
+            style={{
+              width: "100%", padding: "8px 12px", borderRadius: 10, cursor: "pointer",
+              marginBottom: 14,
+              background: minutes === suggested ? "rgba(251,191,36,0.18)" : "rgba(251,191,36,0.07)",
+              border: `1.5px solid ${minutes === suggested ? "rgba(251,191,36,0.65)" : "rgba(251,191,36,0.22)"}`,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}
+          >
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(251,191,36,0.75)" }}>
+              HOST Suggestion
+            </span>
+            <span style={{ fontSize: 22, fontWeight: 700, color: minutes === suggested ? "rgba(255,240,180,0.97)" : "rgba(255,220,140,0.75)" }}>
+              {suggested}<span style={{ fontSize: 11, fontWeight: 500, marginLeft: 3, color: "rgba(251,191,36,0.55)" }}>min</span>
+            </span>
+          </button>
+        )}
+
+        {/* Stepper */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
+          <button
+            onClick={() => setMinutes(m => Math.max(1, m - 1))}
+            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
+          >−</button>
+          <div style={{ textAlign: "center" }}>
+            <span style={{ fontSize: 60, fontWeight: 200, lineHeight: 1, color: "rgba(255,248,240,0.95)", fontVariantNumeric: "tabular-nums" }}>
+              {minutes}
+            </span>
+            <span style={{ display: "block", fontSize: 11, marginTop: 2, color: "rgba(255,200,150,0.40)" }}>min</span>
+          </div>
+          <button
+            onClick={() => setMinutes(m => Math.min(120, m + 1))}
+            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
+          >+</button>
+        </div>
+
+        {/* Preset grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 20 }}>
+          {PRESETS.map(p => (
+            <button
+              key={p}
+              onClick={() => setMinutes(p)}
+              style={{
+                height: 64, borderRadius: 14, cursor: "pointer",
+                background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)",
+                border: `1.5px solid ${minutes === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.11)"}`,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+              }}
+            >
+              <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>
+                {p}
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", color: minutes === p ? "rgba(255,200,150,0.60)" : "rgba(255,185,100,0.30)" }}>
+                MIN
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Confirm button */}
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{
+            width: "100%", borderRadius: 14, fontWeight: 900, letterSpacing: "0.15em",
+            textTransform: "uppercase", fontSize: 15, padding: "18px 0",
+            background: "#D9321C", color: "white", border: "none", cursor: "pointer",
+            opacity: saving ? 0.4 : 1,
+          }}
+        >
+          {saving ? "Saving…" : "Set Wait Time"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Guest Edit Modal ────────────────────────────────────────────────────────────
 
 function GuestEditModal({
@@ -1774,6 +1910,7 @@ export default function DemoHostDashboard() {
   const [ghStatus, setGhStatus]           = useState<"good"|"degraded"|"bad">("good")
   const [showAdd, setShowAdd]             = useState(false)
   const [waitModal, setWaitModal]         = useState<{ id: string; defaultMinutes: number } | null>(null)
+  const [nfcWaitPanel, setNfcWaitPanel]   = useState<{ id: string; name: string; party_size: number; suggested: number | null } | null>(null)
   const [editModal, setEditModal]         = useState<{ entry: QueueEntry; displayWait: number } | null>(null)
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
@@ -2373,16 +2510,10 @@ export default function DemoHostDashboard() {
                 background: "rgba(99,179,237,0.04)",
                 flexShrink: 0,
               }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5, padding: "0 2px" }}>
+                <div style={{ marginBottom: 5, padding: "0 2px" }}>
                   <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(99,179,237,0.75)" }}>
                     🔔 New Guests · {newGuestNotifs.length}
                   </span>
-                  <button
-                    onClick={() => setNewGuestNotifs([])}
-                    style={{ fontSize: 9, color: "rgba(255,200,150,0.35)", background: "none", border: "none", cursor: "pointer", padding: 0, letterSpacing: "0.05em" }}
-                  >
-                    dismiss all
-                  </button>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {newGuestNotifs.map(n => (
@@ -2391,26 +2522,17 @@ export default function DemoHostDashboard() {
                       border: "1px solid rgba(99,179,237,0.28)",
                       borderRadius: 10, padding: "8px 8px 8px 10px",
                     }}>
-                      {/* Top row: name + dismiss */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,248,240,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {/* Name row */}
+                      <div style={{ marginBottom: 7 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,248,240,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
                           {n.name || "Guest"} · {n.party_size}p
                         </span>
-                        <button
-                          onClick={() => setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))}
-                          style={{ width: 18, height: 18, borderRadius: 4, background: "none", border: "none", cursor: "pointer", color: "rgba(255,200,150,0.30)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
-                        >
-                          <X style={{ width: 10, height: 10 }} />
-                        </button>
                       </div>
-                      {/* Bottom row: action buttons */}
+                      {/* Action buttons */}
                       <div style={{ display: "flex", gap: 5 }}>
-                        {/* "Set Wait" — primary urgent action */}
+                        {/* "Set Wait" — opens sidebar panel */}
                         <button
-                          onClick={() => {
-                            setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))
-                            setWaitModal({ id: n.id, defaultMinutes: n.suggested ?? 15 })
-                          }}
+                          onClick={() => setNfcWaitPanel({ id: n.id, name: n.name, party_size: n.party_size, suggested: n.suggested })}
                           style={{
                             flex: 1, height: 34, borderRadius: 8,
                             background: "rgba(99,179,237,0.22)",
@@ -2745,6 +2867,21 @@ export default function DemoHostDashboard() {
             onClose={() => setShowAdd(false)}
             onAdded={(id) => {
               setShowAdd(false)
+              refreshAll()
+            }}
+          />
+        )}
+
+        {nfcWaitPanel && (
+          <NfcWaitPanel
+            entryId={nfcWaitPanel.id}
+            entryName={nfcWaitPanel.name}
+            partySize={nfcWaitPanel.party_size}
+            suggested={nfcWaitPanel.suggested}
+            sidebarW={sidebarW}
+            onClose={() => {
+              setNewGuestNotifs(prev => prev.filter(x => x.id !== nfcWaitPanel.id))
+              setNfcWaitPanel(null)
               refreshAll()
             }}
           />
