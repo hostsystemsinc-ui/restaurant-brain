@@ -409,7 +409,7 @@ function ResDrawer({
   initial:     Partial<Reservation> | null
   defaultDate: string
   onClose:     () => void
-  onSave:      (newRes?: Reservation) => void
+  onSave:      (newResInfo?: { guest_name: string; time: string }) => void
 }) {
   const isEdit = !!initial?.id
 
@@ -449,11 +449,11 @@ function ResDrawer({
         const d = await res.json().catch(() => ({}))
         throw new Error(d.detail ?? "Server error — please check Supabase tables are created.")
       }
-      const savedData: Reservation = await res.json().catch(() => ({}) as Reservation)
       if (isEdit && status !== initial?.status) {
         await fetch(`${API}/reservations/${initial!.id}/status?status=${status}`, { method: "PATCH" })
       }
-      onSave(isEdit ? undefined : savedData)
+      // Pass form data directly — don't rely on API response having an id
+      onSave(isEdit ? undefined : { guest_name: name.trim(), time: time.slice(0, 5) })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not save reservation. Try again.")
     } finally {
@@ -639,7 +639,7 @@ export default function DemoReservationsPage() {
   const [deleteTarget,    setDeleteTarget]    = useState<string | null>(null)
   const [now,             setNow]             = useState(() => new Date())
   const [authed,          setAuthed]          = useState(false)
-  const [assignPrompt,    setAssignPrompt]    = useState<Reservation | null>(null)
+  const [assignPrompt,    setAssignPrompt]    = useState<{ guest_name: string; time: string } | null>(null)
 
   // Auth gate
   useEffect(() => {
@@ -1012,7 +1012,7 @@ export default function DemoReservationsPage() {
           initial={drawer === "new" ? null : drawer}
           defaultDate={selectedDate}
           onClose={() => setDrawer(null)}
-          onSave={(newRes) => { setDrawer(null); fetchAll(); if (newRes?.id) setAssignPrompt(newRes) }}
+          onSave={(newResInfo) => { setDrawer(null); fetchAll(); if (newResInfo) setAssignPrompt(newResInfo) }}
         />
       )}
 
