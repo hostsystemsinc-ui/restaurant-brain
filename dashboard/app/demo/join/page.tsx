@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2 } from "lucide-react"
+import { Loader2, UtensilsCrossed, X } from "lucide-react"
 
 const API                = "https://restaurant-brain-production.up.railway.app"
 const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
@@ -15,6 +15,54 @@ interface LiveInfo {
   ahead:     number
 }
 
+// ── Menu data ─────────────────────────────────────────────────────────────
+const MENU_SECTIONS = [
+  {
+    title: "Starters",
+    items: [
+      { name: "Charcuterie & Cheese",    desc: "Cured meats, artisan cheeses, seasonal accompaniments, grilled bread", price: "$24" },
+      { name: "Roasted Bone Marrow",     desc: "Charred sourdough, chimichurri, fleur de sel",                          price: "$18" },
+      { name: "Crispy Calamari",         desc: "Lemon aioli, fresno chili, fresh herbs",                                 price: "$16" },
+      { name: "Soup of the Day",         desc: "Ask your server for today's selection",                                  price: "$12" },
+    ],
+  },
+  {
+    title: "Mains",
+    items: [
+      { name: "303 Wagyu Burger",        desc: "8oz wagyu patty, aged cheddar, caramelized onion, house pickles, brioche", price: "$22" },
+      { name: "Pan-Seared Salmon",       desc: "Lemon beurre blanc, broccolini, roasted fingerling potatoes",              price: "$32" },
+      { name: "Braised Short Rib",       desc: "Truffle polenta, crispy shallots, red wine reduction",                     price: "$42" },
+      { name: "Pasta Cacio e Pepe",      desc: "Housemade tagliatelle, aged pecorino, freshly cracked pepper",             price: "$26" },
+      { name: "Free-Range Half Chicken", desc: "Herb-roasted, pan jus, seasonal vegetables",                              price: "$28" },
+    ],
+  },
+  {
+    title: "Sides",
+    items: [
+      { name: "Truffle Fries",           desc: "Parmesan, fresh herbs, house aioli",              price: "$12" },
+      { name: "Roasted Brussels",        desc: "Bacon lardons, balsamic glaze, toasted almonds", price: "$11" },
+      { name: "Mac & Cheese",            desc: "Four cheese blend, breadcrumb crust",             price: "$14" },
+    ],
+  },
+  {
+    title: "Cocktails",
+    items: [
+      { name: "303 Old Fashioned",       desc: "Rye whiskey, chocolate bitters, smoked cherry, orange peel", price: "$16" },
+      { name: "Colorado Mule",           desc: "Vodka, ginger beer, fresh lime, mint",                        price: "$14" },
+      { name: "Aperol Spritz",           desc: "Aperol, prosecco, soda water, orange",                        price: "$13" },
+      { name: "Seasonal Margarita",      desc: "Blanco tequila, fresh citrus, seasonal fruit, salted rim",    price: "$15" },
+    ],
+  },
+  {
+    title: "Wine & Beer",
+    items: [
+      { name: "Wine by the Glass",       desc: "Red, white, rosé, and sparkling selections",         price: "From $11" },
+      { name: "Local Draft Beer",        desc: "Rotating Colorado craft selections on tap",           price: "From $8"  },
+      { name: "Bottle of Wine",          desc: "Curated list — ask your server for the wine menu",   price: "From $38" },
+    ],
+  },
+]
+
 export default function DemoJoinPage() {
   const router = useRouter()
   const [partySize,   setPartySize]   = useState(2)
@@ -25,6 +73,7 @@ export default function DemoJoinPage() {
   const [error,       setError]       = useState("")
   const [live,        setLive]        = useState<LiveInfo | null>(null)
   const [joined,      setJoined]      = useState(false)
+  const [menuOpen,    setMenuOpen]    = useState(false)
 
   const fetchLive = useCallback(async () => {
     try {
@@ -52,6 +101,12 @@ export default function DemoJoinPage() {
     const t = setInterval(fetchLive, 20_000)
     return () => clearInterval(t)
   }, [fetchLive])
+
+  // Prevent body scroll when menu is open
+  useEffect(() => {
+    document.body.style.overflow = menuOpen ? "hidden" : ""
+    return () => { document.body.style.overflow = "" }
+  }, [menuOpen])
 
   const submit = async () => {
     if (!name.trim()) { setError("Please enter your name."); return }
@@ -94,11 +149,24 @@ export default function DemoJoinPage() {
         }
         @keyframes subtleUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes sheetUp {
+          from { transform: translateY(100%); }
+          to   { transform: translateY(0); }
+        }
+        @keyframes backdropIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes menuItemIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
         .jf-input { transition: border-color .15s; }
         .jf-input:focus { outline:none; border-color:rgba(255,255,255,0.35) !important; }
         .pm-btn:active:not(:disabled) { transform:scale(0.90) !important; }
         .cta-btn:active:not(:disabled) { transform:scale(0.98) !important; }
         .wt-btn { transition: background .15s, color .15s, border-color .15s; }
+        .menu-btn:active { transform:scale(0.97) !important; }
       `}</style>
 
       {/* ── HOST Wordmark ── */}
@@ -159,7 +227,7 @@ export default function DemoJoinPage() {
           <div style={{ fontSize: ".58rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: "rgba(255,255,255,0.32)", marginBottom: 7 }}>
             Preferred Wait
           </div>
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 1 }}>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none" as never, paddingBottom: 1 }}>
             {(["ASAP", "5m", "10m", "15m", "20m", "30m", "45m"] as const).map((label) => {
               const val = label === "ASAP" ? 0 : parseInt(label)
               const active = waitMinutes === val
@@ -205,7 +273,7 @@ export default function DemoJoinPage() {
       </div>
 
       {/* ── CTA ── */}
-      <div style={{ padding: "14px 22px 32px", flexShrink: 0 }}>
+      <div style={{ padding: "14px 22px 28px", flexShrink: 0 }}>
         {error && <p style={{ textAlign: "center", fontSize: ".78rem", color: "rgba(255,90,90,0.9)", marginBottom: 10 }}>{error}</p>}
         <button className="cta-btn" onClick={submit} disabled={loading || joined}
           style={{ width: "100%", height: 60, borderRadius: 18, background: loading || joined ? "rgba(255,255,255,0.26)" : "#fff", color: "#000", fontWeight: 800, fontSize: ".95rem", letterSpacing: ".12em", textTransform: "uppercase", border: "none", cursor: loading || joined ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "transform .12s" }}>
@@ -213,7 +281,27 @@ export default function DemoJoinPage() {
             ? <Loader2 style={{ width: 20, height: 20, animation: "spin 1s linear infinite" }} />
             : "Join Waitlist"}
         </button>
-        <p style={{ textAlign: "center", marginTop: 11, fontSize: ".66rem", color: "rgba(255,255,255,0.16)", letterSpacing: ".06em" }}>
+
+        {/* View Menu ghost button */}
+        <button
+          className="menu-btn"
+          onClick={() => setMenuOpen(true)}
+          style={{
+            width: "100%", height: 48, marginTop: 10,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+            background: "transparent",
+            border: "1px solid rgba(255,255,255,0.10)",
+            borderRadius: 14, cursor: "pointer",
+            color: "rgba(255,255,255,0.42)",
+            fontSize: ".82rem", fontWeight: 600, letterSpacing: ".04em",
+            transition: "transform .12s",
+          }}
+        >
+          <UtensilsCrossed size={14} style={{ opacity: 0.7 }} />
+          View Menu
+        </button>
+
+        <p style={{ textAlign: "center", marginTop: 10, fontSize: ".66rem", color: "rgba(255,255,255,0.16)", letterSpacing: ".06em" }}>
           HOST · No app download needed
         </p>
       </div>
@@ -232,6 +320,116 @@ export default function DemoJoinPage() {
           </p>
         </div>
       )}
+
+      {/* ── Menu Drawer ── */}
+      {menuOpen && <JoinMenuDrawer onClose={() => setMenuOpen(false)} />}
     </div>
+  )
+}
+
+// ── Menu Drawer ────────────────────────────────────────────────────────────
+function JoinMenuDrawer({ onClose }: { onClose: () => void }) {
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 40,
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(4px)",
+          WebkitBackdropFilter: "blur(4px)",
+          animation: "backdropIn 0.3s ease-out both",
+        }}
+      />
+
+      {/* Sheet */}
+      <div
+        style={{
+          position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
+          height: "88dvh",
+          background: "#0D0D0D",
+          borderRadius: "22px 22px 0 0",
+          border: "1px solid rgba(255,255,255,0.09)",
+          borderBottom: "none",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          animation: "sheetUp 0.42s cubic-bezier(0.32, 0.72, 0, 1) both",
+        }}
+      >
+        {/* Drag handle */}
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 4, flexShrink: 0 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
+        </div>
+
+        {/* Sheet header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "14px 24px 16px",
+          borderBottom: "1px solid rgba(255,255,255,0.07)",
+          flexShrink: 0,
+        }}>
+          <div>
+            <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>
+              Demo Restaurant
+            </p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>Menu</p>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: "rgba(255,255,255,0.07)",
+              border: "none", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "rgba(255,255,255,0.6)",
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Scrollable menu */}
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as never, padding: "8px 0 40px" }}>
+          {MENU_SECTIONS.map((section, si) => (
+            <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.4s ${si * 0.06}s ease-out both` }}>
+              <p style={{
+                fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase",
+                color: "rgba(255,255,255,0.35)", fontWeight: 700,
+                marginBottom: 14,
+              }}>
+                {section.title}
+              </p>
+
+              {section.items.map((item, ii) => (
+                <div key={item.name}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 3 }}>{item.name}</p>
+                      <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.desc}</p>
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap" as never, marginTop: 2, flexShrink: 0 }}>
+                      {item.price}
+                    </p>
+                  </div>
+                  {ii < section.items.length - 1 && (
+                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />
+                  )}
+                </div>
+              ))}
+
+              {si < MENU_SECTIONS.length - 1 && (
+                <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />
+              )}
+            </div>
+          ))}
+
+          <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.15)", padding: "28px 24px 0", letterSpacing: "0.1em" }}>
+            Ask your server about daily specials &amp; dietary options
+          </p>
+        </div>
+      </div>
+    </>
   )
 }

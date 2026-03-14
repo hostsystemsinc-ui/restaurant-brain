@@ -224,7 +224,7 @@ export default function WaitPage() {
           Thanks for visiting.
         </p>
         <p style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", margin: "0 0 56px", letterSpacing: "0.05em" }}>
-          Walter&apos;s303
+          Demo Restaurant
         </p>
         <a
           href="/join"
@@ -533,7 +533,7 @@ export default function WaitPage() {
           }}>
             <div style={{
               width: `${progress}%`, height: "100%", borderRadius: 99,
-              background: "linear-gradient(90deg, #f97316, #fb923c)",
+              background: "linear-gradient(90deg, #22c55e, #86efac)",
               transition: "width 1s linear",
             }} />
           </div>
@@ -566,7 +566,7 @@ export default function WaitPage() {
             borderRadius: 14, padding: "14px 16px",
           }}>
             <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Est. Wait</p>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#f97316" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#22c55e" }}>
               <Clock size={14} style={{ opacity: 0.8 }} />
               {quoted_wait && displayWait > 0 ? `~${displayWait}m` : "—"}
             </div>
@@ -746,7 +746,7 @@ function MenuDrawer({ onClose }: { onClose: () => void }) {
         }}>
           <div>
             <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>
-              Walter&apos;s303
+              Demo Restaurant
             </p>
             <p style={{ fontSize: 22, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>Menu</p>
           </div>

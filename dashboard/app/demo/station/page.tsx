@@ -1340,10 +1340,13 @@ export default function DemoHostDashboard() {
       return s ? new Map(JSON.parse(s) as [number, ReservedTable][]) : new Map()
     } catch { return new Map() }
   })
-  const toastSeqRef = useRef(0)
-  const isResizing = useRef(false)
-  const resizeStartX = useRef(0)
-  const resizeStartW = useRef(0)
+  const toastSeqRef     = useRef(0)
+  const isResizing      = useRef(false)
+  const resizeStartX    = useRef(0)
+  const resizeStartW    = useRef(0)
+  const globalWaitRef   = useRef<number | null>(null)
+  const seenIdsRef      = useRef(new Set<string>())
+  const queueLoadedRef  = useRef(false)
 
   // Auth gate
   useEffect(() => {
@@ -1363,6 +1366,9 @@ export default function DemoHostDashboard() {
     }
     return () => { _dispatchToast = null }
   }, [])
+
+  // Sync globalWait state → ref so fetchQueue can read it without stale closure
+  useEffect(() => { globalWaitRef.current = globalWait }, [globalWait])
 
   // Persist reserved table pre-assignments
   useEffect(() => {
@@ -1439,7 +1445,27 @@ export default function DemoHostDashboard() {
   const fetchQueue    = useCallback(async () => {
     try {
       const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`)
-      if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) }
+      if (r.ok) {
+        const data: QueueEntry[] = await r.json()
+        // Auto-apply global wait to any new waiting guests (NFC joiners, etc.)
+        const gw = globalWaitRef.current
+        if (queueLoadedRef.current && gw !== null) {
+          const newEntries = data.filter(e =>
+            e.status === "waiting" &&
+            !seenIdsRef.current.has(e.id) &&
+            !e.quoted_wait
+          )
+          if (newEntries.length > 0) {
+            for (const e of newEntries) {
+              fetchT(`${API}/queue/${e.id}/wait?minutes=${gw}`, { method: "PATCH" }).catch(() => {})
+            }
+            showToast(`${gw}m wait auto-applied to ${newEntries.length} new guest${newEntries.length !== 1 ? "s" : ""}`, "ok")
+          }
+        }
+        data.forEach(e => seenIdsRef.current.add(e.id))
+        queueLoadedRef.current = true
+        setQueue(data); setOnline(true); setLastSync(new Date())
+      }
     } catch { setOnline(false) }
     finally   { setIsInitialLoad(false) }
   }, [])
@@ -1971,6 +1997,25 @@ export default function DemoHostDashboard() {
                               Assign Table
                             </button>
                           )}
+                          {/* No Show — cancel reservation for non-arrivals */}
+                          <button
+                            onPointerDown={e => e.stopPropagation()}
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              await fetchT(`${API}/reservations/${res.id}/status?status=no-show`, { method: "PATCH" }).catch(() => {})
+                              fetchReservations()
+                              showToast(`${res.guest_name} marked as no-show`, "warn")
+                            }}
+                            style={{
+                              height: 20, padding: "0 7px", borderRadius: 5,
+                              border: "1px solid rgba(239,68,68,0.22)",
+                              cursor: "pointer", fontSize: 8, fontWeight: 700,
+                              letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" as never,
+                              background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.62)",
+                            }}
+                          >
+                            No Show
+                          </button>
                         </div>
                       </div>
                     )

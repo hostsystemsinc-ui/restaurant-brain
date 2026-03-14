@@ -409,7 +409,7 @@ function ResDrawer({
   initial:     Partial<Reservation> | null
   defaultDate: string
   onClose:     () => void
-  onSave:      () => void
+  onSave:      (newRes?: Reservation) => void
 }) {
   const isEdit = !!initial?.id
 
@@ -449,10 +449,11 @@ function ResDrawer({
         const d = await res.json().catch(() => ({}))
         throw new Error(d.detail ?? "Server error — please check Supabase tables are created.")
       }
+      const savedData: Reservation = await res.json().catch(() => ({}) as Reservation)
       if (isEdit && status !== initial?.status) {
         await fetch(`${API}/reservations/${initial!.id}/status?status=${status}`, { method: "PATCH" })
       }
-      onSave()
+      onSave(isEdit ? undefined : savedData)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not save reservation. Try again.")
     } finally {
@@ -638,6 +639,7 @@ export default function DemoReservationsPage() {
   const [deleteTarget,    setDeleteTarget]    = useState<string | null>(null)
   const [now,             setNow]             = useState(() => new Date())
   const [authed,          setAuthed]          = useState(false)
+  const [assignPrompt,    setAssignPrompt]    = useState<Reservation | null>(null)
 
   // Auth gate
   useEffect(() => {
@@ -1010,8 +1012,75 @@ export default function DemoReservationsPage() {
           initial={drawer === "new" ? null : drawer}
           defaultDate={selectedDate}
           onClose={() => setDrawer(null)}
-          onSave={() => { setDrawer(null); fetchAll() }}
+          onSave={(newRes) => { setDrawer(null); fetchAll(); if (newRes?.id) setAssignPrompt(newRes) }}
         />
+      )}
+
+      {/* ── Assign Table Prompt ──────────────────────────────────────────── */}
+      {assignPrompt !== null && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div
+            style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
+            onClick={() => setAssignPrompt(null)}
+          />
+          <div style={{
+            position: "relative", zIndex: 1,
+            background: SRF, border: `1px solid ${BR}`,
+            borderRadius: 20, padding: "28px 26px 24px",
+            width: "calc(100% - 48px)", maxWidth: 360,
+            boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
+          }}>
+            {/* Icon */}
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: "rgba(251,191,36,0.12)",
+              border: "1px solid rgba(251,191,36,0.28)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 16, fontSize: 20,
+            }}>
+              🪑
+            </div>
+            {/* Headline */}
+            <p style={{ fontSize: 16, fontWeight: 800, color: TX, marginBottom: 6, letterSpacing: "-0.01em" }}>
+              Assign a table?
+            </p>
+            <p style={{ fontSize: 13, color: MU, lineHeight: 1.55, marginBottom: 22 }}>
+              <strong style={{ color: TX }}>{assignPrompt.guest_name}</strong>&apos;s reservation at{" "}
+              <strong style={{ color: TX }}>{fmt12(assignPrompt.time)}</strong> is saved.
+              Head to the station to pre-assign their table.
+            </p>
+            {/* Buttons */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                onClick={() => { setAssignPrompt(null); router.push("/demo/station") }}
+                style={{
+                  width: "100%", height: 46, borderRadius: 12,
+                  background: "rgba(251,191,36,0.16)",
+                  border: "1px solid rgba(251,191,36,0.38)",
+                  color: "rgba(255,220,120,0.95)",
+                  fontSize: 13, fontWeight: 800,
+                  letterSpacing: "0.06em", textTransform: "uppercase",
+                  cursor: "pointer",
+                }}
+              >
+                Go to Station →
+              </button>
+              <button
+                onClick={() => setAssignPrompt(null)}
+                style={{
+                  width: "100%", height: 42, borderRadius: 12,
+                  background: "transparent",
+                  border: `1px solid ${BR}`,
+                  color: MU,
+                  fontSize: 13, fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Not Now
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
