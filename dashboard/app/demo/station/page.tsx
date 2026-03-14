@@ -147,6 +147,13 @@ function getResUrgency(dateStr: string, timeStr: string, now: Date): ResUrgency 
   return "late"
 }
 
+// Returns minutes until a reservation time (positive = future, negative = past/overdue)
+function getResMinutesUntil(timeStr: string, now: Date): number {
+  const [h, m] = timeStr.split(":").map(Number)
+  const resTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0)
+  return (resTime.getTime() - now.getTime()) / 60_000
+}
+
 // ── Wait Time Modal ────────────────────────────────────────────────────────────
 
 function WaitTimeModal({
@@ -659,7 +666,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, reservation,
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, reservation, now,
 }: {
   pos: FloorPos
   table?: Table
@@ -669,14 +676,23 @@ function DroppableFloorTable({
   isSelectMode?: boolean
   onSeatFromSelect?: () => void
   reservation?: ReservedTable   // pre-assigned to upcoming reservation → yellow
+  now?: Date
 }) {
-  const isOccupied     = !!occupant || (!!table && table.status !== "available")
+  const isOccupied       = !!occupant || (!!table && table.status !== "available")
   const hasLocalOccupant = !!occupant
-  const hasReservation = !!reservation && !isOccupied  // show reserved only if not already occupied
-  // Reserved tables block drops; they cannot be used for walk-ins
-  const canReceiveDrop = hasReservation ? false : (isDraggingOccupant ? !hasLocalOccupant : !isOccupied)
-  const noTable = !table
-  const avail = !isOccupied
+  const noTable          = !table
+  const avail            = !isOccupied
+
+  // Time-based reservation states
+  const resMinutes    = (reservation && !isOccupied && now) ? getResMinutesUntil(reservation.time, now) : undefined
+  const isResLocked   = resMinutes !== undefined && resMinutes <= 0          // at/past reservation time → hard lock
+  const isResWarning  = resMinutes !== undefined && resMinutes > 0 && resMinutes <= 60 // within 1 hr → warn
+  const hasReservation = !!reservation && !isOccupied && resMinutes !== undefined && resMinutes > 0
+
+  // Locked tables block all drops; warning/far-future reserved tables allow walk-ins
+  const canReceiveDrop = isResLocked ? false : (isDraggingOccupant ? !hasLocalOccupant : !isOccupied)
+  // Locked tables cannot be select-mode targets
+  const isSelectTargetBase = !!isSelectMode && !isOccupied && !isResLocked
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `table-${pos.number}`,
@@ -699,10 +715,14 @@ function DroppableFloorTable({
     setDragRef(el)
   }, [setDropRef, setDragRef])
 
-  const isSelectTarget = !!isSelectMode && !isOccupied && !hasReservation
+  const isSelectTarget = isSelectTargetBase
 
   const bg = isOver && canReceiveDrop
     ? "rgba(34,197,94,0.55)"
+    : isResLocked
+    ? "rgba(239,68,68,0.18)"
+    : isResWarning
+    ? "rgba(249,115,22,0.15)"
     : hasReservation
     ? "rgba(251,191,36,0.16)"
     : isSelectTarget
@@ -713,6 +733,10 @@ function DroppableFloorTable({
 
   const borderColor = isOver && canReceiveDrop
     ? "#22c55e"
+    : isResLocked
+    ? "rgba(239,68,68,0.90)"
+    : isResWarning
+    ? "rgba(249,115,22,0.85)"
     : hasReservation
     ? "rgba(251,191,36,0.75)"
     : isSelectTarget
@@ -740,6 +764,8 @@ function DroppableFloorTable({
         border: `1.5px solid ${borderColor}`,
         boxShadow: isOver && canReceiveDrop
           ? "0 0 0 4px rgba(34,197,94,0.35), inset 0 0 20px rgba(34,197,94,0.10)"
+          : isResLocked  ? "0 0 0 2px rgba(239,68,68,0.30), inset 0 0 14px rgba(239,68,68,0.12)"
+          : isResWarning ? "0 0 0 2px rgba(249,115,22,0.25), inset 0 0 12px rgba(249,115,22,0.08)"
           : hasReservation ? "0 0 0 2px rgba(251,191,36,0.20), inset 0 0 12px rgba(251,191,36,0.06)"
           : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
           : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
@@ -795,7 +821,7 @@ function DroppableFloorTable({
           right: pos.shape === "round" ? "18%" : 7,
           width: 6, height: 6,
           borderRadius: "50%",
-          background: hasReservation ? "rgba(251,191,36,0.80)" : noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
+          background: isResLocked ? "rgba(239,68,68,0.90)" : isResWarning ? "rgba(249,115,22,0.85)" : hasReservation ? "rgba(251,191,36,0.80)" : noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
           opacity: 0.85,
         }} />
       )}
@@ -809,6 +835,46 @@ function DroppableFloorTable({
         }}>
           DROP
         </span>
+      ) : isResLocked ? (
+        <>
+          <span style={{ fontSize: 7, fontWeight: 900, letterSpacing: "0.12em", color: "rgba(239,68,68,0.85)", textTransform: "uppercase" }}>
+            LOCKED
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 10 : 8,
+            fontWeight: 700,
+            color: "rgba(255,180,180,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 3,
+            overflow: "hidden",
+          }}>
+            {reservation!.guestName.split(" ")[0]}
+          </span>
+          <span style={{ fontSize: 7, color: "rgba(239,68,68,0.80)" }}>
+            {fmt12Res(reservation!.time)}
+          </span>
+        </>
+      ) : isResWarning ? (
+        <>
+          <span style={{ fontSize: 7, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(249,115,22,0.75)", textTransform: "uppercase" }}>
+            ⚠ Soon
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 10 : 8,
+            fontWeight: 700,
+            color: "rgba(255,220,160,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 3,
+            overflow: "hidden",
+          }}>
+            {reservation!.guestName.split(" ")[0]}
+          </span>
+          <span style={{ fontSize: 7, color: "rgba(249,115,22,0.80)" }}>
+            {fmt12Res(reservation!.time)}
+          </span>
+        </>
       ) : hasReservation ? (
         <>
           <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.12em", color: "rgba(251,191,36,0.60)", textTransform: "uppercase" }}>
@@ -878,7 +944,7 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, reservedTables,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, reservedTables, now,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -887,6 +953,7 @@ function FloorMap({
   selectedEntry?: QueueEntry | null
   onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
   reservedTables?: Map<number, ReservedTable>
+  now?: Date
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -991,6 +1058,7 @@ function FloorMap({
                 isDraggingOccupant={isDraggingOccupant}
                 isSelectMode={!!selectedEntry}
                 onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
+                now={now}
               />
             )
           })}
@@ -1019,7 +1087,7 @@ function FloorMap({
 
 function SeatTablePicker({
   guest, tables, localOccupants, onConfirm, onClose,
-  reservedTables, excludeResId, mode = "seat",
+  reservedTables, excludeResId, mode = "seat", now,
 }: {
   guest: { name: string | null; party_size: number }
   tables: Table[]
@@ -1029,12 +1097,22 @@ function SeatTablePicker({
   reservedTables?: Map<number, ReservedTable>
   excludeResId?: string   // allow re-selecting the table already held by this reservation
   mode?: "seat" | "reserve"
+  now?: Date
 }) {
   const available = FLOOR_PLAN.filter(pos => {
     if (localOccupants.has(pos.number)) return false
-    // Exclude tables reserved for OTHER reservations
     const resInfo = reservedTables?.get(pos.number)
-    if (resInfo && resInfo.resId !== excludeResId) return false
+    if (resInfo && resInfo.resId !== excludeResId) {
+      if (mode === "seat" && now) {
+        // In seat mode: locked (past res time) → block; warning period → show with badge; far future → block
+        const mins = getResMinutesUntil(resInfo.time, now)
+        if (mins <= 0) return false          // locked
+        if (mins <= 60) { /* include — warning badge shown below */ }
+        else return false                    // far future reserved
+      } else {
+        return false  // reserve mode or no now: exclude all other-reserved tables
+      }
+    }
     const t = tables.find(t => t.table_number === pos.number)
     return !t || t.status === "available"
   })
@@ -1069,25 +1147,33 @@ function SeatTablePicker({
           <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
             {available.map(pos => {
               const t = tables.find(t => t.table_number === pos.number)
+              const resInfo = reservedTables?.get(pos.number)
+              const isWarn = !!(resInfo && resInfo.resId !== excludeResId && now && (() => {
+                const m = getResMinutesUntil(resInfo.time, now); return m > 0 && m <= 60
+              })())
               return (
                 <button
                   key={pos.number}
                   onClick={() => onConfirm(pos.number, t?.id)}
                   className="flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all active:scale-95 hover:brightness-125"
                   style={{
-                    background: "rgba(34,197,94,0.07)",
-                    border: "1px solid rgba(34,197,94,0.25)",
+                    background: isWarn ? "rgba(249,115,22,0.10)" : "rgba(34,197,94,0.07)",
+                    border: `1px solid ${isWarn ? "rgba(249,115,22,0.40)" : "rgba(34,197,94,0.25)"}`,
                   }}
                 >
-                  <span className="text-xl font-bold" style={{ color: "rgba(34,197,94,0.9)" }}>
+                  <span className="text-xl font-bold" style={{ color: isWarn ? "rgba(249,115,22,0.9)" : "rgba(34,197,94,0.9)" }}>
                     {pos.number}
                   </span>
-                  {t && (
+                  {isWarn ? (
+                    <span className="text-[9px] font-bold text-center leading-tight" style={{ color: "rgba(249,115,22,0.75)" }}>
+                      ⚠ {fmt12Res(resInfo!.time)}
+                    </span>
+                  ) : t ? (
                     <span className="text-[10px]" style={{ color: "rgba(34,197,94,0.45)" }}>
                       {t.capacity}p
                     </span>
-                  )}
-                  <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: "rgba(34,197,94,0.3)" }}>
+                  ) : null}
+                  <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: isWarn ? "rgba(249,115,22,0.35)" : "rgba(34,197,94,0.3)" }}>
                     {pos.section}
                   </span>
                 </button>
@@ -1408,6 +1494,14 @@ export default function DemoHostDashboard() {
     if (apiTable && entry.party_size > apiTable.capacity) {
       showToast(`⚠️ Table ${tableNumber} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
     }
+    // Reservation warning (within 1-hour window)
+    const resTableInfo = reservedTables.get(tableNumber)
+    if (resTableInfo) {
+      const mins = getResMinutesUntil(resTableInfo.time, new Date())
+      if (mins > 0 && mins <= 60) {
+        showToast(`⚠️ Warning: ${resTableInfo.guestName} reserved this table at ${fmt12Res(resTableInfo.time)}`, "warn")
+      }
+    }
     try {
       const r = tableId
         ? await fetchT(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
@@ -1422,7 +1516,7 @@ export default function DemoHostDashboard() {
     setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     showToast(`${entry.name || "Guest"} seated at Table ${tableNumber}`)
     refreshAll()
-  }, [refreshAll, tables])
+  }, [refreshAll, tables, reservedTables])
 
   const checkInConfirm = useCallback(async (res: Reservation, tableNumber: number, tableId: string | undefined) => {
     setResPicker(null)
@@ -1515,6 +1609,15 @@ export default function DemoHostDashboard() {
         .catch(() => showToast("Could not seat guest.", "err"))
     } else {
       seat(entry.id)
+    }
+    // Reservation warning — check before clearing pre-assignment
+    const dragResInfo = reservedTables.get(targetTable)
+    if (dragResInfo) {
+      const mins = getResMinutesUntil(dragResInfo.time, new Date())
+      if (mins <= 0) return  // locked — drop blocked by canReceiveDrop but guard here too
+      if (mins <= 60) {
+        showToast(`⚠️ Warning: ${dragResInfo.guestName} reserved this table at ${fmt12Res(dragResInfo.time)}`, "warn")
+      }
     }
     setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
     setReservedTables(prev => { const n = new Map(prev); n.delete(targetTable); return n })
@@ -1908,6 +2011,7 @@ export default function DemoHostDashboard() {
               tables={tables}
               localOccupants={localOccupants}
               reservedTables={reservedTables}
+              now={now}
               onClear={(tableId, tableNumber) => {
                 const occupant = localOccupants.get(tableNumber)
                 if (occupant) setClearConfirm({ tableId, tableNumber, occupant })
@@ -2030,6 +2134,8 @@ export default function DemoHostDashboard() {
             guest={seatPicker}
             tables={tables}
             localOccupants={localOccupants}
+            reservedTables={reservedTables}
+            now={now}
             onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
             onClose={() => setSeatPicker(null)}
           />
