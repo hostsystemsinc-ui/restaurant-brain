@@ -730,9 +730,6 @@ function DraggableQueueCard({
   // updated_at). Falls back to wait_estimate when no quoted_wait has been set.
   const [displayWait, setDisplayWait] = useState(entry.remaining_wait ?? entry.wait_estimate ?? 0)
   const quotedTotal = entry.quoted_wait ?? entry.wait_estimate ?? 0
-  // Bar fills as time elapses (0% → 100%)
-  const elapsedMin = Math.max(0, quotedTotal - displayWait)
-  const barPct     = quotedTotal > 0 ? Math.min(100, (elapsedMin / quotedTotal) * 100) : 0
   useEffect(() => {
     setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
   }, [entry.remaining_wait, entry.wait_estimate])
