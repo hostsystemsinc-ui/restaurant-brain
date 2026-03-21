@@ -250,62 +250,88 @@ export default function WaitPage() {
       <div style={{
         height: "100dvh", background: "#000", color: "#fff",
         display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        padding: "0 28px", textAlign: "center",
+        overflow: "hidden",
       }}>
         <style>{`
-          @keyframes pulseBlue {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(59,130,246,0.3); }
-            50%       { box-shadow: 0 0 0 18px rgba(59,130,246,0); }
+          @keyframes pulseAmber {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.2); }
+            50%       { box-shadow: 0 0 0 20px rgba(251,191,36,0); }
+          }
+          @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
           }
         `}</style>
 
-        {/* Blue pulsing circle */}
-        <div style={{
-          width: 88, height: 88, borderRadius: "50%",
-          background: "rgba(59,130,246,0.12)",
-          border: "2px solid rgba(59,130,246,0.45)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#60a5fa",
-          marginBottom: 32,
-          animation: "pulseBlue 2.4s ease-in-out infinite",
-        }}>
-          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
+        {/* HOST wordmark top */}
+        <div style={{ padding: "52px 28px 0", flexShrink: 0 }}>
+          <p style={{
+            fontSize: 11, fontWeight: 900, letterSpacing: "0.35em",
+            textTransform: "uppercase", color: "#fff",
+          }}>HOST</p>
         </div>
 
-        {/* Headline */}
-        <h1 style={{
-          fontSize: 34, fontWeight: 300, letterSpacing: "-0.02em",
-          color: "#fff", margin: "0 0 10px", lineHeight: 1.15,
+        {/* Main content */}
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "0 28px", textAlign: "center",
         }}>
-          Enjoy your meal.
-        </h1>
-        <p style={{ fontSize: 15, color: "#93c5fd", fontWeight: 500, margin: "0 0 32px", letterSpacing: "0.02em" }}>
-          You&apos;ve been seated
-        </p>
 
-        {/* Divider */}
-        <div style={{ width: 40, height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 32 }} />
+          {/* Amber pulsing circle */}
+          <div style={{
+            width: 80, height: 80, borderRadius: "50%",
+            background: "rgba(251,191,36,0.08)",
+            border: "1.5px solid rgba(251,191,36,0.35)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fbbf24",
+            marginBottom: 28,
+            animation: "pulseAmber 2.8s ease-in-out infinite",
+          }}>
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
+            </svg>
+          </div>
 
-        {/* Thank you message */}
-        <p style={{
-          fontSize: 14, color: "rgba(255,255,255,0.35)",
-          lineHeight: 1.65, maxWidth: 240,
+          {/* Headline */}
+          <h1 style={{
+            fontSize: 36, fontWeight: 300, letterSpacing: "-0.02em",
+            color: "#fff", margin: "0 0 8px", lineHeight: 1.15,
+            animation: "fadeUp 0.5s 0.1s ease-out both",
+          }}>
+            Enjoy your meal.
+          </h1>
+          <p style={{
+            fontSize: 13, color: "rgba(251,191,36,0.7)", fontWeight: 500,
+            margin: "0 0 36px", letterSpacing: "0.08em", textTransform: "uppercase",
+            animation: "fadeUp 0.5s 0.2s ease-out both",
+          }}>
+            Walter&apos;s303
+          </p>
+
+          {/* Divider */}
+          <div style={{ width: 32, height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 36 }} />
+
+          {/* Thank-you note */}
+          <p style={{
+            fontSize: 14, color: "rgba(255,255,255,0.38)",
+            lineHeight: 1.7, maxWidth: 220,
+            animation: "fadeUp 0.5s 0.3s ease-out both",
+          }}>
+            Thank you for dining with us tonight.<br />We hope to see you again soon.
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: "0 28px 40px", flexShrink: 0,
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
         }}>
-          Thank you for dining with us tonight. We hope to see you again soon.
-        </p>
-
-        {/* Footer label */}
-        <p style={{
-          position: "absolute", bottom: 32,
-          fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase",
-          color: "rgba(255,255,255,0.1)",
-        }}>
-          HOST
-        </p>
+          <div style={{ width: 28, height: 1, background: "rgba(255,255,255,0.06)", marginBottom: 6 }} />
+          <p style={{ fontSize: 9, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.12)" }}>
+            Powered by HOST
+          </p>
+        </div>
       </div>
     )
   }
@@ -542,9 +568,6 @@ export default function WaitPage() {
             fontSize: 10, color: "rgba(255,255,255,0.25)",
           }}>
             <span>Arrived</span>
-            <span>
-              {quoted_wait && displayWait > 0 ? `~${displayWait} min remaining` : ""}
-            </span>
             <span>Seated</span>
           </div>
         </div>

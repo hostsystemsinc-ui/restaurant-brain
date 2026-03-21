@@ -805,18 +805,6 @@ function DraggableQueueCard({
         </div>
       )}
 
-      {/* ── Progress bar: fills as time elapses ── */}
-      {quotedTotal > 0 && !isReady && (
-        <div style={{ marginTop: 6, height: 3, background: "rgba(255,185,100,0.08)", borderRadius: 2, overflow: "hidden" }}>
-          <div style={{
-            height: "100%",
-            width: `${barPct}%`,
-            background: entry.paused ? "rgba(249,115,22,0.50)" : displayWait <= 0 ? "#22c55e" : displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.75)",
-            borderRadius: 2,
-            transition: entry.paused ? "none" : "width 60s linear",
-          }} />
-        </div>
-      )}
 
       {/* ── Row 3: action buttons or delete confirm ── */}
       {confirmDelete ? (
