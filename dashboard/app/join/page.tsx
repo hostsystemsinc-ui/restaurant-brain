@@ -144,15 +144,11 @@ export default function JoinPage() {
           />
         </div>
 
-        {live !== null && (live.ahead > 0 || live.waitMin) && (
+        {live !== null && live.ahead > 0 && (
           <p className="mt-1 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>
-            {live.ahead > 0 && (
-              <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
-                {live.ahead} {live.ahead === 1 ? "party" : "parties"} ahead
-              </span>
-            )}
-            {live.ahead > 0 && live.waitMin && " · "}
-            {live.waitMin ? `~${live.waitMin}m wait` : ""}
+            <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+              {live.ahead} {live.ahead === 1 ? "party" : "parties"} ahead
+            </span>
           </p>
         )}
       </div>

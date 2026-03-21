@@ -231,6 +231,25 @@ def twilio_verify_start(phone: str = "+18312470552"):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+@app.post("/debug/twilio/test-sms")
+def test_sms(phone: str = "+18312470552"):
+    """Attempt to send a real test SMS and return the result or exact error."""
+    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
+        return {"ok": False, "error": "Twilio not fully configured", "sid_set": bool(TWILIO_SID), "token_set": bool(TWILIO_TOKEN), "from_set": bool(TWILIO_FROM)}
+    phone_e164 = _e164(phone)
+    if not phone_e164:
+        return {"ok": False, "error": f"Could not normalize phone: {phone}"}
+    try:
+        from twilio.rest import Client
+        msg = Client(TWILIO_SID, TWILIO_TOKEN).messages.create(
+            body="HOST test: Walter's303 is ready for you! 🍽️",
+            from_=TWILIO_FROM,
+            to=phone_e164,
+        )
+        return {"ok": True, "sid": msg.sid, "status": msg.status, "to": phone_e164, "from": TWILIO_FROM}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "to": phone_e164, "from": TWILIO_FROM}
+
 @app.get("/restaurant")
 def get_restaurant(restaurant_id: Optional[str] = None):
     rid = _rid(restaurant_id)
@@ -424,6 +443,37 @@ def notify_ready(entry_id: str):
 def remove_entry(entry_id: str):
     supabase.table("queue_entries").update({"status": "removed"}).eq("id", entry_id).execute()
     return {"status": "removed"}
+
+@app.post("/queue/{entry_id}/restore")
+def restore_entry(entry_id: str):
+    """Restore a removed or incorrectly-seated entry back to waiting."""
+    res = supabase.table("queue_entries").select("*").eq("id", entry_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    supabase.table("queue_entries").update({"status": "waiting"}).eq("id", entry_id).execute()
+    return {"status": "restored"}
+
+@app.get("/queue/history")
+def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
+    """Returns seated and removed entries for the given date (default: today UTC)."""
+    rid = _rid(restaurant_id)
+    date_str = date or datetime.utcnow().strftime("%Y-%m-%d")
+    start = f"{date_str}T00:00:00"
+    end   = f"{date_str}T23:59:59.999"
+    try:
+        res = (
+            supabase.table("queue_entries")
+            .select("*")
+            .eq("restaurant_id", rid)
+            .in_("status", ["seated", "removed"])
+            .gte("arrival_time", start)
+            .lte("arrival_time", end)
+            .order("arrival_time", desc=True)
+            .execute()
+        )
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/queue/{entry_id}/wait")
 def update_wait(entry_id: str, minutes: int):

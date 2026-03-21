@@ -724,9 +724,9 @@ function DraggableQueueCard({
 
   const handleRemove = async () => {
     setRemoving(true)
+    onRemoved?.()  // optimistic: remove from UI immediately
     try { await fetch(`${API}/queue/${entry.id}/remove`, { method: "POST" }) } catch {}
     setRemoving(false)
-    onRemoved?.()
   }
 
   // Per-card live countdown.
@@ -1423,30 +1423,41 @@ function SeatTablePicker({
 // Renders as a panel covering only the sidebar — floor map stays fully interactive.
 
 function AddGuestDrawer({
-  onClose, onAdded, globalWait, sidebarW,
+  onClose, onAdded, sidebarW,
 }: {
   onClose: () => void
   onAdded: (entryId: string) => void
-  globalWait: number | null
   sidebarW: number
 }) {
   const [name,      setName]      = useState("")
   const [partySize, setPartySize] = useState(2)
   const [phone,     setPhone]     = useState("")
   const [notes,     setNotes]     = useState("")
-  const [waitMins,  setWaitMins]  = useState<number | null>(globalWait ?? null)
+  const [waitMins,  setWaitMins]  = useState<number | null>(null)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState("")
   const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  const [bottomOffset, setBottomOffset] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      setBottomOffset(offset)
+    }
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update) }
+  }, [])
 
   // Recompute suggestion when party size changes; pre-select it if nothing chosen yet
   const suggestion = suggestWait(partySize)
   const needed     = samplesNeeded()
   useEffect(() => {
-    if (globalWait !== null) { setWaitMins(globalWait); return }
     if (suggestion !== null) setWaitMins(suggestion)
     else setWaitMins(null)
-  }, [partySize, globalWait, suggestion])
+  }, [partySize, suggestion])
 
   const submit = async () => {
     setLoading(true); setError("")
@@ -1488,7 +1499,7 @@ function AddGuestDrawer({
         position: "fixed",
         top: 48,        // below header
         left: 0,
-        bottom: 0,
+        bottom: bottomOffset,
         width: sidebarW,
         zIndex: 45,
         background: "#0C0907",
@@ -1569,11 +1580,7 @@ function AddGuestDrawer({
           </div>
 
           {/* HOST suggestion chip — only shows after enough data */}
-          {globalWait !== null ? (
-            <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 8, background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.22)", fontSize: 11, color: "rgba(255,220,160,0.80)" }}>
-              Using global wait: <strong style={{ color: "rgba(255,240,200,0.97)" }}>{globalWait}m</strong>
-            </div>
-          ) : suggestion !== null ? (
+          {suggestion !== null ? (
             <div style={{ marginBottom: 10 }}>
               <button
                 onClick={() => setWaitMins(suggestion)}
@@ -1673,29 +1680,67 @@ function Toasts({ items }: { items: ToastItem[] }) {
 
 // ── History Drawer ─────────────────────────────────────────────────────────────
 
-function HistoryDrawer({ onClose }: { onClose: () => void }) {
-  const hist    = getHistory()
+interface HistoryEntry {
+  id: string
+  name: string
+  party_size: number
+  status: "seated" | "removed"
+  arrival_time: string
+  quoted_wait: number | null
+  phone: string | null
+  notes: string | null
+}
+
+function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestored: () => void }) {
+  const [tab,       setTab]       = useState<"today" | "stats">("today")
+  const [entries,   setEntries]   = useState<HistoryEntry[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [restoring, setRestoring] = useState<string | null>(null)
+
+  // Local seating history for stats (localStorage)
+  const hist = getHistory()
   const todayMs = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime() })()
   const todayHist = hist.filter(r => r.seated_at >= todayMs)
-
-  const avgQuoted = hist.length
-    ? Math.round(hist.reduce((a, r) => a + r.quoted_wait, 0) / hist.length)
-    : null
-  const avgActual = hist.length
-    ? Math.round(hist.reduce((a, r) => a + r.actual_wait_min, 0) / hist.length)
-    : null
-
-  // Busiest hour
+  const avgQuoted = hist.length ? Math.round(hist.reduce((a, r) => a + r.quoted_wait, 0) / hist.length) : null
+  const avgActual = hist.length ? Math.round(hist.reduce((a, r) => a + r.actual_wait_min, 0) / hist.length) : null
   const hourCounts: Record<number, number> = {}
   hist.forEach(r => { hourCounts[r.hour_of_day] = (hourCounts[r.hour_of_day] ?? 0) + 1 })
-  let busiestHour: number | null = null
-  let busiestCount = 0
-  for (const [h, c] of Object.entries(hourCounts)) {
-    if (c > busiestCount) { busiestHour = Number(h); busiestCount = c }
-  }
+  let busiestHour: number | null = null; let busiestCount = 0
+  for (const [h, c] of Object.entries(hourCounts)) { if (c > busiestCount) { busiestHour = Number(h); busiestCount = c } }
   const fmtHour = (h: number) => `${h % 12 || 12}${h >= 12 ? "PM" : "AM"}`
-
   const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 8]
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(`${API}/queue/history?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (r.ok) setEntries(await r.json())
+    } catch {}
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const restore = async (entryId: string) => {
+    setRestoring(entryId)
+    try {
+      const r = await fetchT(`${API}/queue/${entryId}/restore`, { method: "POST" })
+      if (!r.ok) throw new Error()
+      setEntries(prev => prev.filter(e => e.id !== entryId))
+      onRestored()
+      showToast("Guest restored to waitlist", "ok")
+    } catch {
+      showToast("Could not restore guest.", "err")
+    }
+    setRestoring(null)
+  }
+
+  const fmtTime = (iso: string) => {
+    try {
+      const d = new Date(iso)
+      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+    } catch { return "—" }
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-stretch sm:items-center justify-end">
@@ -1705,172 +1750,205 @@ function HistoryDrawer({ onClose }: { onClose: () => void }) {
         style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
       >
         {/* Header */}
-        <div
-          className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0"
-          style={{ borderBottom: "1px solid rgba(255,185,100,0.12)" }}
-        >
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0" style={{ borderBottom: "1px solid rgba(255,185,100,0.12)" }}>
           <div>
             <p className="text-[10px] font-black tracking-[0.22em] uppercase mb-0.5" style={{ color: "rgba(255,200,150,0.40)" }}>
-              Seating Intelligence
+              Host Log
             </p>
             <p className="text-lg font-bold" style={{ color: "rgba(255,248,240,0.95)" }}>History</p>
           </div>
-          <button
-            onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-xl"
-            style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}
-          >
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
-          {hist.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <BarChart2 className="w-8 h-8" style={{ color: "rgba(255,185,100,0.25)" }} />
-              <p className="text-sm font-medium" style={{ color: "rgba(255,200,150,0.45)" }}>No seating history yet</p>
-              <p className="text-xs" style={{ color: "rgba(255,200,150,0.28)", maxWidth: 220 }}>
-                Seat guests from the queue to start building history. Suggestions improve over time.
-              </p>
-            </div>
-          ) : (
-            <>
-              {/* Today */}
-              <div>
-                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
-                  Today · {todayHist.length} parties
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: "Parties", value: todayHist.length, unit: "" },
-                    { label: "Avg Quoted", value: avgQuoted, unit: "min" },
-                    { label: "Avg Actual", value: avgActual, unit: "min" },
-                  ].map(({ label, value, unit }) => (
-                    <div
-                      key={label}
-                      className="flex flex-col items-center justify-center rounded-xl py-4"
-                      style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}
-                    >
-                      <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em" }}>
-                        {value ?? "—"}
-                      </span>
-                      {unit && value != null && (
-                        <span style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 2 }}>{unit}</span>
-                      )}
-                      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginTop: 5, textAlign: "center" }}>
-                        {label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* All-time */}
-              <div>
-                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
-                  All Time · {hist.length} parties
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {busiestHour !== null && (
-                    <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
-                      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>
-                        Busiest Hour
-                      </p>
-                      <p style={{ fontSize: 24, fontWeight: 700, color: "rgba(255,248,240,0.95)", lineHeight: 1, letterSpacing: "-0.02em" }}>
-                        {fmtHour(busiestHour)}
-                      </p>
-                      <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>{busiestCount} parties</p>
-                    </div>
-                  )}
-                  {avgQuoted != null && avgActual != null && (
-                    <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
-                      <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>
-                        Accuracy
-                      </p>
-                      <p style={{
-                        fontSize: 24, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em",
-                        color: Math.abs(avgQuoted - avgActual) <= 3 ? "#22c55e" : "rgba(251,191,36,0.90)",
-                      }}>
-                        {Math.abs(avgQuoted - avgActual) <= 3 ? "Great" : avgActual > avgQuoted ? "Under" : "Over"}
-                      </p>
-                      <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>
-                        {Math.abs(avgQuoted - avgActual)}m {avgActual > avgQuoted ? "longer" : "shorter"} than quoted
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Per-party-size suggestions */}
-              <div>
-                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-1" style={{ color: "rgba(255,200,150,0.40)" }}>
-                  Suggested Wait Times
-                </p>
-                <p className="text-[10px] mb-3" style={{ color: "rgba(255,200,150,0.28)" }}>
-                  Based on {hist.length} seatings · adjusted for current time of day
-                </p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {PARTY_SIZES.map(n => {
-                    const suggestion = suggestWait(n)
-                    return (
-                      <div
-                        key={n}
-                        className="flex flex-col items-center justify-center rounded-xl py-3"
-                        style={{
-                          background: suggestion ? "rgba(255,185,100,0.07)" : "rgba(255,185,100,0.03)",
-                          border: `1px solid ${suggestion ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.08)"}`,
-                        }}
-                      >
-                        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 3 }}>
-                          {n}{n === 8 ? "+" : ""}p
-                        </span>
-                        <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, color: suggestion ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.22)", letterSpacing: "-0.02em" }}>
-                          {suggestion ?? "—"}
-                        </span>
-                        {suggestion != null && (
-                          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.35)", marginTop: 1 }}>min</span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </>
+        {/* Tabs */}
+        <div className="flex shrink-0 px-5 pt-3 gap-2">
+          {(["today", "stats"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                height: 32, padding: "0 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                letterSpacing: "0.08em", textTransform: "capitalize",
+                background: tab === t ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.05)",
+                border: `1px solid ${tab === t ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.12)"}`,
+                color: tab === t ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.45)",
+                cursor: "pointer", transition: "all 0.12s",
+              }}
+            >
+              {t === "today" ? `Today${entries.length > 0 ? ` · ${entries.length}` : ""}` : "Stats"}
+            </button>
+          ))}
+          {tab === "today" && (
+            <button onClick={load} style={{ marginLeft: "auto", width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.05)", border: "1px solid rgba(255,185,100,0.12)", cursor: "pointer", color: "rgba(255,200,150,0.45)" }}>
+              <RefreshCw style={{ width: 13, height: 13 }} />
+            </button>
           )}
         </div>
 
-        {/* Footer — export + clear */}
-        {hist.length > 0 && (
-          <div className="px-6 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,185,100,0.10)" }}>
-            {/* Export to CSV */}
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 mt-2">
+          {tab === "today" ? (
+            loading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="animate-spin" style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(255,185,100,0.15)", borderTopColor: "rgba(255,185,100,0.65)" }} />
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                <Clock className="w-7 h-7" style={{ color: "rgba(255,185,100,0.25)" }} />
+                <p className="text-sm" style={{ color: "rgba(255,200,150,0.45)" }}>No history yet today</p>
+                <p className="text-xs" style={{ color: "rgba(255,200,150,0.28)", maxWidth: 200 }}>Seated and removed guests will appear here.</p>
+              </div>
+            ) : (
+              entries.map(e => (
+                <div
+                  key={e.id}
+                  style={{
+                    borderRadius: 12, padding: "11px 13px",
+                    background: e.status === "seated" ? "rgba(34,197,94,0.07)" : "rgba(239,68,68,0.07)",
+                    border: `1px solid ${e.status === "seated" ? "rgba(34,197,94,0.22)" : "rgba(239,68,68,0.22)"}`,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 3 }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,248,240,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.name || "Guest"}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase",
+                            padding: "2px 6px", borderRadius: 5,
+                            background: e.status === "seated" ? "rgba(34,197,94,0.16)" : "rgba(239,68,68,0.16)",
+                            color: e.status === "seated" ? "#4ade80" : "#f87171",
+                          }}
+                        >
+                          {e.status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 11, color: "rgba(255,200,150,0.55)", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <span>{e.party_size}p</span>
+                        {e.quoted_wait != null && <span>~{e.quoted_wait}m quoted</span>}
+                        <span style={{ color: "rgba(255,200,150,0.35)" }}>arrived {fmtTime(e.arrival_time)}</span>
+                      </div>
+                      {e.notes && (
+                        <div style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>📝 {e.notes}</div>
+                      )}
+                    </div>
+                    {e.status === "removed" && (
+                      <button
+                        onClick={() => restore(e.id)}
+                        disabled={restoring === e.id}
+                        style={{
+                          flexShrink: 0, height: 34, padding: "0 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                          background: "rgba(99,179,237,0.10)", color: "rgba(99,179,237,0.85)",
+                          border: "1px solid rgba(99,179,237,0.28)", cursor: "pointer",
+                          opacity: restoring === e.id ? 0.5 : 1,
+                        }}
+                      >
+                        {restoring === e.id ? "…" : "Restore"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )
+          ) : (
+            // Stats tab
+            hist.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                <BarChart2 className="w-8 h-8" style={{ color: "rgba(255,185,100,0.25)" }} />
+                <p className="text-sm font-medium" style={{ color: "rgba(255,200,150,0.45)" }}>No seating data yet</p>
+                <p className="text-xs" style={{ color: "rgba(255,200,150,0.28)", maxWidth: 220 }}>Seat guests to build wait-time suggestions.</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
+                    Today · {todayHist.length} parties
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: "Parties", value: todayHist.length, unit: "" },
+                      { label: "Avg Quoted", value: avgQuoted, unit: "min" },
+                      { label: "Avg Actual", value: avgActual, unit: "min" },
+                    ].map(({ label, value, unit }) => (
+                      <div key={label} className="flex flex-col items-center justify-center rounded-xl py-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
+                        <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em" }}>{value ?? "—"}</span>
+                        {unit && value != null && <span style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 2 }}>{unit}</span>}
+                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginTop: 5, textAlign: "center" }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
+                    All Time · {hist.length} parties
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {busiestHour !== null && (
+                      <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
+                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>Busiest Hour</p>
+                        <p style={{ fontSize: 24, fontWeight: 700, color: "rgba(255,248,240,0.95)", lineHeight: 1, letterSpacing: "-0.02em" }}>{fmtHour(busiestHour)}</p>
+                        <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>{busiestCount} parties</p>
+                      </div>
+                    )}
+                    {avgQuoted != null && avgActual != null && (
+                      <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
+                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>Accuracy</p>
+                        <p style={{ fontSize: 24, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: Math.abs(avgQuoted - avgActual) <= 3 ? "#22c55e" : "rgba(251,191,36,0.90)" }}>
+                          {Math.abs(avgQuoted - avgActual) <= 3 ? "Great" : avgActual > avgQuoted ? "Under" : "Over"}
+                        </p>
+                        <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>
+                          {Math.abs(avgQuoted - avgActual)}m {avgActual > avgQuoted ? "longer" : "shorter"} than quoted
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-1" style={{ color: "rgba(255,200,150,0.40)" }}>Suggested Wait Times</p>
+                  <p className="text-[10px] mb-3" style={{ color: "rgba(255,200,150,0.28)" }}>Based on {hist.length} seatings · adjusted for time of day</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {PARTY_SIZES.map(n => {
+                      const suggestion = suggestWait(n)
+                      return (
+                        <div key={n} className="flex flex-col items-center justify-center rounded-xl py-3" style={{ background: suggestion ? "rgba(255,185,100,0.07)" : "rgba(255,185,100,0.03)", border: `1px solid ${suggestion ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.08)"}` }}>
+                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 3 }}>{n}{n === 8 ? "+" : ""}p</span>
+                          <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, color: suggestion ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.22)", letterSpacing: "-0.02em" }}>{suggestion ?? "—"}</span>
+                          {suggestion != null && <span style={{ fontSize: 9, color: "rgba(255,200,150,0.35)", marginTop: 1 }}>min</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
+            )
+          )}
+        </div>
+
+        {/* Footer */}
+        {hist.length > 0 && tab === "stats" && (
+          <div className="px-5 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,185,100,0.10)" }}>
             <button
               onClick={() => {
                 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
                 const headers = ["Seated At","Party Size","Quoted Wait (min)","Actual Wait (min)","Day","Hour"]
-                const rows = hist.map(r => [
-                  new Date(r.seated_at).toLocaleString(),
-                  r.party_size,
-                  r.quoted_wait,
-                  r.actual_wait_min,
-                  DAYS[r.day_of_week],
-                  r.hour_of_day,
-                ])
+                const rows = hist.map(r => [new Date(r.seated_at).toLocaleString(), r.party_size, r.quoted_wait, r.actual_wait_min, DAYS[r.day_of_week], r.hour_of_day])
                 const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n")
                 const blob = new Blob([csv], { type: "text/csv" })
                 const url  = URL.createObjectURL(blob)
-                const a    = document.createElement("a")
-                a.href     = url
-                a.download = `demo-restaurant-seating-${new Date().toLocaleDateString("en-CA")}.csv`
-                a.click()
-                URL.revokeObjectURL(url)
-                showToast("Exported to CSV", "ok")
+                const a    = document.createElement("a"); a.href = url
+                a.download = `seating-${new Date().toLocaleDateString("en-CA")}.csv`; a.click()
+                URL.revokeObjectURL(url); showToast("Exported to CSV", "ok")
               }}
               className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
               style={{ background: "rgba(34,197,94,0.07)", color: "rgba(34,197,94,0.65)", border: "1px solid rgba(34,197,94,0.18)", padding: "10px 0" }}
             >
               Export to CSV
             </button>
-            {/* Clear */}
             <button
               onClick={() => {
                 try { localStorage.removeItem(HISTORY_KEY); localStorage.removeItem(HISTORY_DATE_KEY) } catch {}
@@ -1879,7 +1957,7 @@ function HistoryDrawer({ onClose }: { onClose: () => void }) {
               className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
               style={{ background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.45)", border: "1px solid rgba(239,68,68,0.12)", padding: "10px 0" }}
             >
-              Clear History
+              Clear Stats
             </button>
           </div>
         )}
@@ -1915,10 +1993,8 @@ export default function DemoHostDashboard() {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [toasts, setToasts]               = useState<ToastItem[]>([])
   const [resTblPicker, setResTblPicker]   = useState<Reservation | null>(null)
-  const [globalWait, setGlobalWait]       = useState<number | null>(null)
   const [historyOpen, setHistoryOpen]     = useState(false)
   const [resSeatWarning, setResSeatWarning] = useState<{ entry: QueueEntry; tableNumber: number; tableId: string | undefined; resInfo: ReservedTable } | null>(null)
-  const [newGuestNotifs, setNewGuestNotifs] = useState<{ id: string; name: string; party_size: number; suggested: number | null }[]>([])
   const [reservedTables, setReservedTables] = useState<Map<number, ReservedTable>>(() => {
     try {
       const s = localStorage.getItem("host_demo_reserved_tables")
@@ -1929,9 +2005,6 @@ export default function DemoHostDashboard() {
   const isResizing      = useRef(false)
   const resizeStartX    = useRef(0)
   const resizeStartW    = useRef(0)
-  const globalWaitRef   = useRef<number | null>(null)
-  const seenIdsRef      = useRef(new Set<string>())
-  const queueLoadedRef  = useRef(false)
 
   // Auth gate
   useEffect(() => {
@@ -1951,16 +2024,6 @@ export default function DemoHostDashboard() {
     }
     return () => { _dispatchToast = null }
   }, [])
-
-  // Sync globalWait state → ref so fetchQueue can read it without stale closure
-  useEffect(() => { globalWaitRef.current = globalWait }, [globalWait])
-
-  // Auto-clear new-guest notifs when guest is no longer waiting (seated / removed)
-  useEffect(() => {
-    if (newGuestNotifs.length === 0) return
-    const waitingIds = new Set(queue.filter(e => e.status === "waiting").map(e => e.id))
-    setNewGuestNotifs(prev => prev.filter(n => waitingIds.has(n.id)))
-  }, [queue]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist reserved table pre-assignments
   useEffect(() => {
@@ -2039,40 +2102,11 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (r.ok) {
         const data: QueueEntry[] = await r.json()
-        // Detect new waiting guests who joined since last poll
-        const gw = globalWaitRef.current
-        if (queueLoadedRef.current) {
-          const newEntries = data.filter(e =>
-            e.status === "waiting" &&
-            !seenIdsRef.current.has(e.id) &&
-            !e.quoted_wait
-          )
-          if (newEntries.length > 0) {
-            if (gw !== null) {
-              // Global wait set — auto-apply silently
-              for (const e of newEntries) {
-                fetchT(`${API}/queue/${e.id}/wait?minutes=${gw}`, { method: "PATCH" }).catch(() => {})
-              }
-              showToast(`${gw}m wait auto-applied to ${newEntries.length} new guest${newEntries.length !== 1 ? "s" : ""}`, "ok")
-            } else {
-              // No global wait — surface in notification tray for host to assign individually
-              setNewGuestNotifs(prev => {
-                const existingIds = new Set(prev.map(n => n.id))
-                const fresh = newEntries
-                  .filter(e => !existingIds.has(e.id))
-                  .map(e => ({ id: e.id, name: e.name, party_size: e.party_size, suggested: suggestWait(e.party_size) }))
-                return [...prev, ...fresh]
-              })
-            }
-          }
-        }
-        data.forEach(e => seenIdsRef.current.add(e.id))
-        queueLoadedRef.current = true
         setQueue(data); setOnline(true); setLastSync(new Date())
       }
     } catch { setOnline(false) }
     finally   { setIsInitialLoad(false) }
-  }, [setNewGuestNotifs])
+  }, [])
   const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights?restaurant_id=${DEMO_RESTAURANT_ID}`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
   const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
 
@@ -2109,26 +2143,16 @@ export default function DemoHostDashboard() {
     catch { showToast("Could not notify guest.", "err") }
   }, [refreshAll])
 
-  const applyGlobalWait = useCallback(async (mins: number | null) => {
-    setGlobalWait(mins)
-    if (mins === null) {
-      showToast("Wait time cleared", "ok")
-      return
-    }
-    const targets = queue.filter(e => e.status === "waiting")
-    if (targets.length === 0) {
-      showToast(`Wait set to ${mins}m — applies to new guests`, "ok")
-      return
-    }
-    await Promise.allSettled(
-      targets.map(e => fetchT(`${API}/queue/${e.id}/wait?minutes=${mins}`, { method: "PATCH" }))
-    )
-    showToast(`${mins}m wait set for ${targets.length} guest${targets.length !== 1 ? "s" : ""}`, "ok")
-    refreshAll()
-  }, [queue, refreshAll])
   const remove = useCallback(async (id: string) => {
-    try { const r = await fetchT(`${API}/queue/${id}/remove`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
-    catch { showToast("Could not remove guest.", "err") }
+    setQueue(prev => prev.filter(e => e.id !== id))  // optimistic UI
+    try {
+      const r = await fetchT(`${API}/queue/${id}/remove`, { method: "POST" })
+      if (!r.ok) throw new Error()
+      refreshAll()
+    } catch {
+      showToast("Could not remove guest.", "err")
+      refreshAll()  // revert on failure
+    }
   }, [refreshAll])
 
   const openSeatPicker = useCallback((entry: QueueEntry) => {
@@ -2445,124 +2469,6 @@ export default function DemoHostDashboard() {
               </div>
             </div>
 
-            {/* ── Global Wait Bar ───────────────────────────────── */}
-            <div style={{
-              padding: "7px 12px 8px",
-              borderBottom: "1px solid rgba(255,185,100,0.16)",
-              background: "rgba(255,185,100,0.02)",
-              flexShrink: 0,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: "0.18em",
-                  textTransform: "uppercase", color: "rgba(255,200,150,0.45)",
-                  flexShrink: 0,
-                }}>
-                  Wait
-                </span>
-                <div style={{ display: "flex", gap: 4, overflowX: "auto", scrollbarWidth: "none" as never }}>
-                  {([null, 5, 10, 15, 20, 30, 45] as (number | null)[]).map(m => {
-                    const active = globalWait === m
-                    const label  = m === null ? "—" : `${m}m`
-                    return (
-                      <button
-                        key={String(m)}
-                        onClick={() => applyGlobalWait(m)}
-                        style={{
-                          height: 24, padding: "0 9px",
-                          borderRadius: 7, flexShrink: 0,
-                          background: active ? "rgba(255,185,100,0.22)" : "rgba(255,185,100,0.05)",
-                          border: `1px solid ${active ? "rgba(255,185,100,0.60)" : "rgba(255,185,100,0.12)"}`,
-                          color: active ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.45)",
-                          fontSize: 11, fontWeight: active ? 800 : 500,
-                          cursor: "pointer", whiteSpace: "nowrap" as never,
-                          transition: "all 0.12s",
-                        }}
-                      >
-                        {label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              {globalWait !== null && (
-                <p style={{ fontSize: 9, color: "rgba(255,185,100,0.38)", marginTop: 4, paddingLeft: 2 }}>
-                  {`${globalWait}m · auto-applied to new guests`}
-                </p>
-              )}
-            </div>
-
-            {/* ── New guest notification tray ───────────────────── */}
-            {newGuestNotifs.length > 0 && globalWait === null && (
-              <div style={{
-                padding: "6px 10px",
-                borderBottom: "1px solid rgba(255,185,100,0.16)",
-                background: "rgba(99,179,237,0.04)",
-                flexShrink: 0,
-              }}>
-                <div style={{ marginBottom: 5, padding: "0 2px" }}>
-                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(99,179,237,0.75)" }}>
-                    🔔 New Guests · {newGuestNotifs.length}
-                  </span>
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {newGuestNotifs.map(n => (
-                    <div key={n.id} style={{
-                      background: "rgba(99,179,237,0.08)",
-                      border: "1px solid rgba(99,179,237,0.28)",
-                      borderRadius: 10, padding: "8px 8px 8px 10px",
-                    }}>
-                      {/* Name row */}
-                      <div style={{ marginBottom: 7 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,248,240,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
-                          {n.name || "Guest"} · {n.party_size}p
-                        </span>
-                      </div>
-                      {/* Action buttons */}
-                      <div style={{ display: "flex", gap: 5 }}>
-                        {/* "Set Wait" — opens sidebar panel */}
-                        <button
-                          onClick={() => setNfcWaitPanel({ id: n.id, name: n.name, party_size: n.party_size, suggested: n.suggested })}
-                          style={{
-                            flex: 1, height: 34, borderRadius: 8,
-                            background: "rgba(99,179,237,0.22)",
-                            border: "1.5px solid rgba(99,179,237,0.55)",
-                            color: "rgba(160,210,255,0.97)",
-                            fontSize: 11, fontWeight: 900,
-                            letterSpacing: "0.08em", textTransform: "uppercase",
-                            cursor: "pointer", whiteSpace: "nowrap" as never,
-                          }}
-                        >
-                          Set Wait
-                        </button>
-                        {/* One-tap confirm suggestion */}
-                        {n.suggested != null && (
-                          <button
-                            onClick={() => {
-                              fetchT(`${API}/queue/${n.id}/wait?minutes=${n.suggested}`, { method: "PATCH" }).catch(() => {})
-                              setNewGuestNotifs(prev => prev.filter(x => x.id !== n.id))
-                              showToast(`${n.suggested}m set for ${n.name || "guest"}`, "ok")
-                              refreshAll()
-                            }}
-                            style={{
-                              flex: 1, height: 34, borderRadius: 8,
-                              background: "rgba(34,197,94,0.12)",
-                              border: "1.5px solid rgba(34,197,94,0.35)",
-                              color: "#4ade80",
-                              fontSize: 11, fontWeight: 800,
-                              cursor: "pointer", whiteSpace: "nowrap" as never,
-                            }}
-                          >
-                            {n.suggested}m ✓
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* ── Today's reservations ──────────────────────────── */}
             {activeRes.length > 0 && (
               <div
@@ -2852,7 +2758,6 @@ export default function DemoHostDashboard() {
 
         {showAdd && (
           <AddGuestDrawer
-            globalWait={globalWait}
             sidebarW={sidebarW}
             onClose={() => setShowAdd(false)}
             onAdded={(id) => {
@@ -2870,7 +2775,6 @@ export default function DemoHostDashboard() {
             suggested={nfcWaitPanel.suggested}
             sidebarW={sidebarW}
             onClose={() => {
-              setNewGuestNotifs(prev => prev.filter(x => x.id !== nfcWaitPanel.id))
               setNfcWaitPanel(null)
               refreshAll()
             }}
@@ -3070,7 +2974,7 @@ export default function DemoHostDashboard() {
       <Toasts items={toasts} />
 
       {/* History drawer */}
-      {historyOpen && <HistoryDrawer onClose={() => setHistoryOpen(false)} />}
+      {historyOpen && <HistoryDrawer onClose={() => setHistoryOpen(false)} onRestored={refreshAll} />}
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null}>
