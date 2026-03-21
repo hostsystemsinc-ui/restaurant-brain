@@ -472,10 +472,11 @@ function NfcWaitPanel({
 // ── Guest Edit Modal ────────────────────────────────────────────────────────────
 
 function GuestEditModal({
-  entry, displayWait, onClose, onSaved, onRemoved,
+  entry, displayWait, sidebarW, onClose, onSaved, onRemoved,
 }: {
   entry: QueueEntry
   displayWait: number
+  sidebarW: number
   onClose: () => void
   onSaved: () => void
   onRemoved: () => void
@@ -486,7 +487,7 @@ function GuestEditModal({
   const [notes,     setNotes]     = useState(entry.notes ?? "")
   const [saving,    setSaving]    = useState(false)
   const [removing,  setRemoving]  = useState(false)
-  const [paused,    setPaused]    = useState(false)
+  const [paused,    setPaused]    = useState(entry.paused ?? false)  // init from server state
   const [countdown, setCountdown] = useState(displayWait)
   const PRESETS = [5, 10, 15, 20, 30, 45]
   const pausedRef = useRef(false)
@@ -556,23 +557,27 @@ function GuestEditModal({
   const countdownColor = countdown <= 0 ? "#22c55e" : countdown <= 5 ? "#f97316" : "rgba(251,191,36,0.90)"
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full sm:w-[480px] rounded-t-2xl sm:rounded-2xl" style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}>
-        {/* Drag handle (mobile only) */}
-        <div className="sm:hidden w-8 h-1 rounded-full mx-auto mt-3" style={{ background: "rgba(255,185,100,0.18)" }} />
-
-        <div className="px-5 pt-4 pb-5">
-          {/* ── Header ── */}
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(255,200,150,0.40)" }}>Edit Guest</p>
-              <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
-            </div>
-            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}>
-              <X className="w-4 h-4" />
-            </button>
+    <div style={{
+      position: "fixed", top: 48, left: 0, bottom: 0,
+      width: sidebarW, zIndex: 48,
+      background: "#100C09",
+      borderTop: "1px solid rgba(251,191,36,0.28)",
+      borderRight: "1px solid rgba(255,185,100,0.14)",
+      display: "flex", flexDirection: "column",
+      overflowY: "hidden",
+    }}>
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px 28px" }}>
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(255,200,150,0.40)" }}>Edit Guest</p>
+            <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
           </div>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125" style={{ color: "rgba(255,200,150,0.50)", border: "1px solid rgba(255,185,100,0.20)", background: "rgba(255,185,100,0.06)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
           {/* ── Timer display: Quoted + Elapsed + bar + pause ── */}
           {(entry.quoted_wait != null || entry.wait_estimate != null) && (() => {
@@ -681,17 +686,16 @@ function GuestEditModal({
           </button>
 
           {/* ── Remove ── */}
-          <div style={{ margin: "12px -20px -20px", padding: "12px 20px 20px", borderTop: "1px solid rgba(239,68,68,0.10)" }}>
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(239,68,68,0.10)" }}>
             <button
               onClick={remove}
               disabled={removing}
               className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-              style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.70)", border: "1px solid rgba(239,68,68,0.18)", fontSize: 13, padding: "12px 0" }}
+              style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.70)", border: "1px solid rgba(239,68,68,0.18)", fontSize: 13, padding: "14px 0" }}
             >
               {removing ? "Removing…" : "Remove from Waitlist"}
             </button>
           </div>
-        </div>
       </div>
     </div>
   )
@@ -805,50 +809,51 @@ function DraggableQueueCard({
 
       {/* ── Row 3: action buttons or delete confirm ── */}
       {confirmDelete ? (
-        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5 }}>
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5, marginTop: 4 }}>
           <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1, alignSelf: "center" }}>
             Remove {entry.name || "guest"}?
           </span>
           <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
-            className="h-9 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95"
+            className="h-11 px-4 rounded-xl text-xs font-semibold transition-all active:scale-95"
             style={{ background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
             Cancel
           </button>
           <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
-            className="h-9 px-3 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+            className="h-11 px-4 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
             style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
             {removing ? "…" : "Remove"}
           </button>
         </div>
       ) : (
         /* Full-width action row — buttons stretch to fill the card */
-        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 2 }}>
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5, marginTop: 4 }}>
           {/* Seat — primary, gets most space */}
           <button onClick={e => { e.stopPropagation(); onSeat() }}
-            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 hover:brightness-125 font-bold"
-            style={{ flex: 2, height: 38, fontSize: 12, letterSpacing: "0.04em", background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.28)" }}>
+            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-bold"
+            style={{ flex: 2, height: 44, fontSize: 13, letterSpacing: "0.04em", background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             Seat
           </button>
           {/* Notify (only when not yet ready) */}
           {!isReady ? (
             <button onClick={e => { e.stopPropagation(); onNotify() }}
-              className="flex items-center justify-center gap-1 rounded-xl transition-all active:scale-95 hover:brightness-125 font-bold"
-              style={{ flex: 1, height: 38, fontSize: 11, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.25)" }}>
+              className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
+              style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.28)" }}>
               <BellRing className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">Notify</span>
+              <span style={{ letterSpacing: "0.02em" }}>Notify</span>
             </button>
           ) : null}
           {/* Edit */}
           <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
-            className="flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ flex: 1, height: 38, background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.18)" }}>
-            <Pencil className="w-3.5 h-3.5" />
+            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
+            style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(251,191,36,0.09)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.22)" }}>
+            <Pencil className="w-3.5 h-3.5 shrink-0" />
+            <span style={{ letterSpacing: "0.02em" }}>Edit</span>
           </button>
           {/* Remove */}
           <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
-            className="flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ flex: 1, height: 38, background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.18)" }}>
+            className="flex items-center justify-center rounded-xl transition-all active:scale-95"
+            style={{ width: 44, height: 44, flexShrink: 0, background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.18)" }}>
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -2884,6 +2889,7 @@ export default function DemoHostDashboard() {
           <GuestEditModal
             entry={editModal.entry}
             displayWait={editModal.displayWait}
+            sidebarW={sidebarW}
             onClose={() => setEditModal(null)}
             onSaved={() => { setEditModal(null); refreshAll() }}
             onRemoved={() => { setEditModal(null); refreshAll() }}

@@ -206,6 +206,31 @@ def debug_twilio():
     except Exception as e:
         return {"configured": True, "auth_ok": False, "error": str(e)}
 
+@app.post("/debug/twilio/verify-start")
+def twilio_verify_start(phone: str = "+18312470552"):
+    """Initiate Twilio verification for a phone (required on trial accounts).
+    Twilio will call the number; answer and enter the validation_code shown here."""
+    if not (TWILIO_SID and TWILIO_TOKEN):
+        return {"ok": False, "error": "Twilio not configured"}
+    phone_e164 = _e164(phone)
+    if not phone_e164:
+        return {"ok": False, "error": "Invalid phone number"}
+    try:
+        from twilio.rest import Client
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        validation = client.validation_requests.create(
+            phone_number=phone_e164,
+            friendly_name="HOST Demo",
+        )
+        return {
+            "ok": True,
+            "phone": phone_e164,
+            "validation_code": validation.validation_code,
+            "instructions": f"Answer the call to {phone_e164} and enter: {validation.validation_code}",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 @app.get("/restaurant")
 def get_restaurant(restaurant_id: Optional[str] = None):
     rid = _rid(restaurant_id)

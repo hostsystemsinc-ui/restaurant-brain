@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import { X, UtensilsCrossed, Users, Clock } from "lucide-react"
 
@@ -19,6 +19,7 @@ interface Entry {
   wait_set_at?: string    // ISO timestamp set by server when host writes quoted_wait
   arrival_time: string
   notes?: string
+  paused?: boolean
 }
 
 const WAITING_MESSAGES = [
@@ -87,6 +88,8 @@ export default function WaitPage() {
   const [leaving,     setLeaving]     = useState(false)
   const [displayWait, setDisplayWait] = useState(0)
   const [elapsedSec,  setElapsedSec]  = useState(0)
+  const [progress,    setProgress]    = useState(4)
+  const progressKeyRef = useRef<string | null>(null)
 
   const fetchEntry = useCallback(async () => {
     try {
@@ -108,13 +111,20 @@ export default function WaitPage() {
     return () => clearInterval(poll)
   }, [fetchEntry])
 
-  // Sync displayWait + elapsedSec when quoted_wait or wait_set_at changes
+  // Sync displayWait + elapsedSec when quoted_wait, wait_set_at, or paused changes
   useEffect(() => {
     if (!entry) return
     if (entry.quoted_wait != null && entry.quoted_wait > 0) {
+      // Paused: freeze elapsed at 0 so displayWait = remaining exactly
+      if (entry.paused) {
+        setElapsedSec(0)
+        setDisplayWait(entry.quoted_wait)
+        return
+      }
       const lsKey = entry.wait_set_at
         ? `timer_${entry.id}_${entry.wait_set_at}`
         : `timer_${entry.id}_${entry.quoted_wait}`
+      progressKeyRef.current = lsKey
       if (!localStorage.getItem(lsKey)) {
         localStorage.setItem(lsKey, String(Date.now()))
       }
@@ -126,11 +136,12 @@ export default function WaitPage() {
       setElapsedSec(0)
       setDisplayWait(0)
     }
-  }, [entry?.id, entry?.quoted_wait, entry?.wait_set_at])
+  }, [entry?.id, entry?.quoted_wait, entry?.wait_set_at, entry?.paused])
 
-  // Per-second tick for smooth progress bar and minute countdown
+  // Per-second tick — stops when paused
   useEffect(() => {
     if (entry?.status !== "waiting") return
+    if (entry?.paused) return   // freeze when paused
     const qw = entry.quoted_wait
     if (!qw) return
     const lsKey = entry.wait_set_at
@@ -145,7 +156,26 @@ export default function WaitPage() {
     }, 1000)
     return () => clearInterval(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entry?.status, entry?.quoted_wait, entry?.wait_set_at, entry?.id])
+  }, [entry?.status, entry?.quoted_wait, entry?.wait_set_at, entry?.id, entry?.paused])
+
+  // Progress bar: never goes backward, persists across reloads via localStorage
+  useEffect(() => {
+    if (!entry) return
+    const { status, quoted_wait: qw, id } = entry
+    const minKey = `minProg_${id}`
+    if (status === "ready" || status === "seated") {
+      setProgress(100)
+      return
+    }
+    const totalSec = (qw ?? 1) * 60
+    const raw = qw ? Math.min(97, Math.max(3, (elapsedSec / totalSec) * 100)) : 4
+    const stored = Number(localStorage.getItem(minKey)) || 0
+    setProgress(prev => {
+      const next = Math.max(prev, raw, stored)
+      localStorage.setItem(minKey, String(next))
+      return next
+    })
+  }, [elapsedSec, entry?.status, entry?.quoted_wait, entry?.id])
 
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {
@@ -236,13 +266,6 @@ export default function WaitPage() {
     )
   }
 
-  // Progress: smooth per-second movement when host sets a time, static sliver before that
-  const totalSec = (quoted_wait ?? 1) * 60
-  const progress = isReady || isSeated
-    ? 100
-    : quoted_wait
-      ? Math.min(97, Math.max(3, (elapsedSec / totalSec) * 100))
-      : 4
 
   // ── Seated state ───────────────────────────────────────────────────────────
   if (isSeated) {
