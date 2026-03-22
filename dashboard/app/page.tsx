@@ -471,37 +471,35 @@ function PuckTap() {
         </>
       )}
 
-      {/* HOST Puck — circular with HOST logo, QR code, TAP HERE */}
+      {/* HOST Puck — exactly matches real sticker: HOST top, 4 downward NFC arcs, tagline bottom, no dot */}
       <div style={{
         position: "absolute", top: 122, left: "50%", transform: "translateX(-50%)",
-        width: 178, height: 178, borderRadius: "50%",
-        background: "radial-gradient(circle at 38% 32%, #252830 0%, #0d0f12 100%)",
-        border: `2px solid ${glowing ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.13)"}`,
+        width: 178, height: 178, borderRadius: "50%", overflow: "hidden",
+        background: glowing
+          ? "radial-gradient(circle at 35% 28%, #1e2024 0%, #08090b 100%)"
+          : "radial-gradient(circle at 35% 28%, #181a1e 0%, #060708 100%)",
+        border: `2px solid ${glowing ? "rgba(34,197,94,0.5)" : "rgba(255,255,255,0.22)"}`,
         boxShadow: glowing
-          ? "0 0 0 5px rgba(34,197,94,0.08), 0 0 64px rgba(34,197,94,0.28), 0 32px 72px rgba(0,0,0,0.85)"
-          : "0 32px 72px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04)",
+          ? "0 0 0 5px rgba(34,197,94,0.08), 0 0 64px rgba(34,197,94,0.28), 0 32px 72px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06)"
+          : "0 32px 72px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.05)",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        gap: 7, transition: "box-shadow 0.4s ease, border-color 0.4s ease",
+        gap: 2, transition: "box-shadow 0.4s ease, border-color 0.4s ease",
         zIndex: 5,
       }}>
-        <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.32em", color: "#fff" }}>HOST</span>
+        {/* HOST — very large bold, dominant top element, exactly like sticker */}
+        <span style={{ fontSize: 44, fontWeight: 900, letterSpacing: "0.05em", color: "#fff", lineHeight: 1 }}>HOST</span>
 
-        {/* QR code grid on puck */}
-        <div style={{ width: 56, height: 56, background: "#fff", borderRadius: 5, padding: 4, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1 }}>
-            {[1,1,1,0,1,1,1,1,0,0,0,0,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,1,1,0,1,0,1,0,1,1,0,0,0,0,0,1,1,1,1,0,1,1,1,0,0,0,1,0,0,0,1,0,0,1,1,0,1,0,1,0,0,0,1,1,0,1,0,1,1,0,0,0,1,0,0,1,0,0,0,1,0,1,0,0,1,1,1,1,0,1,1].map((v,i) => (
-              <div key={i} style={{ aspectRatio: "1", background: v ? "#111" : "transparent", borderRadius: 0.5 }} />
-            ))}
-          </div>
-        </div>
+        {/* NFC signal — 4 downward-pointing arcs, widest at top narrowest at bottom, NO dot */}
+        {/* Each arc is a quadratic bezier: M left,y Q center,(y+dip) right,y */}
+        <svg width="72" height="58" viewBox="0 0 80 66" fill="none">
+          <path d="M4,4  Q40,26 76,4"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
+          <path d="M13,22 Q40,42 67,22" stroke="white" strokeWidth="5" strokeLinecap="round"/>
+          <path d="M23,40 Q40,57 57,40" stroke="white" strokeWidth="5" strokeLinecap="round"/>
+          <path d="M32,57 Q40,69 48,57" stroke="white" strokeWidth="5" strokeLinecap="round"/>
+        </svg>
 
-        {/* TAP HERE row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(34,197,94,0.75)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6a6 6 0 0 1 6 6"/><path d="M12 10a2 2 0 0 1 2 2"/>
-          </svg>
-          <span style={{ fontSize: 7.5, color: "rgba(255,255,255,0.42)", letterSpacing: "0.12em", fontWeight: 700 }}>TAP HERE</span>
-        </div>
+        {/* TAP TO JOIN THE LINE — spaced small caps at bottom, exactly like sticker */}
+        <span style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: "0.24em", color: "rgba(255,255,255,0.8)", textTransform: "uppercase", marginTop: 4 }}>TAP TO JOIN THE LINE</span>
       </div>
 
       {/* Puck base/shadow */}
