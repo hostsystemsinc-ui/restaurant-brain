@@ -241,10 +241,10 @@ function IPadMockup() {
                   <div style={{ fontSize: 10.5, fontWeight: 700, color: "#fff", marginBottom: 2 }}>Sarah</div>
                   <div style={{ display: "flex", gap: 6, fontSize: 7, color: "rgba(255,255,255,0.38)", marginBottom: 2 }}>
                     <span>👥 2p</span>
-                    <span>⏱ 13s elapsed</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 2 }}><span style={{ width: 4, height: 4, borderRadius: "50%", background: "#f97316", display: "inline-block", animation: "glow 1.8s ease infinite" }} />4m elapsed</span>
                   </div>
                   <div style={{ fontSize: 7, color: "#f97316", marginBottom: 3 }}>~10m left</div>
-                  <span style={{ fontSize: 6, padding: "1px 5px", borderRadius: 3, background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.28)" }}>asap</span>
+                  <span style={{ fontSize: 6, padding: "1px 5px", borderRadius: 3, background: "rgba(249,115,22,0.1)", color: "rgba(249,115,22,0.6)", border: "1px solid rgba(249,115,22,0.2)" }}>Birthday 🎂</span>
                 </div>
                 <div style={{ display: "flex", borderTop: "1px solid rgba(255,255,255,0.07)", height: 26 }}>
                   <button style={{ flex: 1, background: "rgba(34,197,94,0.1)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -362,28 +362,35 @@ function IPhoneMockup() {
         </div>
 
         {/* Wait page — waiting state */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 12px 10px", textAlign: "center", gap: 0 }}>
-          <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.04em", color: "#f97316", marginBottom: 8 }}>HOST</span>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>Hey, Sarah!</div>
-          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", marginBottom: 10 }}>3 parties ahead of you</div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 12px 12px", textAlign: "center", gap: 8 }}>
+          <span style={{ fontSize: 17, fontWeight: 900, letterSpacing: "0.06em", color: "#f97316" }}>HOST</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", marginBottom: 3, letterSpacing: "-0.02em" }}>Hey, Sarah!</div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 99, padding: "2px 8px" }}>
+              <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#f97316" }} />
+              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#f97316" }}>3 parties ahead</span>
+            </div>
+          </div>
 
           {/* Progress bar */}
-          <div style={{ width: "100%", height: 6, borderRadius: 99, background: "rgba(255,255,255,0.07)", marginBottom: 4, overflow: "hidden" }}>
-            <div style={{ width: "22%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #f97316, #fb923c)" }} />
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", width: "100%", fontSize: 7, color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>
-            <span>Arrived</span><span>22%</span><span>Seated</span>
+          <div style={{ width: "100%" }}>
+            <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 3 }}>
+              <div style={{ width: "22%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #f97316, #fb923c)" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(255,255,255,0.25)" }}>
+              <span>Joined</span><span style={{ color: "#f97316" }}>22%</span><span>Seated</span>
+            </div>
           </div>
 
           {/* Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, width: "100%", marginBottom: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, width: "100%" }}>
             {[
               { label: "Party", val: "2", icon: <Icon.Users />, color: "#fff" },
               { label: "Est. Wait", val: "~45m", icon: <Icon.Clock />, color: "#f97316" },
             ].map(c => (
-              <div key={c.label} style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "6px 8px" }}>
-                <div style={{ fontSize: 7.5, color: "rgba(255,255,255,0.4)", marginBottom: 2 }}>{c.label}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 11, color: c.color }}>
+              <div key={c.label} style={{ background: "#111", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "6px 8px" }}>
+                <div style={{ fontSize: 7, color: "rgba(255,255,255,0.35)", marginBottom: 3, textTransform: "uppercase", letterSpacing: ".07em" }}>{c.label}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 800, fontSize: 12, color: c.color }}>
                   {c.icon} {c.val}
                 </div>
               </div>
@@ -391,19 +398,16 @@ function IPhoneMockup() {
           </div>
 
           {/* Message */}
-          <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "7px 9px", width: "100%" }}>
-            <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", lineHeight: 1.5, textAlign: "left" }}>
-              Your spot is saved — feel free to step out.
+          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "7px 9px", width: "100%" }}>
+            <div style={{ fontSize: 8, color: "rgba(255,255,255,0.48)", lineHeight: 1.55, textAlign: "left" }}>
+              Your spot is saved — feel free to step outside.
             </div>
           </div>
 
-          {/* Leave button */}
-          <div style={{ marginTop: 8, width: "100%", padding: "6px", background: "rgba(255,255,255,0.06)", borderRadius: 8, fontSize: 8, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
-            Leave &amp; Rejoin Later
-          </div>
-
-          <div style={{ fontSize: 6.5, color: "rgba(255,255,255,0.18)", marginTop: 6 }}>
-            This page updates automatically
+          {/* Live indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: "auto" }}>
+            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e" }} />
+            <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.2)" }}>Updates automatically</span>
           </div>
         </div>
       </div>
@@ -579,13 +583,13 @@ function GuestJourney() {
     return () => clearTimeout(t)
   }, [stage])
 
-  const stageLabels = ["Scans or Taps", "In the Queue", "Getting Close", "Table Ready!", "Seated"]
+  const stageLabels = ["Tap or Scan", "Watching the Queue", "Almost There", "Table's Ready", "Enjoy"]
   const stageDescs = [
-    "Guest scans the QR code or taps the NFC puck at the host stand",
-    "Real-time wait status updates live on their phone",
-    "Wait estimate counts down as tables turn",
-    "They get a text and their page shows it's time",
-    "Walk in, sit down. Done.",
+    "Guest taps the HOST puck on the sign out front or scans the QR code. They're in the queue in under 10 seconds — before they even reach the host stand.",
+    "Their phone shows their position, party size, and a live wait estimate. It updates automatically as other parties are seated.",
+    "The progress bar moves and the wait estimate counts down. They can be anywhere — outside, at the bar, down the street.",
+    "One tap in the HOST dashboard fires an SMS instantly. Their live page flips to 'head to the host stand.' No buzzers.",
+    "They walk in, you seat them. Clean, fast, no chaos.",
   ]
 
   return (
@@ -738,47 +742,54 @@ function JoinScreen() {
 function WaitScreen({ position, wait, progress }: { position: number; wait: number; progress: number }) {
   const isClose = position === 1
   return (
-    <div style={{ padding: "10px 16px 12px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 9, overflowY: "auto", height: "100%" }}>
-      {/* Icon */}
-      <span style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.04em", color: "#f97316" }}>HOST</span>
-      <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 3 }}>Hey, Sarah!</div>
-        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>
-          {isClose ? "You're next up!" : `${position} parties ahead of you`}
+    <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10, overflowY: "auto", height: "100%" }}>
+      {/* Brand */}
+      <span style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.06em", color: "#f97316" }}>HOST</span>
+
+      {/* Status */}
+      <div style={{ width: "100%" }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginBottom: 4, letterSpacing: "-0.02em" }}>Hey, Sarah!</div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: isClose ? "rgba(34,197,94,0.12)" : "rgba(249,115,22,0.1)", border: `1px solid ${isClose ? "rgba(34,197,94,0.3)" : "rgba(249,115,22,0.25)"}`, borderRadius: 99, padding: "3px 10px" }}>
+          <div style={{ width: 5, height: 5, borderRadius: "50%", background: isClose ? "#22c55e" : "#f97316", animation: "glow 1.8s ease infinite" }} />
+          <span style={{ fontSize: 8.5, fontWeight: 700, color: isClose ? "#22c55e" : "#f97316" }}>
+            {isClose ? "You're next — stay close!" : `${position} parties ahead of you`}
+          </span>
         </div>
       </div>
 
       {/* Progress bar */}
       <div style={{ width: "100%" }}>
-        <div style={{ width: "100%", height: 8, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 4 }}>
-          <div style={{ width: `${progress}%`, height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #f97316, #fb923c)", transition: "width 1.2s ease" }} />
+        <div style={{ width: "100%", height: 7, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 5 }}>
+          <div style={{ width: `${progress}%`, height: "100%", borderRadius: 99, background: isClose ? "linear-gradient(90deg,#22c55e,#86efac)" : "linear-gradient(90deg,#f97316,#fb923c)", transition: "width 1.2s ease" }} />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 7.5, color: "rgba(255,255,255,0.3)" }}>
-          <span>Arrived</span><span>{progress}%</span><span>Seated</span>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 7, color: "rgba(255,255,255,0.25)" }}>
+          <span>Joined</span><span style={{ color: isClose ? "#22c55e" : "#f97316", fontWeight: 700 }}>{progress}%</span><span>Seated</span>
         </div>
       </div>
 
       {/* Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, width: "100%" }}>
-        <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Party</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#fff" }}><Icon.Users /> 2</div>
+        <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 10px" }}>
+          <div style={{ fontSize: 7.5, color: "rgba(255,255,255,0.35)", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".08em" }}>Party</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 800, fontSize: 14, color: "#fff" }}><Icon.Users /> 2</div>
         </div>
-        <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Est. Wait</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#f97316" }}><Icon.Clock /> ~{wait}m</div>
+        <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 10px" }}>
+          <div style={{ fontSize: 7.5, color: "rgba(255,255,255,0.35)", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".08em" }}>Est. Wait</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 800, fontSize: 14, color: isClose ? "#22c55e" : "#f97316" }}><Icon.Clock /> ~{wait}m</div>
         </div>
       </div>
 
       {/* Message */}
-      <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "9px 12px", width: "100%" }}>
-        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", lineHeight: 1.55, textAlign: "left" }}>
-          {isClose ? "Sit tight, we're moving quickly!" : "Your spot is saved — feel free to step out."}
+      <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "9px 12px", width: "100%" }}>
+        <div style={{ fontSize: 8.5, color: "rgba(255,255,255,0.48)", lineHeight: 1.6, textAlign: "left" }}>
+          {isClose ? "Sit tight — we're moving fast!" : "Your spot is saved. Feel free to step outside."}
         </div>
       </div>
 
-      <div style={{ fontSize: 8, color: "rgba(255,255,255,0.06)", padding: "3px 0", borderRadius: 8, width: "100%", background: "rgba(255,255,255,0.04)", textAlign: "center" }}>
-        Leave &amp; Rejoin Later
+      {/* Live update indicator */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: "auto" }}>
+        <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", animation: "glow 2s ease infinite" }} />
+        <span style={{ fontSize: 7, color: "rgba(255,255,255,0.2)", letterSpacing: ".04em" }}>Updates automatically</span>
       </div>
     </div>
   )
@@ -831,19 +842,113 @@ function ReadyScreen() {
 /* ─── Seated Screen (stage 4) ──────────────────────────────── */
 function SeatedScreen() {
   return (
-    <div style={{ padding: "32px 16px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 12, height: "100%" }}>
-      <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(59,130,246,0.15)", border: "2px solid rgba(59,130,246,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#60a5fa", marginTop: 16 }}>
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16, padding: "24px 20px", height: "100%" }}>
+      <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.06em", color: "#fff", marginBottom: 4 }}>HOST</div>
+      <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.35)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e" }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
       <div>
-        <div style={{ fontSize: 24, fontWeight: 700, color: "#fff", marginBottom: 6 }}>Enjoy!</div>
-        <div style={{ fontSize: 13, color: "#93c5fd" }}>You&apos;ve been seated</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", marginBottom: 8 }}>Enjoy your meal.</div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", letterSpacing: ".04em", textTransform: "uppercase" }}>Demo Restaurant</div>
       </div>
-      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.3)", lineHeight: 1.7, maxWidth: 160, marginTop: 12 }}>
-        Have a wonderful dining experience!
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", lineHeight: 1.65, maxWidth: 150 }}>
+        Enjoy your time.
       </div>
+    </div>
+  )
+}
+
+/* ─── FAQ Section ──────────────────────────────────────────── */
+const FAQ_ITEMS = [
+  {
+    q: "Does the guest need to download an app?",
+    a: "No — and never will. The guest taps the HOST puck or scans the QR code and their phone opens a web page. No app store, no login, no account. It works on every iPhone and Android made in the last five years.",
+  },
+  {
+    q: "How exactly does a guest join the waitlist?",
+    a: "They hold their phone over the HOST puck for about one second, or scan the QR code printed on the puck. A form opens on their phone — they enter their name, party size, and phone number. Two taps and they're on the list. Total time: under 10 seconds.",
+  },
+  {
+    q: "What does the guest see on their phone?",
+    a: "A live wait page that shows their name, party size, position in the queue, and an estimated wait time. It updates in real time as other parties are seated — no refreshing needed. When their table is ready, the page flips to 'Head to the host stand' and they get a text at the same moment.",
+  },
+  {
+    q: "How do I notify a guest their table is ready?",
+    a: "One tap in the HOST dashboard. The moment you press the notify button next to their party, HOST fires an SMS to their phone and their live page updates automatically. No buzzers. No calling out names. No manual texting.",
+  },
+  {
+    q: "Can the puck go outside — like on a sign by the door?",
+    a: "Yes, and that's exactly how we recommend using it. Mount the HOST puck on a sign at your entrance so guests can join the waitlist before they even walk in. The puck is weatherproof and works through most sign materials. A QR code is always printed on the puck as a backup.",
+  },
+  {
+    q: "What if a guest doesn't have a smartphone?",
+    a: "Your host can add any guest manually in seconds — just tap 'Add Guest' in the dashboard and enter their name and party size. They won't get the SMS, but they'll be in the queue and you can call their name when ready. The system handles both.",
+  },
+  {
+    q: "Does HOST replace our POS or reservation system?",
+    a: "No. HOST sits alongside your existing setup and handles walk-in waitlist management. You keep your POS, your payment flow, and any reservation system you already use. HOST is specifically for the host stand and the wait — it doesn't touch anything else.",
+  },
+  {
+    q: "How long does setup take?",
+    a: "Under an hour for most restaurants. We walk you through the dashboard, set up your floor plan, connect your phone number for SMS, and get the puck configured. By the time we're done, your staff is running it and you're live.",
+  },
+  {
+    q: "What happens if a guest leaves before their table is ready?",
+    a: "They can leave the queue themselves from their wait page if they need to. You can also remove any party from the dashboard instantly. The queue reorders automatically — no gaps, no confusion.",
+  },
+  {
+    q: "How much does HOST cost?",
+    a: "Pricing depends on your restaurant's size and volume. We're currently onboarding founding restaurants in Denver and Boulder — schedule a free demo and we'll talk through what makes sense for you.",
+  },
+]
+
+function FaqSection() {
+  const [open, setOpen] = useState<number | null>(null)
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {FAQ_ITEMS.map((item, i) => (
+        <div
+          key={i}
+          style={{
+            background: open === i ? "rgba(34,197,94,0.03)" : "#080A0C",
+            border: "1px solid",
+            borderColor: open === i ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.07)",
+            borderRadius: i === 0 ? "16px 16px 0 0" : i === FAQ_ITEMS.length - 1 ? "0 0 16px 16px" : 0,
+            overflow: "hidden",
+            transition: "background 0.2s, border-color 0.2s",
+          }}
+        >
+          <button
+            onClick={() => setOpen(open === i ? null : i)}
+            style={{
+              width: "100%", background: "none", border: "none", cursor: "pointer",
+              padding: "22px 28px", display: "flex", alignItems: "center", justifyContent: "space-between",
+              gap: 16, textAlign: "left",
+            }}
+          >
+            <span style={{ fontSize: ".95rem", fontWeight: 700, color: open === i ? "#fff" : "rgba(255,255,255,0.75)", letterSpacing: "-0.01em", lineHeight: 1.4 }}>
+              {item.q}
+            </span>
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke={open === i ? "#22c55e" : "rgba(255,255,255,0.3)"}
+              strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+              style={{ flexShrink: 0, transform: open === i ? "rotate(180deg)" : "none", transition: "transform 0.25s ease, stroke 0.2s" }}
+            >
+              <path d="M6 9l6 6 6-6"/>
+            </svg>
+          </button>
+          {open === i && (
+            <div style={{ padding: "0 28px 24px", animation: "badgein 0.22s ease both" }}>
+              <p style={{ fontSize: ".9rem", color: "rgba(255,255,255,0.45)", lineHeight: 1.75, margin: 0 }}>
+                {item.a}
+              </p>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
@@ -1031,7 +1136,7 @@ export default function MarketingPage() {
           .device-row { padding: 28px 20px 28px !important; gap: 16px !important; }
           .ipad-hide { display: none !important; }
           .stats-wrap { padding-left: 20px !important; padding-right: 20px !important; }
-          .stats-grid { grid-template-columns: repeat(2,1fr) !important; gap: 24px !important; }
+          .stats-grid { grid-template-columns: repeat(2,1fr) !important; gap: 1px !important; }
           .feat-grid { grid-template-columns: 1fr !important; }
           .feat-detail { padding: 28px 20px 32px !important; }
           .feat-detail-inner { flex-direction: column !important; gap: 24px !important; }
@@ -1258,17 +1363,51 @@ export default function MarketingPage() {
         </div>
       </section>
 
-      {/* Stats */}
-      <div ref={statsRef} className="stats-wrap" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "36px 56px" }}>
-        <div className="stats-grid" style={{ maxWidth: 1000, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", textAlign: "center", gap: 20 }}>
-          {[{n:2,s:" sec",l:"To join the list"},{n:40,s:"%",l:"Less perceived wait"},{n:3,s:"×",l:"Faster than paper"},{n:0,s:"",l:"App downloads needed"}].map(s=>(
-            <div key={s.l}>
-              <div style={{ fontSize: "2.5rem", fontWeight: 900, color: "#22c55e", letterSpacing: "-0.045em", lineHeight: 1, marginBottom: 7 }}><Counter to={s.n} suffix={s.s} /></div>
-              <div style={{ fontSize: ".8rem", color: "rgba(255,255,255,0.35)" }}>{s.l}</div>
+      {/* ── The Cost of Walking Away ────────────────────────────── */}
+      <section className="mob-px" style={{ padding: "100px 56px", borderTop: "1px solid rgba(255,255,255,0.06)", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 100%, rgba(217,50,28,0.05) 0%, transparent 60%)", pointerEvents: "none" }} />
+        <div ref={statsRef} style={{ maxWidth: 1060, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 64 }}>
+            <div style={{ fontSize: ".72rem", fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(217,50,28,0.75)", marginBottom: 16 }}>
+              The problem
             </div>
-          ))}
+            <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.08, margin: 0 }}>
+              The wait is costing you{" "}
+              <em className="serif-italic" style={{ color: "#fff", fontSize: "1.06em" }}>real revenue.</em>
+            </h2>
+          </div>
+
+          {/* 3 pain stats */}
+          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", borderRadius: 24, overflow: "hidden", marginBottom: 1 }}>
+            {[
+              { stat: "1 in 3", label: "guests have walked away from a restaurant because the wait felt uncertain or disorganized", source: "National Restaurant Association" },
+              { stat: "$150+", label: "in revenue lost every time a party of four walks out before they're seated", source: "avg. check × party size" },
+              { stat: "45 min", label: "per shift your host spends managing a clipboard or shouting names across the room", source: "industry average" },
+            ].map(s => (
+              <div key={s.stat} style={{ background: "#08090B", padding: "44px 32px", textAlign: "center" }}>
+                <div style={{ fontSize: "clamp(2.6rem,4.5vw,3.8rem)", fontWeight: 900, letterSpacing: "-0.05em", color: "rgba(217,50,28,0.85)", lineHeight: 1, marginBottom: 18 }}>{s.stat}</div>
+                <div style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.42)", lineHeight: 1.65, marginBottom: 10 }}>{s.label}</div>
+                <div style={{ fontSize: ".68rem", color: "rgba(255,255,255,0.15)", letterSpacing: ".08em", textTransform: "uppercase" }}>{s.source}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* HOST solution strip */}
+          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", borderRadius: "0 0 24px 24px", overflow: "hidden" }}>
+            {[
+              { n: 2, s: " sec", l: "to join with a tap or scan" },
+              { n: 55, s: "%", l: "fewer no-shows with SMS" },
+              { n: 0, s: "", l: "app downloads required" },
+              { n: 60, s: " min", l: "average setup time" },
+            ].map(s => (
+              <div key={s.l} style={{ background: "rgba(34,197,94,0.03)", padding: "28px 20px", textAlign: "center", borderTop: "1px solid rgba(34,197,94,0.1)" }}>
+                <div style={{ fontSize: "2.2rem", fontWeight: 900, color: "#22c55e", letterSpacing: "-0.045em", lineHeight: 1, marginBottom: 7 }}><Counter to={s.n} suffix={s.s} /></div>
+                <div style={{ fontSize: ".78rem", color: "rgba(255,255,255,0.32)" }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Statement */}
       <div className="mob-px" style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "80px 56px", textAlign: "center", position: "relative", overflow: "hidden" }}>
@@ -1446,17 +1585,19 @@ export default function MarketingPage() {
         </div>
         <div ref={useFade(150)}>
           <h2 style={{ fontSize: "clamp(1.8rem,3.5vw,2.8rem)", fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1.05, marginBottom: 20 }}>
-            Two seconds.<br />On the list.
+            Join from the sidewalk.<br />
+            <em className="serif-italic" style={{ fontSize: "1.05em", color: "#22c55e" }}>Before they even walk in.</em>
           </h2>
           <p style={{ fontSize: ".95rem", color: "rgba(255,255,255,0.4)", lineHeight: 1.75, marginBottom: 32 }}>
-            Guests tap the NFC puck or scan the QR code — no app to download, no URL to type. The moment they look for a seat, they&apos;re already in the queue.
+            Mount the HOST puck on a sign out front. Guests tap or scan on the way in — they&apos;re already in the queue before they reach the host stand. No app, no URL, no clipboard.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
             {[
-              "NFC puck tap works on any iPhone or Android",
-              "QR code as an option — always at the stand",
+              "Works on a sign by the door, at the stand — anywhere",
+              "NFC tap works on every modern iPhone and Android",
+              "QR code always printed on the puck as backup",
+              "Zero staff time to onboard a single guest",
               "Branded HOST pucks included at launch",
-              "Zero staff time to onboard guests",
             ].map(b=>(
               <div key={b} style={{ display: "flex", gap: 12, alignItems: "center", fontSize: ".88rem", color: "rgba(255,255,255,0.48)" }}>
                 <span style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.28)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e", flexShrink: 0 }}><Icon.Check /></span>
@@ -1464,6 +1605,20 @@ export default function MarketingPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ─────────────────────────────────────────────────── */}
+      <section className="mob-px" style={{ padding: "110px 56px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 72 }}>
+            <div style={{ fontSize: ".72rem", fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "#22c55e", marginBottom: 16 }}>FAQ</div>
+            <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.08, margin: 0 }}>
+              Everything you want{" "}
+              <em className="serif-italic" style={{ fontSize: "1.06em", color: "#fff" }}>to know.</em>
+            </h2>
+          </div>
+          <FaqSection />
         </div>
       </section>
 
