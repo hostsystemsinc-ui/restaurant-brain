@@ -273,69 +273,47 @@ export default function WaitPage() {
       <div style={{
         height: "100dvh", background: "#000", color: "#fff",
         display: "flex", flexDirection: "column",
-        overflow: "hidden",
+        alignItems: "center", justifyContent: "center",
+        padding: "0 40px", textAlign: "center",
       }}>
         <style>{`
           @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(12px); }
             to   { opacity: 1; transform: translateY(0); }
           }
         `}</style>
 
-        {/* HOST wordmark top */}
-        <div style={{ padding: "52px 28px 0", flexShrink: 0 }}>
-          <p style={{
-            fontSize: 11, fontWeight: 900, letterSpacing: "0.35em",
-            textTransform: "uppercase", color: "#fff",
-          }}>HOST</p>
-        </div>
-
-        {/* Main content */}
-        <div style={{
-          flex: 1, display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          padding: "0 28px", textAlign: "center",
+        <p style={{
+          fontSize: 22, fontWeight: 300, letterSpacing: "0.01em",
+          color: "rgba(255,255,255,0.88)", margin: "0 0 48px",
+          animation: "fadeUp 0.6s 0.05s ease-out both",
         }}>
+          Enjoy your meal.
+        </p>
 
-          {/* Headline */}
-          <h1 style={{
-            fontSize: 36, fontWeight: 300, letterSpacing: "-0.02em",
-            color: "#fff", margin: "0 0 10px", lineHeight: 1.15,
-            animation: "fadeUp 0.5s 0.1s ease-out both",
+        {/* Restaurant logo placeholder */}
+        <div style={{ animation: "fadeUp 0.6s 0.15s ease-out both", marginBottom: 48 }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: "50%",
+            border: "1px solid rgba(255,255,255,0.14)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 16px",
+            background: "rgba(255,255,255,0.04)",
           }}>
-            Enjoy your meal.
-          </h1>
-          <p style={{
-            fontSize: 12, color: "rgba(255,255,255,0.28)", fontWeight: 500,
-            margin: "0 0 36px", letterSpacing: "0.12em", textTransform: "uppercase",
-            animation: "fadeUp 0.5s 0.18s ease-out both",
-          }}>
+            <span style={{ fontSize: 28, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "-0.02em" }}>D</span>
+          </div>
+          <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.30)", letterSpacing: "0.12em", textTransform: "uppercase", margin: 0 }}>
             Demo Restaurant
           </p>
-
-          {/* Divider */}
-          <div style={{ width: 32, height: 1, background: "rgba(255,255,255,0.08)", marginBottom: 36 }} />
-
-          {/* Thank-you note */}
-          <p style={{
-            fontSize: 14, color: "rgba(255,255,255,0.38)",
-            lineHeight: 1.7, maxWidth: 220,
-            animation: "fadeUp 0.5s 0.3s ease-out both",
-          }}>
-            Thank you for dining with us tonight.<br />We hope to see you again soon.
-          </p>
         </div>
 
-        {/* Footer */}
-        <div style={{
-          padding: "0 28px 40px", flexShrink: 0,
-          display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+        <p style={{
+          fontSize: 22, fontWeight: 300, letterSpacing: "0.01em",
+          color: "rgba(255,255,255,0.88)", margin: 0,
+          animation: "fadeUp 0.6s 0.25s ease-out both",
         }}>
-          <div style={{ width: 28, height: 1, background: "rgba(255,255,255,0.06)", marginBottom: 6 }} />
-          <p style={{ fontSize: 9, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.12)" }}>
-            Powered by HOST
-          </p>
-        </div>
+          Enjoy your time.
+        </p>
       </div>
     )
   }

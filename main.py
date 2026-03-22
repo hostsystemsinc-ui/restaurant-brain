@@ -106,11 +106,17 @@ def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
         return False, f"Invalid phone number: {to_phone!r}"
     try:
         from twilio.rest import Client
-        Client(TWILIO_SID, TWILIO_TOKEN).messages.create(
-            body=body,
-            from_=TWILIO_FROM,
-            to=normalized,
-        )
+        import time
+        client = Client(TWILIO_SID, TWILIO_TOKEN)
+        msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
+        print(f"[Twilio] created sid={msg.sid} status={msg.status} error_code={msg.error_code}")
+        # Fetch status once after a short delay to catch immediate trial-account rejections
+        time.sleep(1.5)
+        msg = client.messages(msg.sid).fetch()
+        print(f"[Twilio] fetched sid={msg.sid} status={msg.status} error_code={msg.error_code} error_message={msg.error_message!r}")
+        if msg.status in ("failed", "undelivered") or msg.error_code:
+            err = msg.error_message or f"status={msg.status} code={msg.error_code}"
+            return False, err
         return True, ""
     except Exception as e:
         print(f"[Twilio] SMS to {normalized} failed: {e}")
