@@ -7,7 +7,7 @@ import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
   LayoutDashboard, GripVertical, CalendarDays, CalendarCheck,
-  Copy, Check, Pencil, Activity, Trash2, BarChart2,
+  Copy, Check, Pencil, Activity, Trash2, BarChart2, AlertTriangle,
 } from "lucide-react"
 import {
   DndContext, DragOverlay,
@@ -802,7 +802,7 @@ function DraggableQueueCard({
       {/* ── Row 2b: notes preview ── */}
       {entry.notes && (
         <div style={{ paddingLeft: 38, fontSize: 11, color: "rgba(255,200,150,0.50)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          📝 {entry.notes}
+          {entry.notes}
         </div>
       )}
 
@@ -1747,33 +1747,32 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[400px] h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-2xl flex flex-col overflow-hidden"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+        style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.07)", zIndex: 1 }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0" style={{ borderBottom: "1px solid rgba(255,185,100,0.12)" }}>
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <div>
-            <p className="text-[10px] font-black tracking-[0.22em] uppercase mb-0.5" style={{ color: "rgba(255,200,150,0.40)" }}>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase mb-0.5" style={{ color: "rgba(255,255,255,0.22)" }}>
               Host Log
             </p>
-            <p className="text-lg font-bold" style={{ color: "rgba(255,248,240,0.95)" }}>History</p>
+            <p className="text-lg font-bold" style={{ color: "rgba(255,255,255,0.92)" }}>History</p>
           </div>
-          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ color: "rgba(255,255,255,0.35)", border: "1px solid rgba(255,255,255,0.08)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex shrink-0 px-5 pt-3 gap-2">
+        <div className="flex shrink-0 px-5 pt-4 gap-2">
           {(["today", "stats"] as const).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               style={{
-                height: 32, padding: "0 14px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                letterSpacing: "0.08em", textTransform: "capitalize",
-                background: tab === t ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.05)",
-                border: `1px solid ${tab === t ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.12)"}`,
-                color: tab === t ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.45)",
+                height: 34, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                background: tab === t ? "rgba(255,255,255,0.1)" : "transparent",
+                border: `1px solid ${tab === t ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.07)"}`,
+                color: tab === t ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.38)",
                 cursor: "pointer", transition: "all 0.12s",
               }}
             >
@@ -1781,90 +1780,113 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
             </button>
           ))}
           {tab === "today" && (
-            <button onClick={load} style={{ marginLeft: "auto", width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.05)", border: "1px solid rgba(255,185,100,0.12)", cursor: "pointer", color: "rgba(255,200,150,0.45)" }}>
+            <button onClick={load} style={{ marginLeft: "auto", width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid rgba(255,255,255,0.07)", cursor: "pointer", color: "rgba(255,255,255,0.35)" }}>
               <RefreshCw style={{ width: 13, height: 13 }} />
             </button>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 mt-2">
+        <div className="flex-1 overflow-y-auto px-5 pb-5 flex flex-col mt-3">
           {tab === "today" ? (
             loading ? (
               <div className="flex items-center justify-center py-16">
-                <div className="animate-spin" style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(255,185,100,0.15)", borderTopColor: "rgba(255,185,100,0.65)" }} />
+                <div className="animate-spin" style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.08)", borderTopColor: "rgba(255,255,255,0.5)" }} />
               </div>
             ) : entries.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-                <Clock className="w-7 h-7" style={{ color: "rgba(255,185,100,0.25)" }} />
-                <p className="text-sm" style={{ color: "rgba(255,200,150,0.45)" }}>No history yet today</p>
-                <p className="text-xs" style={{ color: "rgba(255,200,150,0.28)", maxWidth: 200 }}>Seated and removed guests will appear here.</p>
+                <Clock className="w-7 h-7" style={{ color: "rgba(255,255,255,0.15)" }} />
+                <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.35)" }}>No history yet today</p>
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.18)", maxWidth: 200, lineHeight: 1.6 }}>Seated and removed guests will appear here.</p>
               </div>
-            ) : (
-              entries.map(e => (
-                <div
-                  key={e.id}
-                  style={{
-                    borderRadius: 12, padding: "11px 13px",
-                    background: e.status === "seated" ? "rgba(34,197,94,0.07)" : "rgba(239,68,68,0.07)",
-                    border: `1px solid ${e.status === "seated" ? "rgba(34,197,94,0.22)" : "rgba(239,68,68,0.22)"}`,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 3 }}>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,248,240,0.95)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {e.name || "Guest"}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 9, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase",
-                            padding: "2px 6px", borderRadius: 5,
-                            background: e.status === "seated" ? "rgba(34,197,94,0.16)" : "rgba(239,68,68,0.16)",
-                            color: e.status === "seated" ? "#4ade80" : "#f87171",
-                          }}
-                        >
-                          {e.status}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 11, color: "rgba(255,200,150,0.55)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <span>{e.party_size}p</span>
-                        {e.quoted_wait != null && <span>~{e.quoted_wait}m quoted</span>}
-                        <span style={{ color: "rgba(255,200,150,0.35)" }}>arrived {fmtTime(e.arrival_time)}</span>
-                      </div>
-                      {e.notes && (
-                        <div style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>📝 {e.notes}</div>
-                      )}
-                    </div>
-                    {e.status === "removed" && (
-                      <button
-                        onClick={() => restore(e.id)}
-                        disabled={restoring === e.id}
+            ) : (() => {
+              const seated  = entries.filter(e => e.status === "seated")
+              const removed = entries.filter(e => e.status === "removed")
+              const sections = [
+                { key: "seated",  label: "Seated",  color: "#22c55e", items: seated  },
+                { key: "removed", label: "Removed", color: "#f87171", items: removed },
+              ].filter(s => s.items.length > 0)
+              return sections.map(section => (
+                <div key={section.key} style={{ marginBottom: 24 }}>
+                  {/* Section header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)" }}>
+                      {section.label}
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: section.color, opacity: 0.75 }}>
+                      {section.items.length}
+                    </span>
+                  </div>
+                  {/* Rows */}
+                  <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    {section.items.map((e, i) => (
+                      <div
+                        key={e.id}
                         style={{
-                          flexShrink: 0, height: 34, padding: "0 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-                          background: "rgba(99,179,237,0.10)", color: "rgba(99,179,237,0.85)",
-                          border: "1px solid rgba(99,179,237,0.28)", cursor: "pointer",
-                          opacity: restoring === e.id ? 0.5 : 1,
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "13px 14px",
+                          background: i % 2 === 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.015)",
+                          borderTop: i > 0 ? "1px solid rgba(255,255,255,0.04)" : "none",
                         }}
                       >
-                        {restoring === e.id ? "…" : "Restore"}
-                      </button>
-                    )}
+                        {/* Color accent bar */}
+                        <div style={{ width: 3, height: 38, borderRadius: 2, background: section.color, opacity: 0.55, flexShrink: 0 }} />
+                        {/* Text content */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {e.name || "Guest"}
+                            </span>
+                            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.32)", flexShrink: 0 }}>
+                              {fmtTime(e.arrival_time)}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.42)", display: "flex", gap: 6 }}>
+                            <span>{e.party_size} {e.party_size === 1 ? "guest" : "guests"}</span>
+                            {e.quoted_wait != null && <><span style={{ opacity: 0.4 }}>·</span><span>{e.quoted_wait}m quoted</span></>}
+                          </div>
+                          {e.notes && (
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.26)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {e.notes}
+                            </div>
+                          )}
+                        </div>
+                        {/* Restore button */}
+                        {e.status === "removed" && (
+                          <button
+                            onClick={() => restore(e.id)}
+                            disabled={restoring === e.id}
+                            style={{
+                              flexShrink: 0, height: 32, padding: "0 13px",
+                              borderRadius: 8, fontSize: 12, fontWeight: 600,
+                              background: "rgba(147,207,255,0.08)",
+                              color: "rgba(147,207,255,0.85)",
+                              border: "1px solid rgba(147,207,255,0.2)",
+                              cursor: "pointer",
+                              opacity: restoring === e.id ? 0.45 : 1,
+                              transition: "opacity 0.15s",
+                            }}
+                          >
+                            {restoring === e.id ? "…" : "Restore"}
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))
-            )
+            })()
           ) : (
             // Stats tab
             hist.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-                <BarChart2 className="w-8 h-8" style={{ color: "rgba(255,185,100,0.25)" }} />
-                <p className="text-sm font-medium" style={{ color: "rgba(255,200,150,0.45)" }}>No seating data yet</p>
-                <p className="text-xs" style={{ color: "rgba(255,200,150,0.28)", maxWidth: 220 }}>Seat guests to build wait-time suggestions.</p>
+                <BarChart2 className="w-8 h-8" style={{ color: "rgba(255,255,255,0.12)" }} />
+                <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.32)" }}>No seating data yet</p>
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.18)", maxWidth: 220, lineHeight: 1.6 }}>Seat guests to build wait-time suggestions.</p>
               </div>
             ) : (
               <>
-                <div>
-                  <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
+                <div style={{ marginBottom: 20 }}>
+                  <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.25)" }}>
                     Today · {todayHist.length} parties
                   </p>
                   <div className="grid grid-cols-3 gap-2">
@@ -1873,34 +1895,34 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
                       { label: "Avg Quoted", value: avgQuoted, unit: "min" },
                       { label: "Avg Actual", value: avgActual, unit: "min" },
                     ].map(({ label, value, unit }) => (
-                      <div key={label} className="flex flex-col items-center justify-center rounded-xl py-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
-                        <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em" }}>{value ?? "—"}</span>
-                        {unit && value != null && <span style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 2 }}>{unit}</span>}
-                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginTop: 5, textAlign: "center" }}>{label}</span>
+                      <div key={label} className="flex flex-col items-center justify-center rounded-xl py-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                        <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,255,255,0.92)", letterSpacing: "-0.02em" }}>{value ?? "—"}</span>
+                        {unit && value != null && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 2 }}>{unit}</span>}
+                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginTop: 5, textAlign: "center" }}>{label}</span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.40)" }}>
+                <div style={{ marginBottom: 20 }}>
+                  <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.25)" }}>
                     All Time · {hist.length} parties
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     {busiestHour !== null && (
-                      <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
-                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>Busiest Hour</p>
-                        <p style={{ fontSize: 24, fontWeight: 700, color: "rgba(255,248,240,0.95)", lineHeight: 1, letterSpacing: "-0.02em" }}>{fmtHour(busiestHour)}</p>
-                        <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>{busiestCount} parties</p>
+                      <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 5 }}>Busiest Hour</p>
+                        <p style={{ fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.92)", lineHeight: 1, letterSpacing: "-0.02em" }}>{fmtHour(busiestHour)}</p>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 3 }}>{busiestCount} parties</p>
                       </div>
                     )}
                     {avgQuoted != null && avgActual != null && (
-                      <div className="rounded-xl p-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.12)" }}>
-                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,200,150,0.38)", marginBottom: 5 }}>Accuracy</p>
+                      <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 5 }}>Accuracy</p>
                         <p style={{ fontSize: 24, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: Math.abs(avgQuoted - avgActual) <= 3 ? "#22c55e" : "rgba(251,191,36,0.90)" }}>
                           {Math.abs(avgQuoted - avgActual) <= 3 ? "Great" : avgActual > avgQuoted ? "Under" : "Over"}
                         </p>
-                        <p style={{ fontSize: 10, color: "rgba(255,200,150,0.40)", marginTop: 3 }}>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 3 }}>
                           {Math.abs(avgQuoted - avgActual)}m {avgActual > avgQuoted ? "longer" : "shorter"} than quoted
                         </p>
                       </div>
@@ -1909,16 +1931,16 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
                 </div>
 
                 <div>
-                  <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-1" style={{ color: "rgba(255,200,150,0.40)" }}>Suggested Wait Times</p>
-                  <p className="text-[10px] mb-3" style={{ color: "rgba(255,200,150,0.28)" }}>Based on {hist.length} seatings · adjusted for time of day</p>
+                  <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-1" style={{ color: "rgba(255,255,255,0.25)" }}>Suggested Wait Times</p>
+                  <p className="text-[10px] mb-3" style={{ color: "rgba(255,255,255,0.20)" }}>Based on {hist.length} seatings · adjusted for time of day</p>
                   <div className="grid grid-cols-4 gap-1.5">
                     {PARTY_SIZES.map(n => {
                       const suggestion = suggestWait(n)
                       return (
-                        <div key={n} className="flex flex-col items-center justify-center rounded-xl py-3" style={{ background: suggestion ? "rgba(255,185,100,0.07)" : "rgba(255,185,100,0.03)", border: `1px solid ${suggestion ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.08)"}` }}>
-                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 3 }}>{n}{n === 8 ? "+" : ""}p</span>
-                          <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, color: suggestion ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.22)", letterSpacing: "-0.02em" }}>{suggestion ?? "—"}</span>
-                          {suggestion != null && <span style={{ fontSize: 9, color: "rgba(255,200,150,0.35)", marginTop: 1 }}>min</span>}
+                        <div key={n} className="flex flex-col items-center justify-center rounded-xl py-3" style={{ background: suggestion ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.02)", border: `1px solid ${suggestion ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)"}` }}>
+                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 3 }}>{n}{n === 8 ? "+" : ""}p</span>
+                          <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, color: suggestion ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.18)", letterSpacing: "-0.02em" }}>{suggestion ?? "—"}</span>
+                          {suggestion != null && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", marginTop: 1 }}>min</span>}
                         </div>
                       )
                     })}
@@ -1931,7 +1953,7 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
 
         {/* Footer */}
         {hist.length > 0 && tab === "stats" && (
-          <div className="px-5 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,185,100,0.10)" }}>
+          <div className="px-5 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <button
               onClick={() => {
                 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
@@ -1989,11 +2011,12 @@ export default function DemoHostDashboard() {
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [sidebarW, setSidebarW]           = useState(300)
+  const [zoom,     setZoom]               = useState(() => { try { return parseFloat(localStorage.getItem("host_zoom") || "1") } catch { return 1 } })
+  useEffect(() => { try { localStorage.setItem("host_zoom", String(zoom)) } catch {} }, [zoom])
   const [linkCopied, setLinkCopied]       = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [toasts, setToasts]               = useState<ToastItem[]>([])
   const [resTblPicker, setResTblPicker]   = useState<Reservation | null>(null)
-  const [historyOpen, setHistoryOpen]     = useState(false)
   const [resSeatWarning, setResSeatWarning] = useState<{ entry: QueueEntry; tableNumber: number; tableId: string | undefined; resInfo: ReservedTable } | null>(null)
   const [reservedTables, setReservedTables] = useState<Map<number, ReservedTable>>(() => {
     try {
@@ -2139,8 +2162,19 @@ export default function DemoHostDashboard() {
     catch { showToast("Could not seat guest — try again.", "err") }
   }, [refreshAll])
   const notify = useCallback(async (id: string) => {
-    try { const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
-    catch { showToast("Could not notify guest.", "err") }
+    try {
+      const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" })
+      if (!r.ok) throw new Error()
+      const data = await r.json()
+      if (data.sms_error) {
+        showToast(`Marked ready. SMS failed: ${data.sms_error}`, "warn")
+      } else if (data.sms_sent) {
+        showToast("Guest notified by text", "ok")
+      } else {
+        showToast("Marked ready (no phone on file)", "ok")
+      }
+      refreshAll()
+    } catch { showToast("Could not notify guest.", "err") }
   }, [refreshAll])
 
   const remove = useCallback(async (id: string) => {
@@ -2165,7 +2199,7 @@ export default function DemoHostDashboard() {
     // Capacity warning (non-blocking)
     const apiTable = tables.find(t => tableId ? t.id === tableId : t.table_number === tableNumber)
     if (apiTable && entry.party_size > apiTable.capacity) {
-      showToast(`⚠️ Table ${tableNumber} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
+      showToast(`Table ${tableNumber} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
     }
     try {
       const r = tableId
@@ -2286,7 +2320,7 @@ export default function DemoHostDashboard() {
     if (localOccupants.has(targetTable)) return
     const apiTable = tables.find(t => t.table_number === targetTable)
     if (apiTable && entry.party_size > apiTable.capacity) {
-      showToast(`⚠️ Table ${targetTable} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
+      showToast(`Table ${targetTable} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
     }
     if (apiTable) {
       fetchT(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
@@ -2301,7 +2335,7 @@ export default function DemoHostDashboard() {
       const mins = getResMinutesUntil(dragResInfo.time, new Date())
       if (mins <= 0) return  // locked — drop blocked by canReceiveDrop but guard here too
       if (mins <= 60) {
-        showToast(`⚠️ Warning: ${dragResInfo.guestName} reserved this table at ${fmt12Res(dragResInfo.time)}`, "warn")
+        showToast(`${dragResInfo.guestName} reserved this table at ${fmt12Res(dragResInfo.time)}`, "warn")
       }
     }
     setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
@@ -2314,8 +2348,9 @@ export default function DemoHostDashboard() {
     return !!t && t.status !== "available"
   }).length
   const available   = FLOOR_PLAN.length - floorOccupied
-  const readyList   = queue.filter(q => q.status === "ready")
-  const waitingList = queue.filter(q => q.status === "waiting")
+  const readyList      = queue.filter(q => q.status === "ready")
+  const waitingList    = queue.filter(q => q.status === "waiting")
+  const needsQuoteList = waitingList.filter(q => q.quoted_wait == null)
 
   const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
   const activeRes = todayReservations
@@ -2352,7 +2387,7 @@ export default function DemoHostDashboard() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907" }}>
+      <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907", zoom }}>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header
@@ -2414,17 +2449,32 @@ export default function DemoHostDashboard() {
               }
             </button>
 
-            <button
-              onClick={() => setHistoryOpen(true)}
-              className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors"
-              style={{ color: "rgba(255,200,150,0.65)" }}
-            >
+            <Link href="/demo/history" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <BarChart2 className="w-3 h-3" /> History
-            </button>
+            </Link>
 
             <Link href="/demo/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>
+
+            {/* Zoom controls */}
+            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,185,100,0.14)", background: "rgba(255,185,100,0.04)" }}>
+              <button
+                onClick={() => setZoom(z => Math.max(0.7, Math.round((z - 0.1) * 10) / 10))}
+                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
+                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                title="Zoom out"
+              >−</button>
+              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "rgba(255,200,150,0.45)", minWidth: 28, textAlign: "center" }}>
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                onClick={() => setZoom(z => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))}
+                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
+                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                title="Zoom in"
+              >+</button>
+            </div>
 
             <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
               {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
@@ -2558,7 +2608,7 @@ export default function DemoHostDashboard() {
                           {/* Notes — visible on the card so staff never misses them */}
                           {res.notes && (
                             <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              📝 {res.notes}
+                              {res.notes}
                             </div>
                           )}
                         </div>
@@ -2634,7 +2684,7 @@ export default function DemoHostDashboard() {
                     Ready · {readyList.length}
                   </span>
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 pr-1">
                   {readyList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
                       isSelected={selectedEntry?.id === e.id}
@@ -2652,41 +2702,95 @@ export default function DemoHostDashboard() {
               <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.14)" }} />
             )}
 
-            {/* Waiting section */}
-            <div className="px-3 pt-2 flex-1 overflow-y-auto">
-              <div className="flex items-center gap-2 mb-2 px-1">
-                {waitingList.length > 0 && <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />}
-                <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
-                  {waitingList.length > 0 ? `Waiting · ${waitingList.length}` : "Queue"}
-                </span>
-              </div>
-
-              {isInitialLoad ? (
-                <div className="flex items-center justify-center py-16">
-                  <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,185,100,0.18)", borderTopColor: "rgba(255,185,100,0.65)" }} />
+            {/* Needs Quote section — guests who joined without a quoted time */}
+            {needsQuoteList.length > 0 && (
+              <div className="px-3 pt-2 pb-1 shrink-0">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#60a5fa" }} />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(99,179,237,0.90)" }}>
+                    Needs Quote · {needsQuoteList.length}
+                  </span>
                 </div>
-              ) : queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
-                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
-                  <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
-                </div>
-              ) : waitingList.length === 0 ? (
-                <div className="flex items-center justify-center py-8" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
-                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.50)" }}>No one else waiting</p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1.5 pb-24">
-                  {waitingList.map(e => (
-                    <DraggableQueueCard key={e.id} entry={e}
-                      isSelected={selectedEntry?.id === e.id}
-                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                      onRemoved={() => refreshAll()} />
+                <div className="flex flex-col gap-1.5 pr-1">
+                  {needsQuoteList.map(e => (
+                    <div
+                      key={e.id}
+                      style={{
+                        borderRadius: 12, padding: "10px 12px",
+                        background: "rgba(99,179,237,0.07)",
+                        border: "1px solid rgba(99,179,237,0.30)",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.name || "Guest"}
+                        </div>
+                        <div style={{ fontSize: 11, color: "rgba(147,207,255,0.65)", display: "flex", gap: 6, marginTop: 2 }}>
+                          <span>{e.party_size}p</span>
+                          <span style={{ opacity: 0.5 }}>·</span>
+                          <span>{timeWaiting(e.arrival_time)} waiting</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setEditModal({ entry: e, displayWait: 0 })}
+                        style={{
+                          flexShrink: 0, height: 30, padding: "0 12px",
+                          borderRadius: 8, fontSize: 11, fontWeight: 700,
+                          background: "rgba(99,179,237,0.16)",
+                          color: "rgba(147,207,255,0.95)",
+                          border: "1px solid rgba(99,179,237,0.40)",
+                          cursor: "pointer", letterSpacing: "0.04em",
+                        }}
+                      >
+                        Quote
+                      </button>
+                    </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+            {needsQuoteList.length > 0 && waitingList.length > needsQuoteList.length && (
+              <div className="mx-3 my-1.5 shrink-0" style={{ height: 1, background: "rgba(99,179,237,0.14)" }} />
+            )}
+
+            {/* Waiting section — only shows guests that have been quoted */}
+            {(() => {
+              const quotedWaiting = waitingList.filter(e => e.quoted_wait != null)
+              return (
+                <div className="px-3 pt-2 flex-1 overflow-y-auto">
+                  {quotedWaiting.length > 0 && (
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
+                      <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
+                        Waiting · {quotedWaiting.length}
+                      </span>
+                    </div>
+                  )}
+                  {isInitialLoad ? (
+                    <div className="flex items-center justify-center py-16">
+                      <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,185,100,0.18)", borderTopColor: "rgba(255,185,100,0.65)" }} />
+                    </div>
+                  ) : queue.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
+                      <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
+                      <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
+                    </div>
+                  ) : quotedWaiting.length > 0 ? (
+                    <div className="flex flex-col gap-1.5 pb-24 pr-1">
+                      {quotedWaiting.map(e => (
+                        <DraggableQueueCard key={e.id} entry={e}
+                          isSelected={selectedEntry?.id === e.id}
+                          onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                          onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                          onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                          onRemoved={() => refreshAll()} />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })()}
 
             {/* Sidebar footer — system health (3-state) */}
             {(() => {
@@ -2911,10 +3015,10 @@ export default function DemoHostDashboard() {
 
               <div className="flex items-start gap-3 mb-5">
                 <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-lg"
-                  style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.35)" }}
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.35)", color: "rgba(249,115,22,0.85)" }}
                 >
-                  ⚠️
+                  <AlertTriangle className="w-5 h-5" />
                 </div>
                 <div>
                   <p className="font-bold text-sm mb-1" style={{ color: "rgba(255,240,220,0.97)" }}>Table Reserved</p>
@@ -2973,8 +3077,6 @@ export default function DemoHostDashboard() {
       {/* Toast notifications */}
       <Toasts items={toasts} />
 
-      {/* History drawer */}
-      {historyOpen && <HistoryDrawer onClose={() => setHistoryOpen(false)} onRestored={refreshAll} />}
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null}>

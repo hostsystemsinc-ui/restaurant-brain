@@ -96,13 +96,13 @@ def _e164(phone: str) -> Optional[str]:
         return f"+{digits}"
     return None
 
-def _send_sms(to_phone: str, body: str) -> bool:
-    """Send an SMS via Twilio. Returns True if sent, False otherwise."""
+def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
+    """Send an SMS via Twilio. Returns (success, error_message)."""
     if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
-        return False
+        return False, "Twilio not configured"
     normalized = _e164(to_phone)
     if not normalized:
-        return False
+        return False, f"Invalid phone number: {to_phone!r}"
     try:
         from twilio.rest import Client
         Client(TWILIO_SID, TWILIO_TOKEN).messages.create(
@@ -110,9 +110,10 @@ def _send_sms(to_phone: str, body: str) -> bool:
             from_=TWILIO_FROM,
             to=normalized,
         )
-        return True
-    except Exception:
-        return False
+        return True, ""
+    except Exception as e:
+        print(f"[Twilio] SMS to {normalized} failed: {e}")
+        return False, str(e)
 
 def _rid(req_id: Optional[str] = None) -> str:
     """Return req_id if provided, otherwise fall back to the env RESTAURANT_ID."""
@@ -336,10 +337,12 @@ def join_queue(req: JoinQueueRequest):
                 rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
                 rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
                 wait_url  = f"https://hostplatform.net/wait/{new_entry['id']}"
-                _send_sms(
+                ok, err = _send_sms(
                     to_phone=req.phone,
                     body=f"You're on the list at {rest_name}! Track your wait live: {wait_url}",
                 )
+                if not ok:
+                    print(f"[Twilio] Join SMS failed: {err}")
         except Exception:
             pass
         return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1}
@@ -422,6 +425,7 @@ def notify_ready(entry_id: str):
 
     # 2. Send SMS if the guest provided a phone number
     sms_sent = False
+    sms_error: str | None = None
     try:
         entry_res = supabase.table("queue_entries").select("phone, name, restaurant_id").eq("id", entry_id).execute()
         if entry_res.data and entry_res.data[0].get("phone"):
@@ -430,14 +434,14 @@ def notify_ready(entry_id: str):
             rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
             rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
             wait_url  = f"https://hostplatform.net/wait/{entry_id}"
-            sms_sent = _send_sms(
+            sms_sent, sms_error = _send_sms(
                 to_phone=phone,
-                body=f"Your table at {rest_name} is ready! Head to the host now 🍽️\n{wait_url}",
+                body=f"Your table at {rest_name} is ready! Head to the host now.\n{wait_url}",
             )
-    except Exception:
-        pass  # Never let SMS failure block the notify response
+    except Exception as e:
+        sms_error = str(e)
 
-    return {"status": "notified", "sms_sent": sms_sent}
+    return {"status": "notified", "sms_sent": sms_sent, "sms_error": sms_error}
 
 @app.post("/queue/{entry_id}/remove")
 def remove_entry(entry_id: str):

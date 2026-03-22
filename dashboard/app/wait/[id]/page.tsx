@@ -276,10 +276,6 @@ export default function WaitPage() {
         overflow: "hidden",
       }}>
         <style>{`
-          @keyframes pulseAmber {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.2); }
-            50%       { box-shadow: 0 0 0 20px rgba(251,191,36,0); }
-          }
           @keyframes fadeUp {
             from { opacity: 0; transform: translateY(10px); }
             to   { opacity: 1; transform: translateY(0); }
@@ -301,35 +297,20 @@ export default function WaitPage() {
           padding: "0 28px", textAlign: "center",
         }}>
 
-          {/* Amber pulsing circle */}
-          <div style={{
-            width: 80, height: 80, borderRadius: "50%",
-            background: "rgba(251,191,36,0.08)",
-            border: "1.5px solid rgba(251,191,36,0.35)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#fbbf24",
-            marginBottom: 28,
-            animation: "pulseAmber 2.8s ease-in-out infinite",
-          }}>
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/>
-            </svg>
-          </div>
-
           {/* Headline */}
           <h1 style={{
             fontSize: 36, fontWeight: 300, letterSpacing: "-0.02em",
-            color: "#fff", margin: "0 0 8px", lineHeight: 1.15,
+            color: "#fff", margin: "0 0 10px", lineHeight: 1.15,
             animation: "fadeUp 0.5s 0.1s ease-out both",
           }}>
             Enjoy your meal.
           </h1>
           <p style={{
-            fontSize: 13, color: "rgba(251,191,36,0.7)", fontWeight: 500,
-            margin: "0 0 36px", letterSpacing: "0.08em", textTransform: "uppercase",
-            animation: "fadeUp 0.5s 0.2s ease-out both",
+            fontSize: 12, color: "rgba(255,255,255,0.28)", fontWeight: 500,
+            margin: "0 0 36px", letterSpacing: "0.12em", textTransform: "uppercase",
+            animation: "fadeUp 0.5s 0.18s ease-out both",
           }}>
-            Walter&apos;s303
+            Demo Restaurant
           </p>
 
           {/* Divider */}
