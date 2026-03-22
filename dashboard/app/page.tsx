@@ -152,262 +152,236 @@ function HeroSlideshow() {
   )
 }
 
-/* ─── Accurate iPad Dashboard Mockup ───────────────────────── */
+/* ─── iPad Mockup — clean realistic host dashboard ──────────── */
 function IPadMockup() {
-  // Table dot helper
-  const dot = (key: string, style: React.CSSProperties) => (
-    <div key={key} style={{ position: "absolute", width: 5, height: 5, borderRadius: "50%", background: "rgba(34,197,94,0.5)", ...style }} />
-  )
-  // Render a single table with seat dots + body
-  const tbl = (n: number, x: number, y: number, w: number, h: number, round: boolean, seats: number) => {
-    const br = round ? 99 : 7
-    const dots: React.ReactElement[] = []
-    // top seats
-    if (seats >= 2) dots.push(dot(`${n}t1`, { top: -4, left: w / 2 - 2.5 }))
-    if (seats >= 4) dots.push(dot(`${n}t2`, { top: -4, left: w * 0.28 - 2.5 }))
-    if (seats >= 4) dots.push(dot(`${n}t3`, { top: -4, left: w * 0.72 - 2.5 }))
-    // bottom seats
-    if (seats >= 2) dots.push(dot(`${n}b1`, { bottom: -4, left: w / 2 - 2.5 }))
-    if (seats >= 4) dots.push(dot(`${n}b2`, { bottom: -4, left: w * 0.28 - 2.5 }))
-    if (seats >= 4) dots.push(dot(`${n}b3`, { bottom: -4, left: w * 0.72 - 2.5 }))
-    // side seats for circles
-    if (round && seats >= 4) {
-      dots.push(dot(`${n}l`, { top: h / 2 - 2.5, left: -4 }))
-      dots.push(dot(`${n}r`, { top: h / 2 - 2.5, right: -4 }))
-    }
-    return (
-      <div key={n} style={{ position: "absolute", left: x, top: y, width: w, height: h }}>
-        {dots}
-        <div style={{ width: "100%", height: "100%", borderRadius: br, background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.22)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-          <span style={{ fontSize: 7.5, fontWeight: 800, color: "rgba(34,197,94,0.65)", userSelect: "none" }}>{n}</span>
-          <div style={{ position: "absolute", top: 3, right: 4, width: 4, height: 4, borderRadius: "50%", background: "rgba(34,197,94,0.55)" }} />
-        </div>
+  // Queue entries
+  const queue = [
+    { name: "Sarah M.", party: 2, wait: "~10m", note: "Birthday 🎂", elapsed: "4m", color: "#f97316" },
+    { name: "Chen Party", party: 4, wait: "~18m", note: "", elapsed: "12m", color: "#f97316" },
+    { name: "Rodriguez", party: 3, wait: "~26m", note: "Outdoor pref", elapsed: "18m", color: "#ef4444" },
+  ]
+  // Table helper — cleaner dots-and-rectangle style
+  const tbl = (n: number, x: number, y: number, w: number, h: number, round: boolean, occupied: boolean) => (
+    <div key={n} style={{ position: "absolute", left: x, top: y, width: w, height: h }}>
+      <div style={{
+        width: "100%", height: "100%",
+        borderRadius: round ? 99 : 8,
+        background: occupied ? "rgba(249,115,22,0.12)" : "rgba(34,197,94,0.06)",
+        border: `1px solid ${occupied ? "rgba(249,115,22,0.35)" : "rgba(34,197,94,0.22)"}`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <span style={{ fontSize: 7, fontWeight: 800, color: occupied ? "rgba(249,115,22,0.8)" : "rgba(34,197,94,0.7)" }}>{n}</span>
       </div>
-    )
-  }
+    </div>
+  )
 
   return (
     <div style={{
-      width: 620, height: 430, flexShrink: 0, borderRadius: 20,
-      background: "linear-gradient(160deg, #2c2c30 0%, #1a1a1e 60%, #222228 100%)",
-      boxShadow: "0 40px 90px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.07), inset 0 1px 0 rgba(255,255,255,0.1)",
+      width: 640, height: 450, flexShrink: 0, borderRadius: 22,
+      background: "linear-gradient(160deg, #38383c 0%, #222226 40%, #1e1e22 100%)",
+      boxShadow: "0 0 0 0.5px rgba(255,255,255,0.12), 0 0 0 1px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
       padding: 11, position: "relative",
     }}>
-      {/* iPad hardware */}
-      <div style={{ position: "absolute", top: 4, left: "50%", transform: "translateX(-50%)", width: 5, height: 5, borderRadius: "50%", background: "#2a2a2e" }} />
-      <div style={{ position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)", width: 72, height: 3, borderRadius: 99, background: "rgba(255,255,255,0.15)" }} />
-      <div style={{ position: "absolute", right: -3, top: 72, width: 3, height: 36, borderRadius: "0 2px 2px 0", background: "#2a2a2e" }} />
-      <div style={{ position: "absolute", left: -3, top: 64, width: 3, height: 24, borderRadius: "2px 0 0 2px", background: "#2a2a2e" }} />
-      <div style={{ position: "absolute", left: -3, top: 96, width: 3, height: 24, borderRadius: "2px 0 0 2px", background: "#2a2a2e" }} />
+      {/* Hardware */}
+      <div style={{ position: "absolute", top: 5, left: "50%", transform: "translateX(-50%)", width: 6, height: 6, borderRadius: "50%", background: "#28282c", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.8)" }} />
+      <div style={{ position: "absolute", right: -3, top: 80, width: 3, height: 44, borderRadius: "0 2px 2px 0", background: "#28282c" }} />
+      <div style={{ position: "absolute", left: -3, top: 72, width: 3, height: 28, borderRadius: "2px 0 0 2px", background: "#28282c" }} />
+      <div style={{ position: "absolute", left: -3, top: 108, width: 3, height: 28, borderRadius: "2px 0 0 2px", background: "#28282c" }} />
 
-      <div style={{ borderRadius: 11, overflow: "hidden", height: "100%", background: "#0a0a0a", display: "flex", flexDirection: "column" }}>
+      <div style={{ borderRadius: 13, overflow: "hidden", height: "100%", background: "#080a0c", display: "flex", flexDirection: "column" }}>
 
-        {/* App header — matches real system */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 12px", background: "#0a0a0a", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ fontSize: 9.5, fontWeight: 900, letterSpacing: "0.22em", color: "#fff" }}>HOST</span>
-            <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.1)" }} />
-            <span style={{ fontSize: 8, fontWeight: 700, color: "rgba(255,255,255,0.55)" }}>Demo Restaurant</span>
-            <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.2)", letterSpacing: "0.06em" }}>POWERED BY HOST</span>
+        {/* Header bar */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", background: "#080a0c", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.24em", color: "#fff" }}>HOST</span>
+            <div style={{ width: 1, height: 13, background: "rgba(255,255,255,0.08)" }} />
+            <span style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>The Buff · Boulder</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 7.5 }}>
-            <span><span style={{ color: "#22c55e", fontWeight: 700 }}>16</span><span style={{ color: "rgba(255,255,255,0.28)" }}>/16 free</span></span>
-            <span><span style={{ color: "#f97316", fontWeight: 700 }}>1</span><span style={{ color: "rgba(255,255,255,0.3)" }}> waiting</span></span>
-            <span style={{ color: "rgba(255,255,255,0.22)" }}>9:50 PM</span>
-            <span style={{ fontSize: 7, padding: "1px 6px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)" }}>NFC Link</span>
-            <span style={{ fontSize: 7, padding: "1px 6px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.3)" }}>Reservations</span>
-            {/* wifi icon */}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" strokeLinecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="rgba(255,255,255,0.25)"/></svg>
-            {/* refresh icon */}
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" strokeLinecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 6, padding: "2px 7px" }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f97316" }} />
+              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#f97316" }}>3 waiting</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, padding: "2px 7px" }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e" }} />
+              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#22c55e" }}>14 free</span>
+            </div>
+            <span style={{ fontSize: 7.5, color: "rgba(255,255,255,0.2)" }}>8:42 PM</span>
           </div>
         </div>
 
         {/* Body */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-          {/* Left queue panel */}
-          <div style={{ width: 148, borderRight: "1px solid rgba(255,255,255,0.07)", display: "flex", flexDirection: "column", background: "#0b0b0b", flexShrink: 0 }}>
-            <div style={{ padding: "7px 10px 5px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f97316" }} />
-                <span style={{ fontSize: 6.5, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)" }}>WAITING · 1</span>
-              </div>
+          {/* Queue panel */}
+          <div style={{ width: 168, borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", background: "#090b0d", flexShrink: 0 }}>
+            <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <div style={{ fontSize: 6.5, fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>WAITLIST</div>
             </div>
-            <div style={{ padding: "8px 8px 0" }}>
-              {/* Sarah card */}
-              <div style={{ borderRadius: 9, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)", overflow: "hidden" }}>
-                <div style={{ padding: "7px 9px 5px" }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "#fff", marginBottom: 2 }}>Sarah</div>
-                  <div style={{ display: "flex", gap: 6, fontSize: 7, color: "rgba(255,255,255,0.38)", marginBottom: 2 }}>
-                    <span>👥 2p</span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 2 }}><span style={{ width: 4, height: 4, borderRadius: "50%", background: "#f97316", display: "inline-block", animation: "glow 1.8s ease infinite" }} />4m elapsed</span>
+            <div style={{ padding: "8px 8px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+              {queue.map((g, i) => (
+                <div key={g.name} style={{ borderRadius: 10, border: `1px solid ${i === 0 ? "rgba(249,115,22,0.25)" : "rgba(255,255,255,0.07)"}`, background: i === 0 ? "rgba(249,115,22,0.05)" : "rgba(255,255,255,0.015)", overflow: "hidden" }}>
+                  <div style={{ padding: "7px 9px 5px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>{g.name}</span>
+                      <span style={{ fontSize: 7, color: "rgba(255,255,255,0.28)" }}>#{i + 1}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 7, fontSize: 6.5, color: "rgba(255,255,255,0.35)", marginBottom: g.note ? 4 : 0 }}>
+                      <span>👥 {g.party}p</span>
+                      <span style={{ color: g.color }}>{g.elapsed}</span>
+                      <span style={{ color: "rgba(255,255,255,0.28)" }}>{g.wait}</span>
+                    </div>
+                    {g.note && <span style={{ fontSize: 6, padding: "1px 5px", borderRadius: 3, background: "rgba(249,115,22,0.1)", color: "rgba(249,115,22,0.65)", border: "1px solid rgba(249,115,22,0.2)" }}>{g.note}</span>}
                   </div>
-                  <div style={{ fontSize: 7, color: "#f97316", marginBottom: 3 }}>~10m left</div>
-                  <span style={{ fontSize: 6, padding: "1px 5px", borderRadius: 3, background: "rgba(249,115,22,0.1)", color: "rgba(249,115,22,0.6)", border: "1px solid rgba(249,115,22,0.2)" }}>Birthday 🎂</span>
+                  {i === 0 && (
+                    <div style={{ display: "flex", borderTop: "1px solid rgba(255,255,255,0.06)", height: 24 }}>
+                      <button style={{ flex: 1, background: "rgba(34,197,94,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span style={{ fontSize: 6, color: "#22c55e", fontWeight: 700 }}>Seat</span>
+                      </button>
+                      <div style={{ width: 1, background: "rgba(255,255,255,0.05)" }} />
+                      <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        <span style={{ fontSize: 6, color: "#f97316", fontWeight: 700 }}>Notify</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: "flex", borderTop: "1px solid rgba(255,255,255,0.07)", height: 26 }}>
-                  <button style={{ flex: 1, background: "rgba(34,197,94,0.1)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                  </button>
-                  <div style={{ width: 1, background: "rgba(255,255,255,0.06)" }} />
-                  <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                  </button>
-                  <div style={{ width: 1, background: "rgba(255,255,255,0.06)" }} />
-                  <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  </button>
-                  <div style={{ width: 1, background: "rgba(255,255,255,0.06)" }} />
-                  <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.5)" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                  </button>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Floor plan — main content */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0c0c0c", overflow: "hidden" }}>
-            {/* Floor plan header row */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 12px 3px", borderBottom: "1px solid rgba(255,255,255,0.05)", flexShrink: 0 }}>
-              <span style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.2)" }}>FLOOR PLAN</span>
-              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#22c55e" }}>16/16 free</span>
+          {/* Floor plan */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0a0c0e" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 13px 4px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+              <span style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.18)" }}>FLOOR PLAN</span>
+              <span style={{ fontSize: 7, color: "rgba(255,255,255,0.2)" }}>14 available · 2 occupied</span>
             </div>
-
-            {/* Tables area */}
-            <div style={{ flex: 1, position: "relative", padding: "14px 14px 28px" }}>
-
-              {/* BAR section label */}
-              <div style={{ position: "absolute", top: 8, right: 14, fontSize: 6, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.22)" }}>BAR</div>
-
-              {/* ── Left column: large round tables T1–T3 ── */}
-              {tbl(1,  4,   6,   46, 46, true,  4)}
-              {tbl(2,  4,   70,  46, 46, true,  4)}
-              {tbl(3,  4,   134, 46, 46, true,  4)}
-
-              {/* ── Main dining col 1: small squares T4–T6 ── */}
-              {tbl(4,  64,  8,   56, 42, false, 2)}
-              {tbl(5,  64,  66,  56, 42, false, 2)}
-              {tbl(6,  64,  122, 56, 42, false, 2)}
-
-              {/* ── Main dining col 2: wider rects T7–T9 ── */}
-              {tbl(7,  132, 4,   82, 48, false, 4)}
-              {tbl(8,  132, 64,  82, 56, false, 4)}
-              {tbl(9,  132, 132, 82, 62, false, 6)}
-
-              {/* ── Main dining col 3: T10–T12 ── */}
-              {tbl(10, 226, 4,   72, 48, false, 4)}
-              {tbl(11, 226, 66,  58, 42, false, 2)}
-              {tbl(12, 226, 122, 58, 42, false, 2)}
-
-              {/* ── BAR: small circles T13–T16 ── */}
-              {tbl(13, 310, 6,   34, 34, true,  2)}
-              {tbl(14, 310, 50,  34, 34, true,  2)}
-              {tbl(15, 310, 94,  34, 34, true,  2)}
-              {tbl(16, 310, 138, 34, 34, true,  2)}
-
+            <div style={{ flex: 1, position: "relative", padding: "12px" }}>
               {/* Section labels */}
-              <div style={{ position: "absolute", bottom: 6, left: 14, fontSize: 6, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(255,255,255,0.1)" }}>MAIN DINING</div>
-              <div style={{ position: "absolute", bottom: 6, right: 14, fontSize: 6, color: "rgba(255,255,255,0.1)" }}>Powered by HOST</div>
+              <div style={{ position: "absolute", top: 10, left: 18, fontSize: 6, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.12)" }}>MAIN DINING</div>
+              <div style={{ position: "absolute", top: 10, right: 18, fontSize: 6, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.12)" }}>BAR</div>
+
+              {/* Tables — col 1 round */}
+              {tbl(1, 8,   28,  48, 48, true,  false)}
+              {tbl(2, 8,   88,  48, 48, true,  false)}
+              {tbl(3, 8,   148, 48, 48, true,  false)}
+              {/* col 2 */}
+              {tbl(4, 70,  22,  60, 44, false, true)}
+              {tbl(5, 70,  80,  60, 44, false, false)}
+              {tbl(6, 70,  138, 60, 44, false, false)}
+              {/* col 3 */}
+              {tbl(7, 144, 18,  88, 50, false, false)}
+              {tbl(8, 144, 82,  88, 58, false, false)}
+              {tbl(9, 144, 154, 88, 50, false, true)}
+              {/* col 4 */}
+              {tbl(10, 246, 18,  74, 46, false, false)}
+              {tbl(11, 246, 78,  60, 42, false, false)}
+              {tbl(12, 246, 134, 60, 42, false, false)}
+              {/* Bar stools */}
+              {tbl(13, 334, 22,  34, 34, true, false)}
+              {tbl(14, 334, 66,  34, 34, true, false)}
+              {tbl(15, 334, 110, 34, 34, true, false)}
+              {tbl(16, 334, 154, 34, 34, true, false)}
+
+              {/* Add guest FAB */}
+              <div style={{ position: "absolute", bottom: 10, right: 10, background: "#22c55e", color: "#fff", borderRadius: 99, padding: "5px 13px", fontSize: 7.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 4px 18px rgba(34,197,94,0.4)", letterSpacing: "0.04em" }}>
+                <span style={{ fontSize: 11, lineHeight: 1 }}>+</span> ADD GUEST
+              </div>
             </div>
           </div>
         </div>
 
         {/* Status bar */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 12px", borderTop: "1px solid rgba(255,255,255,0.05)", background: "#080808", flexShrink: 0 }}>
-          <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.18)" }}>Synced 9:50:57 PM</span>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 13px", borderTop: "1px solid rgba(255,255,255,0.04)", background: "#060809" }}>
+          <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.15)" }}>Synced · 8:42:17 PM</span>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e" }} />
-            <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.22)" }}>System Good</span>
+            <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.22)" }}>Live</span>
           </div>
         </div>
-      </div>
-
-      {/* ADD GUEST FAB */}
-      <div style={{ position: "absolute", bottom: 20, right: 20, background: "#dc2626", color: "#fff", borderRadius: 99, padding: "5px 14px", fontSize: 8.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 5, boxShadow: "0 4px 20px rgba(220,38,38,0.5)", letterSpacing: "0.03em" }}>
-        <span style={{ fontSize: 13, lineHeight: 1 }}>+</span> ADD GUEST
       </div>
     </div>
   )
 }
 
-/* ─── Accurate iPhone Wait Page Mockup ────────────────────── */
+/* ─── iPhone Mockup — clean realistic wait page ─────────────── */
 function IPhoneMockup() {
   return (
     <div style={{
-      position: "relative", width: 165, height: 340, flexShrink: 0,
-      borderRadius: 38,
-      background: "linear-gradient(155deg, #343436 0%, #1c1c1e 25%, #1a1a1c 75%, #222224 100%)",
+      position: "relative", width: 200, height: 420, flexShrink: 0,
+      borderRadius: 46,
+      background: "linear-gradient(160deg, #404044 0%, #232325 30%, #1a1a1c 70%, #28282c 100%)",
       boxShadow: [
-        "0 60px 120px rgba(0,0,0,0.95)",
-        "0 20px 40px rgba(0,0,0,0.6)",
-        "0 0 0 0.5px rgba(255,255,255,0.16)",
-        "inset 0 1px 0 rgba(255,255,255,0.08)",
-        "inset 0 -1px 0 rgba(0,0,0,0.6)",
+        "0 0 0 0.5px rgba(255,255,255,0.18)",
+        "0 0 0 1px rgba(0,0,0,0.8)",
+        "inset 0 1px 0 rgba(255,255,255,0.12)",
+        "inset 0 -1px 0 rgba(0,0,0,0.5)",
       ].join(", "),
-      padding: 7,
+      padding: 8,
     }}>
-      {/* Left side — action button + vol up + vol down */}
-      <div style={{ position: "absolute", left: -2, top: 66, width: 2.5, height: 13, borderRadius: "2px 0 0 2px", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
-      <div style={{ position: "absolute", left: -2, top: 92, width: 2.5, height: 26, borderRadius: "2px 0 0 2px", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
-      <div style={{ position: "absolute", left: -2, top: 126, width: 2.5, height: 26, borderRadius: "2px 0 0 2px", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
-      {/* Right side — power button */}
-      <div style={{ position: "absolute", right: -2, top: 92, width: 2.5, height: 46, borderRadius: "0 2px 2px 0", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
+      {/* Hardware buttons */}
+      <div style={{ position: "absolute", left: -2.5, top: 80, width: 3, height: 15, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
+      <div style={{ position: "absolute", left: -2.5, top: 110, width: 3, height: 34, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
+      <div style={{ position: "absolute", left: -2.5, top: 152, width: 3, height: 34, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
+      <div style={{ position: "absolute", right: -2.5, top: 120, width: 3, height: 60, borderRadius: "0 3px 3px 0", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
 
-      <div style={{ borderRadius: 32, overflow: "hidden", height: "100%", background: "#050505", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.9)" }}>
+      {/* Screen */}
+      <div style={{ borderRadius: 39, overflow: "hidden", height: "100%", background: "#060608", display: "flex", flexDirection: "column" }}>
         {/* Dynamic Island */}
-        <div style={{ height: 34, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 5, background: "#050505" }}>
-          <div style={{ width: 64, height: 17, background: "#000", borderRadius: 99, boxShadow: "0 0 0 0.5px rgba(255,255,255,0.04), inset 0 1px 2px rgba(0,0,0,0.9)" }} />
+        <div style={{ height: 40, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 6, background: "#060608" }}>
+          <div style={{ width: 80, height: 22, background: "#000", borderRadius: 99, boxShadow: "inset 0 1px 3px rgba(0,0,0,1)" }} />
         </div>
 
-        {/* Wait page — waiting state */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 12px 12px", textAlign: "center", gap: 8 }}>
-          <span style={{ fontSize: 17, fontWeight: 900, letterSpacing: "0.06em", color: "#f97316" }}>HOST</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", marginBottom: 3, letterSpacing: "-0.02em" }}>Hey, Sarah!</div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 99, padding: "2px 8px" }}>
-              <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#f97316" }} />
-              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#f97316" }}>3 parties ahead</span>
+        {/* App content */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 16px 16px", textAlign: "center" }}>
+          {/* Brand */}
+          <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: "0.18em", color: "#f97316", marginBottom: 14 }}>HOST</div>
+
+          {/* Name + status */}
+          <div style={{ marginBottom: 16, width: "100%" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", marginBottom: 6 }}>Hey, Sarah.</div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 99, padding: "4px 12px" }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f97316", flexShrink: 0 }} />
+              <span style={{ fontSize: 9, fontWeight: 700, color: "#f97316" }}>3 parties ahead of you</span>
             </div>
           </div>
 
-          {/* Progress bar */}
-          <div style={{ width: "100%" }}>
-            <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 3 }}>
-              <div style={{ width: "22%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #f97316, #fb923c)" }} />
+          {/* Progress */}
+          <div style={{ width: "100%", marginBottom: 16 }}>
+            <div style={{ width: "100%", height: 6, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden", marginBottom: 5 }}>
+              <div style={{ width: "22%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#f97316,#fb923c)" }} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(255,255,255,0.25)" }}>
-              <span>Joined</span><span style={{ color: "#f97316" }}>22%</span><span>Seated</span>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "rgba(255,255,255,0.22)" }}>
+              <span>Joined</span>
+              <span style={{ color: "#f97316", fontWeight: 700 }}>22%</span>
+              <span>Seated</span>
             </div>
           </div>
 
-          {/* Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, width: "100%" }}>
-            {[
-              { label: "Party", val: "2", icon: <Icon.Users />, color: "#fff" },
-              { label: "Est. Wait", val: "~45m", icon: <Icon.Clock />, color: "#f97316" },
-            ].map(c => (
-              <div key={c.label} style={{ background: "#111", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "6px 8px" }}>
-                <div style={{ fontSize: 7, color: "rgba(255,255,255,0.35)", marginBottom: 3, textTransform: "uppercase", letterSpacing: ".07em" }}>{c.label}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 800, fontSize: 12, color: c.color }}>
-                  {c.icon} {c.val}
-                </div>
-              </div>
-            ))}
+          {/* Info cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, width: "100%", marginBottom: 12 }}>
+            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 5 }}>Party</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", lineHeight: 1 }}>2</div>
+            </div>
+            <div style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.18)", borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 5 }}>Est. Wait</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#f97316", lineHeight: 1 }}>~45m</div>
+            </div>
           </div>
 
-          {/* Message */}
-          <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "7px 9px", width: "100%" }}>
-            <div style={{ fontSize: 8, color: "rgba(255,255,255,0.48)", lineHeight: 1.55, textAlign: "left" }}>
+          {/* Message card */}
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "10px 13px", width: "100%", marginBottom: 14 }}>
+            <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, textAlign: "left" }}>
               Your spot is saved — feel free to step outside.
             </div>
           </div>
 
-          {/* Live indicator */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: "auto" }}>
-            <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e" }} />
-            <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.2)" }}>Updates automatically</span>
+          {/* Live dot */}
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: "auto" }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e" }} />
+            <span style={{ fontSize: 8, color: "rgba(255,255,255,0.22)", letterSpacing: ".03em" }}>Updates automatically</span>
           </div>
         </div>
       </div>
@@ -699,40 +673,51 @@ function GuestJourney() {
 /* ─── Join Screen (stage 0) ────────────────────────────────── */
 function JoinScreen() {
   return (
-    <div style={{ padding: "10px 16px 12px", display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", height: "100%" }}>
-      {/* Header */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textAlign: "center" }}>
-        <span style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.04em", color: "#22c55e" }}>HOST</span>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Join the Waitlist</div>
-        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)" }}>3 parties ahead · ~45m wait</div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000" }}>
+      {/* HOST wordmark — top center, matches real join page */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 16px 8px" }}>
+        <div style={{ fontSize: 6.5, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)", marginBottom: 2 }}>Powered by</div>
+        <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "0.35em", color: "#fff" }}>HOST</div>
+      </div>
+
+      {/* Restaurant identity */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingBottom: 8 }}>
+        <div style={{ width: 64, height: 24, borderRadius: 6, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+          <span style={{ fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.45)", letterSpacing: "0.06em" }}>The Buff</span>
+        </div>
+        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)" }}>3 parties ahead</div>
       </div>
 
       {/* Party size */}
-      <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 14px" }}>
-        <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 8 }}>Party Size</div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "rgba(255,255,255,0.5)" }}>−</div>
-          <span style={{ fontSize: 36, fontWeight: 700, color: "#fff" }}>2</span>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#fff" }}>+</div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "4px 16px 6px" }}>
+        <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)" }}>Party Size</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>−</div>
+          <span style={{ fontSize: 30, fontWeight: 300, color: "#fff", minWidth: 24, textAlign: "center" }}>2</span>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#fff" }}>+</div>
         </div>
       </div>
 
-      {/* Preference */}
-      <div style={{ display: "flex", gap: 5 }}>
-        {[["ASAP", true], ["~15 min", false], ["~30 min", false]].map(([l, a]) => (
-          <div key={String(l)} style={{ flex: 1, padding: "7px 4px", borderRadius: 10, textAlign: "center", fontSize: 8, fontWeight: 600, background: a ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)", color: a ? "#22c55e" : "rgba(255,255,255,0.6)", border: `1px solid ${a ? "rgba(34,197,94,0.35)" : "transparent"}` }}>{String(l)}</div>
-        ))}
+      {/* Name + Phone — underline fields like real page */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 10, padding: "0 16px" }}>
+        <div>
+          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 4 }}>Name</div>
+          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.22)", paddingBottom: 4, fontSize: 12, color: "#fff" }}>Sarah</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 4 }}>
+            Phone <span style={{ color: "rgba(255,255,255,0.3)", textTransform: "none", letterSpacing: 0 }}>— optional</span>
+          </div>
+          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.22)", paddingBottom: 4, fontSize: 11, color: "rgba(255,255,255,0.7)" }}>(720) 555-0182</div>
+        </div>
       </div>
 
-      {/* Fields */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 12px", fontSize: 10, color: "#fff" }}>Sarah</div>
-        <div style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 12px", fontSize: 10, color: "#fff" }}>(720) 555-0182</div>
-      </div>
-
-      {/* Submit */}
-      <div style={{ background: "rgba(34,197,94,0.9)", borderRadius: 14, padding: "12px", textAlign: "center", fontSize: 11, fontWeight: 700, color: "#fff" }}>
-        Join Waitlist
+      {/* CTA — white button, black text, matches real page */}
+      <div style={{ padding: "6px 16px 10px" }}>
+        <div style={{ background: "white", borderRadius: 12, height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#000", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          Join the Waitlist
+        </div>
+        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(255,255,255,0.2)", marginTop: 5, letterSpacing: "0.05em" }}>HOST · No app download needed</div>
       </div>
     </div>
   )
@@ -741,55 +726,65 @@ function JoinScreen() {
 /* ─── Wait Screen (stages 1 & 2) ───────────────────────────── */
 function WaitScreen({ position, wait, progress }: { position: number; wait: number; progress: number }) {
   const isClose = position === 1
+  const partiesLabel = position === 0 ? "You're next up!" : `${position} ${position === 1 ? "party" : "parties"} ahead of you`
   return (
-    <div style={{ padding: "12px 16px 14px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10, overflowY: "auto", height: "100%" }}>
-      {/* Brand */}
-      <span style={{ fontSize: 20, fontWeight: 900, letterSpacing: "0.06em", color: "#f97316" }}>HOST</span>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
+      {/* HOST wordmark — top left, small, matches real wait page */}
+      <div style={{ padding: "14px 16px 0", flexShrink: 0 }}>
+        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
+      </div>
 
-      {/* Status */}
-      <div style={{ width: "100%" }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", marginBottom: 4, letterSpacing: "-0.02em" }}>Hey, Sarah!</div>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: isClose ? "rgba(34,197,94,0.12)" : "rgba(249,115,22,0.1)", border: `1px solid ${isClose ? "rgba(34,197,94,0.3)" : "rgba(249,115,22,0.25)"}`, borderRadius: 99, padding: "3px 10px" }}>
-          <div style={{ width: 5, height: 5, borderRadius: "50%", background: isClose ? "#22c55e" : "#f97316", animation: "glow 1.8s ease infinite" }} />
-          <span style={{ fontSize: 8.5, fontWeight: 700, color: isClose ? "#22c55e" : "#f97316" }}>
-            {isClose ? "You're next — stay close!" : `${position} parties ahead of you`}
-          </span>
+      {/* Main content */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 16px", justifyContent: "center", gap: 8 }}>
+        {/* Hi Sarah + parties ahead — plain text, no pill */}
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 3, letterSpacing: "-0.02em" }}>
+            {isClose ? "You're next up!" : "Hi, Sarah!"}
+          </div>
+          {!isClose && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)" }}>{partiesLabel}</div>}
+        </div>
+
+        {/* Green progress bar — always green, matches real page */}
+        <div>
+          <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 4 }}>
+            <div style={{ width: `${progress}%`, height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #22c55e, #86efac)", transition: "width 1.2s ease" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(255,255,255,0.25)" }}>
+            <span>Arrived</span><span>Seated</span>
+          </div>
+        </div>
+
+        {/* Stat cards — PARTY and EST. WAIT */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+          <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Party</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#fff" }}><Icon.Users /> 2</div>
+          </div>
+          <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Est. Wait</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#22c55e" }}><Icon.Clock /> ~{wait}m</div>
+          </div>
+        </div>
+
+        {/* Message card — dark, like real page */}
+        <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "7px 10px" }}>
+          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", lineHeight: 1.55 }}>
+            {isClose ? "Sit tight — we're moving fast!" : "Your spot is saved — feel free to step out."}
+          </div>
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div style={{ width: "100%" }}>
-        <div style={{ width: "100%", height: 7, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 5 }}>
-          <div style={{ width: `${progress}%`, height: "100%", borderRadius: 99, background: isClose ? "linear-gradient(90deg,#22c55e,#86efac)" : "linear-gradient(90deg,#f97316,#fb923c)", transition: "width 1.2s ease" }} />
+      {/* Footer — menu button + leave link + footer text */}
+      <div style={{ padding: "0 16px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.65)" }}>
+          🍴 Check Out the Menu
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 7, color: "rgba(255,255,255,0.25)" }}>
-          <span>Joined</span><span style={{ color: isClose ? "#22c55e" : "#f97316", fontWeight: 700 }}>{progress}%</span><span>Seated</span>
+        <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.22)", letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 0" }}>
+          Leave &amp; Rejoin Later
         </div>
-      </div>
-
-      {/* Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, width: "100%" }}>
-        <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 7.5, color: "rgba(255,255,255,0.35)", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".08em" }}>Party</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 800, fontSize: 14, color: "#fff" }}><Icon.Users /> 2</div>
+        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(255,255,255,0.1)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
+          Updates automatically · HOST
         </div>
-        <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 7.5, color: "rgba(255,255,255,0.35)", marginBottom: 4, textTransform: "uppercase", letterSpacing: ".08em" }}>Est. Wait</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 800, fontSize: 14, color: isClose ? "#22c55e" : "#f97316" }}><Icon.Clock /> ~{wait}m</div>
-        </div>
-      </div>
-
-      {/* Message */}
-      <div style={{ background: "#111", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "9px 12px", width: "100%" }}>
-        <div style={{ fontSize: 8.5, color: "rgba(255,255,255,0.48)", lineHeight: 1.6, textAlign: "left" }}>
-          {isClose ? "Sit tight — we're moving fast!" : "Your spot is saved. Feel free to step outside."}
-        </div>
-      </div>
-
-      {/* Live update indicator */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: "auto" }}>
-        <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", animation: "glow 2s ease infinite" }} />
-        <span style={{ fontSize: 7, color: "rgba(255,255,255,0.2)", letterSpacing: ".04em" }}>Updates automatically</span>
       </div>
     </div>
   )
@@ -798,41 +793,61 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
 /* ─── Ready Screen (stage 3) ───────────────────────────────── */
 function ReadyScreen() {
   return (
-    <div style={{ padding: "16px 16px 12px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", gap: 10, height: "100%" }}>
-      {/* Green icon */}
-      <div style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(34,197,94,0.15)", border: "2px solid rgba(34,197,94,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e", boxShadow: "0 0 30px rgba(34,197,94,0.2)", marginTop: 8 }}>
-        <Icon.CheckCircle />
-      </div>
-      <div>
-        <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Your table is ready!</div>
-        <div style={{ fontSize: 12, color: "#22c55e", fontWeight: 600 }}>Head to the host stand</div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
+      {/* HOST wordmark — top left, matches real ready page */}
+      <div style={{ padding: "14px 16px 0", flexShrink: 0 }}>
+        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
       </div>
 
-      {/* Full progress bar */}
-      <div style={{ width: "100%" }}>
-        <div style={{ width: "100%", height: 8, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 4 }}>
-          <div style={{ width: "100%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #22c55e, #86efac)" }} />
+      {/* Main content */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "0 16px", justifyContent: "center", gap: 8 }}>
+        {/* Green pulsing circle */}
+        <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(34,197,94,0.12)", border: "2px solid rgba(34,197,94,0.45)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e" }}>
+          <Icon.CheckCircle />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 7.5, color: "rgba(255,255,255,0.3)" }}>
-          <span>Arrived</span><span>100%</span><span>Seated</span>
+
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 3 }}>Your table is ready!</div>
+          <div style={{ fontSize: 10, color: "#22c55e", fontWeight: 600 }}>Head to the host stand</div>
+        </div>
+
+        {/* Full green progress bar */}
+        <div style={{ width: "100%" }}>
+          <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 4 }}>
+            <div style={{ width: "100%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #22c55e, #86efac)" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(255,255,255,0.25)" }}>
+            <span>Arrived</span><span>Seated</span>
+          </div>
+        </div>
+
+        {/* PARTY | Now stat cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, width: "100%" }}>
+          <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Party</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#fff" }}><Icon.Users /> 2</div>
+          </div>
+          <div style={{ background: "#141414", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Wait</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#22c55e" }}><Icon.Clock /> Now</div>
+          </div>
+        </div>
+
+        {/* Message — green tint, matches real page */}
+        <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.18)", borderRadius: 8, padding: "7px 10px", width: "100%" }}>
+          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.65)", lineHeight: 1.55 }}>
+            Please make your way to the front and let the host know you&apos;re here.
+          </div>
         </div>
       </div>
 
-      {/* Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, width: "100%" }}>
-        <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Party</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#fff" }}><Icon.Users /> 2</div>
+      {/* Footer — menu button + footer text */}
+      <div style={{ padding: "0 16px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.65)" }}>
+          🍴 Check Out the Menu
         </div>
-        <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "8px 10px" }}>
-          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Est. Wait</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#22c55e" }}><Icon.Clock /> Now</div>
-        </div>
-      </div>
-
-      <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 10, padding: "9px 12px", width: "100%" }}>
-        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", lineHeight: 1.55 }}>
-          Please make your way to the host stand.
+        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(255,255,255,0.1)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
+          Updates automatically · HOST
         </div>
       </div>
     </div>
@@ -842,18 +857,18 @@ function ReadyScreen() {
 /* ─── Seated Screen (stage 4) ──────────────────────────────── */
 function SeatedScreen() {
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16, padding: "24px 20px", height: "100%" }}>
-      <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.06em", color: "#fff", marginBottom: 4 }}>HOST</div>
-      <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1.5px solid rgba(34,197,94,0.35)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e" }}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 0, padding: "24px 20px", height: "100%", background: "#000" }}>
+      {/* Matches real seated page: "Enjoy your meal." / circle logo / "Enjoy your time." */}
+      <div style={{ fontSize: 16, fontWeight: 300, color: "rgba(255,255,255,0.88)", marginBottom: 28, letterSpacing: "0.01em" }}>
+        Enjoy your meal.
       </div>
-      <div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", marginBottom: 8 }}>Enjoy your meal.</div>
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", letterSpacing: ".04em", textTransform: "uppercase" }}>Demo Restaurant</div>
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ width: 50, height: 50, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
+          <span style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>B</span>
+        </div>
+        <div style={{ fontSize: 8, fontWeight: 500, color: "rgba(255,255,255,0.28)", letterSpacing: "0.12em", textTransform: "uppercase" }}>The Buff · Boulder</div>
       </div>
-      <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", lineHeight: 1.65, maxWidth: 150 }}>
+      <div style={{ fontSize: 16, fontWeight: 300, color: "rgba(255,255,255,0.88)", letterSpacing: "0.01em" }}>
         Enjoy your time.
       </div>
     </div>
@@ -868,7 +883,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How exactly does a guest join the waitlist?",
-    a: "They hold their phone over the HOST puck for about one second, or scan the QR code printed on the puck. A form opens on their phone — they enter their name, party size, and phone number. Two taps and they're on the list. Total time: under 10 seconds.",
+    a: "They scan the large QR code on the sign out front — or tap the HOST puck near the entrance with their phone for NFC. Either way, a form opens instantly: name, party size, phone number. Two taps and they're on the list before they've even walked through the door. Total time: under 10 seconds.",
   },
   {
     q: "What does the guest see on their phone?",
@@ -1340,24 +1355,58 @@ export default function MarketingPage() {
       </section>
 
       {/* ── Device Showcase ─────────────────────────────────────── */}
-      <section id="devices" style={{ padding: "80px 40px 100px", position: "relative" }}>
-        <div ref={deviceRef} className="device-row" style={{ maxWidth: 1100, margin: "0 auto", background: "linear-gradient(180deg, rgba(34,197,94,0.03) 0%, rgba(8,10,12,0) 100%)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 30, padding: "56px 48px 44px", display: "flex", justifyContent: "center", alignItems: "flex-start", gap: 28, flexWrap: "wrap", overflow: "hidden", position: "relative" }}>
-          {/* SMS badge */}
-          <div style={{ position: "absolute", top: 22, right: 28, background: "rgba(10,12,14,0.96)", border: "1px solid rgba(34,197,94,0.22)", borderRadius: 13, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 10px 36px rgba(0,0,0,.55)", animation: "fadein 0.5s ease 0.9s both" }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#22c55e", flexShrink: 0 }} />
+      <section id="devices" style={{ padding: "60px 40px 100px", position: "relative", overflow: "hidden" }}>
+        {/* Deep ambient glow behind devices */}
+        <div style={{ position: "absolute", top: "30%", left: "50%", transform: "translate(-50%,-50%)", width: 700, height: 500, background: "radial-gradient(ellipse, rgba(34,197,94,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "30%", left: "35%", transform: "translate(-50%,-50%)", width: 400, height: 300, background: "radial-gradient(ellipse, rgba(34,197,94,0.04) 0%, transparent 70%)", pointerEvents: "none" }} />
+
+        <div ref={deviceRef} className="device-row" style={{ maxWidth: 1160, margin: "0 auto", position: "relative", display: "flex", justifyContent: "center", alignItems: "center", gap: 0, flexWrap: "wrap" }}>
+
+          {/* Floating notification — top left */}
+          <div style={{ position: "absolute", top: 10, left: 20, background: "rgba(8,10,12,0.97)", border: "1px solid rgba(34,197,94,0.28)", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 16px 48px rgba(0,0,0,.7)", animation: "fadein 0.5s ease 0.8s both", zIndex: 20 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#22c55e,#16a34a)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
             <div>
-              <div style={{ fontSize: ".68rem", fontWeight: 700, color: "#fff" }}>Table ready for Martinez</div>
-              <div style={{ fontSize: ".6rem", color: "rgba(255,255,255,0.32)", marginTop: 1 }}>Text sent &middot; just now</div>
+              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#fff", marginBottom: 2 }}>Table ready for Martinez</div>
+              <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,0.38)" }}>SMS sent · just now</div>
             </div>
           </div>
 
-          {/* iPad — static, accurate (hidden on mobile) */}
-          <div className="ipad-hide">
+          {/* Floating queue badge — bottom right */}
+          <div style={{ position: "absolute", bottom: 24, right: 16, background: "rgba(8,10,12,0.97)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 16px 48px rgba(0,0,0,.7)", animation: "fadein 0.5s ease 1.2s both", zIndex: 20 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+              <div style={{ fontSize: "1.1rem", fontWeight: 900, color: "#f97316", lineHeight: 1 }}>4</div>
+              <div style={{ fontSize: ".55rem", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: ".08em" }}>waiting</div>
+            </div>
+            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
+            <div>
+              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#fff", marginBottom: 2 }}>All tables occupied</div>
+              <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,0.38)" }}>Avg wait · ~22 min</div>
+            </div>
+          </div>
+
+          {/* iPad — 3D perspective tilt left */}
+          <div className="ipad-hide" style={{
+            transform: "perspective(1400px) rotateY(8deg) rotateX(2deg) scale(0.97)",
+            transformOrigin: "right center",
+            filter: "drop-shadow(0 40px 80px rgba(0,0,0,0.9)) drop-shadow(0 0 1px rgba(255,255,255,0.05))",
+            transition: "transform 0.4s ease",
+            marginRight: -24,
+            zIndex: 1,
+          }}>
             <IPadMockup />
           </div>
 
-          {/* iPhone — static, accurate */}
-          <div style={{ marginTop: 36 }}>
+          {/* iPhone — 3D perspective, slightly forward */}
+          <div style={{
+            transform: "perspective(900px) rotateY(-4deg) rotateX(1.5deg) scale(1.03)",
+            transformOrigin: "left center",
+            filter: "drop-shadow(0 60px 100px rgba(0,0,0,0.95)) drop-shadow(0 0 1px rgba(255,255,255,0.06))",
+            transition: "transform 0.4s ease",
+            zIndex: 2,
+            marginTop: 0,
+          }}>
             <IPhoneMockup />
           </div>
         </div>
@@ -1377,16 +1426,17 @@ export default function MarketingPage() {
             </h2>
           </div>
 
-          {/* 3 pain stats */}
-          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", borderRadius: 24, overflow: "hidden", marginBottom: 1 }}>
+          {/* 4 pain stats — 2×2 grid */}
+          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", borderRadius: 24, overflow: "hidden", marginBottom: 1 }}>
             {[
               { stat: "1 in 3", label: "guests have walked away from a restaurant because the wait felt uncertain or disorganized", source: "National Restaurant Association" },
               { stat: "$150+", label: "in revenue lost every time a party of four walks out before they're seated", source: "avg. check × party size" },
               { stat: "45 min", label: "per shift your host spends managing a clipboard or shouting names across the room", source: "industry average" },
+              { stat: "60%", label: "of guests who walk out say they're unlikely to return to that restaurant again", source: "customer experience research" },
             ].map(s => (
-              <div key={s.stat} style={{ background: "#08090B", padding: "44px 32px", textAlign: "center" }}>
-                <div style={{ fontSize: "clamp(2.6rem,4.5vw,3.8rem)", fontWeight: 900, letterSpacing: "-0.05em", color: "rgba(217,50,28,0.85)", lineHeight: 1, marginBottom: 18 }}>{s.stat}</div>
-                <div style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.42)", lineHeight: 1.65, marginBottom: 10 }}>{s.label}</div>
+              <div key={s.stat} style={{ background: "#08090B", padding: "44px 40px", textAlign: "center" }}>
+                <div style={{ fontSize: "clamp(2.8rem,5vw,4.2rem)", fontWeight: 900, letterSpacing: "-0.05em", color: "rgba(217,50,28,0.85)", lineHeight: 1, marginBottom: 18 }}>{s.stat}</div>
+                <div style={{ fontSize: ".9rem", color: "rgba(255,255,255,0.42)", lineHeight: 1.65, marginBottom: 10 }}>{s.label}</div>
                 <div style={{ fontSize: ".68rem", color: "rgba(255,255,255,0.15)", letterSpacing: ".08em", textTransform: "uppercase" }}>{s.source}</div>
               </div>
             ))}
@@ -1398,7 +1448,7 @@ export default function MarketingPage() {
               { n: 2, s: " sec", l: "to join with a tap or scan" },
               { n: 55, s: "%", l: "fewer no-shows with SMS" },
               { n: 0, s: "", l: "app downloads required" },
-              { n: 60, s: " min", l: "average setup time" },
+              { n: 15, s: " min", l: "average setup time" },
             ].map(s => (
               <div key={s.l} style={{ background: "rgba(34,197,94,0.03)", padding: "28px 20px", textAlign: "center", borderTop: "1px solid rgba(34,197,94,0.1)" }}>
                 <div style={{ fontSize: "2.2rem", fontWeight: 900, color: "#22c55e", letterSpacing: "-0.045em", lineHeight: 1, marginBottom: 7 }}><Counter to={s.n} suffix={s.s} /></div>
@@ -1464,67 +1514,54 @@ export default function MarketingPage() {
               },
             ]
             return (
-              <>
-                <div className="feat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 24, overflow: "hidden" }}>
-                  {features.map((f, i) => (
+              <div className="feat-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 24, overflow: "hidden" }}>
+                {features.map((f, i) => {
+                  const active = activeFeature === i
+                  return (
                     <div
                       key={f.title}
                       className="feat-card"
-                      onClick={() => setActiveFeature(activeFeature === i ? null : i)}
+                      onClick={() => setActiveFeature(active ? null : i)}
                       style={{
-                        background: activeFeature === i ? "rgba(34,197,94,0.05)" : "#080A0C",
+                        background: active ? "rgba(34,197,94,0.05)" : "#080A0C",
                         padding: "38px 30px",
                         cursor: "pointer",
-                        borderBottom: activeFeature === i ? "2px solid rgba(34,197,94,0.35)" : "2px solid transparent",
+                        borderBottom: active ? "2px solid rgba(34,197,94,0.25)" : "2px solid transparent",
                         transition: "background 0.2s, border-color 0.2s",
                       }}
                     >
-                      <div style={{ color: activeFeature === i ? "#22c55e" : "rgba(255,255,255,0.5)", marginBottom: 18, transition: "color 0.2s" }}><f.Icon /></div>
+                      {/* Summary — always visible */}
+                      <div style={{ color: active ? "#22c55e" : "rgba(255,255,255,0.5)", marginBottom: 18, transition: "color 0.2s" }}><f.Icon /></div>
                       <div style={{ fontWeight: 800, fontSize: ".95rem", color: "#fff", marginBottom: 8, letterSpacing: "-0.01em" }}>{f.title}</div>
                       <div style={{ fontSize: ".84rem", color: "rgba(255,255,255,0.36)", lineHeight: 1.6, marginBottom: 16 }}>{f.sub}</div>
-                      <div style={{ fontSize: ".78rem", fontWeight: 700, color: activeFeature === i ? "rgba(34,197,94,0.6)" : "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", gap: 5, transition: "color 0.2s" }}>
-                        {activeFeature === i ? "Close" : "Learn more"}
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: activeFeature === i ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
+                      <div style={{ fontSize: ".78rem", fontWeight: 700, color: active ? "rgba(34,197,94,0.6)" : "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", gap: 5, transition: "color 0.2s" }}>
+                        {active ? "Close" : "Learn more"}
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: active ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
                           <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
                         </svg>
                       </div>
-                    </div>
-                  ))}
-                </div>
 
-                {/* Expanded detail panel */}
-                {activeFeature !== null && (
-                  <div className="feat-detail" style={{
-                    marginTop: 1,
-                    background: "rgba(34,197,94,0.03)",
-                    border: "1px solid rgba(34,197,94,0.15)",
-                    borderTop: "none",
-                    borderRadius: "0 0 24px 24px",
-                    padding: "40px 40px 44px",
-                    animation: "badgein 0.3s ease both",
-                  }}>
-                    <div className="feat-detail-inner" style={{ display: "flex", gap: 48, flexWrap: "wrap" }}>
-                      <div style={{ flex: "1 1 280px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-                          <div style={{ color: "#22c55e", width: 28, height: 28 }}>{React.createElement(features[activeFeature].Icon)}</div>
-                          <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#fff", letterSpacing: "-0.02em" }}>{features[activeFeature].title}</div>
-                        </div>
-                        <p style={{ fontSize: ".9rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.75, margin: 0 }}>
-                          {features[activeFeature].detail}
-                        </p>
-                      </div>
-                      <div style={{ flex: "1 1 240px", display: "flex", flexDirection: "column", gap: 14, justifyContent: "center" }}>
-                        {features[activeFeature].bullets.map(b => (
-                          <div key={b} style={{ display: "flex", gap: 12, alignItems: "flex-start", fontSize: ".87rem", color: "rgba(255,255,255,0.45)" }}>
-                            <span style={{ width: 20, height: 20, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e", flexShrink: 0, marginTop: 1 }}><Icon.Check /></span>
-                            {b}
+                      {/* Detail — expands inline inside this card, no below-fold scroll */}
+                      {active && (
+                        <div style={{ marginTop: 28, paddingTop: 28, borderTop: "1px solid rgba(34,197,94,0.14)", animation: "badgein 0.25s ease both" }}
+                          onClick={e => e.stopPropagation()}>
+                          <p style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.78, marginBottom: 22 }}>
+                            {f.detail}
+                          </p>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                            {f.bullets.map(b => (
+                              <div key={b} style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: ".85rem", color: "rgba(255,255,255,0.45)" }}>
+                                <span style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e", flexShrink: 0, marginTop: 2 }}><Icon.Check /></span>
+                                {b}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
-              </>
+                  )
+                })}
+              </div>
             )
           })()}
         </div>

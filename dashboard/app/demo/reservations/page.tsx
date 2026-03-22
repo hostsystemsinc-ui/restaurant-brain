@@ -122,7 +122,7 @@ const BR2  = "rgba(255,185,100,0.14)"
 const TX   = "rgba(255,248,240,0.92)"
 const TX2  = "rgba(255,220,180,0.5)"
 const MU   = "rgba(255,200,150,0.65)"
-const ACC  = "#D9321C"
+const ACC  = "#22c55e"
 const GRN  = "#22c55e"
 
 // ── StatusPill ─────────────────────────────────────────────────────────────────
@@ -245,8 +245,8 @@ function MiniCalendar({
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                 gap: 3, border: "none", borderRadius: 8,
                 cursor: current ? "pointer" : "default",
-                background: isSel ? ACC : isToday ? "rgba(217,50,28,0.1)" : "transparent",
-                outline: isToday && !isSel ? "1px solid rgba(217,50,28,0.45)" : "none",
+                background: isSel ? ACC : isToday ? "rgba(34,197,94,0.1)" : "transparent",
+                outline: isToday && !isSel ? "1px solid rgba(34,197,94,0.45)" : "none",
                 outlineOffset: -1,
                 transition: "background 0.1s",
               }}
@@ -1070,14 +1070,14 @@ export default function DemoReservationsPage() {
                   style={{
                     width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer",
-                    background: selectedDate === ds ? "rgba(217,50,28,0.1)" : "transparent",
+                    background: selectedDate === ds ? "rgba(34,197,94,0.1)" : "transparent",
                     marginBottom: 2, textAlign: "left",
                   }}
                 >
                   <span style={{ fontSize: 12, color: selectedDate === ds ? TX : TX2, fontWeight: selectedDate === ds ? 700 : 400 }}>
                     {label}
                   </span>
-                  <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 99, background: "rgba(217,50,28,0.12)", color: ACC, fontWeight: 700 }}>
+                  <span style={{ fontSize: 11, padding: "1px 8px", borderRadius: 99, background: "rgba(34,197,94,0.12)", color: ACC, fontWeight: 700 }}>
                     {count}
                   </span>
                 </button>

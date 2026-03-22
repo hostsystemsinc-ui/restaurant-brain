@@ -176,7 +176,7 @@ function WaitTimeModal({
             </button>
           ))}
         </div>
-        <button onClick={save} disabled={saving} className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#D9321C", color: "white", fontSize: 16, padding: "20px 0" }}>{saving ? "Saving…" : "Set Wait Time"}</button>
+        <button onClick={save} disabled={saving} className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 16, padding: "20px 0" }}>{saving ? "Saving…" : "Set Wait Time"}</button>
         <button onClick={onClose} className="w-full mt-3 py-3 text-sm transition-all" style={{ color: "rgba(255,200,150,0.28)", background: "none", border: "none", cursor: "pointer" }}>Skip for now</button>
       </div>
     </div>
@@ -320,7 +320,7 @@ function GuestEditModal({
           />
 
           {/* ── Save ── */}
-          <button onClick={save} disabled={saving} className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#D9321C", color: "white", fontSize: 16, padding: "20px 0" }}>
+          <button onClick={save} disabled={saving} className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 16, padding: "20px 0" }}>
             {saving ? "Saving…" : "Save Changes"}
           </button>
 
@@ -1015,7 +1015,7 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (e
 
         <button onClick={submit} disabled={loading}
           className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#D9321C", color: "white", fontSize: 16, padding: "22px 0" }}>
+          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#22c55e", color: "white", fontSize: 16, padding: "22px 0" }}>
           {loading ? "Adding…" : "Add to Queue"}
         </button>
       </div>
@@ -1564,7 +1564,7 @@ export default function HostDashboard() {
         <button
           onClick={() => setShowAdd(true)}
           className="fixed bottom-6 right-6 flex items-center gap-2.5 h-16 px-8 rounded-full text-sm font-black tracking-[0.1em] uppercase shadow-2xl transition-all active:scale-95 hover:scale-[1.03] z-30"
-          style={{ background: "#D9321C", color: "white", boxShadow: "0 4px 28px rgba(217,50,28,0.4)" }}
+          style={{ background: "#22c55e", color: "white", boxShadow: "0 4px 28px rgba(34,197,94,0.35)" }}
         >
           <Plus className="w-5 h-5" /> Add Guest
         </button>
