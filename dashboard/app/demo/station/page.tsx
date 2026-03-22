@@ -613,19 +613,6 @@ function GuestEditModal({
                     </p>
                   </div>
                 </div>
-                {/* Pause button — full width, prominent */}
-                <button
-                  onClick={handlePause}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] hover:brightness-110"
-                  style={{
-                    height: 44, fontSize: 13,
-                    background: paused ? "rgba(34,197,94,0.12)" : "rgba(249,115,22,0.10)",
-                    color:      paused ? "#22c55e"              : "#f97316",
-                    border: `1px solid ${paused ? "rgba(34,197,94,0.28)" : "rgba(249,115,22,0.22)"}`,
-                  }}
-                >
-                  {paused ? "▶  Resume Timer" : "⏸  Pause Timer"}
-                </button>
               </div>
             )
           })()}
@@ -2351,6 +2338,7 @@ export default function DemoHostDashboard() {
   const readyList      = queue.filter(q => q.status === "ready")
   const waitingList    = queue.filter(q => q.status === "waiting")
   const needsQuoteList = waitingList.filter(q => q.quoted_wait == null)
+  const quotedWaiting  = waitingList.filter(q => q.quoted_wait != null)
 
   const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
   const activeRes = todayReservations
@@ -2755,42 +2743,37 @@ export default function DemoHostDashboard() {
             )}
 
             {/* Waiting section — only shows guests that have been quoted */}
-            {(() => {
-              const quotedWaiting = waitingList.filter(e => e.quoted_wait != null)
-              return (
-                <div className="px-3 pt-2 flex-1 overflow-y-auto">
-                  {quotedWaiting.length > 0 && (
-                    <div className="flex items-center gap-2 mb-2 px-1">
-                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
-                      <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
-                        Waiting · {quotedWaiting.length}
-                      </span>
-                    </div>
-                  )}
-                  {isInitialLoad ? (
-                    <div className="flex items-center justify-center py-16">
-                      <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,185,100,0.18)", borderTopColor: "rgba(255,185,100,0.65)" }} />
-                    </div>
-                  ) : queue.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
-                      <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
-                      <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
-                    </div>
-                  ) : quotedWaiting.length > 0 ? (
-                    <div className="flex flex-col gap-1.5 pb-24 pr-1">
-                      {quotedWaiting.map(e => (
-                        <DraggableQueueCard key={e.id} entry={e}
-                          isSelected={selectedEntry?.id === e.id}
-                          onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                          onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                          onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                          onRemoved={() => refreshAll()} />
-                      ))}
-                    </div>
-                  ) : null}
+            <div className="px-3 pt-2 flex-1 overflow-y-auto">
+              {quotedWaiting.length > 0 && (
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
+                    Waiting · {quotedWaiting.length}
+                  </span>
                 </div>
-              )
-            })()}
+              )}
+              {isInitialLoad ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,185,100,0.18)", borderTopColor: "rgba(255,185,100,0.65)" }} />
+                </div>
+              ) : queue.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
+                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
+                  <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
+                </div>
+              ) : quotedWaiting.length > 0 ? (
+                <div className="flex flex-col gap-1.5 pb-24 pr-1">
+                  {quotedWaiting.map(e => (
+                    <DraggableQueueCard key={e.id} entry={e}
+                      isSelected={selectedEntry?.id === e.id}
+                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onRemoved={() => refreshAll()} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
             {/* Sidebar footer — system health (3-state) */}
             {(() => {
