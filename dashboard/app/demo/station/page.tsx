@@ -787,8 +787,8 @@ function DraggableQueueCard({
           <Users className="w-2.5 h-2.5" />{entry.party_size}p
         </span>
         <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }} title="Time since arrival">
-          <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)} elapsed
+        <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }} title="Time since arrival">
+          <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
         </span>
         {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
           <>

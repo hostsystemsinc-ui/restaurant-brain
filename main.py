@@ -41,6 +41,7 @@ class JoinQueueRequest(BaseModel):
     name:          Optional[str] = None
     party_size:    int
     phone:         Optional[str] = None
+    notes:         Optional[str] = None
     preference:    Optional[str] = "asap"  # asap | 15min | 30min | HH:MM
     source:        Optional[str] = "nfc"   # nfc | host | phone | web
     restaurant_id: Optional[str] = None    # override env RESTAURANT_ID
@@ -319,7 +320,7 @@ def join_queue(req: JoinQueueRequest):
             "status":        "waiting",
             "quoted_wait":   None,   # hostess sets this manually via WaitTimeModal/GuestEdit
             "arrival_time":  _now(),
-            "notes":         req.preference or "asap",
+            "notes":         req.notes or None,
         }).execute()
         try:
             supabase.table("wait_quotes").insert({
@@ -428,8 +429,9 @@ def notify_ready(entry_id: str):
     sms_error: str | None = None
     try:
         entry_res = supabase.table("queue_entries").select("phone, name, restaurant_id").eq("id", entry_id).execute()
-        if entry_res.data and entry_res.data[0].get("phone"):
-            phone    = entry_res.data[0]["phone"]
+        phone = entry_res.data[0].get("phone") if entry_res.data else None
+        print(f"[notify] entry={entry_id} phone={phone!r}")
+        if phone:
             rid_used = entry_res.data[0].get("restaurant_id") or RESTAURANT_ID
             rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
             rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
@@ -438,8 +440,12 @@ def notify_ready(entry_id: str):
                 to_phone=phone,
                 body=f"Your table at {rest_name} is ready! Head to the host now.\n{wait_url}",
             )
+            print(f"[notify] sms_sent={sms_sent} sms_error={sms_error!r}")
+        else:
+            print(f"[notify] no phone on entry {entry_id}")
     except Exception as e:
         sms_error = str(e)
+        print(f"[notify] exception: {e}")
 
     return {"status": "notified", "sms_sent": sms_sent, "sms_error": sms_error}
 
