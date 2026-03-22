@@ -75,6 +75,7 @@ class QueueUpdateRequest(BaseModel):
     quoted_wait: Optional[int] = None
     party_size:  Optional[int] = None
     phone:       Optional[str] = None
+    notes:       Optional[str] = None
 
 class SettingsRequest(BaseModel):
     opentable_ical_url: Optional[str] = None
@@ -99,33 +100,17 @@ def _e164(phone: str) -> Optional[str]:
     return None
 
 def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
-    """Send an SMS. Tries Twilio first, falls back to Textbelt if carrier blocks it."""
+    """Send an SMS via Textbelt (primary) then Twilio (fallback).
+    Textbelt avoids the US A2P 10DLC carrier block that affects unregistered long-code numbers.
+    Set TEXTBELT_KEY in Railway env vars with a paid key from textbelt.com for reliable delivery.
+    """
     normalized = _e164(to_phone)
     if not normalized:
         return False, f"Invalid phone number: {to_phone!r}"
 
-    # ── Twilio ────────────────────────────────────────────────────────────────
-    if TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM:
-        try:
-            from twilio.rest import Client
-            import time
-            client = Client(TWILIO_SID, TWILIO_TOKEN)
-            msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
-            print(f"[Twilio] created sid={msg.sid} status={msg.status}")
-            time.sleep(1.5)
-            msg = client.messages(msg.sid).fetch()
-            print(f"[Twilio] fetched status={msg.status} error_code={msg.error_code} msg={msg.error_message!r}")
-            if msg.status not in ("failed", "undelivered") and not msg.error_code:
-                return True, ""
-            twilio_err = msg.error_message or f"status={msg.status} code={msg.error_code}"
-            print(f"[Twilio] carrier blocked ({twilio_err}), trying Textbelt fallback")
-        except Exception as e:
-            twilio_err = str(e)
-            print(f"[Twilio] exception: {e}, trying Textbelt fallback")
-    else:
-        twilio_err = "Twilio not configured"
+    errors: list[str] = []
 
-    # ── Textbelt fallback ─────────────────────────────────────────────────────
+    # ── Textbelt (primary — avoids A2P 10DLC carrier blocks) ─────────────────
     if TEXTBELT_KEY:
         try:
             import urllib.request, urllib.parse, json as _json
@@ -140,11 +125,37 @@ def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
             print(f"[Textbelt] result={result}")
             if result.get("success"):
                 return True, ""
-            return False, f"Textbelt: {result.get('error', 'unknown')} | Twilio: {twilio_err}"
+            tb_err = result.get("error", "unknown")
+            errors.append(f"Textbelt: {tb_err}")
+            print(f"[Textbelt] failed: {tb_err}")
         except Exception as e:
-            return False, f"Textbelt: {e} | Twilio: {twilio_err}"
+            errors.append(f"Textbelt: {e}")
+            print(f"[Textbelt] exception: {e}")
 
-    return False, twilio_err
+    # ── Twilio (fallback — blocked by US carriers without A2P 10DLC) ──────────
+    if TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM:
+        try:
+            from twilio.rest import Client
+            import time
+            client = Client(TWILIO_SID, TWILIO_TOKEN)
+            msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
+            print(f"[Twilio] queued sid={msg.sid} status={msg.status}")
+            # Wait for carrier feedback — A2P 10DLC errors (30034) surface within ~5s
+            time.sleep(5)
+            msg = client.messages(msg.sid).fetch()
+            print(f"[Twilio] status={msg.status} error_code={msg.error_code} msg={msg.error_message!r}")
+            if msg.status not in ("failed", "undelivered") and not msg.error_code:
+                return True, ""
+            tw_err = msg.error_message or f"status={msg.status} code={msg.error_code}"
+            errors.append(f"Twilio: {tw_err}")
+            print(f"[Twilio] delivery failed: {tw_err}")
+        except Exception as e:
+            errors.append(f"Twilio: {e}")
+            print(f"[Twilio] exception: {e}")
+    else:
+        errors.append("Twilio: not configured")
+
+    return False, " | ".join(errors) if errors else "No SMS provider configured"
 
 def _rid(req_id: Optional[str] = None) -> str:
     """Return req_id if provided, otherwise fall back to the env RESTAURANT_ID."""
@@ -274,13 +285,22 @@ def test_sms(phone: str = "+18312470552"):
     try:
         from twilio.rest import Client
         msg = Client(TWILIO_SID, TWILIO_TOKEN).messages.create(
-            body="HOST test: Walter's303 is ready for you! 🍽️",
+            body="HOST test: Your table is ready! Head to the host now.",
             from_=TWILIO_FROM,
             to=phone_e164,
         )
         return {"ok": True, "sid": msg.sid, "status": msg.status, "to": phone_e164, "from": TWILIO_FROM}
     except Exception as e:
         return {"ok": False, "error": str(e), "to": phone_e164, "from": TWILIO_FROM}
+
+@app.post("/debug/sms/test")
+def test_sms_full(phone: str = "+18312470552"):
+    """Test the full _send_sms pipeline (Textbelt → Twilio) and return the result."""
+    phone_e164 = _e164(phone)
+    if not phone_e164:
+        return {"ok": False, "error": f"Could not normalize phone: {phone}"}
+    ok, err = _send_sms(phone_e164, "HOST test: Your table is ready! Head to the host stand.")
+    return {"ok": ok, "error": err, "to": phone_e164, "textbelt_key_set": bool(TEXTBELT_KEY and TEXTBELT_KEY != "textbelt")}
 
 @app.get("/restaurant")
 def get_restaurant(restaurant_id: Optional[str] = None):
@@ -540,6 +560,8 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
         update["party_size"] = req.party_size
     if req.phone is not None:
         update["phone"] = req.phone or None
+    if req.notes is not None:
+        update["notes"] = req.notes or None
     if not update:
         return {"status": "nothing_to_update"}
     supabase.table("queue_entries").update(update).eq("id", entry_id).execute()

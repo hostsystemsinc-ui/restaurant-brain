@@ -210,7 +210,7 @@ export default function WaitPage() {
           This waitlist entry may have expired.
         </p>
         <a
-          href="/join"
+          href="/demo/join"
           style={{
             padding: "14px 32px", borderRadius: 14,
             background: "white", color: "black",
@@ -218,7 +218,7 @@ export default function WaitPage() {
             textDecoration: "none",
           }}
         >
-          Rejoin
+          Join the Waitlist
         </a>
       </div>
     )
@@ -253,15 +253,9 @@ export default function WaitPage() {
         <p style={{ fontSize: 26, fontWeight: 300, color: "rgba(255,255,255,0.9)", margin: "0 0 10px", letterSpacing: "-0.01em" }}>
           Thanks for visiting.
         </p>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", margin: "0 0 56px", letterSpacing: "0.05em" }}>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", margin: 0, letterSpacing: "0.05em" }}>
           Demo Restaurant
         </p>
-        <a
-          href="/join"
-          style={{ fontSize: 12, color: "rgba(255,255,255,0.22)", textDecoration: "none", letterSpacing: "0.12em", textTransform: "uppercase" }}
-        >
-          Rejoin the waitlist →
-        </a>
       </div>
     )
   }
