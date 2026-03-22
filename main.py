@@ -17,6 +17,7 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 TWILIO_SID    = os.environ.get("TWILIO_ACCOUNT_SID", "")
 TWILIO_TOKEN  = os.environ.get("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM   = os.environ.get("TWILIO_FROM_NUMBER", "")
+TEXTBELT_KEY  = os.environ.get("TEXTBELT_KEY", "textbelt")  # fallback SMS (textbelt.com; "textbelt" = 1 free/day)
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -98,29 +99,52 @@ def _e164(phone: str) -> Optional[str]:
     return None
 
 def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
-    """Send an SMS via Twilio. Returns (success, error_message)."""
-    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
-        return False, "Twilio not configured"
+    """Send an SMS. Tries Twilio first, falls back to Textbelt if carrier blocks it."""
     normalized = _e164(to_phone)
     if not normalized:
         return False, f"Invalid phone number: {to_phone!r}"
-    try:
-        from twilio.rest import Client
-        import time
-        client = Client(TWILIO_SID, TWILIO_TOKEN)
-        msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
-        print(f"[Twilio] created sid={msg.sid} status={msg.status} error_code={msg.error_code}")
-        # Fetch status once after a short delay to catch immediate trial-account rejections
-        time.sleep(1.5)
-        msg = client.messages(msg.sid).fetch()
-        print(f"[Twilio] fetched sid={msg.sid} status={msg.status} error_code={msg.error_code} error_message={msg.error_message!r}")
-        if msg.status in ("failed", "undelivered") or msg.error_code:
-            err = msg.error_message or f"status={msg.status} code={msg.error_code}"
-            return False, err
-        return True, ""
-    except Exception as e:
-        print(f"[Twilio] SMS to {normalized} failed: {e}")
-        return False, str(e)
+
+    # ── Twilio ────────────────────────────────────────────────────────────────
+    if TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM:
+        try:
+            from twilio.rest import Client
+            import time
+            client = Client(TWILIO_SID, TWILIO_TOKEN)
+            msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
+            print(f"[Twilio] created sid={msg.sid} status={msg.status}")
+            time.sleep(1.5)
+            msg = client.messages(msg.sid).fetch()
+            print(f"[Twilio] fetched status={msg.status} error_code={msg.error_code} msg={msg.error_message!r}")
+            if msg.status not in ("failed", "undelivered") and not msg.error_code:
+                return True, ""
+            twilio_err = msg.error_message or f"status={msg.status} code={msg.error_code}"
+            print(f"[Twilio] carrier blocked ({twilio_err}), trying Textbelt fallback")
+        except Exception as e:
+            twilio_err = str(e)
+            print(f"[Twilio] exception: {e}, trying Textbelt fallback")
+    else:
+        twilio_err = "Twilio not configured"
+
+    # ── Textbelt fallback ─────────────────────────────────────────────────────
+    if TEXTBELT_KEY:
+        try:
+            import urllib.request, urllib.parse, json as _json
+            payload = urllib.parse.urlencode({
+                "phone": normalized,
+                "message": body,
+                "key": TEXTBELT_KEY,
+            }).encode()
+            req = urllib.request.Request("https://textbelt.com/text", data=payload, method="POST")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = _json.loads(resp.read())
+            print(f"[Textbelt] result={result}")
+            if result.get("success"):
+                return True, ""
+            return False, f"Textbelt: {result.get('error', 'unknown')} | Twilio: {twilio_err}"
+        except Exception as e:
+            return False, f"Textbelt: {e} | Twilio: {twilio_err}"
+
+    return False, twilio_err
 
 def _rid(req_id: Optional[str] = None) -> str:
     """Return req_id if provided, otherwise fall back to the env RESTAURANT_ID."""
