@@ -487,18 +487,18 @@ function PuckTap() {
         zIndex: 5,
       }}>
         {/* HOST — very large bold, dominant top element, exactly like sticker */}
-        <span style={{ fontSize: 44, fontWeight: 900, letterSpacing: "0.05em", color: "#fff", lineHeight: 1 }}>HOST</span>
+        <span style={{ fontSize: 40, fontWeight: 900, letterSpacing: "0.05em", color: "#fff", lineHeight: 1 }}>HOST</span>
 
         {/* NFC signal — 4 ∩ arches bowing upward (sweep=1), widest at top, narrowest at bottom */}
-        <svg width="120" height="94" viewBox="0 0 120 94" fill="none">
-          <path d="M8,30   A67,67 0 0,1 112,30" stroke="white" strokeWidth="5" strokeLinecap="round"/>
-          <path d="M22,56  A49,49 0 0,1 98,56"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
-          <path d="M38,76  A28,28 0 0,1 82,76"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
-          <path d="M52,88  A10,10 0 0,1 68,88"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
+        <svg width="88" height="70" viewBox="0 0 120 94" fill="none">
+          <path d="M8,30   A67,67 0 0,1 112,30" stroke="white" strokeWidth="6" strokeLinecap="round"/>
+          <path d="M22,56  A49,49 0 0,1 98,56"  stroke="white" strokeWidth="6" strokeLinecap="round"/>
+          <path d="M38,76  A28,28 0 0,1 82,76"  stroke="white" strokeWidth="6" strokeLinecap="round"/>
+          <path d="M52,88  A10,10 0 0,1 68,88"  stroke="white" strokeWidth="6" strokeLinecap="round"/>
         </svg>
 
         {/* TAP TO JOIN THE LINE — spaced small caps at bottom, exactly like sticker */}
-        <span style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: "0.24em", color: "rgba(255,255,255,0.8)", textTransform: "uppercase", marginTop: 4 }}>TAP TO JOIN THE LINE</span>
+        <span style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: "0.24em", color: "rgba(255,255,255,0.8)", textTransform: "uppercase" }}>TAP TO JOIN THE LINE</span>
       </div>
 
       {/* Puck base/shadow */}
