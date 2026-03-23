@@ -1,6 +1,6 @@
 import os
 import re
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from supabase import create_client
@@ -172,10 +172,9 @@ def _active_queue(rid: Optional[str] = None) -> list:
         .data
     )
 
-def _wait_estimate(parties_ahead: int, party_size: int = 2, rid: Optional[str] = None) -> int:
+def _wait_estimate_with(parties_ahead: int, party_size: int, tables: list) -> int:
     try:
-        tables    = supabase.table("tables").select("status, capacity").eq("restaurant_id", _rid(rid)).execute().data
-        available = [t for t in tables if t["status"] == "available"]
+        available   = [t for t in tables if t["status"] == "available"]
         if parties_ahead == 0 and available:
             return 0
         seats_avail = sum(t["capacity"] for t in available)
@@ -184,6 +183,10 @@ def _wait_estimate(parties_ahead: int, party_size: int = 2, rid: Optional[str] =
         return max(15, parties_ahead * 20)
     except Exception:
         return max(5, parties_ahead * 20)
+
+def _wait_estimate(parties_ahead: int, party_size: int = 2, rid: Optional[str] = None) -> int:
+    tables = supabase.table("tables").select("status,capacity").eq("restaurant_id", _rid(rid)).execute().data
+    return _wait_estimate_with(parties_ahead, party_size, tables)
 
 def _remaining_wait(entry: dict) -> int:
     """
@@ -341,26 +344,51 @@ def clear_table_legacy(table_id: str):
 
 @app.get("/queue")
 def get_queue(restaurant_id: Optional[str] = None):
-    rid = _rid(restaurant_id)
+    rid     = _rid(restaurant_id)
     entries = _active_queue(rid)
+    tables  = supabase.table("tables").select("status,capacity").eq("restaurant_id", rid).execute().data
     for i, e in enumerate(entries):
         e["position"]       = i + 1
-        e["wait_estimate"]  = _wait_estimate(i, e.get("party_size", 2), rid)
+        e["wait_estimate"]  = _wait_estimate_with(i, e.get("party_size", 2), tables)
         e["remaining_wait"] = _remaining_wait(e)
         e["wait_set_at"]    = _wait_set_at.get(e["id"])
     return entries
+
+@app.get("/state")
+def get_state(restaurant_id: Optional[str] = None):
+    rid     = _rid(restaurant_id)
+    tables  = supabase.table("tables").select("*").eq("restaurant_id", rid).execute().data
+    entries = _active_queue(rid)
+    for i, e in enumerate(entries):
+        e["position"]       = i + 1
+        e["wait_estimate"]  = _wait_estimate_with(i, e.get("party_size", 2), tables)
+        e["remaining_wait"] = _remaining_wait(e)
+        e["wait_set_at"]    = _wait_set_at.get(e["id"])
+    available = sum(1 for t in tables if t["status"] == "available")
+    avg_wait  = _wait_estimate_with(len(entries), 2, tables)
+    return {"queue": entries, "tables": tables, "avg_wait": avg_wait, "tables_available": available}
 
 @app.get("/waitlist")  # legacy
 def get_waitlist_legacy():
     return get_queue()
 
+def _send_join_sms(phone: str, rest_name: str, entry_id: str) -> None:
+    wait_url = f"https://hostplatform.net/wait/{entry_id}"
+    ok, err = _send_sms(
+        to_phone=phone,
+        body=f"You're on the list at {rest_name}! Track your wait live: {wait_url}\nReply STOP to opt out.",
+    )
+    if not ok:
+        print(f"[SMS] Join SMS failed: {err}")
+
 @app.post("/queue/join")
-def join_queue(req: JoinQueueRequest):
+def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
     try:
         rid      = _rid(req.restaurant_id)
+        tables   = supabase.table("tables").select("status,capacity").eq("restaurant_id", rid).execute().data
         queue    = _active_queue(rid)
         ahead    = len(queue)
-        wait_est = _wait_estimate(ahead, req.party_size, rid)
+        wait_est = _wait_estimate_with(ahead, req.party_size, tables)
         entry    = supabase.table("queue_entries").insert({
             "restaurant_id": rid,
             "name":          req.name or "Guest",
@@ -382,20 +410,13 @@ def join_queue(req: JoinQueueRequest):
         except Exception:
             pass
         new_entry = entry.data[0]
-        # SMS on check-in: send wait tracking link
-        try:
-            if req.phone:
+        if req.phone:
+            try:
                 rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
                 rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-                wait_url  = f"https://hostplatform.net/wait/{new_entry['id']}"
-                ok, err = _send_sms(
-                    to_phone=req.phone,
-                    body=f"You're on the list at {rest_name}! Track your wait live: {wait_url}",
-                )
-                if not ok:
-                    print(f"[Twilio] Join SMS failed: {err}")
-        except Exception:
-            pass
+                background_tasks.add_task(_send_join_sms, req.phone, rest_name, new_entry["id"])
+            except Exception:
+                pass
         return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -415,9 +436,10 @@ def get_entry(entry_id: str):
         entry_rid = entry.get("restaurant_id")
         all_ids  = [e["id"] for e in _active_queue(entry_rid)]
         position = (all_ids.index(entry_id) + 1) if entry_id in all_ids else 1
+        tables = supabase.table("tables").select("status,capacity").eq("restaurant_id", entry_rid).execute().data
         entry["position"]       = position
         entry["parties_ahead"]  = position - 1
-        entry["wait_estimate"]  = _wait_estimate(position - 1, entry.get("party_size", 2), entry_rid)
+        entry["wait_estimate"]  = _wait_estimate_with(position - 1, entry.get("party_size", 2), tables)
         entry["remaining_wait"] = _remaining_wait(entry)
         entry["wait_set_at"]    = _wait_set_at.get(entry_id)
     return entry
@@ -469,35 +491,37 @@ def seat_to_table(entry_id: str, table_id: str):
         pass
     return {"status": "seated", "table_id": table_id}
 
+def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
+    wait_url = f"https://hostplatform.net/wait/{entry_id}"
+    ok, err = _send_sms(
+        to_phone=phone,
+        body=f"Your table at {rest_name} is ready! Head to the host stand.\n{wait_url}\nReply STOP to opt out.",
+    )
+    print(f"[notify] sms_sent={ok} sms_error={err!r}")
+
 @app.post("/queue/{entry_id}/notify")
-def notify_ready(entry_id: str):
+def notify_ready(entry_id: str, background_tasks: BackgroundTasks):
     # 1. Mark as ready in DB
     supabase.table("queue_entries").update({"status": "ready"}).eq("id", entry_id).execute()
 
-    # 2. Send SMS if the guest provided a phone number
-    sms_sent = False
-    sms_error: str | None = None
+    # 2. Queue SMS in background if the guest provided a phone number
+    sms_queued = False
     try:
         entry_res = supabase.table("queue_entries").select("phone, name, restaurant_id").eq("id", entry_id).execute()
         phone = entry_res.data[0].get("phone") if entry_res.data else None
         print(f"[notify] entry={entry_id} phone={phone!r}")
         if phone:
-            rid_used = entry_res.data[0].get("restaurant_id") or RESTAURANT_ID
-            rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
+            rid_used  = entry_res.data[0].get("restaurant_id") or RESTAURANT_ID
+            rest_res  = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
             rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-            wait_url  = f"https://hostplatform.net/wait/{entry_id}"
-            sms_sent, sms_error = _send_sms(
-                to_phone=phone,
-                body=f"Your table at {rest_name} is ready! Head to the host now.\n{wait_url}",
-            )
-            print(f"[notify] sms_sent={sms_sent} sms_error={sms_error!r}")
+            background_tasks.add_task(_send_notify_sms, phone, rest_name, entry_id)
+            sms_queued = True
         else:
             print(f"[notify] no phone on entry {entry_id}")
     except Exception as e:
-        sms_error = str(e)
         print(f"[notify] exception: {e}")
 
-    return {"status": "notified", "sms_sent": sms_sent, "sms_error": sms_error}
+    return {"status": "notified", "sms_queued": sms_queued}
 
 @app.post("/queue/{entry_id}/remove")
 def remove_entry(entry_id: str):

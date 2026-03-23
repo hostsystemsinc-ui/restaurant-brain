@@ -1093,10 +1093,34 @@ export default function HostDashboard() {
     return () => clearInterval(t)
   }, [])
 
-  const fetchTables   = useCallback(async () => { try { const r = await fetch(`${API}/tables`);   if (r.ok) setTables(await r.json()) } catch {} }, [])
-  const fetchQueue    = useCallback(async () => { try { const r = await fetch(`${API}/queue`);    if (r.ok) { setQueue(await r.json()); setOnline(true); setLastSync(new Date()) } } catch { setOnline(false) } }, [])
-  const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
-  const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
+  const fetchingRef  = useRef(false)
+  const failCountRef = useRef(0)
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const refreshAll = useCallback(async () => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
+    try {
+      const r = await fetch(`${API}/state`)
+      if (r.ok) {
+        const d = await r.json()
+        setQueue(d.queue ?? [])
+        setTables(d.tables ?? [])
+        setAvgWait(d.avg_wait ?? 0)
+        setOnline(true)
+        setLastSync(new Date())
+        failCountRef.current = 0
+      } else {
+        setOnline(false)
+        failCountRef.current++
+      }
+    } catch {
+      setOnline(false)
+      failCountRef.current++
+    } finally {
+      fetchingRef.current = false
+    }
+  }, [])
 
   // Fetch today's confirmed reservations
   const fetchReservations = useCallback(async () => {
@@ -1115,12 +1139,27 @@ export default function HostDashboard() {
   }, [])
 
   useEffect(() => {
-    refreshAll(); fetchInsights(); fetchReservations()
-    const fast   = setInterval(refreshAll, 4000)
-    const slow   = setInterval(fetchInsights, 30000)
-    const resInt = setInterval(fetchReservations, 30000)
-    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt) }
-  }, [refreshAll, fetchInsights, fetchReservations])
+    refreshAll(); fetchReservations()
+    const tick = () => {
+      const interval = failCountRef.current >= 3 ? 15_000 : 4_000
+      pollTimerRef.current = setTimeout(() => { refreshAll(); tick() }, interval)
+    }
+    tick()
+    return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current) }
+  }, [refreshAll, fetchReservations])
+
+  // Pause polling when iPad screen locks, resume immediately on wake
+  useEffect(() => {
+    const onVis = () => { if (!document.hidden) refreshAll() }
+    document.addEventListener("visibilitychange", onVis)
+    return () => document.removeEventListener("visibilitychange", onVis)
+  }, [refreshAll])
+
+  // Slow-poll reservations separately (less critical)
+  useEffect(() => {
+    const t = setInterval(fetchReservations, 30_000)
+    return () => clearInterval(t)
+  }, [fetchReservations])
 
   const seat   = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }); refreshAll() }, [refreshAll])
   const notify = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }); refreshAll() }, [refreshAll])
@@ -1154,19 +1193,19 @@ export default function HostDashboard() {
     // Mark table occupied if an API table was found
     if (tableId) {
       try { await fetch(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
-      fetchTables()
+      refreshAll()
     }
     // Always update local occupant map (floor map visual)
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
-  }, [fetchTables])
+  }, [refreshAll])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     if (tableId) {
       try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
-      fetchTables()
+      refreshAll()
     }
-  }, [fetchTables])
+  }, [refreshAll])
 
   // ── DnD handlers ──────────────────────────────────────────────────────
 

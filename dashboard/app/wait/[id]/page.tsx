@@ -91,12 +91,17 @@ export default function WaitPage() {
   const [progress,    setProgress]    = useState(4)
   const progressKeyRef = useRef<string | null>(null)
 
+  const fetchingRef = useRef(false)
+
   const fetchEntry = useCallback(async () => {
+    if (fetchingRef.current) return
+    fetchingRef.current = true
     try {
       const r = await fetch(`${API}/queue/${id}`, { cache: "no-store" })
       if (!r.ok) { setError(true); return }
       setEntry(await r.json())
     } catch { setError(true) }
+    finally { fetchingRef.current = false }
   }, [id])
 
   const handleLeave = async () => {
@@ -107,8 +112,15 @@ export default function WaitPage() {
 
   useEffect(() => {
     fetchEntry()
-    const poll = setInterval(fetchEntry, 3000)
+    const poll = setInterval(fetchEntry, 5000)
     return () => clearInterval(poll)
+  }, [fetchEntry])
+
+  // Fetch immediately when phone screen wakes
+  useEffect(() => {
+    const onVis = () => { if (!document.hidden) fetchEntry() }
+    document.addEventListener("visibilitychange", onVis)
+    return () => document.removeEventListener("visibilitychange", onVis)
   }, [fetchEntry])
 
   // Sync displayWait + elapsedSec when quoted_wait, wait_set_at, or paused changes

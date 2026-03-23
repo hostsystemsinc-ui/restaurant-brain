@@ -220,6 +220,11 @@ export default function JoinPage() {
             className="w-full bg-transparent border-b text-xl text-white outline-none pb-2"
             style={{ borderColor: "rgba(255,255,255,0.22)", caretColor: "white" }}
           />
+          {phone.trim() && (
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 4 }}>
+              By providing your number you agree to receive SMS updates. Reply STOP to opt out.
+            </p>
+          )}
         </div>
       </div>
 
