@@ -489,13 +489,12 @@ function PuckTap() {
         {/* HOST — very large bold, dominant top element, exactly like sticker */}
         <span style={{ fontSize: 44, fontWeight: 900, letterSpacing: "0.05em", color: "#fff", lineHeight: 1 }}>HOST</span>
 
-        {/* NFC signal — 4 circular arcs, each with ~24% sagitta/span ratio matching sticker */}
-        {/* Arc1: span=104 r=67 dip=25 | Arc2: span=76 r=49 dip=18 | Arc3: span=44 r=28 dip=11 | Arc4: span=16 r=10 dip=4 */}
-        <svg width="120" height="92" viewBox="0 0 120 92" fill="none">
-          <path d="M8,4   A67,67 0 0,0 112,4"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
-          <path d="M22,36 A49,49 0 0,0 98,36"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
-          <path d="M38,62 A28,28 0 0,0 82,62"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
-          <path d="M52,81 A10,10 0 0,0 68,81"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
+        {/* NFC signal — 4 ∩ arches bowing upward (sweep=1), widest at top, narrowest at bottom */}
+        <svg width="120" height="94" viewBox="0 0 120 94" fill="none">
+          <path d="M8,30   A67,67 0 0,1 112,30" stroke="white" strokeWidth="5" strokeLinecap="round"/>
+          <path d="M22,56  A49,49 0 0,1 98,56"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
+          <path d="M38,76  A28,28 0 0,1 82,76"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
+          <path d="M52,88  A10,10 0 0,1 68,88"  stroke="white" strokeWidth="5" strokeLinecap="round"/>
         </svg>
 
         {/* TAP TO JOIN THE LINE — spaced small caps at bottom, exactly like sticker */}
