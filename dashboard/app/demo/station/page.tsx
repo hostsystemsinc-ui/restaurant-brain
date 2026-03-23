@@ -487,18 +487,7 @@ function GuestEditModal({
   const [notes,     setNotes]     = useState(entry.notes ?? "")
   const [saving,    setSaving]    = useState(false)
   const [removing,  setRemoving]  = useState(false)
-  const [paused,    setPaused]    = useState(entry.paused ?? false)  // init from server state
-  const [countdown, setCountdown] = useState(displayWait)
   const PRESETS = [5, 10, 15, 20, 30, 45]
-  const pausedRef = useRef(false)
-  useEffect(() => { pausedRef.current = paused }, [paused])
-  useEffect(() => {
-    const t = setInterval(() => {
-      if (pausedRef.current) return
-      setCountdown(p => Math.max(0, p - 1))
-    }, 60_000)
-    return () => clearInterval(t)
-  }, [])
 
   const save = async () => {
     setSaving(true)
@@ -520,25 +509,6 @@ function GuestEditModal({
     onClose()
   }
 
-  const handlePause = async () => {
-    const willBePaused = !paused
-    setPaused(willBePaused)
-    try {
-      const r = await fetchT(`${API}/queue/${entry.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          willBePaused
-            ? { quoted_wait: countdown, paused: true }
-            : { paused: false }
-        ),
-      })
-      if (!r.ok) throw new Error()
-    } catch {
-      setPaused(!willBePaused) // revert toggle on failure
-    }
-  }
-
   const remove = async () => {
     setRemoving(true)
     try {
@@ -553,8 +523,6 @@ function GuestEditModal({
     onRemoved()
     onClose()
   }
-
-  const countdownColor = countdown <= 0 ? "#22c55e" : countdown <= 5 ? "#f97316" : "rgba(251,191,36,0.90)"
 
   return (
     <div style={{
@@ -579,106 +547,65 @@ function GuestEditModal({
           </button>
         </div>
 
-          {/* ── Timer display: Quoted + Elapsed + bar + pause ── */}
-          {(entry.quoted_wait != null || entry.wait_estimate != null) && (() => {
-            const quoted   = entry.quoted_wait ?? entry.wait_estimate ?? 0
-            const elapsed  = Math.max(0, quoted - countdown)
-            const barPct   = quoted > 0 ? Math.min(100, (elapsed / quoted) * 100) : 0
-            const barColor = paused ? "rgba(249,115,22,0.55)" : countdown <= 0 ? "#22c55e" : "rgba(251,191,36,0.80)"
-            return (
-              <div className="rounded-xl mb-3 px-4 py-3" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.13)" }}>
-                {/* Progress bar */}
-                <div style={{ height: 5, background: "rgba(255,185,100,0.10)", borderRadius: 3, overflow: "hidden", marginBottom: 14 }}>
-                  <div style={{
-                    height: "100%", borderRadius: 3,
-                    width: `${barPct}%`,
-                    background: barColor,
-                    transition: paused ? "none" : "width 60s linear",
-                  }} />
-                </div>
-                {/* Quoted / Elapsed stats */}
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.40)", marginBottom: 3 }}>Quoted</p>
-                    <p style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em" }}>
-                      {quoted}<span style={{ fontSize: 12, color: "rgba(255,200,150,0.40)", marginLeft: 3 }}>min</span>
-                    </p>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: paused ? "rgba(249,115,22,0.60)" : "rgba(255,200,150,0.40)", marginBottom: 3 }}>
-                      {paused ? "⏸ Elapsed" : "Elapsed"}
-                    </p>
-                    <p style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: countdownColor, letterSpacing: "-0.02em" }}>
-                      {elapsed}<span style={{ fontSize: 12, color: "rgba(255,200,150,0.40)", marginLeft: 3 }}>min</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
 
           {/* ── Set estimate ── */}
-          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Set Estimate</p>
-          <div className="flex items-center justify-between mb-2 px-1">
-            <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-10 h-10 rounded-full flex items-center justify-center text-xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Set Wait Time</p>
+          <div className="flex items-center justify-between mb-4 px-2">
+            <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
             <div className="text-center">
-              <span className="text-5xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
-              <span className="text-xs ml-1.5" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
+              <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
+              <span className="text-sm ml-2" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
             </div>
-            <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-10 h-10 rounded-full flex items-center justify-center text-xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
+            <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
           </div>
-          {/* Single row of 6 presets */}
-          <div className="grid grid-cols-6 gap-1.5 mb-3">
+          {/* Presets */}
+          <div className="grid grid-cols-6 gap-2 mb-5">
             {PRESETS.map(p => (
-              <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 40, background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)", border: `1px solid ${minutes === p ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}` }}>
-                <span style={{ fontSize: 15, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
-                <span style={{ fontSize: 8, letterSpacing: "0.05em", color: minutes === p ? "rgba(255,200,150,0.55)" : "rgba(255,185,100,0.28)", marginTop: 1 }}>m</span>
+              <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)", border: `1px solid ${minutes === p ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}` }}>
+                <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
+                <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "rgba(255,200,150,0.55)" : "rgba(255,185,100,0.28)", marginTop: 2 }}>min</span>
               </button>
             ))}
           </div>
 
-          {/* ── Party size + Phone (side by side) ── */}
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div>
-              <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(255,200,150,0.45)" }}>Party</p>
-              <div className="flex items-center rounded-xl h-11" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", padding: "0 8px" }}>
-                <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>−</button>
-                <span className="flex-1 text-center text-xl font-light tabular-nums" style={{ color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
-                <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-8 h-8 flex items-center justify-center rounded-lg text-lg transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>+</button>
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(255,200,150,0.45)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>opt.</span></p>
-              <input
-                type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-                placeholder="(555) 000-0000"
-                className="w-full rounded-xl outline-none h-11"
-                style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 14, padding: "0 12px" }}
-              />
-            </div>
+          {/* ── Party size ── */}
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
+          <div className="flex items-center rounded-xl mb-4" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", padding: "0 12px", height: 56 }}>
+            <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>−</button>
+            <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
+            <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>+</button>
           </div>
 
+          {/* ── Phone ── */}
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+          <input
+            type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+            placeholder="(555) 000-0000"
+            className="w-full rounded-xl outline-none mb-4"
+            style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
+          />
+
           {/* ── Notes ── */}
-          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-1.5" style={{ color: "rgba(255,200,150,0.45)" }}>Notes <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>opt.</span></p>
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Notes <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
           <input
             type="text" value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Allergies, preferences, special occasion…"
-            className="w-full rounded-xl outline-none mb-4 h-11"
-            style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 14, padding: "0 14px" }}
+            className="w-full rounded-xl outline-none mb-5"
+            style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
           />
 
           {/* ── Save ── */}
-          <button onClick={save} disabled={saving} className="w-full rounded-xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 14, padding: "14px 0" }}>
+          <button onClick={save} disabled={saving} className="w-full rounded-xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 15, padding: "18px 0" }}>
             {saving ? "Saving…" : "Save Changes"}
           </button>
 
           {/* ── Remove ── */}
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(239,68,68,0.10)" }}>
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(239,68,68,0.10)" }}>
             <button
               onClick={remove}
               disabled={removing}
               className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-              style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.70)", border: "1px solid rgba(239,68,68,0.18)", fontSize: 13, padding: "14px 0" }}
+              style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.70)", border: "1px solid rgba(239,68,68,0.18)", fontSize: 14, padding: "18px 0" }}
             >
               {removing ? "Removing…" : "Remove from Waitlist"}
             </button>
@@ -2145,10 +2072,12 @@ export default function DemoHostDashboard() {
   }, [refreshAll, fetchInsights, fetchReservations, authed])
 
   const seat   = useCallback(async (id: string) => {
-    try { const r = await fetchT(`${API}/queue/${id}/seat`,   { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
-    catch { showToast("Could not seat guest — try again.", "err") }
+    setQueue(prev => prev.filter(e => e.id !== id))  // optimistic
+    try { const r = await fetchT(`${API}/queue/${id}/seat`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
+    catch { showToast("Could not seat guest — try again.", "err"); refreshAll() }
   }, [refreshAll])
   const notify = useCallback(async (id: string) => {
+    setQueue(prev => prev.map(e => e.id === id ? { ...e, status: "ready" as const } : e))  // optimistic
     try {
       const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" })
       if (!r.ok) throw new Error()
@@ -2161,7 +2090,7 @@ export default function DemoHostDashboard() {
         showToast("Marked ready (no phone on file)", "ok")
       }
       refreshAll()
-    } catch { showToast("Could not notify guest.", "err") }
+    } catch { showToast("Could not notify guest.", "err"); refreshAll() }
   }, [refreshAll])
 
   const remove = useCallback(async (id: string) => {
