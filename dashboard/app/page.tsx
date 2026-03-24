@@ -1516,7 +1516,7 @@ export default function MarketingPage() {
               The solution
             </div>
             <h2 style={{ fontSize: "clamp(1.5rem,3vw,2.1rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, margin: 0, color: "#fff" }}>
-              HOST was built to fix every one of these.
+              With HOST, every one of these goes away.
             </h2>
           </div>
           <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(34,197,94,0.08)", borderRadius: 20, overflow: "hidden", border: "1px solid rgba(34,197,94,0.12)" }}>
