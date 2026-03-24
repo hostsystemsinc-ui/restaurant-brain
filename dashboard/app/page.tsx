@@ -1079,6 +1079,7 @@ function DemoModal({ onClose }: { onClose: () => void }) {
 export default function MarketingPage() {
   const [showDemo, setShowDemo] = useState(false)
   const [activeFeature, setActiveFeature] = useState<number | null>(null)
+  const [activeStat, setActiveStat] = useState<number | null>(null)
   const deviceRef    = useFade(100)
   const howWorksRef  = useFade(0)
   const statsRef     = useFade(0)
@@ -1423,33 +1424,111 @@ export default function MarketingPage() {
             </h2>
           </div>
 
-          {/* 4 pain stats — 2×2 grid */}
-          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", borderRadius: 24, overflow: "hidden", marginBottom: 1 }}>
-            {[
-              { stat: "1 in 3", label: "guests have walked away from a restaurant because the wait felt uncertain or disorganized", source: "National Restaurant Association" },
-              { stat: "$150+", label: "in revenue lost every time a party of four walks out before they're seated", source: "avg. check × party size" },
-              { stat: "45 min", label: "per shift your host spends managing a clipboard or shouting names across the room", source: "industry average" },
-              { stat: "60%", label: "of guests who walk out say they're unlikely to return to that restaurant again", source: "customer experience research" },
-            ].map(s => (
-              <div key={s.stat} style={{ background: "#08090B", padding: "44px 40px", textAlign: "center" }}>
-                <div style={{ fontSize: "clamp(2.8rem,5vw,4.2rem)", fontWeight: 900, letterSpacing: "-0.05em", color: "rgba(217,50,28,0.85)", lineHeight: 1, marginBottom: 18 }}>{s.stat}</div>
-                <div style={{ fontSize: ".9rem", color: "rgba(255,255,255,0.42)", lineHeight: 1.65, marginBottom: 10 }}>{s.label}</div>
-                <div style={{ fontSize: ".68rem", color: "rgba(255,255,255,0.15)", letterSpacing: ".08em", textTransform: "uppercase" }}>{s.source}</div>
+          {/* 4 pain stats — clickable accordion cards */}
+          {(() => {
+            const painStats = [
+              {
+                stat: "1 in 3",
+                label: "diners have walked out because the wait felt uncertain or disorganized",
+                blurb: "A 2025 survey of 1,000 U.S. diners found that 33% have walked out before being seated — not because the food was bad, but because the wait felt chaotic. The guest was already there. Without a system to manage that gap, the cover simply disappeared.",
+                source: "Lightspeed Commerce, 2025",
+                sourceUrl: "https://www.lightspeedhq.com/news/dinner-never-mind-a-third-of-diners-are-walking-out-before-the-meal-arrives-due-to-inconsistent-service/",
+              },
+              {
+                stat: "$135+",
+                label: "in revenue gone every time a party walks out before they're seated",
+                blurb: "The average full-service restaurant guest spends $54 per visit, according to a Harris Poll survey of 1,500 diners. Multiply that by a typical party of 2–3 guests and a single walkout quietly costs $135 or more — before you count drinks, dessert, or the tip. That's happening multiple times every busy night.",
+                source: "TouchBistro / The Harris Poll, 2025",
+                sourceUrl: "https://www.touchbistro.com/press-releases/touchbistro-2025-american-diner-trends-report-shows-resilience-in-consumer-habits-signaling-optimism-for-restaurants/",
+              },
+              {
+                stat: "20 min",
+                label: "is all it takes — guests abandon a waitlist after 20 minutes with no status update",
+                blurb: "Toast analyzed real transaction data across thousands of restaurants and found that waitlisted guests typically walk out after just 20 minutes without an update. It's rarely the wait itself that drives them away — it's the silence. Guests who can't see where they stand in line simply leave.",
+                source: "Toast Restaurant Trends, 2024",
+                sourceUrl: "https://pos.toasttab.com/blog/on-the-line/restaurant-waitlist-data",
+              },
+              {
+                stat: "34%",
+                label: "of guests say they will never return after just one bad experience",
+                blurb: "An Oracle study of 1,143 U.S. consumers found that 34% would never return to a business after a single bad experience. In a world where guests leave reviews and pick restaurants in seconds, one chaotic night at the host stand isn't just a lost table — it's a permanently closed door.",
+                source: "Oracle / H+K Strategies, 2019",
+                sourceUrl: "https://www.oracle.com/corporate/pressrelease/jeanne-bliss-customer-experience-073019.html",
+              },
+            ]
+            return (
+              <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", borderRadius: 24, overflow: "hidden" }}>
+                {painStats.map((s, i) => {
+                  const open = activeStat === i
+                  return (
+                    <div
+                      key={s.stat}
+                      onClick={() => setActiveStat(open ? null : i)}
+                      style={{
+                        background: open ? "rgba(217,50,28,0.05)" : "#08090B",
+                        padding: "44px 40px",
+                        cursor: "pointer",
+                        borderBottom: open ? "2px solid rgba(217,50,28,0.2)" : "2px solid transparent",
+                        transition: "background 0.2s, border-color 0.2s",
+                      }}
+                    >
+                      <div style={{ fontSize: "clamp(2.8rem,5vw,4.2rem)", fontWeight: 900, letterSpacing: "-0.05em", color: open ? "rgba(217,50,28,1)" : "rgba(217,50,28,0.85)", lineHeight: 1, marginBottom: 18, transition: "color 0.2s" }}>{s.stat}</div>
+                      <div style={{ fontSize: ".9rem", color: "rgba(255,255,255,0.42)", lineHeight: 1.65, marginBottom: 20 }}>{s.label}</div>
+                      <div style={{ fontSize: ".78rem", fontWeight: 700, color: open ? "rgba(217,50,28,0.55)" : "rgba(255,255,255,0.22)", display: "flex", alignItems: "center", gap: 5, transition: "color 0.2s" }}>
+                        {open ? "Close" : "See the data"}
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>
+                          <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                        </svg>
+                      </div>
+                      {open && (
+                        <div
+                          onClick={e => e.stopPropagation()}
+                          style={{ marginTop: 28, paddingTop: 28, borderTop: "1px solid rgba(217,50,28,0.12)", animation: "badgein 0.25s ease both" }}
+                        >
+                          <p style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.5)", lineHeight: 1.78, marginBottom: 20 }}>{s.blurb}</p>
+                          <a
+                            href={s.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: ".75rem", color: "rgba(217,50,28,0.6)", letterSpacing: ".05em", textDecoration: "none", borderBottom: "1px solid rgba(217,50,28,0.2)", paddingBottom: 2, transition: "color 0.15s" }}
+                            onMouseEnter={e => (e.currentTarget.style.color = "rgba(217,50,28,0.9)")}
+                            onMouseLeave={e => (e.currentTarget.style.color = "rgba(217,50,28,0.6)")}
+                          >
+                            {s.source} ↗
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-            ))}
-          </div>
+            )
+          })()}
+        </div>
+      </section>
 
-          {/* HOST solution strip */}
-          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(255,255,255,0.05)", borderRadius: "0 0 24px 24px", overflow: "hidden" }}>
+      {/* HOST Solution Strip — visually distinct from the problem section */}
+      <section className="mob-px" style={{ padding: "80px 56px", borderTop: "3px solid rgba(34,197,94,0.18)", background: "rgba(34,197,94,0.025)", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(34,197,94,0.06) 0%, transparent 60%)", pointerEvents: "none" }} />
+        <div style={{ maxWidth: 1060, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <div style={{ fontSize: ".72rem", fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(34,197,94,0.7)", marginBottom: 14 }}>
+              The solution
+            </div>
+            <h2 style={{ fontSize: "clamp(1.5rem,3vw,2.1rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, margin: 0, color: "#fff" }}>
+              HOST was built to fix every one of these.
+            </h2>
+          </div>
+          <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(34,197,94,0.08)", borderRadius: 20, overflow: "hidden", border: "1px solid rgba(34,197,94,0.12)" }}>
             {[
               { n: 2, s: " sec", l: "to join with a tap or scan" },
               { n: 55, s: "%", l: "fewer no-shows with SMS" },
               { n: 0, s: "", l: "app downloads required" },
               { n: 15, s: " min", l: "average setup time" },
             ].map(s => (
-              <div key={s.l} style={{ background: "rgba(34,197,94,0.03)", padding: "28px 20px", textAlign: "center", borderTop: "1px solid rgba(34,197,94,0.1)" }}>
-                <div style={{ fontSize: "2.2rem", fontWeight: 900, color: "#22c55e", letterSpacing: "-0.045em", lineHeight: 1, marginBottom: 7 }}><Counter to={s.n} suffix={s.s} /></div>
-                <div style={{ fontSize: ".78rem", color: "rgba(255,255,255,0.32)" }}>{s.l}</div>
+              <div key={s.l} style={{ background: "rgba(6,6,6,0.55)", padding: "36px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: "2.2rem", fontWeight: 900, color: "#22c55e", letterSpacing: "-0.045em", lineHeight: 1, marginBottom: 8 }}><Counter to={s.n} suffix={s.s} /></div>
+                <div style={{ fontSize: ".78rem", color: "rgba(255,255,255,0.38)" }}>{s.l}</div>
               </div>
             ))}
           </div>
