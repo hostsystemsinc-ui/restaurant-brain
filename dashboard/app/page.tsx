@@ -152,7 +152,11 @@ function HeroSlideshow() {
   )
 }
 
-/* ─── iPad Mockup — iPad Pro style ──────────────────────────── */
+/* ─── Rounded-rect SVG path helper ─────────────────────────── */
+const rrPath = (x: number, y: number, w: number, h: number, r: number) =>
+  `M ${x+r} ${y} H ${x+w-r} A ${r} ${r} 0 0 1 ${x+w} ${y+r} V ${y+h-r} A ${r} ${r} 0 0 1 ${x+w-r} ${y+h} H ${x+r} A ${r} ${r} 0 0 1 ${x} ${y+h-r} V ${y+r} A ${r} ${r} 0 0 1 ${x+r} ${y} Z`
+
+/* ─── iPad Mockup — iPad Pro SVG frame ──────────────────────── */
 function IPadMockup() {
   // Queue entries
   const queue = [
@@ -175,37 +179,16 @@ function IPadMockup() {
     </div>
   )
 
-  return (
-    <div style={{ position: "relative", width: 660, height: 472, flexShrink: 0 }}>
-      {/* Outer device shell — Space Black anodized aluminum */}
-      <div style={{
-        position: "absolute", inset: 0, borderRadius: 26,
-        background: "linear-gradient(148deg, #3A3A3C 0%, #2C2C2E 18%, #1C1C1E 38%, #161618 52%, #1E1E20 66%, #2A2A2C 80%, #363638 100%)",
-        boxShadow: [
-          "0 0 0 0.5px rgba(255,255,255,0.14)",
-          "0 0 0 1.5px rgba(0,0,0,0.7)",
-          "0 48px 100px rgba(0,0,0,0.95)",
-          "0 16px 40px rgba(0,0,0,0.7)",
-          "inset 0 1.5px 0 rgba(255,255,255,0.14)",
-          "inset 0 -1px 0 rgba(0,0,0,0.5)",
-        ].join(", "),
-      }} />
-      {/* Top edge highlight — light catching the flat aluminum edge */}
-      <div style={{ position: "absolute", top: 0, left: 28, right: 28, height: 1.5, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.28) 20%, rgba(255,255,255,0.38) 50%, rgba(255,255,255,0.28) 80%, transparent)", borderRadius: 1, zIndex: 3 }} />
-      {/* Front camera — centered on top edge (right edge in landscape = top in portrait) */}
-      <div style={{ position: "absolute", top: 12, right: 14, width: 8, height: 8, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, #2a2a2c, #0a0a0c)", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "inset 0 1px 3px rgba(0,0,0,1)" }}>
-        <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#050510", margin: "2px 0 0 2px", boxShadow: "0 0 3px rgba(40,80,255,0.25)" }} />
-      </div>
-      {/* Power / Touch ID — top right corner area */}
-      <div style={{ position: "absolute", top: -2, right: 72, width: 36, height: 3.5, borderRadius: "0 0 2px 2px", background: "linear-gradient(90deg, #2A2A2C, #3C3C3E, #2A2A2C)", boxShadow: "0 -1px 2px rgba(0,0,0,0.5)" }} />
-      {/* Volume buttons — bottom left (left edge in landscape = bottom in portrait) */}
-      <div style={{ position: "absolute", bottom: -2, left: 80, width: 28, height: 3.5, borderRadius: "2px 2px 0 0", background: "linear-gradient(90deg, #2A2A2C, #3C3C3E, #2A2A2C)", boxShadow: "0 1px 2px rgba(0,0,0,0.5)" }} />
-      <div style={{ position: "absolute", bottom: -2, left: 120, width: 28, height: 3.5, borderRadius: "2px 2px 0 0", background: "linear-gradient(90deg, #2A2A2C, #3C3C3E, #2A2A2C)", boxShadow: "0 1px 2px rgba(0,0,0,0.5)" }} />
-      {/* USB-C port — right edge center (bottom edge in landscape = right in portrait) */}
-      <div style={{ position: "absolute", right: -1.5, top: "50%", transform: "translateY(-50%)", width: 3.5, height: 22, borderRadius: "0 2px 2px 0", background: "linear-gradient(180deg, #1a1a1c, #2c2c2e, #1a1a1c)", boxShadow: "inset 0 1px 4px rgba(0,0,0,0.9)" }} />
+  const W = 670, H = 490, b = 14, sR = 12, dR = 24
+  const sX = b, sY = b, sW = W - b * 2, sH = H - b * 2
 
-      {/* Screen — uniform thin bezel, iPad Pro style */}
-      <div style={{ position: "absolute", inset: 14, borderRadius: 14, overflow: "hidden", background: "#080a0c", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.9)" }}>
+  return (
+    <div style={{ position: "relative", width: W, height: H, flexShrink: 0 }}>
+      {/* Shadow layer — device-shaped */}
+      <div style={{ position: "absolute", inset: 0, borderRadius: dR, boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 50px 110px rgba(0,0,0,0.88)", background: "transparent" }} />
+
+      {/* Screen content — sits underneath the SVG frame */}
+      <div style={{ position: "absolute", left: sX, top: sY, width: sW, height: sH, borderRadius: sR, overflow: "hidden", background: "#080a0c", display: "flex", flexDirection: "column" }}>
 
         {/* Header bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", background: "#080a0c", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
@@ -318,58 +301,78 @@ function IPadMockup() {
           </div>
         </div>
       </div>
-      {/* Screen glass reflection overlay */}
-      <div style={{ position: "absolute", inset: 14, borderRadius: 14, background: "linear-gradient(148deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.018) 30%, transparent 55%)", pointerEvents: "none", zIndex: 4 }} />
+
+      {/* SVG frame overlay — transparent screen hole shows live content through */}
+      <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10, overflow: "visible" }} width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <defs>
+          <linearGradient id="ipad-body" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stopColor="#4A4A4C"/>
+            <stop offset="20%"  stopColor="#363638"/>
+            <stop offset="40%"  stopColor="#242426"/>
+            <stop offset="54%"  stopColor="#1C1C1E"/>
+            <stop offset="68%"  stopColor="#262628"/>
+            <stop offset="84%"  stopColor="#39393B"/>
+            <stop offset="100%" stopColor="#484A4C"/>
+          </linearGradient>
+          <linearGradient id="ipad-glass" x1="0%" y1="0%" x2="55%" y2="55%">
+            <stop offset="0%"   stopColor="rgba(255,255,255,0.06)"/>
+            <stop offset="60%"  stopColor="rgba(255,255,255,0.01)"/>
+            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+          </linearGradient>
+        </defs>
+        {/* Device frame — evenodd cuts transparent screen hole */}
+        <path fillRule="evenodd" d={`${rrPath(0,0,W,H,dR)} ${rrPath(sX,sY,sW,sH,sR)}`} fill="url(#ipad-body)"/>
+        {/* Top-edge specular highlight */}
+        <line x1={dR+8} y1="0.75" x2={W-dR-8} y2="0.75" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round"/>
+        {/* Screen inner shadow */}
+        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="none" stroke="rgba(0,0,0,0.65)" strokeWidth="2.5"/>
+        {/* Glass reflection over screen */}
+        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="url(#ipad-glass)"/>
+        {/* Front camera — right edge center */}
+        <circle cx={W-7} cy={H/2} r="4.5" fill="#141415"/>
+        <circle cx={W-7} cy={H/2} r="2"   fill="#0a0a0b"/>
+        {/* Power/Touch ID — top edge right */}
+        <rect x={W-74} y="-2.5" width={40} height="3.5" rx="1.75" fill="#3C3C3E"/>
+        <line x1={W-74} y1="0.5" x2={W-34} y2="0.5" stroke="rgba(255,255,255,0.13)" strokeWidth="0.75"/>
+        {/* Volume up — top edge */}
+        <rect x={W-138} y="-2.5" width={30} height="3.5" rx="1.75" fill="#3C3C3E"/>
+        <line x1={W-138} y1="0.5" x2={W-108} y2="0.5" stroke="rgba(255,255,255,0.13)" strokeWidth="0.75"/>
+        {/* Volume down — top edge */}
+        <rect x={W-180} y="-2.5" width={30} height="3.5" rx="1.75" fill="#3C3C3E"/>
+        <line x1={W-180} y1="0.5" x2={W-150} y2="0.5" stroke="rgba(255,255,255,0.13)" strokeWidth="0.75"/>
+        {/* USB-C — right edge center */}
+        <rect x={W-1.5} y={H/2-11} width="3.5" height="22" rx="1.75" fill="#252527"/>
+        <rect x={W+0.5}  y={H/2-7}  width="1.5" height="14" rx="0.75" fill="#1A1A1C"/>
+      </svg>
     </div>
   )
 }
 
-/* ─── iPhone Mockup — iPhone 15 Pro style ───────────────────── */
+/* ─── iPhone Mockup — iPhone 15 Pro SVG frame ───────────────── */
 function IPhoneMockup() {
-  return (
-    <div style={{ position: "relative", width: 220, height: 476, flexShrink: 0 }}>
-      {/* Outer device shell — Natural Titanium */}
-      <div style={{
-        position: "absolute", inset: 0, borderRadius: 54,
-        background: "linear-gradient(155deg, #A0A0A2 0%, #868688 12%, #686869 28%, #4C4C4E 44%, #565658 58%, #727274 72%, #8E8E90 86%, #A2A2A4 100%)",
-        boxShadow: [
-          "0 0 0 0.5px rgba(255,255,255,0.22)",
-          "0 0 0 1.5px rgba(0,0,0,0.65)",
-          "0 56px 120px rgba(0,0,0,0.95)",
-          "0 20px 50px rgba(0,0,0,0.7)",
-          "inset 0 1.5px 0 rgba(255,255,255,0.22)",
-          "inset 0 -1px 0 rgba(0,0,0,0.4)",
-        ].join(", "),
-      }} />
-      {/* Top edge — light catching the aluminum */}
-      <div style={{ position: "absolute", top: 0, left: 32, right: 32, height: 1.5, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.32) 25%, rgba(255,255,255,0.44) 50%, rgba(255,255,255,0.32) 75%, transparent)", zIndex: 3, borderRadius: 1 }} />
-      {/* Action button — left top */}
-      <div style={{ position: "absolute", left: -2.5, top: 94, width: 3.5, height: 24, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset 1px 0 2px rgba(0,0,0,0.4)" }} />
-      {/* Volume up */}
-      <div style={{ position: "absolute", left: -2.5, top: 136, width: 3.5, height: 42, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset 1px 0 2px rgba(0,0,0,0.4)" }} />
-      {/* Volume down */}
-      <div style={{ position: "absolute", left: -2.5, top: 188, width: 3.5, height: 42, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset 1px 0 2px rgba(0,0,0,0.4)" }} />
-      {/* Power button — right */}
-      <div style={{ position: "absolute", right: -2.5, top: 150, width: 3.5, height: 72, borderRadius: "0 3px 3px 0", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset -1px 0 2px rgba(0,0,0,0.4)" }} />
+  const W = 220, H = 476, b = 9, sR = 46, dR = 54
+  const sX = b, sY = b, sW = W - b * 2, sH = H - b * 2
 
-      {/* Screen with proper iPhone bezels */}
-      <div style={{ position: "absolute", inset: 9, borderRadius: 46, overflow: "hidden", background: "#060608", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.85)" }}>
+  return (
+    <div style={{ position: "relative", width: W, height: H, flexShrink: 0 }}>
+      {/* Shadow layer */}
+      <div style={{ position: "absolute", inset: 0, borderRadius: dR, boxShadow: "0 16px 50px rgba(0,0,0,0.6), 0 50px 110px rgba(0,0,0,0.92)", background: "transparent" }} />
+
+      {/* Screen content — underneath the SVG frame */}
+      <div style={{ position: "absolute", left: sX, top: sY, width: sW, height: sH, borderRadius: sR, overflow: "hidden", background: "#060608", display: "flex", flexDirection: "column" }}>
         {/* Dynamic Island */}
         <div style={{ height: 48, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 7, background: "#060608" }}>
-          <div style={{ width: 120, height: 34, background: "#000", borderRadius: 99, boxShadow: "inset 0 2px 5px rgba(0,0,0,1), 0 0 0 0.5px rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <div style={{ width: 120, height: 34, background: "#000", borderRadius: 99, boxShadow: "inset 0 2px 5px rgba(0,0,0,1)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#0d0d14", border: "1.5px solid #1a1a22", boxShadow: "inset 0 1px 3px rgba(0,0,0,1)" }}>
               <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#080818", margin: "3px 0 0 3px", boxShadow: "0 0 4px rgba(50,80,255,0.3)" }} />
             </div>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#120a0a", border: "1px solid #221212", boxShadow: "inset 0 1px 2px rgba(0,0,0,1)" }} />
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#120a0a", border: "1px solid #221212" }} />
           </div>
         </div>
 
         {/* App content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 16px 10px", textAlign: "center" }}>
-          {/* Brand */}
           <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: "0.18em", color: "#f97316", marginBottom: 14 }}>HOST</div>
-
-          {/* Name + status */}
           <div style={{ marginBottom: 16, width: "100%" }}>
             <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", marginBottom: 6 }}>Hey, Sarah.</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 99, padding: "4px 12px" }}>
@@ -377,20 +380,14 @@ function IPhoneMockup() {
               <span style={{ fontSize: 9, fontWeight: 700, color: "#f97316" }}>3 parties ahead of you</span>
             </div>
           </div>
-
-          {/* Progress */}
           <div style={{ width: "100%", marginBottom: 16 }}>
             <div style={{ width: "100%", height: 6, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden", marginBottom: 5 }}>
               <div style={{ width: "22%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#f97316,#fb923c)" }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "rgba(255,255,255,0.22)" }}>
-              <span>Joined</span>
-              <span style={{ color: "#f97316", fontWeight: 700 }}>22%</span>
-              <span>Seated</span>
+              <span>Joined</span><span style={{ color: "#f97316", fontWeight: 700 }}>22%</span><span>Seated</span>
             </div>
           </div>
-
-          {/* Info cards */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7, width: "100%", marginBottom: 12 }}>
             <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "10px 12px" }}>
               <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 5 }}>Party</div>
@@ -401,15 +398,9 @@ function IPhoneMockup() {
               <div style={{ fontSize: 18, fontWeight: 800, color: "#f97316", lineHeight: 1 }}>~45m</div>
             </div>
           </div>
-
-          {/* Message card */}
           <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "10px 13px", width: "100%", marginBottom: 10 }}>
-            <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, textAlign: "left" }}>
-              Your spot is saved — feel free to step outside.
-            </div>
+            <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, textAlign: "left" }}>Your spot is saved — feel free to step outside.</div>
           </div>
-
-          {/* Live dot */}
           <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: "auto" }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e" }} />
             <span style={{ fontSize: 8, color: "rgba(255,255,255,0.22)", letterSpacing: ".03em" }}>Updates automatically</span>
@@ -422,8 +413,46 @@ function IPhoneMockup() {
         </div>
       </div>
 
-      {/* Screen glass reflection */}
-      <div style={{ position: "absolute", inset: 9, borderRadius: 46, background: "linear-gradient(145deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.025) 28%, transparent 52%)", pointerEvents: "none", zIndex: 5 }} />
+      {/* SVG frame overlay — evenodd creates transparent screen hole */}
+      <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10, overflow: "visible" }} width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
+        <defs>
+          <linearGradient id="iphone-ti" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stopColor="#B2B2B4"/>
+            <stop offset="14%"  stopColor="#949496"/>
+            <stop offset="30%"  stopColor="#727274"/>
+            <stop offset="46%"  stopColor="#565658"/>
+            <stop offset="60%"  stopColor="#646466"/>
+            <stop offset="76%"  stopColor="#808082"/>
+            <stop offset="90%"  stopColor="#9A9A9C"/>
+            <stop offset="100%" stopColor="#AEAEB0"/>
+          </linearGradient>
+          <linearGradient id="iphone-glass" x1="0%" y1="0%" x2="52%" y2="46%">
+            <stop offset="0%"   stopColor="rgba(255,255,255,0.09)"/>
+            <stop offset="55%"  stopColor="rgba(255,255,255,0.02)"/>
+            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+          </linearGradient>
+        </defs>
+        {/* Device frame — evenodd + screen hole path = transparent screen */}
+        <path fillRule="evenodd" d={`${rrPath(0,0,W,H,dR)} ${rrPath(sX,sY,sW,sH,sR)}`} fill="url(#iphone-ti)"/>
+        {/* Top-edge specular */}
+        <line x1={dR+6} y1="0.75" x2={W-dR-6} y2="0.75" stroke="rgba(255,255,255,0.42)" strokeWidth="1.5" strokeLinecap="round"/>
+        {/* Screen inner shadow */}
+        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth="2"/>
+        {/* Glass reflection over screen */}
+        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="url(#iphone-glass)"/>
+        {/* Action button */}
+        <rect x="-2.5" y="92"  width="3.5" height="24" rx="1.75" fill="#909092"/>
+        <line x1="-2.5" y1="95"  x2="1" y2="95"  stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+        {/* Volume up */}
+        <rect x="-2.5" y="134" width="3.5" height="42" rx="1.75" fill="#909092"/>
+        <line x1="-2.5" y1="137" x2="1" y2="137" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+        {/* Volume down */}
+        <rect x="-2.5" y="186" width="3.5" height="42" rx="1.75" fill="#909092"/>
+        <line x1="-2.5" y1="189" x2="1" y2="189" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+        {/* Power */}
+        <rect x={W-1} y="148" width="3.5" height="72" rx="1.75" fill="#909092"/>
+        <line x1={W-1} y1="151" x2={W+2.5} y2="151" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+      </svg>
     </div>
   )
 }
