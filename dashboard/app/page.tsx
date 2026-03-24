@@ -185,7 +185,7 @@ function IPadMockup() {
   return (
     <div style={{ position: "relative", width: W, height: H, flexShrink: 0 }}>
       {/* Shadow layer — device-shaped */}
-      <div style={{ position: "absolute", inset: 0, borderRadius: dR, boxShadow: "0 12px 40px rgba(0,0,0,0.55), 0 50px 110px rgba(0,0,0,0.88)", background: "transparent" }} />
+      <div style={{ position: "absolute", inset: 0, borderRadius: dR, boxShadow: "0 8px 32px rgba(0,0,0,0.7), 0 32px 80px rgba(0,0,0,0.5)", background: "transparent" }} />
 
       {/* Screen content — sits underneath the SVG frame */}
       <div style={{ position: "absolute", left: sX, top: sY, width: sW, height: sH, borderRadius: sR, overflow: "hidden", background: "#080a0c", display: "flex", flexDirection: "column" }}>
@@ -305,44 +305,28 @@ function IPadMockup() {
       {/* SVG frame overlay — transparent screen hole shows live content through */}
       <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10, overflow: "visible" }} width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         <defs>
-          <linearGradient id="ipad-body" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stopColor="#4A4A4C"/>
-            <stop offset="20%"  stopColor="#363638"/>
-            <stop offset="40%"  stopColor="#242426"/>
-            <stop offset="54%"  stopColor="#1C1C1E"/>
-            <stop offset="68%"  stopColor="#262628"/>
-            <stop offset="84%"  stopColor="#39393B"/>
-            <stop offset="100%" stopColor="#484A4C"/>
-          </linearGradient>
-          <linearGradient id="ipad-glass" x1="0%" y1="0%" x2="55%" y2="55%">
-            <stop offset="0%"   stopColor="rgba(255,255,255,0.06)"/>
-            <stop offset="60%"  stopColor="rgba(255,255,255,0.01)"/>
-            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+          <linearGradient id="ipad-edge" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%"   stopColor="#3a3a3c"/>
+            <stop offset="100%" stopColor="#1a1a1c"/>
           </linearGradient>
         </defs>
-        {/* Device frame — evenodd cuts transparent screen hole */}
-        <path fillRule="evenodd" d={`${rrPath(0,0,W,H,dR)} ${rrPath(sX,sY,sW,sH,sR)}`} fill="url(#ipad-body)"/>
-        {/* Top-edge specular highlight */}
-        <line x1={dR+8} y1="0.75" x2={W-dR-8} y2="0.75" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round"/>
-        {/* Screen inner shadow */}
-        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="none" stroke="rgba(0,0,0,0.65)" strokeWidth="2.5"/>
-        {/* Glass reflection over screen */}
-        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="url(#ipad-glass)"/>
+        {/* Device frame — solid black, evenodd cuts transparent screen hole */}
+        <path fillRule="evenodd" d={`${rrPath(0,0,W,H,dR)} ${rrPath(sX,sY,sW,sH,sR)}`} fill="#111113"/>
+        {/* Outer edge highlight — subtle top rim */}
+        <path d={rrPath(0,0,W,H,dR)} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
+        {/* Screen border — thin inner ring */}
+        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1"/>
         {/* Front camera — right edge center */}
         <circle cx={W-7} cy={H/2} r="4.5" fill="#141415"/>
         <circle cx={W-7} cy={H/2} r="2"   fill="#0a0a0b"/>
         {/* Power/Touch ID — top edge right */}
-        <rect x={W-74} y="-2.5" width={40} height="3.5" rx="1.75" fill="#3C3C3E"/>
-        <line x1={W-74} y1="0.5" x2={W-34} y2="0.5" stroke="rgba(255,255,255,0.13)" strokeWidth="0.75"/>
+        <rect x={W-74} y="-2.5" width={40} height="3.5" rx="1.75" fill="#222224"/>
         {/* Volume up — top edge */}
-        <rect x={W-138} y="-2.5" width={30} height="3.5" rx="1.75" fill="#3C3C3E"/>
-        <line x1={W-138} y1="0.5" x2={W-108} y2="0.5" stroke="rgba(255,255,255,0.13)" strokeWidth="0.75"/>
+        <rect x={W-138} y="-2.5" width={30} height="3.5" rx="1.75" fill="#222224"/>
         {/* Volume down — top edge */}
-        <rect x={W-180} y="-2.5" width={30} height="3.5" rx="1.75" fill="#3C3C3E"/>
-        <line x1={W-180} y1="0.5" x2={W-150} y2="0.5" stroke="rgba(255,255,255,0.13)" strokeWidth="0.75"/>
+        <rect x={W-180} y="-2.5" width={30} height="3.5" rx="1.75" fill="#222224"/>
         {/* USB-C — right edge center */}
-        <rect x={W-1.5} y={H/2-11} width="3.5" height="22" rx="1.75" fill="#252527"/>
-        <rect x={W+0.5}  y={H/2-7}  width="1.5" height="14" rx="0.75" fill="#1A1A1C"/>
+        <rect x={W-1.5} y={H/2-11} width="3.5" height="22" rx="1.75" fill="#1a1a1c"/>
       </svg>
     </div>
   )
@@ -356,7 +340,7 @@ function IPhoneMockup() {
   return (
     <div style={{ position: "relative", width: W, height: H, flexShrink: 0 }}>
       {/* Shadow layer */}
-      <div style={{ position: "absolute", inset: 0, borderRadius: dR, boxShadow: "0 16px 50px rgba(0,0,0,0.6), 0 50px 110px rgba(0,0,0,0.92)", background: "transparent" }} />
+      <div style={{ position: "absolute", inset: 0, borderRadius: dR, boxShadow: "0 8px 32px rgba(0,0,0,0.7), 0 32px 80px rgba(0,0,0,0.5)", background: "transparent" }} />
 
       {/* Screen content — underneath the SVG frame */}
       <div style={{ position: "absolute", left: sX, top: sY, width: sW, height: sH, borderRadius: sR, overflow: "hidden", background: "#060608", display: "flex", flexDirection: "column" }}>
@@ -416,42 +400,25 @@ function IPhoneMockup() {
       {/* SVG frame overlay — evenodd creates transparent screen hole */}
       <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 10, overflow: "visible" }} width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
         <defs>
-          <linearGradient id="iphone-ti" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stopColor="#B2B2B4"/>
-            <stop offset="14%"  stopColor="#949496"/>
-            <stop offset="30%"  stopColor="#727274"/>
-            <stop offset="46%"  stopColor="#565658"/>
-            <stop offset="60%"  stopColor="#646466"/>
-            <stop offset="76%"  stopColor="#808082"/>
-            <stop offset="90%"  stopColor="#9A9A9C"/>
-            <stop offset="100%" stopColor="#AEAEB0"/>
-          </linearGradient>
-          <linearGradient id="iphone-glass" x1="0%" y1="0%" x2="52%" y2="46%">
-            <stop offset="0%"   stopColor="rgba(255,255,255,0.09)"/>
-            <stop offset="55%"  stopColor="rgba(255,255,255,0.02)"/>
-            <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+          <linearGradient id="iphone-edge" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stopColor="#3a3a3c"/>
+            <stop offset="100%" stopColor="#1a1a1c"/>
           </linearGradient>
         </defs>
-        {/* Device frame — evenodd + screen hole path = transparent screen */}
-        <path fillRule="evenodd" d={`${rrPath(0,0,W,H,dR)} ${rrPath(sX,sY,sW,sH,sR)}`} fill="url(#iphone-ti)"/>
-        {/* Top-edge specular */}
-        <line x1={dR+6} y1="0.75" x2={W-dR-6} y2="0.75" stroke="rgba(255,255,255,0.42)" strokeWidth="1.5" strokeLinecap="round"/>
-        {/* Screen inner shadow */}
-        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="none" stroke="rgba(0,0,0,0.7)" strokeWidth="2"/>
-        {/* Glass reflection over screen */}
-        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="url(#iphone-glass)"/>
+        {/* Device frame — solid black, evenodd cuts transparent screen hole */}
+        <path fillRule="evenodd" d={`${rrPath(0,0,W,H,dR)} ${rrPath(sX,sY,sW,sH,sR)}`} fill="#111113"/>
+        {/* Outer edge — subtle highlight rim */}
+        <path d={rrPath(0,0,W,H,dR)} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1"/>
+        {/* Screen border */}
+        <rect x={sX} y={sY} width={sW} height={sH} rx={sR} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1"/>
         {/* Action button */}
-        <rect x="-2.5" y="92"  width="3.5" height="24" rx="1.75" fill="#909092"/>
-        <line x1="-2.5" y1="95"  x2="1" y2="95"  stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+        <rect x="-2.5" y="92"  width="3.5" height="24" rx="1.75" fill="#2a2a2c"/>
         {/* Volume up */}
-        <rect x="-2.5" y="134" width="3.5" height="42" rx="1.75" fill="#909092"/>
-        <line x1="-2.5" y1="137" x2="1" y2="137" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+        <rect x="-2.5" y="134" width="3.5" height="42" rx="1.75" fill="#2a2a2c"/>
         {/* Volume down */}
-        <rect x="-2.5" y="186" width="3.5" height="42" rx="1.75" fill="#909092"/>
-        <line x1="-2.5" y1="189" x2="1" y2="189" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+        <rect x="-2.5" y="186" width="3.5" height="42" rx="1.75" fill="#2a2a2c"/>
         {/* Power */}
-        <rect x={W-1} y="148" width="3.5" height="72" rx="1.75" fill="#909092"/>
-        <line x1={W-1} y1="151" x2={W+2.5} y2="151" stroke="rgba(255,255,255,0.22)" strokeWidth="0.75"/>
+        <rect x={W-1} y="148" width="3.5" height="72" rx="1.75" fill="#2a2a2c"/>
       </svg>
     </div>
   )
