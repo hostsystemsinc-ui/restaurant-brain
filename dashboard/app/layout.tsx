@@ -11,10 +11,10 @@ const playfair = Playfair_Display({
 })
 
 export const metadata: Metadata = {
-  title: "Restaurant Brain",
-  description: "AI-powered restaurant host dashboard",
+  title: "HOST",
+  description: "The smarter waitlist.",
   manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Restaurant Brain" },
+  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "HOST" },
 }
 
 export const viewport: Viewport = {
