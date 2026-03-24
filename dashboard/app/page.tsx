@@ -152,7 +152,7 @@ function HeroSlideshow() {
   )
 }
 
-/* ─── iPad Mockup — clean realistic host dashboard ──────────── */
+/* ─── iPad Mockup — iPad Pro style ──────────────────────────── */
 function IPadMockup() {
   // Queue entries
   const queue = [
@@ -176,19 +176,36 @@ function IPadMockup() {
   )
 
   return (
-    <div style={{
-      width: 640, height: 450, flexShrink: 0, borderRadius: 22,
-      background: "linear-gradient(160deg, #38383c 0%, #222226 40%, #1e1e22 100%)",
-      boxShadow: "0 0 0 0.5px rgba(255,255,255,0.12), 0 0 0 1px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.08)",
-      padding: 11, position: "relative",
-    }}>
-      {/* Hardware */}
-      <div style={{ position: "absolute", top: 5, left: "50%", transform: "translateX(-50%)", width: 6, height: 6, borderRadius: "50%", background: "#28282c", boxShadow: "inset 0 1px 2px rgba(0,0,0,0.8)" }} />
-      <div style={{ position: "absolute", right: -3, top: 80, width: 3, height: 44, borderRadius: "0 2px 2px 0", background: "#28282c" }} />
-      <div style={{ position: "absolute", left: -3, top: 72, width: 3, height: 28, borderRadius: "2px 0 0 2px", background: "#28282c" }} />
-      <div style={{ position: "absolute", left: -3, top: 108, width: 3, height: 28, borderRadius: "2px 0 0 2px", background: "#28282c" }} />
+    <div style={{ position: "relative", width: 660, height: 472, flexShrink: 0 }}>
+      {/* Outer device shell — Space Black anodized aluminum */}
+      <div style={{
+        position: "absolute", inset: 0, borderRadius: 26,
+        background: "linear-gradient(148deg, #3A3A3C 0%, #2C2C2E 18%, #1C1C1E 38%, #161618 52%, #1E1E20 66%, #2A2A2C 80%, #363638 100%)",
+        boxShadow: [
+          "0 0 0 0.5px rgba(255,255,255,0.14)",
+          "0 0 0 1.5px rgba(0,0,0,0.7)",
+          "0 48px 100px rgba(0,0,0,0.95)",
+          "0 16px 40px rgba(0,0,0,0.7)",
+          "inset 0 1.5px 0 rgba(255,255,255,0.14)",
+          "inset 0 -1px 0 rgba(0,0,0,0.5)",
+        ].join(", "),
+      }} />
+      {/* Top edge highlight — light catching the flat aluminum edge */}
+      <div style={{ position: "absolute", top: 0, left: 28, right: 28, height: 1.5, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.28) 20%, rgba(255,255,255,0.38) 50%, rgba(255,255,255,0.28) 80%, transparent)", borderRadius: 1, zIndex: 3 }} />
+      {/* Front camera — centered on top edge (right edge in landscape = top in portrait) */}
+      <div style={{ position: "absolute", top: 12, right: 14, width: 8, height: 8, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, #2a2a2c, #0a0a0c)", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "inset 0 1px 3px rgba(0,0,0,1)" }}>
+        <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#050510", margin: "2px 0 0 2px", boxShadow: "0 0 3px rgba(40,80,255,0.25)" }} />
+      </div>
+      {/* Power / Touch ID — top right corner area */}
+      <div style={{ position: "absolute", top: -2, right: 72, width: 36, height: 3.5, borderRadius: "0 0 2px 2px", background: "linear-gradient(90deg, #2A2A2C, #3C3C3E, #2A2A2C)", boxShadow: "0 -1px 2px rgba(0,0,0,0.5)" }} />
+      {/* Volume buttons — bottom left (left edge in landscape = bottom in portrait) */}
+      <div style={{ position: "absolute", bottom: -2, left: 80, width: 28, height: 3.5, borderRadius: "2px 2px 0 0", background: "linear-gradient(90deg, #2A2A2C, #3C3C3E, #2A2A2C)", boxShadow: "0 1px 2px rgba(0,0,0,0.5)" }} />
+      <div style={{ position: "absolute", bottom: -2, left: 120, width: 28, height: 3.5, borderRadius: "2px 2px 0 0", background: "linear-gradient(90deg, #2A2A2C, #3C3C3E, #2A2A2C)", boxShadow: "0 1px 2px rgba(0,0,0,0.5)" }} />
+      {/* USB-C port — right edge center (bottom edge in landscape = right in portrait) */}
+      <div style={{ position: "absolute", right: -1.5, top: "50%", transform: "translateY(-50%)", width: 3.5, height: 22, borderRadius: "0 2px 2px 0", background: "linear-gradient(180deg, #1a1a1c, #2c2c2e, #1a1a1c)", boxShadow: "inset 0 1px 4px rgba(0,0,0,0.9)" }} />
 
-      <div style={{ borderRadius: 13, overflow: "hidden", height: "100%", background: "#080a0c", display: "flex", flexDirection: "column" }}>
+      {/* Screen — uniform thin bezel, iPad Pro style */}
+      <div style={{ position: "absolute", inset: 14, borderRadius: 14, overflow: "hidden", background: "#080a0c", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.9)" }}>
 
         {/* Header bar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", background: "#080a0c", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
@@ -301,40 +318,54 @@ function IPadMockup() {
           </div>
         </div>
       </div>
+      {/* Screen glass reflection overlay */}
+      <div style={{ position: "absolute", inset: 14, borderRadius: 14, background: "linear-gradient(148deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.018) 30%, transparent 55%)", pointerEvents: "none", zIndex: 4 }} />
     </div>
   )
 }
 
-/* ─── iPhone Mockup — clean realistic wait page ─────────────── */
+/* ─── iPhone Mockup — iPhone 15 Pro style ───────────────────── */
 function IPhoneMockup() {
   return (
-    <div style={{
-      position: "relative", width: 200, height: 420, flexShrink: 0,
-      borderRadius: 46,
-      background: "linear-gradient(160deg, #404044 0%, #232325 30%, #1a1a1c 70%, #28282c 100%)",
-      boxShadow: [
-        "0 0 0 0.5px rgba(255,255,255,0.18)",
-        "0 0 0 1px rgba(0,0,0,0.8)",
-        "inset 0 1px 0 rgba(255,255,255,0.12)",
-        "inset 0 -1px 0 rgba(0,0,0,0.5)",
-      ].join(", "),
-      padding: 8,
-    }}>
-      {/* Hardware buttons */}
-      <div style={{ position: "absolute", left: -2.5, top: 80, width: 3, height: 15, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
-      <div style={{ position: "absolute", left: -2.5, top: 110, width: 3, height: 34, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
-      <div style={{ position: "absolute", left: -2.5, top: 152, width: 3, height: 34, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
-      <div style={{ position: "absolute", right: -2.5, top: 120, width: 3, height: 60, borderRadius: "0 3px 3px 0", background: "linear-gradient(180deg,#404044,#2c2c2e)" }} />
+    <div style={{ position: "relative", width: 220, height: 476, flexShrink: 0 }}>
+      {/* Outer device shell — Natural Titanium */}
+      <div style={{
+        position: "absolute", inset: 0, borderRadius: 54,
+        background: "linear-gradient(155deg, #A0A0A2 0%, #868688 12%, #686869 28%, #4C4C4E 44%, #565658 58%, #727274 72%, #8E8E90 86%, #A2A2A4 100%)",
+        boxShadow: [
+          "0 0 0 0.5px rgba(255,255,255,0.22)",
+          "0 0 0 1.5px rgba(0,0,0,0.65)",
+          "0 56px 120px rgba(0,0,0,0.95)",
+          "0 20px 50px rgba(0,0,0,0.7)",
+          "inset 0 1.5px 0 rgba(255,255,255,0.22)",
+          "inset 0 -1px 0 rgba(0,0,0,0.4)",
+        ].join(", "),
+      }} />
+      {/* Top edge — light catching the aluminum */}
+      <div style={{ position: "absolute", top: 0, left: 32, right: 32, height: 1.5, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.32) 25%, rgba(255,255,255,0.44) 50%, rgba(255,255,255,0.32) 75%, transparent)", zIndex: 3, borderRadius: 1 }} />
+      {/* Action button — left top */}
+      <div style={{ position: "absolute", left: -2.5, top: 94, width: 3.5, height: 24, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset 1px 0 2px rgba(0,0,0,0.4)" }} />
+      {/* Volume up */}
+      <div style={{ position: "absolute", left: -2.5, top: 136, width: 3.5, height: 42, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset 1px 0 2px rgba(0,0,0,0.4)" }} />
+      {/* Volume down */}
+      <div style={{ position: "absolute", left: -2.5, top: 188, width: 3.5, height: 42, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset 1px 0 2px rgba(0,0,0,0.4)" }} />
+      {/* Power button — right */}
+      <div style={{ position: "absolute", right: -2.5, top: 150, width: 3.5, height: 72, borderRadius: "0 3px 3px 0", background: "linear-gradient(180deg, #969698, #6E6E70, #969698)", boxShadow: "inset -1px 0 2px rgba(0,0,0,0.4)" }} />
 
-      {/* Screen */}
-      <div style={{ borderRadius: 39, overflow: "hidden", height: "100%", background: "#060608", display: "flex", flexDirection: "column" }}>
+      {/* Screen with proper iPhone bezels */}
+      <div style={{ position: "absolute", inset: 9, borderRadius: 46, overflow: "hidden", background: "#060608", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.85)" }}>
         {/* Dynamic Island */}
-        <div style={{ height: 40, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 6, background: "#060608" }}>
-          <div style={{ width: 80, height: 22, background: "#000", borderRadius: 99, boxShadow: "inset 0 1px 3px rgba(0,0,0,1)" }} />
+        <div style={{ height: 48, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 7, background: "#060608" }}>
+          <div style={{ width: 120, height: 34, background: "#000", borderRadius: 99, boxShadow: "inset 0 2px 5px rgba(0,0,0,1), 0 0 0 0.5px rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#0d0d14", border: "1.5px solid #1a1a22", boxShadow: "inset 0 1px 3px rgba(0,0,0,1)" }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#080818", margin: "3px 0 0 3px", boxShadow: "0 0 4px rgba(50,80,255,0.3)" }} />
+            </div>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#120a0a", border: "1px solid #221212", boxShadow: "inset 0 1px 2px rgba(0,0,0,1)" }} />
+          </div>
         </div>
 
         {/* App content */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 16px 16px", textAlign: "center" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 16px 10px", textAlign: "center" }}>
           {/* Brand */}
           <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: "0.18em", color: "#f97316", marginBottom: 14 }}>HOST</div>
 
@@ -372,7 +403,7 @@ function IPhoneMockup() {
           </div>
 
           {/* Message card */}
-          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "10px 13px", width: "100%", marginBottom: 14 }}>
+          <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: "10px 13px", width: "100%", marginBottom: 10 }}>
             <div style={{ fontSize: 9.5, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, textAlign: "left" }}>
               Your spot is saved — feel free to step outside.
             </div>
@@ -384,7 +415,15 @@ function IPhoneMockup() {
             <span style={{ fontSize: 8, color: "rgba(255,255,255,0.22)", letterSpacing: ".03em" }}>Updates automatically</span>
           </div>
         </div>
+
+        {/* Home indicator */}
+        <div style={{ height: 28, flexShrink: 0, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 8, background: "#060608" }}>
+          <div style={{ width: 128, height: 5, borderRadius: 99, background: "rgba(255,255,255,0.26)" }} />
+        </div>
       </div>
+
+      {/* Screen glass reflection */}
+      <div style={{ position: "absolute", inset: 9, borderRadius: 46, background: "linear-gradient(145deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.025) 28%, transparent 52%)", pointerEvents: "none", zIndex: 5 }} />
     </div>
   )
 }
@@ -1250,7 +1289,7 @@ export default function MarketingPage() {
             <a href="#" onClick={openDemo} className="cta-btn" style={{ fontSize: "1rem", padding: "15px 34px", borderRadius: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 9 }}>
               Schedule Free Demo <Icon.Arrow />
             </a>
-            <a href="#devices" className="ghost-btn" style={{ color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "1rem", padding: "15px 26px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.12)" }}>
+            <a href="#how-it-works" className="ghost-btn" style={{ color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "1rem", padding: "15px 26px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.12)" }}>
               See how it works
             </a>
           </div>
