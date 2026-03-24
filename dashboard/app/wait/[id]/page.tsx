@@ -107,6 +107,7 @@ export default function WaitPage() {
   const handleLeave = async () => {
     setLeaving(true)
     try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch { /* best-effort */ }
+    sessionStorage.removeItem("host_wait_id")
     setEntry(prev => prev ? { ...prev, status: "removed" } : null)
   }
 
@@ -189,11 +190,38 @@ export default function WaitPage() {
     })
   }, [elapsedSec, entry?.status, entry?.quoted_wait, entry?.id])
 
+  // Clear stored entry when guest is seated or removed (so join page doesn't redirect back)
+  useEffect(() => {
+    if (entry?.status === "seated" || entry?.status === "removed") {
+      sessionStorage.removeItem("host_wait_id")
+    }
+  }, [entry?.status])
+
   // Rotate messages every 8 seconds while waiting
   useEffect(() => {
     if (entry?.status !== "waiting") return
     const t = setInterval(() => setMsgIdx(i => (i + 1) % WAITING_MESSAGES.length), 8000)
     return () => clearInterval(t)
+  }, [entry?.status])
+
+  // Back button interception — while waiting, show leave dialog instead of navigating away
+  useEffect(() => {
+    if (entry?.status !== "waiting") return
+    window.history.pushState(null, "", window.location.href)
+    const onPop = () => {
+      window.history.pushState(null, "", window.location.href)
+      setLeavePrompt(true)
+    }
+    window.addEventListener("popstate", onPop)
+    return () => window.removeEventListener("popstate", onPop)
+  }, [entry?.status])
+
+  // Tab close / browser refresh warning — while waiting
+  useEffect(() => {
+    if (entry?.status !== "waiting") return
+    const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = "" }
+    window.addEventListener("beforeunload", onBeforeUnload)
+    return () => window.removeEventListener("beforeunload", onBeforeUnload)
   }, [entry?.status])
 
   // Prevent body scroll when menu is open

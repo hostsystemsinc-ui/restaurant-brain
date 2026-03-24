@@ -101,6 +101,22 @@ export default function DemoJoinPage() {
     return () => clearInterval(t)
   }, [fetchLive])
 
+  // Redirect back to wait page if guest already joined and is still active
+  useEffect(() => {
+    const storedId = sessionStorage.getItem("host_wait_id")
+    if (!storedId) return
+    fetch(`${API}/queue/${storedId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && (data.status === "waiting" || data.status === "ready")) {
+          router.replace(`/wait/${storedId}`)
+        } else {
+          sessionStorage.removeItem("host_wait_id")
+        }
+      })
+      .catch(() => sessionStorage.removeItem("host_wait_id"))
+  }, [router])
+
   // Prevent body scroll when menu is open
   useEffect(() => {
     document.body.style.overflow = menuOpen ? "hidden" : ""
@@ -125,6 +141,7 @@ export default function DemoJoinPage() {
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
+      sessionStorage.setItem("host_wait_id", data.entry.id)
       setJoined(true)
       setTimeout(() => router.push(`/wait/${data.entry.id}`), 1050)
     } catch {
