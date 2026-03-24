@@ -1,0 +1,11 @@
+node_modules/
+.next/
+*.bak
+.env
+.env.local
+.env*.local
+capacity-doc/node_modules/
+generate_report.py
+host-email-signature.html
+.claude/
+dashboard/.claude/
