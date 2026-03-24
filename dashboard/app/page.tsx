@@ -1428,7 +1428,7 @@ export default function MarketingPage() {
             marginRight: -24,
             zIndex: 1,
           }}>
-            <IPadMockup />
+            <img src="/ipad-mockup.png" alt="HOST dashboard on iPad" style={{ width: 670, height: "auto", display: "block" }} />
           </div>
 
           {/* iPhone — 3D perspective, slightly forward */}
@@ -1440,7 +1440,7 @@ export default function MarketingPage() {
             zIndex: 2,
             marginTop: 0,
           }}>
-            <IPhoneMockup />
+            <img src="/iphone-mockup.png" alt="HOST join page on iPhone" style={{ width: 220, height: "auto", display: "block" }} />
           </div>
         </div>
       </section>
