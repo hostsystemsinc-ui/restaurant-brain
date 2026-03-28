@@ -376,7 +376,7 @@ def _send_join_sms(phone: str, rest_name: str, entry_id: str) -> None:
     wait_url = f"https://hostplatform.net/wait/{entry_id}"
     ok, err = _send_sms(
         to_phone=phone,
-        body=f"You're on the list at {rest_name}! Track your wait live: {wait_url}\nReply STOP to opt out.",
+        body=f"Welcome to {rest_name}, you've been added to the waitlist! Track your wait here: {wait_url} Reply STOP to opt out.",
     )
     if not ok:
         print(f"[SMS] Join SMS failed: {err}")
@@ -495,7 +495,7 @@ def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
     wait_url = f"https://hostplatform.net/wait/{entry_id}"
     ok, err = _send_sms(
         to_phone=phone,
-        body=f"Your table at {rest_name} is ready! Head to the host stand.\n{wait_url}\nReply STOP to opt out.",
+        body=f"Your table at {rest_name} is ready! Please go to the host stand. Reply STOP to opt out.",
     )
     print(f"[notify] sms_sent={ok} sms_error={err!r}")
 
