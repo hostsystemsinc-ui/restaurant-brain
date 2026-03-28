@@ -379,12 +379,10 @@ export default function WaitPage() {
           }
         `}</style>
 
-        {/* Top HOST wordmark */}
-        <div style={{ padding: "52px 28px 0", flexShrink: 0 }}>
-          <p style={{
-            fontSize: 11, fontWeight: 900, letterSpacing: "0.35em",
-            textTransform: "uppercase", color: "#fff",
-          }}>HOST</p>
+        {/* Restaurant header */}
+        <div style={{ padding: "52px 28px 4px", flexShrink: 0, textAlign: "center" }}>
+          <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", margin: "0 0 3px" }}>Demo Restaurant</p>
+          <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(255,255,255,0.15)", margin: 0 }}>Powered by HOST</p>
         </div>
 
         {/* Main content */}
@@ -468,16 +466,6 @@ export default function WaitPage() {
             </div>
           </div>
 
-          {/* Message card */}
-          <div style={{
-            background: "rgba(34,197,94,0.07)",
-            border: "1px solid rgba(34,197,94,0.18)",
-            borderRadius: 14, padding: "14px 18px", width: "100%",
-          }}>
-            <p style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
-              Please make your way to the front and let the host know you&apos;re here.
-            </p>
-          </div>
         </div>
 
         {/* Footer */}
@@ -540,12 +528,10 @@ export default function WaitPage() {
         }
       `}</style>
 
-      {/* Top HOST wordmark */}
-      <div style={{ padding: "52px 28px 0", flexShrink: 0 }}>
-        <p style={{
-          fontSize: 11, fontWeight: 900, letterSpacing: "0.35em",
-          textTransform: "uppercase", color: "#fff",
-        }}>HOST</p>
+      {/* Restaurant header */}
+      <div style={{ padding: "52px 28px 4px", flexShrink: 0, textAlign: "center" }}>
+        <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", margin: "0 0 3px" }}>Demo Restaurant</p>
+        <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(255,255,255,0.15)", margin: 0 }}>Powered by HOST</p>
       </div>
 
       {/* Main content */}

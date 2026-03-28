@@ -158,23 +158,31 @@ const rrPath = (x: number, y: number, w: number, h: number, r: number) =>
 
 /* ─── iPad Mockup — iPad Pro SVG frame ──────────────────────── */
 function IPadMockup() {
-  // Queue entries
-  const queue = [
-    { name: "Sarah M.", party: 2, wait: "~10m", note: "Birthday 🎂", elapsed: "4m", color: "#f97316" },
-    { name: "Chen Party", party: 4, wait: "~18m", note: "", elapsed: "12m", color: "#f97316" },
-    { name: "Rodriguez", party: 3, wait: "~26m", note: "Outdoor pref", elapsed: "18m", color: "#ef4444" },
-  ]
-  // Table helper — cleaner dots-and-rectangle style
-  const tbl = (n: number, x: number, y: number, w: number, h: number, round: boolean, occupied: boolean) => (
+  // Table helper — shows guest info on occupied tables
+  const tbl = (n: number, x: number, y: number, w: number, h: number, round: boolean, occupied: boolean, guest?: string) => (
     <div key={n} style={{ position: "absolute", left: x, top: y, width: w, height: h }}>
       <div style={{
         width: "100%", height: "100%",
         borderRadius: round ? 99 : 8,
-        background: occupied ? "rgba(249,115,22,0.12)" : "rgba(34,197,94,0.06)",
-        border: `1px solid ${occupied ? "rgba(249,115,22,0.35)" : "rgba(34,197,94,0.22)"}`,
-        display: "flex", alignItems: "center", justifyContent: "center",
+        background: occupied ? "rgba(239,68,68,0.16)" : "rgba(34,197,94,0.06)",
+        border: `1px solid ${occupied ? "rgba(239,68,68,0.55)" : "rgba(34,197,94,0.22)"}`,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0.5,
+        position: "relative",
       }}>
-        <span style={{ fontSize: 7, fontWeight: 800, color: occupied ? "rgba(249,115,22,0.8)" : "rgba(34,197,94,0.7)" }}>{n}</span>
+        {occupied && guest ? (
+          <>
+            <span style={{ fontSize: 5, fontWeight: 800, color: "rgba(239,68,68,0.65)", textTransform: "uppercase", letterSpacing: "0.08em" }}>T{n}</span>
+            <span style={{ fontSize: 7.5, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>{guest.split(" ")[0]}</span>
+            <span style={{ fontSize: 5.5, color: "rgba(255,255,255,0.4)", lineHeight: 1.2 }}>{guest.split(" ").slice(1).join(" ")}</span>
+          </>
+        ) : (
+          <span style={{ fontSize: 7, fontWeight: 800, color: occupied ? "rgba(239,68,68,0.8)" : "rgba(34,197,94,0.7)" }}>{n}</span>
+        )}
+        {occupied && (
+          <div style={{ position: "absolute", top: -3, right: -3, width: 9, height: 9, borderRadius: "50%", background: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 6, color: "#fff", fontWeight: 900, lineHeight: 1 }}>×</span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -191,22 +199,21 @@ function IPadMockup() {
       <div style={{ position: "absolute", left: sX, top: sY, width: sW, height: sH, borderRadius: sR, overflow: "hidden", background: "#080a0c", display: "flex", flexDirection: "column" }}>
 
         {/* Header bar */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 14px", background: "#080a0c", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: "0.24em", color: "#fff" }}>HOST</span>
-            <div style={{ width: 1, height: 13, background: "rgba(255,255,255,0.08)" }} />
-            <span style={{ fontSize: 8, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>The Buff · Boulder</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 14px", background: "#080a0c", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: "-0.01em", color: "#fff" }}>Demo Restaurant</span>
+            <span style={{ fontSize: 5.5, fontWeight: 700, letterSpacing: "0.16em", color: "rgba(255,255,255,0.18)", textTransform: "uppercase" }}>Powered by HOST</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 6, padding: "2px 7px" }}>
-              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f97316" }} />
-              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#f97316" }}>3 waiting</span>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 6, padding: "2px 7px" }}>
               <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e" }} />
-              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#22c55e" }}>14 free</span>
+              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#22c55e" }}>12 / 16 free</span>
             </div>
-            <span style={{ fontSize: 7.5, color: "rgba(255,255,255,0.2)" }}>8:42 PM</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, background: "rgba(249,115,22,0.1)", border: "1px solid rgba(249,115,22,0.25)", borderRadius: 6, padding: "2px 7px" }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f97316" }} />
+              <span style={{ fontSize: 7.5, fontWeight: 700, color: "#f97316" }}>4 waiting</span>
+            </div>
+            <span style={{ fontSize: 7.5, color: "rgba(255,255,255,0.2)" }}>2:24 PM</span>
           </div>
         </div>
 
@@ -216,38 +223,75 @@ function IPadMockup() {
           {/* Queue panel */}
           <div style={{ width: 168, borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", background: "#090b0d", flexShrink: 0 }}>
             <div style={{ padding: "8px 10px 6px", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-              <div style={{ fontSize: 6.5, fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>WAITLIST</div>
+              <div style={{ fontSize: 6.5, fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>WAITING · 4</div>
             </div>
-            <div style={{ padding: "8px 8px 0", display: "flex", flexDirection: "column", gap: 6 }}>
-              {queue.map((g, i) => (
-                <div key={g.name} style={{ borderRadius: 10, border: `1px solid ${i === 0 ? "rgba(249,115,22,0.25)" : "rgba(255,255,255,0.07)"}`, background: i === 0 ? "rgba(249,115,22,0.05)" : "rgba(255,255,255,0.015)", overflow: "hidden" }}>
-                  <div style={{ padding: "7px 9px 5px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>{g.name}</span>
-                      <span style={{ fontSize: 7, color: "rgba(255,255,255,0.28)" }}>#{i + 1}</span>
-                    </div>
-                    <div style={{ display: "flex", gap: 7, fontSize: 6.5, color: "rgba(255,255,255,0.35)", marginBottom: g.note ? 4 : 0 }}>
-                      <span>👥 {g.party}p</span>
-                      <span style={{ color: g.color }}>{g.elapsed}</span>
-                      <span style={{ color: "rgba(255,255,255,0.28)" }}>{g.wait}</span>
-                    </div>
-                    {g.note && <span style={{ fontSize: 6, padding: "1px 5px", borderRadius: 3, background: "rgba(249,115,22,0.1)", color: "rgba(249,115,22,0.65)", border: "1px solid rgba(249,115,22,0.2)" }}>{g.note}</span>}
+            <div style={{ padding: "6px 8px 0", display: "flex", flexDirection: "column", gap: 4 }}>
+              {/* Aaron #1 — up next, full action row */}
+              <div style={{ borderRadius: 10, border: "1px solid rgba(249,115,22,0.3)", background: "rgba(249,115,22,0.06)", overflow: "hidden" }}>
+                <div style={{ padding: "6px 9px 4px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#fff" }}>Aaron</span>
+                    <span style={{ fontSize: 7, color: "rgba(255,255,255,0.28)" }}>#1</span>
                   </div>
-                  {i === 0 && (
-                    <div style={{ display: "flex", borderTop: "1px solid rgba(255,255,255,0.06)", height: 24 }}>
-                      <button style={{ flex: 1, background: "rgba(34,197,94,0.12)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                        <span style={{ fontSize: 6, color: "#22c55e", fontWeight: 700 }}>Seat</span>
-                      </button>
-                      <div style={{ width: 1, background: "rgba(255,255,255,0.05)" }} />
-                      <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
-                        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                        <span style={{ fontSize: 6, color: "#f97316", fontWeight: 700 }}>Notify</span>
-                      </button>
-                    </div>
-                  )}
+                  <div style={{ display: "flex", gap: 5, fontSize: 6.5, color: "rgba(255,255,255,0.35)" }}>
+                    <span>2p</span>
+                    <span style={{ color: "#f97316" }}>1h 0m</span>
+                    <span style={{ color: "rgba(255,255,255,0.5)" }}>~7m left</span>
+                  </div>
                 </div>
-              ))}
+                <div style={{ display: "flex", borderTop: "1px solid rgba(255,255,255,0.06)", height: 22 }}>
+                  <button style={{ flex: 1, background: "rgba(34,197,94,0.15)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                    <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span style={{ fontSize: 6, color: "#22c55e", fontWeight: 700 }}>Seat</span>
+                  </button>
+                  <div style={{ width: 1, background: "rgba(255,255,255,0.05)" }} />
+                  <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                    <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <span style={{ fontSize: 6, color: "#f97316", fontWeight: 700 }}>Notify</span>
+                  </button>
+                  <div style={{ width: 1, background: "rgba(255,255,255,0.05)" }} />
+                  <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <div style={{ width: 1, background: "rgba(255,255,255,0.05)" }} />
+                  <button style={{ flex: 1, background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="rgba(239,68,68,0.6)" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                  </button>
+                </div>
+              </div>
+              {/* Marcus #2 — compact */}
+              <div style={{ borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)", padding: "5px 9px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>Marcus</span>
+                  <span style={{ fontSize: 6, color: "rgba(255,255,255,0.25)" }}>#2</span>
+                </div>
+                <div style={{ display: "flex", gap: 5, fontSize: 6.5, color: "rgba(255,255,255,0.3)" }}>
+                  <span>3p</span>
+                  <span style={{ color: "rgba(249,115,22,0.7)" }}>42m</span>
+                </div>
+              </div>
+              {/* Taylor #3 — compact */}
+              <div style={{ borderRadius: 8, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.02)", padding: "5px 9px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>Taylor</span>
+                  <span style={{ fontSize: 6, color: "rgba(255,255,255,0.25)" }}>#3</span>
+                </div>
+                <div style={{ display: "flex", gap: 5, fontSize: 6.5, color: "rgba(255,255,255,0.3)" }}>
+                  <span>2p</span>
+                  <span style={{ color: "rgba(249,115,22,0.7)" }}>28m</span>
+                </div>
+              </div>
+              {/* Sarah #4 — just joined, subtle highlight */}
+              <div style={{ borderRadius: 8, border: "1px solid rgba(34,197,94,0.15)", background: "rgba(34,197,94,0.03)", padding: "5px 9px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: "rgba(255,255,255,0.7)" }}>Sarah</span>
+                  <span style={{ fontSize: 6, color: "rgba(255,255,255,0.25)" }}>#4</span>
+                </div>
+                <div style={{ display: "flex", gap: 5, fontSize: 6.5, color: "rgba(255,255,255,0.3)" }}>
+                  <span>2p</span>
+                  <span style={{ color: "rgba(34,197,94,0.6)", fontWeight: 600 }}>just now</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -255,11 +299,11 @@ function IPadMockup() {
           <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0a0c0e" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 13px 4px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
               <span style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.18)" }}>FLOOR PLAN</span>
-              <span style={{ fontSize: 7, color: "rgba(255,255,255,0.2)" }}>14 available · 2 occupied</span>
+              <span style={{ fontSize: 7, color: "rgba(255,255,255,0.2)" }}>12 available · 4 occupied</span>
             </div>
             <div style={{ flex: 1, position: "relative", padding: "12px" }}>
               {/* Section labels */}
-              <div style={{ position: "absolute", top: 10, left: 18, fontSize: 6, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.12)" }}>MAIN DINING</div>
+              <div style={{ position: "absolute", bottom: 28, left: 18, fontSize: 6, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.1)" }}>MAIN DINING</div>
               <div style={{ position: "absolute", top: 10, right: 18, fontSize: 6, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.12)" }}>BAR</div>
 
               {/* Tables — col 1 round */}
@@ -267,17 +311,17 @@ function IPadMockup() {
               {tbl(2, 8,   88,  48, 48, true,  false)}
               {tbl(3, 8,   148, 48, 48, true,  false)}
               {/* col 2 */}
-              {tbl(4, 70,  22,  60, 44, false, true)}
+              {tbl(4, 70,  22,  60, 44, false, false)}
               {tbl(5, 70,  80,  60, 44, false, false)}
               {tbl(6, 70,  138, 60, 44, false, false)}
               {/* col 3 */}
               {tbl(7, 144, 18,  88, 50, false, false)}
               {tbl(8, 144, 82,  88, 58, false, false)}
-              {tbl(9, 144, 154, 88, 50, false, true)}
-              {/* col 4 */}
-              {tbl(10, 246, 18,  74, 46, false, false)}
-              {tbl(11, 246, 78,  60, 42, false, false)}
-              {tbl(12, 246, 134, 60, 42, false, false)}
+              {tbl(9, 144, 154, 88, 50, false, false)}
+              {/* col 4 — T10 occupied by Adam */}
+              {tbl(10, 246, 18,  82, 52, false, true, "Adam 4p")}
+              {tbl(11, 246, 84,  60, 42, false, false)}
+              {tbl(12, 246, 140, 60, 42, false, false)}
               {/* Bar stools */}
               {tbl(13, 334, 22,  34, 34, true, false)}
               {tbl(14, 334, 66,  34, 34, true, false)}
@@ -285,7 +329,7 @@ function IPadMockup() {
               {tbl(16, 334, 154, 34, 34, true, false)}
 
               {/* Add guest FAB */}
-              <div style={{ position: "absolute", bottom: 10, right: 10, background: "#22c55e", color: "#fff", borderRadius: 99, padding: "5px 13px", fontSize: 7.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 4px 18px rgba(34,197,94,0.4)", letterSpacing: "0.04em" }}>
+              <div style={{ position: "absolute", bottom: 10, right: 10, background: "#22c55e", color: "#000", borderRadius: 99, padding: "5px 13px", fontSize: 7.5, fontWeight: 800, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 4px 18px rgba(34,197,94,0.4)", letterSpacing: "0.04em" }}>
                 <span style={{ fontSize: 11, lineHeight: 1 }}>+</span> ADD GUEST
               </div>
             </div>
@@ -294,11 +338,9 @@ function IPadMockup() {
 
         {/* Status bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 13px", borderTop: "1px solid rgba(255,255,255,0.04)", background: "#060809" }}>
-          <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.15)" }}>Synced · 8:42:17 PM</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e" }} />
-            <span style={{ fontSize: 6.5, color: "rgba(255,255,255,0.22)" }}>Live</span>
-          </div>
+          <span style={{ fontSize: 6, color: "rgba(255,255,255,0.12)" }}>Synced · 2:24:11 PM · System Good</span>
+          <span style={{ fontSize: 6, color: "rgba(255,255,255,0.1)" }}>Tap a guest to select · tap a table to seat · or drag directly</span>
+          <span style={{ fontSize: 6, color: "rgba(255,255,255,0.12)" }}>Powered by HOST</span>
         </div>
       </div>
 
@@ -356,7 +398,7 @@ function IPhoneMockup() {
 
         {/* App content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 16px 10px", textAlign: "center" }}>
-          <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: "0.18em", color: "#f97316", marginBottom: 14 }}>HOST</div>
+          <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.35em", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 10, textAlign: "center" }}>HOST</div>
           <div style={{ marginBottom: 16, width: "100%" }}>
             <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", marginBottom: 6 }}>Hey, Sarah.</div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 99, padding: "4px 12px" }}>
@@ -426,38 +468,76 @@ function IPhoneMockup() {
 
 /* ─── Mini phone for puck tap demo ─────────────────────────── */
 function MiniPhone({ confirmed }: { confirmed: boolean }) {
+  // Puck is 3" (178px). iPhone is ~2.82"w × 5.81"h → 93% and 193% of puck = 165×344px
+  // Screen content area: 165-12=153px wide → SCALE = 153/182 = 0.841
+  const SCALE = 0.841
   return (
     <div style={{
-      width: 76, height: 152, borderRadius: 20,
-      background: "linear-gradient(155deg, #343436 0%, #1c1c1e 30%, #1a1a1c 100%)",
+      width: 165, height: 344, borderRadius: 38,
+      background: "#000",
       boxShadow: [
         "0 28px 60px rgba(0,0,0,0.95)",
-        "0 0 0 0.5px rgba(255,255,255,0.15)",
-        "inset 0 1px 0 rgba(255,255,255,0.07)",
+        "0 0 0 1px rgba(255,255,255,0.1)",
+        "inset 0 1px 0 rgba(255,255,255,0.06)",
       ].join(", "),
-      padding: 4,
+      padding: 6,
     }}>
-      <div style={{ borderRadius: 16, overflow: "hidden", height: "100%", background: "#050505", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.9)" }}>
-        <div style={{ height: 18, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 3, background: "#050505" }}>
-          <div style={{ width: 29, height: 8, background: "#000", borderRadius: 99 }} />
+      <div style={{ borderRadius: 32, overflow: "hidden", height: "100%", background: "#000", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.9)", position: "relative" }}>
+        {/* Dynamic island */}
+        <div style={{ height: 26, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 4, background: "#000", position: "relative", zIndex: 3 }}>
+          <div style={{ width: 42, height: 11, background: "#000", borderRadius: 99, border: "1px solid rgba(255,255,255,0.05)" }} />
         </div>
-        {confirmed ? (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "4px 8px" }}>
-            <div style={{ width: 26, height: 26, borderRadius: "50%", background: "rgba(34,197,94,0.15)", border: "1.5px solid rgba(34,197,94,0.5)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e" }}>
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        {/* Screen: black when idle, JoinScreen when confirmed */}
+        <div style={{
+          flex: 1, overflow: "hidden", position: "relative",
+          transition: "opacity 0.35s ease",
+          opacity: confirmed ? 1 : 0,
+        }}>
+          <div style={{ width: 182, transformOrigin: "top left", transform: `scale(${SCALE})` }}>
+            {/* Powered by HOST — centered, bold, small */}
+            <div style={{ display: "flex", justifyContent: "center", padding: "4px 12px 0" }}>
+              <span style={{ fontSize: 6, letterSpacing: "0.28em", color: "rgba(255,255,255,0.28)", textTransform: "uppercase" }}>Powered by <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.5)" }}>HOST</span></span>
             </div>
-            <div style={{ fontSize: 6.5, fontWeight: 700, color: "#22c55e", textAlign: "center", lineHeight: 1.4 }}>You&apos;re on<br/>the list!</div>
-          </div>
-        ) : (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "7px 8px", gap: 5 }}>
-            <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.04em", color: "#22c55e" }}>HOST</span>
-            <div style={{ fontSize: 6, fontWeight: 700, color: "#fff", textAlign: "center" }}>Join the Waitlist</div>
-            <div style={{ fontSize: 5.5, color: "rgba(255,255,255,0.4)", textAlign: "center" }}>Trattoria Napoli</div>
-            <div style={{ width: "100%", background: "rgba(34,197,94,0.88)", borderRadius: 7, padding: "4px 0", fontSize: 5.5, fontWeight: 700, color: "#000", textAlign: "center", marginTop: 2 }}>
-              Join Waitlist
+            {/* Restaurant logo + name — BIG */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "7px 16px 5px" }}>
+              {/* Logo mark */}
+              <div style={{ position: "relative", width: 46, height: 46, marginBottom: 7 }}>
+                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
+                <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif" }}>S</span>
+                  <span style={{ fontSize: 3.5, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", marginBottom: 2 }}>Sal&apos;s Bar &amp; Grill</div>
+              <div style={{ fontSize: 7, color: "rgba(255,255,255,0.38)" }}>3 parties ahead · ~20m</div>
+            </div>
+            {/* Party size */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "2px 16px 5px" }}>
+              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)" }}>Party Size</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>−</div>
+                <span style={{ fontSize: 24, fontWeight: 300, color: "#fff", minWidth: 20, textAlign: "center" }}>2</span>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff" }}>+</div>
+              </div>
+            </div>
+            {/* Name field */}
+            <div style={{ padding: "0 16px 5px" }}>
+              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Name</div>
+              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 3, fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Your name</div>
+            </div>
+            {/* Phone field */}
+            <div style={{ padding: "0 16px 7px" }}>
+              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Phone</div>
+              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 3, fontSize: 11, color: "rgba(255,255,255,0.28)" }}>+1 (555) 000-0000</div>
+            </div>
+            {/* CTA */}
+            <div style={{ padding: "2px 16px 8px" }}>
+              <div style={{ background: "white", borderRadius: 10, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#000", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+                Join the Waitlist
+              </div>
             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
@@ -484,12 +564,12 @@ function PuckTap() {
   const glowing   = phase === 2
 
   return (
-    <div style={{ position: "relative", width: 240, height: 400, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ position: "relative", width: 290, height: 560, display: "flex", alignItems: "center", justifyContent: "center" }}>
 
       {/* Phone — descends toward puck on tap */}
       <div style={{
-        position: "absolute", left: "50%", top: 8,
-        transform: `translateX(-50%) translateY(${phoneDown ? 66 : 0}px)`,
+        position: "absolute", left: "50%", top: 6,
+        transform: `translateX(-50%) translateY(${phoneDown ? 56 : 0}px)`,
         transition: phase === 1 ? "transform 0.55s cubic-bezier(0.4,0,0.2,1)"
                   : phase === 3 ? "transform 0.45s cubic-bezier(0.4,0,0.6,1)"
                   : "none",
@@ -501,14 +581,14 @@ function PuckTap() {
       {/* Ripple rings when tapped */}
       {glowing && (
         <>
-          <div style={{ position: "absolute", top: 210, left: "50%", transform: "translate(-50%,-50%)", width: 190, height: 190, borderRadius: "50%", border: "1.5px solid rgba(34,197,94,0.5)", animation: "puckring 1.3s ease-out forwards", pointerEvents: "none", zIndex: 2 }} />
-          <div style={{ position: "absolute", top: 210, left: "50%", transform: "translate(-50%,-50%)", width: 190, height: 190, borderRadius: "50%", border: "1.5px solid rgba(34,197,94,0.25)", animation: "puckring 1.3s ease-out 0.28s forwards", pointerEvents: "none", zIndex: 2 }} />
+          <div style={{ position: "absolute", top: 384, left: "50%", transform: "translate(-50%,-50%)", width: 190, height: 190, borderRadius: "50%", border: "1.5px solid rgba(34,197,94,0.5)", animation: "puckring 1.3s ease-out forwards", pointerEvents: "none", zIndex: 2 }} />
+          <div style={{ position: "absolute", top: 384, left: "50%", transform: "translate(-50%,-50%)", width: 190, height: 190, borderRadius: "50%", border: "1.5px solid rgba(34,197,94,0.25)", animation: "puckring 1.3s ease-out 0.28s forwards", pointerEvents: "none", zIndex: 2 }} />
         </>
       )}
 
       {/* HOST Puck — exactly matches real sticker: HOST top, 4 downward NFC arcs, tagline bottom, no dot */}
       <div style={{
-        position: "absolute", top: 122, left: "50%", transform: "translateX(-50%)",
+        position: "absolute", top: 295, left: "50%", transform: "translateX(-50%)",
         width: 178, height: 178, borderRadius: "50%", overflow: "hidden",
         background: glowing
           ? "radial-gradient(circle at 35% 28%, #1e2024 0%, #08090b 100%)"
@@ -537,7 +617,7 @@ function PuckTap() {
       </div>
 
       {/* Puck base/shadow */}
-      <div style={{ position: "absolute", top: 292, left: "50%", transform: "translateX(-50%)", width: 120, height: 10, background: "rgba(0,0,0,0.5)", borderRadius: "50%", filter: "blur(6px)", zIndex: 4 }} />
+      <div style={{ position: "absolute", top: 466, left: "50%", transform: "translateX(-50%)", width: 120, height: 10, background: "rgba(0,0,0,0.5)", borderRadius: "50%", filter: "blur(6px)", zIndex: 4 }} />
 
       {/* You're on the list badge — pops in on confirm */}
       {phase === 2 && (
@@ -600,12 +680,13 @@ function GuestJourney() {
 
   return (
     <div ref={ref} style={{ display: "flex", gap: 64, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
-      {/* Phone */}
-      <div style={{ position: "relative" }}>
+      {/* Phone — iphone-frame.png 430×932, screen area x=10,y=10,w=410,h=912,r=46 */}
+      {/* At CSS width=260: scale=0.605 → left=6,top=6,w=248,h=552,r=28 */}
+      <div style={{ position: "relative", flexShrink: 0 }}>
         {/* SMS overlay for stage 3 */}
         {stage === 3 && (
           <div style={{
-            position: "absolute", top: 8, left: -80, zIndex: 20,
+            position: "absolute", top: 24, left: -110, zIndex: 20,
             background: "#1c1c1e", border: "1px solid rgba(255,255,255,0.12)",
             borderRadius: 16, padding: "10px 13px", width: 160,
             boxShadow: "0 16px 48px rgba(0,0,0,0.8)",
@@ -613,7 +694,7 @@ function GuestJourney() {
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
               <div style={{ width: 20, height: 20, borderRadius: 6, background: "linear-gradient(135deg, #22c55e, #16a34a)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 9, color: "#fff" }}>✉</span>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
               </div>
               <div>
                 <div style={{ fontSize: 8.5, fontWeight: 700, color: "#fff" }}>Messages</div>
@@ -621,49 +702,40 @@ function GuestJourney() {
               </div>
             </div>
             <div style={{ fontSize: 8, color: "rgba(255,255,255,0.7)", lineHeight: 1.45 }}>
-              <span style={{ color: "#22c55e", fontWeight: 700 }}>Trattoria Napoli:</span>{" "}
-              Your table is ready! Head to the host stand 🍽️
+              <span style={{ color: "#22c55e", fontWeight: 700 }}>Sal&apos;s Bar &amp; Grill:</span>{" "}
+              Your table is ready! Head to the host stand.
             </div>
           </div>
         )}
 
-        {/* Phone frame */}
+        {/* Screen container — transparent hole in frame shows this */}
         <div style={{
-          width: 220, height: 460, borderRadius: 50,
-          background: "linear-gradient(155deg, #343436 0%, #1c1c1e 25%, #1a1a1c 75%, #222224 100%)",
-          boxShadow: [
-            "0 80px 160px rgba(0,0,0,0.98)",
-            "0 30px 60px rgba(0,0,0,0.7)",
-            "0 8px 20px rgba(0,0,0,0.5)",
-            "0 0 0 0.5px rgba(255,255,255,0.16)",
-            "inset 0 1px 0 rgba(255,255,255,0.09)",
-            "inset 0 -1px 0 rgba(0,0,0,0.6)",
-          ].join(", "),
-          padding: 10, position: "relative",
+          position: "absolute",
+          left: 6, top: 6,
+          width: 248, height: 552,
+          overflow: "hidden",
+          borderRadius: 28,
+          background: "#000",
+          opacity: visible ? 1 : 0,
+          transition: "opacity 0.35s ease",
+          zIndex: 1,
         }}>
-          {/* Left side — action + vol up + vol down */}
-          <div style={{ position: "absolute", left: -2.5, top: 86, width: 3, height: 17, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
-          <div style={{ position: "absolute", left: -2.5, top: 118, width: 3, height: 34, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
-          <div style={{ position: "absolute", left: -2.5, top: 160, width: 3, height: 34, borderRadius: "3px 0 0 3px", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
-          {/* Right side — power */}
-          <div style={{ position: "absolute", right: -2.5, top: 126, width: 3, height: 62, borderRadius: "0 3px 3px 0", background: "linear-gradient(180deg,#3c3c3e,#2c2c2e)" }} />
-
-          <div style={{ borderRadius: 41, overflow: "hidden", height: "100%", background: "#050505", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.9)" }}>
-            {/* Dynamic Island */}
-            <div style={{ height: 46, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 7, background: "#050505" }}>
-              <div style={{ width: 88, height: 24, background: "#000", borderRadius: 99, boxShadow: "0 0 0 0.5px rgba(255,255,255,0.04), inset 0 1px 3px rgba(0,0,0,0.9)" }} />
-            </div>
-
-            {/* Screen content */}
-            <div style={{ flex: 1, overflow: "hidden", opacity: visible ? 1 : 0, transition: "opacity 0.35s ease" }}>
-              {stage === 0 && <JoinScreen />}
-              {stage === 1 && <WaitScreen position={3} wait={45} progress={20} />}
-              {stage === 2 && <WaitScreen position={1} wait={12} progress={72} />}
-              {stage === 3 && <ReadyScreen />}
-              {stage === 4 && <SeatedScreen />}
-            </div>
+          {/* Scale mini components (designed for 182w) up to fill 248w */}
+          <div style={{ width: 182, height: 405, transform: "scale(1.363)", transformOrigin: "top left" }}>
+            {stage === 0 && <JoinScreen />}
+            {stage === 1 && <WaitScreen position={3} wait={45} progress={20} />}
+            {stage === 2 && <WaitScreen position={1} wait={12} progress={72} />}
+            {stage === 3 && <ReadyScreen />}
+            {stage === 4 && <SeatedScreen />}
           </div>
         </div>
+
+        {/* iPhone frame overlay — transparent screen lets content show through */}
+        <img
+          src="/iphone-frame.png"
+          alt="iPhone"
+          style={{ width: 260, height: "auto", display: "block", position: "relative", zIndex: 2, pointerEvents: "none" }}
+        />
       </div>
 
       {/* Stage info */}
@@ -706,50 +778,59 @@ function GuestJourney() {
 function JoinScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000" }}>
-      {/* HOST wordmark — top center, matches real join page */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 16px 8px" }}>
-        <div style={{ fontSize: 6.5, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.5)", marginBottom: 2 }}>Powered by</div>
-        <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "0.35em", color: "#fff" }}>HOST</div>
+      {/* Dynamic island spacer */}
+      <div style={{ height: 26, flexShrink: 0 }} />
+      {/* Powered by HOST — centered, bold, small */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "4px 12px 0", flexShrink: 0 }}>
+        <span style={{ fontSize: 6.5, letterSpacing: "0.32em", color: "rgba(255,255,255,0.28)", textTransform: "uppercase" }}>Powered by <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.5)" }}>HOST</span></span>
       </div>
 
-      {/* Restaurant identity */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingBottom: 8 }}>
-        <div style={{ width: 64, height: 24, borderRadius: 6, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
-          <span style={{ fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.45)", letterSpacing: "0.06em" }}>The Buff</span>
+      {/* Restaurant identity — BIG, center stage */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "10px 16px 8px" }}>
+        {/* Restaurant logo mark — proper inlaid design */}
+        <div style={{ position: "relative", width: 56, height: 56, marginBottom: 9 }}>
+          {/* Outer ring */}
+          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
+          {/* Inner background */}
+          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0 }}>
+            <span style={{ fontSize: 17, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif", letterSpacing: "0.04em" }}>S</span>
+            <span style={{ fontSize: 4, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+          </div>
         </div>
-        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)" }}>3 parties ahead</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em", marginBottom: 3 }}>Sal&apos;s Bar &amp; Grill</div>
+        <div style={{ fontSize: 7.5, color: "rgba(255,255,255,0.4)" }}>3 parties ahead · ~20m wait</div>
       </div>
 
       {/* Party size */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "4px 16px 6px" }}>
-        <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)" }}>Party Size</div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "4px 16px 6px" }}>
+        <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)" }}>Party Size</div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>−</div>
-          <span style={{ fontSize: 30, fontWeight: 300, color: "#fff", minWidth: 24, textAlign: "center" }}>2</span>
-          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.22)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#fff" }}>+</div>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>−</div>
+          <span style={{ fontSize: 28, fontWeight: 300, color: "#fff", minWidth: 24, textAlign: "center" }}>2</span>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#fff" }}>+</div>
         </div>
       </div>
 
-      {/* Name + Phone — underline fields like real page */}
+      {/* Name + Phone */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 10, padding: "0 16px" }}>
         <div>
-          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 4 }}>Name</div>
-          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.22)", paddingBottom: 4, fontSize: 12, color: "#fff" }}>Sarah</div>
+          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 4 }}>Name</div>
+          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 4, fontSize: 12, color: "rgba(255,255,255,0.28)" }}>Your name</div>
         </div>
         <div>
-          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.55)", marginBottom: 4 }}>
-            Phone <span style={{ color: "rgba(255,255,255,0.3)", textTransform: "none", letterSpacing: 0 }}>— optional</span>
+          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 4 }}>
+            Phone <span style={{ color: "rgba(255,255,255,0.25)", textTransform: "none", letterSpacing: 0 }}>— optional</span>
           </div>
-          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.22)", paddingBottom: 4, fontSize: 11, color: "rgba(255,255,255,0.7)" }}>(720) 555-0182</div>
+          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 4, fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Your phone</div>
         </div>
       </div>
 
-      {/* CTA — white button, black text, matches real page */}
+      {/* CTA */}
       <div style={{ padding: "6px 16px 10px" }}>
         <div style={{ background: "white", borderRadius: 12, height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#000", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           Join the Waitlist
         </div>
-        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(255,255,255,0.2)", marginTop: 5, letterSpacing: "0.05em" }}>HOST · No app download needed</div>
+        <div style={{ textAlign: "center", fontSize: 6, color: "rgba(255,255,255,0.15)", marginTop: 5, letterSpacing: "0.05em" }}>No app download needed</div>
       </div>
     </div>
   )
@@ -761,19 +842,24 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
   const partiesLabel = position === 0 ? "You're next up!" : `${position} ${position === 1 ? "party" : "parties"} ahead of you`
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
-      {/* HOST wordmark — top left, small, matches real wait page */}
-      <div style={{ padding: "14px 16px 0", flexShrink: 0 }}>
+      {/* Dynamic island spacer */}
+      <div style={{ height: 26, flexShrink: 0 }} />
+      {/* HOST wordmark — top center, small */}
+      <div style={{ padding: "4px 16px 0", flexShrink: 0, textAlign: "center" }}>
         <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
+      </div>
+      {/* Restaurant name */}
+      <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.35)", letterSpacing: "0.06em", paddingTop: 1, flexShrink: 0 }}>
+        Sal&apos;s Bar &amp; Grill
       </div>
 
       {/* Main content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 16px", justifyContent: "center", gap: 8 }}>
-        {/* Hi Sarah + parties ahead — plain text, no pill */}
+        {/* Position header */}
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 3, letterSpacing: "-0.02em" }}>
-            {isClose ? "You're next up!" : "Hi, Sarah!"}
+            {isClose ? "You're next up!" : partiesLabel}
           </div>
-          {!isClose && <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)" }}>{partiesLabel}</div>}
         </div>
 
         {/* Green progress bar — always green, matches real page */}
@@ -809,7 +895,7 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
       {/* Footer — menu button + leave link + footer text */}
       <div style={{ padding: "0 16px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.65)" }}>
-          🍴 Check Out the Menu
+          View Menu
         </div>
         <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.22)", letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 0" }}>
           Leave &amp; Rejoin Later
@@ -826,9 +912,15 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
 function ReadyScreen() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
-      {/* HOST wordmark — top left, matches real ready page */}
-      <div style={{ padding: "14px 16px 0", flexShrink: 0 }}>
+      {/* Dynamic island spacer */}
+      <div style={{ height: 26, flexShrink: 0 }} />
+      {/* HOST wordmark — top center */}
+      <div style={{ padding: "4px 16px 0", flexShrink: 0, textAlign: "center" }}>
         <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
+      </div>
+      {/* Restaurant name */}
+      <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.35)", letterSpacing: "0.06em", paddingTop: 1, flexShrink: 0 }}>
+        Sal&apos;s Bar &amp; Grill
       </div>
 
       {/* Main content */}
@@ -865,18 +957,12 @@ function ReadyScreen() {
           </div>
         </div>
 
-        {/* Message — green tint, matches real page */}
-        <div style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.18)", borderRadius: 8, padding: "7px 10px", width: "100%" }}>
-          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.65)", lineHeight: 1.55 }}>
-            Please make your way to the front and let the host know you&apos;re here.
-          </div>
-        </div>
       </div>
 
       {/* Footer — menu button + footer text */}
       <div style={{ padding: "0 16px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
         <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.65)" }}>
-          🍴 Check Out the Menu
+          View Menu
         </div>
         <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(255,255,255,0.1)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
           Updates automatically · HOST
@@ -889,19 +975,39 @@ function ReadyScreen() {
 /* ─── Seated Screen (stage 4) ──────────────────────────────── */
 function SeatedScreen() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 0, padding: "24px 20px", height: "100%", background: "#000" }}>
-      {/* Matches real seated page: "Enjoy your meal." / circle logo / "Enjoy your time." */}
-      <div style={{ fontSize: 16, fontWeight: 300, color: "rgba(255,255,255,0.88)", marginBottom: 28, letterSpacing: "0.01em" }}>
-        Enjoy your meal.
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
+      {/* Dynamic island spacer */}
+      <div style={{ height: 26, flexShrink: 0 }} />
+      {/* HOST wordmark top center */}
+      <div style={{ padding: "3px 12px 0", flexShrink: 0, textAlign: "center" }}>
+        <span style={{ fontSize: 7, fontWeight: 900, letterSpacing: "0.3em", color: "#fff", textTransform: "uppercase" }}>HOST</span>
       </div>
-      <div style={{ marginBottom: 28 }}>
-        <div style={{ width: 50, height: 50, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.14)", background: "rgba(255,255,255,0.04)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 10px" }}>
-          <span style={{ fontSize: 18, fontWeight: 700, color: "rgba(255,255,255,0.5)" }}>B</span>
+      {/* Center content */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 16px", gap: 8 }}>
+        {/* Restaurant logo */}
+        <div style={{ position: "relative", width: 52, height: 52 }}>
+          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
+          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 18, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif" }}>S</span>
+            <span style={{ fontSize: 4, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+          </div>
         </div>
-        <div style={{ fontSize: 8, fontWeight: 500, color: "rgba(255,255,255,0.28)", letterSpacing: "0.12em", textTransform: "uppercase" }}>The Buff · Boulder</div>
+        <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: "0.06em" }}>Sal&apos;s Bar &amp; Grill</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.15, marginTop: 6 }}>Enjoy your meal!</div>
       </div>
-      <div style={{ fontSize: 16, fontWeight: 300, color: "rgba(255,255,255,0.88)", letterSpacing: "0.01em" }}>
-        Enjoy your time.
+      {/* Review card */}
+      <div style={{ padding: "0 14px 16px", flexShrink: 0 }}>
+        <div style={{ background: "#141414", border: "1px solid #2a2a2a", borderRadius: 12, padding: "10px 12px" }}>
+          <div style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", textAlign: "center", marginBottom: 7 }}>How was your wait?</div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 9 }}>
+            {[1,2,3,4,5].map(i => (
+              <span key={i} style={{ fontSize: 16, color: "#f59e0b", lineHeight: 1 }}>★</span>
+            ))}
+          </div>
+          <div style={{ background: "#22c55e", borderRadius: 8, padding: "7px 8px", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+            <span style={{ fontSize: 6.5, fontWeight: 800, color: "#000", letterSpacing: "0.02em", lineHeight: 1.3 }}>Leave Sal&apos;s Bar &amp; Grill a review!</span>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -1126,6 +1232,24 @@ export default function MarketingPage() {
 
   const openDemo = (e: React.MouseEvent) => { e.preventDefault(); setShowDemo(true) }
 
+  const heroDevicesRef = useRef<HTMLDivElement>(null)
+  const heroTextRef    = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const onScroll = () => {
+      const sy = window.scrollY
+      if (heroDevicesRef.current) {
+        heroDevicesRef.current.style.transform = `translateY(${-sy * 0.1}px)`
+        heroDevicesRef.current.style.opacity = String(Math.max(0, 1 - Math.max(0, sy - 1100) / 900))
+      }
+      if (heroTextRef.current) {
+        heroTextRef.current.style.transform = `translateY(${-sy * 0.04}px)`
+        heroTextRef.current.style.opacity = String(Math.max(0, 1 - Math.max(0, sy - 320) / 480))
+      }
+    }
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [])
+
   return (
     <div style={{ background: "#060606", color: "#fff", minHeight: "100vh", overflowX: "clip" }}>
 
@@ -1152,9 +1276,21 @@ export default function MarketingPage() {
           from { opacity:0; transform:scale(0.9) translateX(-8px); }
           to   { opacity:1; transform:scale(1) translateX(0); }
         }
+        @keyframes deviceRise {
+          from { opacity:0; transform:translateY(48px); }
+          to   { opacity:1; transform:translateY(0); }
+        }
         @keyframes herofade {
           from { opacity:0; transform:translateY(20px); }
           to   { opacity:1; transform:translateY(0); }
+        }
+        @keyframes heroGlow {
+          0%,100% { opacity:0.07; transform:translate(-50%,-50%) scale(1); }
+          50%     { opacity:0.14; transform:translate(-50%,-50%) scale(1.08); }
+        }
+        @keyframes scrollBounce {
+          0%,100% { transform:translateX(-50%) translateY(0); opacity:0.5; }
+          50%     { transform:translateX(-50%) translateY(7px); opacity:1; }
         }
         @keyframes puckring {
           0%   { opacity:1; transform:translate(-50%,-50%) scale(1); }
@@ -1183,6 +1319,7 @@ export default function MarketingPage() {
           .how-arrow { display: none !important; }
           .device-row { padding: 28px 20px 28px !important; gap: 16px !important; }
           .ipad-hide { display: none !important; }
+          .ipad-hero-hide { display: none !important; }
           .stats-wrap { padding-left: 20px !important; padding-right: 20px !important; }
           .stats-grid { grid-template-columns: repeat(2,1fr) !important; gap: 1px !important; }
           .feat-grid { grid-template-columns: 1fr !important; }
@@ -1224,77 +1361,68 @@ export default function MarketingPage() {
       </nav>
       </div>{/* end fixed header */}
 
-      {/* ── HERO with video background ─────────────────────────── */}
-      {/* paddingTop offsets the fixed header (announcement ~38px + nav 64px) */}
-      <section style={{ position: "relative", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", paddingTop: 102 }}>
+      {/* ── HERO ─────────────────────────────────────────────────── */}
+      <section style={{ position: "relative", paddingTop: 80, paddingBottom: 0, background: "#050506", overflowX: "clip" }}>
+        {/* Animated radial glow */}
+        <div style={{ position: "absolute", top: "50%", left: "50%", width: 1100, height: 800, background: "radial-gradient(ellipse, rgba(34,197,94,0.1) 0%, transparent 65%)", pointerEvents: "none", zIndex: 0, animation: "heroGlow 5s ease-in-out infinite" }} />
 
-        {/* Rotating photo background — drop images into /public/hero/1.jpg … 4.jpg */}
-        <HeroSlideshow />
-
-        {/* Gradient overlay */}
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 1,
-          background: "linear-gradient(180deg, rgba(5,5,5,0.62) 0%, rgba(5,5,5,0.22) 35%, rgba(5,5,5,0.42) 60%, rgba(5,5,5,0.97) 100%)",
-        }} />
-
-        {/* Subtle vignette */}
-        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 60%, transparent 40%, rgba(0,0,0,0.55) 100%)", zIndex: 1, pointerEvents: "none" }} />
-
-        {/* Hero content */}
-        <div className="mob-px" style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 56px", maxWidth: 900, margin: "0 auto" }}>
-
-          {/* Big HOST wordmark */}
-          <div style={{ animation: "herofade 0.8s ease 0.1s both" }}>
-            <h1 style={{
-              fontSize: "clamp(5rem, 15vw, 11rem)", fontWeight: 900,
-              letterSpacing: "-0.055em", lineHeight: 0.88, color: "#fff",
-              textShadow: "0 2px 40px rgba(0,0,0,0.5)",
-              marginBottom: 0,
-            }}>
-              HOST
+        {/* ── Text block ── */}
+        <div ref={heroTextRef} className="mob-px" style={{ textAlign: "center", padding: "48px 40px 52px", maxWidth: 1060, margin: "0 auto", position: "relative", zIndex: 2, willChange: "transform, opacity" }}>
+          <div style={{ animation: "herofade 0.6s ease 0.0s both" }}>
+            <h1 style={{ margin: "0 0 24px", letterSpacing: "-0.04em" }}>
+              <span style={{ display: "block", fontSize: "clamp(1.6rem,4.6vw,4rem)", fontWeight: 900, color: "rgba(255,255,255,0.65)", lineHeight: 1.14, marginBottom: "0.25em", whiteSpace: "nowrap" }}>
+                Optimize your waitlist to
+              </span>
+              <em className="serif-italic" style={{ display: "block", color: "#22c55e", fontSize: "clamp(2.2rem,5.8vw,5rem)", lineHeight: 1.08 }}>stop losing guests.</em>
             </h1>
           </div>
-
-          {/* Subtitle */}
-          <div style={{ animation: "herofade 0.8s ease 0.3s both" }}>
-            <p style={{
-              fontSize: "clamp(1.1rem, 2.8vw, 1.7rem)", fontWeight: 300,
-              color: "rgba(255,255,255,0.7)", letterSpacing: "0.01em",
-              marginTop: 20, marginBottom: 0, lineHeight: 1.2,
-            }}>
-              The smarter{" "}
-              <em className="serif-italic" style={{ fontSize: "1.3em", color: "#fff", letterSpacing: "-0.01em" }}>waitlist.</em>
+          <div style={{ animation: "herofade 0.6s ease 0.22s both" }}>
+            <p style={{ fontSize: "clamp(1rem,1.45vw,1.1rem)", color: "rgba(255,255,255,0.46)", lineHeight: 1.7, margin: "0 auto 32px", maxWidth: 480 }}>
+              Give walk-in guests a live queue they can track from their phone. Fewer no-shows, shorter perceived waits, more covers seated every night.
             </p>
           </div>
-
-          {/* Tagline */}
-          <div style={{ animation: "herofade 0.8s ease 0.55s both" }}>
-            <p style={{
-              fontSize: "clamp(.9rem, 1.5vw, 1.05rem)",
-              color: "rgba(255,255,255,0.36)",
-              lineHeight: 1.7,
-              maxWidth: 520, margin: "28px auto 0",
-            }}>
-              Tap or scan to join. Real-time updates. One dashboard.<br />
-              No buzzers. No clipboards. No chaos.
-            </p>
-          </div>
-
-          {/* CTAs */}
-          <div style={{ animation: "herofade 0.8s ease 0.75s both", display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 44 }}>
-            <a href="#" onClick={openDemo} className="cta-btn" style={{ fontSize: "1rem", padding: "15px 34px", borderRadius: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 9 }}>
+          <div style={{ animation: "herofade 0.6s ease 0.34s both", display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <a href="#" onClick={openDemo} className="cta-btn" style={{ fontSize: "1rem", padding: "15px 34px", borderRadius: 10, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 8 }}>
               Schedule Free Demo <Icon.Arrow />
             </a>
-            <a href="#how-it-works" className="ghost-btn" style={{ color: "rgba(255,255,255,0.5)", fontWeight: 500, fontSize: "1rem", padding: "15px 26px", borderRadius: 12, textDecoration: "none", border: "1px solid rgba(255,255,255,0.12)" }}>
+            <a href="#how-it-works" className="ghost-btn" style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500, fontSize: "1rem", padding: "15px 26px", borderRadius: 10, textDecoration: "none", border: "1px solid rgba(255,255,255,0.1)" }}>
               See how it works
             </a>
           </div>
         </div>
 
-        {/* Scroll cue */}
-        <div style={{ position: "absolute", bottom: 32, left: "50%", transform: "translateX(-50%)", zIndex: 2, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, opacity: 0.35 }}>
-          <div style={{ fontSize: ".65rem", letterSpacing: ".14em", textTransform: "uppercase", color: "#fff" }}>Scroll</div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+        {/* ── Device mockups ── */}
+        <div ref={heroDevicesRef} style={{ position: "relative", zIndex: 2, display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 0, paddingBottom: 0, willChange: "transform, opacity" }}>
+
+          {/* iPad — host view */}
+          <div className="ipad-hero-hide" style={{ animation: "deviceRise 0.9s cubic-bezier(0.22,1,0.36,1) 0.4s both", flexShrink: 0, marginRight: -80, zIndex: 2 }}>
+            <div style={{ transform: "perspective(1800px) rotateX(5deg) rotateY(8deg)", transformOrigin: "bottom center", filter: "drop-shadow(-24px 48px 80px rgba(0,0,0,0.95))", willChange: "transform" }}>
+              <IPadMockup />
+            </div>
+          </div>
+
+          {/* iPhone — guest view */}
+          <div style={{ animation: "deviceRise 0.9s cubic-bezier(0.22,1,0.36,1) 0.55s both", flexShrink: 0, zIndex: 3 }}>
+            <div style={{ transform: "perspective(1200px) rotateX(3deg) rotateY(-6deg)", transformOrigin: "bottom center", filter: "drop-shadow(24px 48px 80px rgba(0,0,0,0.95))", willChange: "transform" }}>
+              <div style={{ position: "relative" }}>
+                {/* Screen content behind frame — sized for 300px wide frame */}
+                <div style={{ position: "absolute", left: 7, top: 7, width: 286, height: 636, overflow: "hidden", borderRadius: 32, background: "#000" }}>
+                  <div style={{ width: 182, height: 405, transform: "scale(1.572)", transformOrigin: "top left" }}>
+                    <WaitScreen position={3} wait={45} progress={20} />
+                  </div>
+                </div>
+                {/* High-quality iPhone frame overlay */}
+                <img src="/iphone-frame.png" alt="iPhone" style={{ width: 300, height: "auto", display: "block", position: "relative", zIndex: 2, pointerEvents: "none" }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Scroll indicator */}
+        <div style={{ position: "absolute", bottom: 28, left: "50%", zIndex: 10, animation: "scrollBounce 2s ease-in-out infinite" }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>
+          </svg>
         </div>
       </section>
 
@@ -1308,7 +1436,7 @@ export default function MarketingPage() {
             </div>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.08, margin: 0 }}>
               Simple by design.{" "}
-              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.06em", color: "#fff" }}>Fast by default.</em>
+              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.06em", color: "#22c55e" }}>Fast by default.</em>
             </h2>
           </div>
 
@@ -1387,63 +1515,6 @@ export default function MarketingPage() {
         </div>
       </section>
 
-      {/* ── Device Showcase ─────────────────────────────────────── */}
-      <section id="devices" style={{ padding: "60px 40px 100px", position: "relative", overflow: "hidden" }}>
-        {/* Deep ambient glow behind devices */}
-        <div style={{ position: "absolute", top: "30%", left: "50%", transform: "translate(-50%,-50%)", width: 700, height: 500, background: "radial-gradient(ellipse, rgba(34,197,94,0.07) 0%, transparent 70%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", top: "30%", left: "35%", transform: "translate(-50%,-50%)", width: 400, height: 300, background: "radial-gradient(ellipse, rgba(34,197,94,0.04) 0%, transparent 70%)", pointerEvents: "none" }} />
-
-        <div ref={deviceRef} className="device-row" style={{ maxWidth: 1160, margin: "0 auto", position: "relative", display: "flex", justifyContent: "center", alignItems: "center", gap: 0, flexWrap: "wrap" }}>
-
-          {/* Floating notification — top left */}
-          <div style={{ position: "absolute", top: 10, left: 20, background: "rgba(8,10,12,0.97)", border: "1px solid rgba(34,197,94,0.28)", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 16px 48px rgba(0,0,0,.7)", animation: "fadein 0.5s ease 0.8s both", zIndex: 20 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#22c55e,#16a34a)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
-            </div>
-            <div>
-              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#fff", marginBottom: 2 }}>Table ready for Martinez</div>
-              <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,0.38)" }}>SMS sent · just now</div>
-            </div>
-          </div>
-
-          {/* Floating queue badge — bottom right */}
-          <div style={{ position: "absolute", bottom: 24, right: 16, background: "rgba(8,10,12,0.97)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 14, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 16px 48px rgba(0,0,0,.7)", animation: "fadein 0.5s ease 1.2s both", zIndex: 20 }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-              <div style={{ fontSize: "1.1rem", fontWeight: 900, color: "#f97316", lineHeight: 1 }}>4</div>
-              <div style={{ fontSize: ".55rem", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: ".08em" }}>waiting</div>
-            </div>
-            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
-            <div>
-              <div style={{ fontSize: ".72rem", fontWeight: 700, color: "#fff", marginBottom: 2 }}>All tables occupied</div>
-              <div style={{ fontSize: ".62rem", color: "rgba(255,255,255,0.38)" }}>Avg wait · ~22 min</div>
-            </div>
-          </div>
-
-          {/* iPad — 3D perspective tilt left */}
-          <div className="ipad-hide" style={{
-            transform: "perspective(1400px) rotateY(8deg) rotateX(2deg) scale(0.97)",
-            transformOrigin: "right center",
-            filter: "drop-shadow(0 40px 80px rgba(0,0,0,0.9)) drop-shadow(0 0 1px rgba(255,255,255,0.05))",
-            transition: "transform 0.4s ease",
-            marginRight: -24,
-            zIndex: 1,
-          }}>
-            <img src="/ipad-mockup.png" alt="HOST dashboard on iPad" style={{ width: 670, height: "auto", display: "block" }} />
-          </div>
-
-          {/* iPhone — 3D perspective, slightly forward */}
-          <div style={{
-            transform: "perspective(900px) rotateY(-4deg) rotateX(1.5deg) scale(1.03)",
-            transformOrigin: "left center",
-            filter: "drop-shadow(0 60px 100px rgba(0,0,0,0.95)) drop-shadow(0 0 1px rgba(255,255,255,0.06))",
-            transition: "transform 0.4s ease",
-            zIndex: 2,
-            marginTop: 0,
-          }}>
-            <img src="/iphone-mockup.png" alt="HOST join page on iPhone" style={{ width: 220, height: "auto", display: "block" }} />
-          </div>
-        </div>
-      </section>
 
       {/* ── The Cost of Walking Away ────────────────────────────── */}
       <section className="mob-px" style={{ padding: "100px 56px", borderTop: "1px solid rgba(255,255,255,0.06)", position: "relative", overflow: "hidden" }}>
@@ -1455,7 +1526,7 @@ export default function MarketingPage() {
             </div>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.08, margin: 0 }}>
               The wait is costing you{" "}
-              <em className="serif-italic" style={{ color: "#fff", fontSize: "1.06em" }}>real revenue.</em>
+              <em className="serif-italic" style={{ color: "#22c55e", fontSize: "1.06em" }}>real revenue.</em>
             </h2>
           </div>
 
@@ -1594,7 +1665,7 @@ export default function MarketingPage() {
           <div style={{ marginBottom: 64 }}>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, maxWidth: 520 }}>
               Designed for<br />
-              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.08em", letterSpacing: "-0.02em", color: "#fff" }}>the rush.</em>
+              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.08em", letterSpacing: "-0.02em", color: "#22c55e" }}>the rush.</em>
             </h2>
           </div>
           {(() => {
@@ -1685,7 +1756,7 @@ export default function MarketingPage() {
             <div style={{ marginBottom: 72 }}>
               <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.1 }}>
                 Sidewalk to{" "}
-              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.06em", letterSpacing: "-0.02em", color: "#fff" }}>seated.</em>
+              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.06em", letterSpacing: "-0.02em", color: "#22c55e" }}>seated.</em>
               <br /><span style={{ color: "rgba(255,255,255,0.22)", fontStyle: "normal", fontFamily: "inherit", fontSize: "0.92em" }}>Three steps.</span>
               </h2>
             </div>
@@ -1716,7 +1787,7 @@ export default function MarketingPage() {
           <div style={{ marginBottom: 72, textAlign: "center" }}>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 16 }}>
               The full guest{" "}
-              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.06em", letterSpacing: "-0.02em", color: "#fff" }}>experience.</em>
+              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.06em", letterSpacing: "-0.02em", color: "#22c55e" }}>experience.</em>
             </h2>
             <p style={{ fontSize: "1rem", color: "rgba(255,255,255,0.38)", maxWidth: 440, margin: "0 auto" }}>
               From tap to table — everything happens on their phone without downloading anything.
@@ -1763,7 +1834,7 @@ export default function MarketingPage() {
             <div style={{ fontSize: ".72rem", fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "#22c55e", marginBottom: 16 }}>FAQ</div>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.08, margin: 0 }}>
               Everything you want{" "}
-              <em className="serif-italic" style={{ fontSize: "1.06em", color: "#fff" }}>to know.</em>
+              <em className="serif-italic" style={{ fontSize: "1.06em", color: "#22c55e" }}>to know.</em>
             </h2>
           </div>
           <FaqSection />
