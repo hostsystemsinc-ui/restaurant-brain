@@ -410,7 +410,7 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         except Exception:
             pass
         new_entry = entry.data[0]
-        if req.phone:
+        if req.phone and req.source == "host":
             try:
                 rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
                 rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
