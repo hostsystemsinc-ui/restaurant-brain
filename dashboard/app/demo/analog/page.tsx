@@ -365,13 +365,16 @@ export default function AnalogPage() {
   // ── Pen helpers ───────────────────────────────────────────────────────────────
   // Apple Pencil: clear text fields so Scribble writes fresh
   const clearOnPen = useCallback((localId: string, field: "name" | "phone" | "notes") =>
-    (e: React.PointerEvent<HTMLInputElement>) => {
+    (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.pointerType === "pen") patchRow(localId, { [field]: "" } as Partial<AnalogRow>)
     }, [patchRow])
 
   // Apple Pencil on party size: select all so Scribble replaces the number
-  const selectOnPen = (e: React.PointerEvent<HTMLInputElement>) => {
-    if (e.pointerType === "pen") setTimeout(() => (e.currentTarget as HTMLInputElement).select(), 0)
+  const selectOnPen = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "pen") {
+      const input = (e.currentTarget as HTMLDivElement).querySelector("input")
+      setTimeout(() => input?.select(), 0)
+    }
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────────
@@ -495,7 +498,7 @@ export default function AnalogPage() {
       </header>
 
       {/* Click away from visuals popup */}
-      {showVisuals && <div style={{ position: "fixed", inset: 0, zIndex: 199 }} onClick={() => setShowVisuals(false)} />}
+      {showVisuals && <div style={{ position: "fixed", inset: 0, zIndex: 49 }} onClick={() => setShowVisuals(false)} />}
 
       {/* ── Scaled content ── */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
@@ -579,11 +582,10 @@ export default function AnalogPage() {
                     {isExternal && !row.name ? (
                       <span style={{ fontSize: 13, color: V.textMuted, fontStyle: "italic" }}>{row.source === "nfc" ? "NFC guest" : "Guest"}</span>
                     ) : (
-                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }} onPointerDown={clearOnPen(row.localId, "name")}>
                         <input
                           type="text" value={row.name}
                           onChange={e => patchRow(row.localId, { name: e.target.value })}
-                          onPointerDown={clearOnPen(row.localId, "name")}
                           placeholder="Write name…" inputMode="text"
                           style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: V.inputColor, padding: "4px 0", caretColor: "#22c55e", minWidth: 0, touchAction: "manipulation" }}
                         />
@@ -596,12 +598,11 @@ export default function AnalogPage() {
                   </div>
 
                   {/* Party size — number input for pen + stepper for finger */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }} onPointerDown={selectOnPen}>
                     <button onPointerDown={() => patchRow(row.localId, { partySize: Math.max(1, row.partySize - 1) })} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>−</button>
                     <input
                       type="number" min={1} max={20} value={row.partySize}
                       onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) patchRow(row.localId, { partySize: Math.max(1, Math.min(20, v)) }) }}
-                      onPointerDown={selectOnPen}
                       inputMode="numeric"
                       style={{ width: 30, textAlign: "center", border: "none", outline: "none", background: "transparent", fontSize: 16, fontWeight: 700, color: V.text, caretColor: "#22c55e", touchAction: "manipulation", MozAppearance: "textfield" } as React.CSSProperties}
                     />
@@ -610,11 +611,10 @@ export default function AnalogPage() {
 
                   {/* Phone */}
                   <div style={{ padding: "0 8px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }} onPointerDown={clearOnPen(row.localId, "phone")}>
                       <input
                         type="tel" value={row.phone}
                         onChange={e => patchRow(row.localId, { phone: e.target.value })}
-                        onPointerDown={clearOnPen(row.localId, "phone")}
                         placeholder="Write number…" inputMode="tel"
                         style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: V.inputColor, padding: "4px 0", caretColor: "#22c55e", minWidth: 0, touchAction: "manipulation" }}
                       />
@@ -660,11 +660,10 @@ export default function AnalogPage() {
 
                   {/* Notes — landscape: inline column */}
                   {!isBlank && isLandscape && (
-                    <div style={{ padding: "0 10px" }}>
+                    <div style={{ padding: "0 10px" }} onPointerDown={clearOnPen(row.localId, "notes")}>
                       <input
                         type="text" value={row.notes}
                         onChange={e => patchRow(row.localId, { notes: e.target.value })}
-                        onPointerDown={clearOnPen(row.localId, "notes")}
                         placeholder="Notes…" inputMode="text"
                         style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, color: V.inputColor, caretColor: "#22c55e", borderBottom: `1px solid ${V.rowBorder}`, padding: "4px 0", touchAction: "manipulation" }}
                       />
@@ -673,12 +672,11 @@ export default function AnalogPage() {
 
                   {/* Notes — portrait: distinct card below row */}
                   {!isBlank && !isLandscape && (
-                    <div style={{ gridColumn: "1 / -1", margin: "6px 12px 10px 60px", background: V.notesBg, borderRadius: 10, border: `1px solid ${V.notesBorder}`, padding: "7px 12px" }}>
+                    <div style={{ gridColumn: "1 / -1", margin: "6px 12px 10px 60px", background: V.notesBg, borderRadius: 10, border: `1px solid ${V.notesBorder}`, padding: "7px 12px" }} onPointerDown={clearOnPen(row.localId, "notes")}>
                       <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: V.notesLabel, marginBottom: 3 }}>Notes</div>
                       <input
                         type="text" value={row.notes}
                         onChange={e => patchRow(row.localId, { notes: e.target.value })}
-                        onPointerDown={clearOnPen(row.localId, "notes")}
                         placeholder="Allergies, special requests…" inputMode="text"
                         style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, color: V.inputColor, caretColor: "#22c55e", touchAction: "manipulation" }}
                       />
