@@ -70,6 +70,35 @@ interface SeatingRecord {
   hour_of_day:     number  // 0–23
 }
 
+// ── Guest Log (rich per-day record for History page) ───────────────────────────
+export interface GuestLogRecord {
+  id:              string
+  name:            string
+  party_size:      number
+  source:          string
+  phone:           string | null
+  notes:           string | null
+  quoted_wait:     number | null
+  actual_wait_min: number | null  // null for removed guests
+  joined_ms:       number         // unix ms
+  resolved_ms:     number         // unix ms (seated or removed)
+  status:          "seated" | "removed"
+}
+
+const GUEST_LOG_KEY = (dateStr: string) => `host_demo_log_${dateStr}`
+
+function addToGuestLog(r: GuestLogRecord) {
+  try {
+    const dateStr = toLocalDateStr(new Date())
+    const key     = GUEST_LOG_KEY(dateStr)
+    const records: GuestLogRecord[] = JSON.parse(localStorage.getItem(key) ?? "[]")
+    // Replace if entry ID already present (e.g. re-seat after undo)
+    const idx = records.findIndex(x => x.id === r.id)
+    if (idx >= 0) records[idx] = r; else records.push(r)
+    localStorage.setItem(key, JSON.stringify(records))
+  } catch {}
+}
+
 const HISTORY_KEY      = "host_demo_seating_history"
 const HISTORY_DATE_KEY = "host_demo_seating_history_date"
 const MAX_HISTORY      = 300
@@ -519,6 +548,7 @@ function GuestEditModal({
       setRemoving(false)
       return   // Don't close modal on error
     }
+    addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: new Date(entry.arrival_time).getTime(), resolved_ms: Date.now(), status: "removed" })
     setRemoving(false)
     onRemoved()
     onClose()
@@ -1909,6 +1939,7 @@ export default function DemoHostDashboard() {
   const [authed, setAuthed] = useState(false)
   const [tables, setTables]               = useState<Table[]>([])
   const [queue, setQueue]                 = useState<QueueEntry[]>([])
+  const queueRef = useRef<QueueEntry[]>([])
   const [online, setOnline]               = useState(true)
   const [lastSync, setLastSync]           = useState(new Date())
   const [ghStatus, setGhStatus]           = useState<"good"|"degraded"|"bad">("good")
@@ -2039,7 +2070,7 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (r.ok) {
         const data: QueueEntry[] = await r.json()
-        setQueue(data); setOnline(true); setLastSync(new Date())
+        setQueue(data); queueRef.current = data; setOnline(true); setLastSync(new Date())
       }
     } catch { setOnline(false) }
     finally   { setIsInitialLoad(false) }
@@ -2094,10 +2125,14 @@ export default function DemoHostDashboard() {
   }, [refreshAll])
 
   const remove = useCallback(async (id: string) => {
+    const entry = queueRef.current.find(e => e.id === id)
     setQueue(prev => prev.filter(e => e.id !== id))  // optimistic UI
     try {
       const r = await fetchT(`${API}/queue/${id}/remove`, { method: "POST" })
       if (!r.ok) throw new Error()
+      if (entry) {
+        addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: new Date(entry.arrival_time).getTime(), resolved_ms: Date.now(), status: "removed" })
+      }
       refreshAll()
     } catch {
       showToast("Could not remove guest.", "err")
@@ -2128,12 +2163,16 @@ export default function DemoHostDashboard() {
     }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
     setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
-    // Record seating history for suggestions
-    if (entry.quoted_wait) {
-      const arrivalMs    = new Date(entry.arrival_time).getTime()
-      const actualWait   = Math.round((Date.now() - arrivalMs) / 60_000)
-      const now          = new Date()
-      addToHistory({ party_size: entry.party_size, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, seated_at: Date.now(), day_of_week: now.getDay(), hour_of_day: now.getHours() })
+    // Record seating history for suggestions + guest log
+    {
+      const arrivalMs  = new Date(entry.arrival_time).getTime()
+      const resolvedMs = Date.now()
+      const actualWait = Math.round((resolvedMs - arrivalMs) / 60_000)
+      const now        = new Date()
+      if (entry.quoted_wait) {
+        addToHistory({ party_size: entry.party_size, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, seated_at: resolvedMs, day_of_week: now.getDay(), hour_of_day: now.getHours() })
+      }
+      addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, joined_ms: arrivalMs, resolved_ms: resolvedMs, status: "seated" })
     }
     showToast(`${entry.name || "Guest"} seated at Table ${tableNumber}`)
     refreshAll()
