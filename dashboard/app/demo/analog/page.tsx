@@ -365,13 +365,9 @@ export default function AnalogPage() {
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
   }, [rows, tables, patchRow, showToast])
 
-  // ── Input interaction helpers ────────────────────────────────────────────────
-  // Finger tap → select all so typing replaces current value (keyboard comes up naturally)
-  const selectAllOnFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    const el = e.currentTarget
-    setTimeout(() => { el.select() }, 0)
-  }
-  // Apple Pencil touch → instantly clear field so Scribble writes into a blank slate
+  // ── Apple Pencil clear-on-write ──────────────────────────────────────────────
+  // Pen touch → instantly clear so Scribble writes into a blank field
+  // Finger touch → no interference, native keyboard + cursor placement works as expected
   const clearOnPen = useCallback((localId: string, field: "name" | "phone") =>
     (e: React.PointerEvent<HTMLInputElement>) => {
       if (e.pointerType === "pen") {
@@ -379,10 +375,27 @@ export default function AnalogPage() {
       }
     }, [patchRow])
 
+  // ── Orientation ──────────────────────────────────────────────────────────────
+  const [isLandscape, setIsLandscape] = useState(false)
+  useEffect(() => {
+    const check = () => setIsLandscape(window.innerWidth > window.innerHeight)
+    check()
+    window.addEventListener("resize", check)
+    return () => window.removeEventListener("resize", check)
+  }, [])
+
   // ── Derived ──────────────────────────────────────────────────────────────────
   const activeRows    = rows.filter(r => r.status !== "seated" && r.status !== "removed")
-  const completedRows = rows.filter(r => r.status === "seated" || r.status === "removed").reverse()
+  // Most recent completed row is last (closest to active area) — scroll up for older
+  const completedRows = rows.filter(r => r.status === "seated" || r.status === "removed")
   const confirmRow    = confirmFor ? rows.find(r => r.localId === confirmFor) : null
+
+  const gridCols = isLandscape
+    ? "52px 1fr 100px 1fr minmax(170px,1.2fr) minmax(140px,1fr)"
+    : "52px 1fr 100px 1fr minmax(170px,1.2fr)"
+  const colHeaders = isLandscape
+    ? ["", "Name", "Party", "Phone", "Wait / Timer", "Notes"]
+    : ["", "Name", "Party", "Phone", "Wait / Timer"]
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -476,15 +489,75 @@ export default function AnalogPage() {
               background: "rgba(250,250,248,0.97)",
               borderBottom: "1px solid rgba(0,0,0,0.07)",
               display: "grid",
-              gridTemplateColumns: "52px 1fr 100px 1fr minmax(170px,1.2fr)",
+              gridTemplateColumns: gridCols,
               padding: "6px 16px",
             }}>
-              {["", "Name", "Party", "Phone", "Wait / Timer"].map((h, i) => (
+              {colHeaders.map((h, i) => (
                 <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(0,0,0,0.28)", paddingLeft: i > 0 ? 8 : 0 }}>
                   {h}
                 </div>
               ))}
             </div>
+
+            {/* ── Completed rows (above active so scrolling up = history) ── */}
+            {completedRows.length > 0 && (
+              <>
+                <div style={{ padding: "10px 16px 6px" }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(0,0,0,0.28)" }}>
+                    Completed · {completedRows.length}
+                  </span>
+                </div>
+                {completedRows.map(row => (
+                  <div
+                    key={row.localId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: gridCols,
+                      alignItems: "center",
+                      minHeight: 48,
+                      borderBottom: "1px solid rgba(0,0,0,0.05)",
+                      background: "rgba(0,0,0,0.025)",
+                      padding: "6px 0",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 8,
+                        background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)",
+                        border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {row.status === "seated"
+                          ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} />
+                          : <X     style={{ width: 14, height: 14, color: "#dc2626" }} />}
+                      </div>
+                    </div>
+                    <div style={{ padding: "0 8px" }}>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(0,0,0,0.45)" }}>{row.name || "Guest"}</span>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <span style={{ fontSize: 13, color: "rgba(0,0,0,0.35)" }}>{row.partySize}p</span>
+                    </div>
+                    <div style={{ padding: "0 8px" }}>
+                      <span style={{ fontSize: 12, color: "rgba(0,0,0,0.30)" }}>{row.phone || "—"}</span>
+                    </div>
+                    <div style={{ padding: "0 10px 0 6px" }}>
+                      <div style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
+                        <span>In {fmtClock(row.addedMs)}</span>
+                        {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
+                        <span>Waited {waitedLabel(row)}</span>
+                      </div>
+                    </div>
+                    {isLandscape && (
+                      <div style={{ padding: "0 8px" }}>
+                        <span style={{ fontSize: 12, color: "rgba(0,0,0,0.30)" }}>{row.notes || "—"}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div style={{ height: 1, background: "rgba(0,0,0,0.10)", margin: "4px 0 0" }} />
+              </>
+            )}
 
             {/* ── Active Rows ── */}
             {activeRows.map((row) => {
@@ -507,7 +580,7 @@ export default function AnalogPage() {
                   key={row.localId}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "52px 1fr 100px 1fr minmax(170px,1.2fr)",
+                    gridTemplateColumns: gridCols,
                     alignItems: "center",
                     minHeight: 68,
                     borderBottom: "1px solid rgba(0,0,0,0.07)",
@@ -550,7 +623,6 @@ export default function AnalogPage() {
                           type="text"
                           value={row.name}
                           onChange={e => patchRow(row.localId, { name: e.target.value })}
-                          onFocus={selectAllOnFocus}
                           onPointerDown={clearOnPen(row.localId, "name")}
                           placeholder="Write name…"
                           inputMode="text"
@@ -596,7 +668,6 @@ export default function AnalogPage() {
                         type="tel"
                         value={row.phone}
                         onChange={e => patchRow(row.localId, { phone: e.target.value })}
-                        onFocus={selectAllOnFocus}
                         onPointerDown={clearOnPen(row.localId, "phone")}
                         placeholder="Write number…"
                         inputMode="tel"
@@ -693,21 +764,45 @@ export default function AnalogPage() {
                     )}
                   </div>
 
-                {/* ── Notes (full-width sub-row) ── */}
-                {!isBlank && (
-                  <div style={{ gridColumn: "1 / -1", padding: "0 16px 8px 60px" }}>
+                {/* ── Notes — portrait: distinct sub-row; landscape: own column ── */}
+                {!isBlank && !isLandscape && (
+                  <div style={{
+                    gridColumn: "1 / -1",
+                    margin: "6px 12px 10px 60px",
+                    background: "rgba(0,0,0,0.025)",
+                    borderRadius: 10,
+                    border: "1px solid rgba(0,0,0,0.07)",
+                    padding: "7px 12px",
+                  }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(0,0,0,0.25)", marginBottom: 3 }}>Notes</div>
                     <input
                       type="text"
                       value={row.notes}
                       onChange={e => patchRow(row.localId, { notes: e.target.value })}
-                      onFocus={selectAllOnFocus}
-                      placeholder="Notes (allergies, special requests…)"
+                      placeholder="Allergies, special requests…"
                       inputMode="text"
                       style={{
-                        width: "100%", border: "none", borderBottom: "1px solid rgba(0,0,0,0.08)",
-                        outline: "none", background: "transparent",
-                        fontSize: 12, color: "rgba(0,0,0,0.55)", padding: "2px 0 4px",
-                        caretColor: "#22c55e",
+                        width: "100%", border: "none", outline: "none",
+                        background: "transparent", fontSize: 13,
+                        color: "rgba(0,0,0,0.60)", caretColor: "#22c55e",
+                      }}
+                    />
+                  </div>
+                )}
+                {/* Landscape: notes cell in 6th column */}
+                {!isBlank && isLandscape && (
+                  <div style={{ padding: "0 10px" }}>
+                    <input
+                      type="text"
+                      value={row.notes}
+                      onChange={e => patchRow(row.localId, { notes: e.target.value })}
+                      placeholder="Notes…"
+                      inputMode="text"
+                      style={{
+                        width: "100%", border: "none", outline: "none",
+                        background: "transparent", fontSize: 13,
+                        color: "rgba(0,0,0,0.60)", caretColor: "#22c55e",
+                        borderBottom: "1px solid rgba(0,0,0,0.08)", padding: "4px 0",
                       }}
                     />
                   </div>
@@ -715,60 +810,6 @@ export default function AnalogPage() {
               </div>
               )
             })}
-
-            {/* ── Completed rows ── */}
-            {completedRows.length > 0 && (
-              <>
-                <div style={{ padding: "14px 16px 6px", borderTop: "1px solid rgba(0,0,0,0.08)", marginTop: 8 }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(0,0,0,0.28)" }}>
-                    Completed · {completedRows.length}
-                  </span>
-                </div>
-                {completedRows.map(row => (
-                  <div
-                    key={row.localId}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "52px 1fr 100px 1fr minmax(170px,1.2fr)",
-                      alignItems: "center",
-                      minHeight: 48,
-                      borderBottom: "1px solid rgba(0,0,0,0.05)",
-                      background: "rgba(0,0,0,0.025)",
-                      padding: "6px 0",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 8,
-                        background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)",
-                        border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
-                        {row.status === "seated"
-                          ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} />
-                          : <X     style={{ width: 14, height: 14, color: "#dc2626" }} />}
-                      </div>
-                    </div>
-                    <div style={{ padding: "0 8px" }}>
-                      <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(0,0,0,0.45)" }}>{row.name || "Guest"}</span>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
-                      <span style={{ fontSize: 13, color: "rgba(0,0,0,0.35)" }}>{row.partySize}p</span>
-                    </div>
-                    <div style={{ padding: "0 8px" }}>
-                      <span style={{ fontSize: 12, color: "rgba(0,0,0,0.30)" }}>{row.phone || "—"}</span>
-                    </div>
-                    <div style={{ padding: "0 10px 0 6px" }}>
-                      <div style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
-                        <span>In {fmtClock(row.addedMs)}</span>
-                        {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
-                        <span>Waited {waitedLabel(row)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
 
             <div style={{ height: 80 }} />
           </div>
