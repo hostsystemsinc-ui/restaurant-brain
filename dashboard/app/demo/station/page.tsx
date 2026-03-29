@@ -16,8 +16,23 @@ import {
   useDraggable, useDroppable,
   pointerWithin, MeasuringStrategy,
   type DragStartEvent, type DragEndEvent,
+  type Modifier,
 } from "@dnd-kit/core"
 import { CSS } from "@dnd-kit/utilities"
+
+// Snap drag ghost so cursor stays at top-left corner of ghost (+small offset).
+// This ensures the cursor IS the precise drop point the user sees.
+const snapGhostToCursor: Modifier = ({ activatorEvent, draggingNodeRect, transform }) => {
+  if (activatorEvent && draggingNodeRect) {
+    const ev = activatorEvent as PointerEvent
+    return {
+      ...transform,
+      x: transform.x + (ev.clientX - draggingNodeRect.left) - 12,
+      y: transform.y + (ev.clientY - draggingNodeRect.top)  - 12,
+    }
+  }
+  return transform
+}
 
 const API                = "/api/brain"
 const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
@@ -2277,6 +2292,9 @@ export default function DemoHostDashboard() {
     if (apiTable && entry.party_size > apiTable.capacity) {
       showToast(`Table ${targetTable} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
     }
+    const resolvedMs = Date.now()
+    const arrivalMs  = new Date(entry.arrival_time).getTime()
+    const actualWait = Math.round((resolvedMs - arrivalMs) / 60_000)
     if (apiTable) {
       fetchT(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
         .then(r => { if (!r.ok) showToast("Could not seat guest.", "err"); else refreshAll() })
@@ -2284,6 +2302,11 @@ export default function DemoHostDashboard() {
     } else {
       seat(entry.id)
     }
+    // Log to guest history
+    if (entry.quoted_wait) {
+      addToHistory({ party_size: entry.party_size, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, seated_at: resolvedMs, day_of_week: new Date().getDay(), hour_of_day: new Date().getHours() })
+    }
+    addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, joined_ms: arrivalMs, resolved_ms: resolvedMs, status: "seated" })
     // Reservation warning — check before clearing pre-assignment
     const dragResInfo = reservedTables.get(targetTable)
     if (dragResInfo) {
@@ -2343,7 +2366,21 @@ export default function DemoHostDashboard() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907", zoom }}>
+      {/* Outer clip wrapper — always exactly viewport size */}
+      <div style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "#0C0907" }}>
+      {/* Inner scaled container — transform:scale keeps getBoundingClientRect in viewport coords,
+          fixing @dnd-kit collision detection accuracy regardless of zoom level */}
+      <div
+        className="flex flex-col"
+        style={{
+          width:           `${(1 / zoom * 100).toFixed(6)}vw`,
+          height:          `${(1 / zoom * 100).toFixed(6)}dvh`,
+          background:      "#0C0907",
+          transform:       `scale(${zoom})`,
+          transformOrigin: "top left",
+          overflow:        "hidden",
+        }}
+      >
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header
@@ -3030,7 +3067,7 @@ export default function DemoHostDashboard() {
 
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
-      <DragOverlay dropAnimation={null}>
+      <DragOverlay dropAnimation={null} modifiers={[snapGhostToCursor]}>
         {activeDragEntry && <DragGhost entry={activeDragEntry} />}
         {activeDragOccupant && (
           <div style={{
@@ -3048,6 +3085,7 @@ export default function DemoHostDashboard() {
           </div>
         )}
       </DragOverlay>
+      </div>{/* end outer clip wrapper */}
     </DndContext>
   )
 }
