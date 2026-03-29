@@ -365,14 +365,19 @@ export default function AnalogPage() {
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
   }, [rows, tables, patchRow, showToast])
 
-  // ── Scribble-safe select-all ─────────────────────────────────────────────────
-  const selectAll = (e: React.FocusEvent<HTMLInputElement> | React.PointerEvent<HTMLInputElement>) => {
+  // ── Input interaction helpers ────────────────────────────────────────────────
+  // Finger tap → select all so typing replaces current value (keyboard comes up naturally)
+  const selectAllOnFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     const el = e.currentTarget
     setTimeout(() => { el.select() }, 0)
   }
-  const selectAllOnPen = (e: React.PointerEvent<HTMLInputElement>) => {
-    if (e.pointerType === "pen") selectAll(e)
-  }
+  // Apple Pencil touch → instantly clear field so Scribble writes into a blank slate
+  const clearOnPen = useCallback((localId: string, field: "name" | "phone") =>
+    (e: React.PointerEvent<HTMLInputElement>) => {
+      if (e.pointerType === "pen") {
+        patchRow(localId, { [field]: "" } as Partial<AnalogRow>)
+      }
+    }, [patchRow])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const activeRows    = rows.filter(r => r.status !== "seated" && r.status !== "removed")
@@ -540,20 +545,29 @@ export default function AnalogPage() {
                         {row.source === "nfc" ? "NFC guest" : "Guest"}
                       </span>
                     ) : (
-                      <input
-                        type="text"
-                        value={row.name}
-                        onChange={e => patchRow(row.localId, { name: e.target.value })}
-                        onFocus={selectAll}
-                        onPointerDown={selectAllOnPen}
-                        placeholder="Write name…"
-                        inputMode="text"
-                        style={{
-                          width: "100%", border: "none", outline: "none",
-                          background: "transparent", fontSize: 15, fontWeight: 500,
-                          color: "#111", padding: "4px 0", caretColor: "#22c55e",
-                        }}
-                      />
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input
+                          type="text"
+                          value={row.name}
+                          onChange={e => patchRow(row.localId, { name: e.target.value })}
+                          onFocus={selectAllOnFocus}
+                          onPointerDown={clearOnPen(row.localId, "name")}
+                          placeholder="Write name…"
+                          inputMode="text"
+                          style={{
+                            flex: 1, border: "none", outline: "none",
+                            background: "transparent", fontSize: 15, fontWeight: 500,
+                            color: "#111", padding: "4px 0", caretColor: "#22c55e",
+                            minWidth: 0,
+                          }}
+                        />
+                        {row.name ? (
+                          <button
+                            onPointerDown={e => { e.preventDefault(); patchRow(row.localId, { name: "" }) }}
+                            style={{ width: 20, height: 20, borderRadius: 10, border: "none", background: "rgba(0,0,0,0.12)", color: "rgba(0,0,0,0.45)", fontSize: 12, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, touchAction: "manipulation" }}
+                          >×</button>
+                        ) : null}
+                      </div>
                     )}
                     {sourceBadge && (
                       <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: sourceBadge.color, marginTop: 1 }}>
@@ -577,20 +591,29 @@ export default function AnalogPage() {
 
                   {/* ── Phone ── */}
                   <div style={{ padding: "0 8px" }}>
-                    <input
-                      type="tel"
-                      value={row.phone}
-                      onChange={e => patchRow(row.localId, { phone: e.target.value })}
-                      onFocus={selectAll}
-                      onPointerDown={selectAllOnPen}
-                      placeholder="Write number…"
-                      inputMode="tel"
-                      style={{
-                        width: "100%", border: "none", outline: "none",
-                        background: "transparent", fontSize: 15, fontWeight: 500,
-                        color: "#111", padding: "4px 0", caretColor: "#22c55e",
-                      }}
-                    />
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input
+                        type="tel"
+                        value={row.phone}
+                        onChange={e => patchRow(row.localId, { phone: e.target.value })}
+                        onFocus={selectAllOnFocus}
+                        onPointerDown={clearOnPen(row.localId, "phone")}
+                        placeholder="Write number…"
+                        inputMode="tel"
+                        style={{
+                          flex: 1, border: "none", outline: "none",
+                          background: "transparent", fontSize: 15, fontWeight: 500,
+                          color: "#111", padding: "4px 0", caretColor: "#22c55e",
+                          minWidth: 0,
+                        }}
+                      />
+                      {row.phone ? (
+                        <button
+                          onPointerDown={e => { e.preventDefault(); patchRow(row.localId, { phone: "" }) }}
+                          style={{ width: 20, height: 20, borderRadius: 10, border: "none", background: "rgba(0,0,0,0.12)", color: "rgba(0,0,0,0.45)", fontSize: 12, lineHeight: 1, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, touchAction: "manipulation" }}
+                        >×</button>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/* ── Wait Quote / Timer ── */}
@@ -677,8 +700,7 @@ export default function AnalogPage() {
                       type="text"
                       value={row.notes}
                       onChange={e => patchRow(row.localId, { notes: e.target.value })}
-                      onFocus={selectAll}
-                      onPointerDown={selectAllOnPen}
+                      onFocus={selectAllOnFocus}
                       placeholder="Notes (allergies, special requests…)"
                       inputMode="text"
                       style={{
