@@ -1,197 +1,242 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import {
-  Building2, TrendingUp, Users, CheckCircle2,
-  AlertCircle, ArrowUpRight, RefreshCw, LogOut, Eye,
-  EyeOff, Loader2, BarChart3, Zap, CircleDot, Star,
-  Activity, DollarSign, MapPin, ArrowRight, Shield,
-  Server, Github, Database, CalendarDays, Clock, Link2, Link2Off,
-} from "lucide-react"
+import { useRouter } from "next/navigation"
 
-// ── Dark design tokens (matches HOST landing page) ─────────────────────────────
+// ── Design tokens ──────────────────────────────────────────────────────────────
 const D = {
   bg:           "#080C10",
-  surface:      "rgba(255,255,255,0.03)",
-  surfaceHover: "rgba(255,255,255,0.05)",
+  surface:      "rgba(255,255,255,0.035)",
+  surfaceHover: "rgba(255,255,255,0.055)",
   border:       "rgba(255,255,255,0.08)",
-  borderStrong: "rgba(255,255,255,0.12)",
+  borderStrong: "rgba(255,255,255,0.14)",
   text:         "#FFFFFF",
-  text2:        "rgba(255,255,255,0.65)",
-  muted:        "rgba(255,255,255,0.30)",
+  text2:        "rgba(255,255,255,0.60)",
+  muted:        "rgba(255,255,255,0.28)",
   accent:       "#D9321C",
-  accentBg:     "rgba(217,50,28,0.10)",
-  accentBorder: "rgba(217,50,28,0.22)",
   green:        "#22C55E",
   greenBg:      "rgba(34,197,94,0.10)",
-  greenBorder:  "rgba(34,197,94,0.22)",
+  greenBorder:  "rgba(34,197,94,0.20)",
   orange:       "#F59E0B",
   orangeBg:     "rgba(245,158,11,0.10)",
-  orangeBorder: "rgba(245,158,11,0.22)",
-  blue:         "#3B82F6",
-  blueBg:       "rgba(59,130,246,0.10)",
-  blueBorder:   "rgba(59,130,246,0.22)",
-  purple:       "#A855F7",
-  purpleBg:     "rgba(168,85,247,0.10)",
-  purpleBorder: "rgba(168,85,247,0.22)",
+  red:          "#EF4444",
+  redBg:        "rgba(239,68,68,0.10)",
+  blue:         "#60A5FA",
+  blueBg:       "rgba(96,165,250,0.10)",
+  yellow:       "#FBBF24",
 }
 
-const WALTERS_API    = "https://restaurant-brain-production.up.railway.app"
-const OWNER_PASS     = "hostowner2025"
-const DEMO_RID       = "dec0cafe-0000-4000-8000-000000000001"
+const API       = "https://restaurant-brain-production.up.railway.app"
+const DEMO_RID  = "dec0cafe-0000-4000-8000-000000000001"
+const PASS      = "hostowner2025"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-interface Restaurant {
-  id: string; name: string; city: string
-  plan: "Growth" | "Starter" | "Trial" | "Enterprise"
-  status: "Active" | "Trial" | "Paused"
-  since: string; mrr: number
-  seatedToday: number; avgWait: number; queueNow: number; coversThisWeek: number
-  nfcTaps: number; isLive?: boolean; liveRid?: string; dashboardUrl?: string
+type SvcStatus = "up" | "degraded" | "down" | "checking"
+
+interface Svc {
+  status:  SvcStatus
+  detail:  string
+  latency?: number
 }
 
-const MOCK_RESTAURANTS: Restaurant[] = [
-  { id: "walters303",    name: "Walter's 303",      city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-01-15", mrr: 149, seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 312, isLive: true,  dashboardUrl: "/station" },
-  { id: "demo",          name: "Demo Restaurant",   city: "Denver, CO", plan: "Trial",      status: "Trial",  since: "2026-03-10", mrr: 0,   seatedToday: 0,  avgWait: 0,  queueNow: 0, coversThisWeek: 0,   nfcTaps: 0,   isLive: true,  liveRid: DEMO_RID, dashboardUrl: "/demo/station" },
-  { id: "capital",      name: "The Capital Grille", city: "Denver, CO", plan: "Enterprise", status: "Active", since: "2025-02-01", mrr: 399, seatedToday: 47, avgWait: 18, queueNow: 6, coversThisWeek: 312, nfcTaps: 541 },
-  { id: "panzano",      name: "Panzano",            city: "Denver, CO", plan: "Growth",     status: "Active", since: "2025-02-14", mrr: 149, seatedToday: 31, avgWait: 12, queueNow: 3, coversThisWeek: 198, nfcTaps: 287 },
-  { id: "elways",       name: "Elway's Cherry Creek",city: "Denver, CO",plan: "Trial",      status: "Trial",  since: "2025-03-01", mrr: 0,   seatedToday: 22, avgWait: 21, queueNow: 4, coversThisWeek: 134, nfcTaps: 89  },
-  { id: "guard-grace",  name: "Guard and Grace",    city: "Denver, CO", plan: "Trial",      status: "Trial",  since: "2025-03-02", mrr: 0,   seatedToday: 18, avgWait: 16, queueNow: 2, coversThisWeek: 97,  nfcTaps: 43  },
+interface RestLive {
+  queueNow:       number
+  seatedToday:    number
+  avgWait:        number
+  coversThisWeek: number
+  loading:        boolean
+  error:          boolean
+}
+
+interface DemoReq {
+  id:          string
+  name:        string
+  restaurant:  string
+  email:       string
+  phone:       string
+  city:        string
+  type:        string
+  submittedAt: string
+}
+
+// ── Restaurants (real only) ────────────────────────────────────────────────────
+const RESTS = [
+  { id: "walters", name: "Walter's 303",   city: "Denver, CO", rid: null,      dashUrl: "/station",      label: "Active" },
+  { id: "demo",    name: "Demo Restaurant", city: "Denver, CO", rid: DEMO_RID,  dashUrl: "/demo/station", label: "Demo"   },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function sinceLabel(iso: string) {
+function svcDot(s: SvcStatus) {
+  if (s === "up")       return D.green
+  if (s === "degraded") return D.yellow
+  if (s === "down")     return D.red
+  return D.muted
+}
+function svcLabel(s: SvcStatus) {
+  if (s === "up")       return "Operational"
+  if (s === "degraded") return "Degraded"
+  if (s === "down")     return "Down"
+  return "Checking…"
+}
+function fmtTime(iso: string) {
   const d = new Date(iso)
-  return `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getMonth()]} ${d.getFullYear()}`
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
+    " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
 }
-
-function planStyle(plan: Restaurant["plan"]) {
-  switch (plan) {
-    case "Enterprise": return { bg: D.purpleBg, color: D.purple, border: D.purpleBorder }
-    case "Growth":     return { bg: D.blueBg,   color: D.blue,   border: D.blueBorder   }
-    case "Starter":    return { bg: D.greenBg,  color: D.green,  border: D.greenBorder  }
-    case "Trial":      return { bg: D.orangeBg, color: D.orange, border: D.orangeBorder }
-  }
-}
-
-function statusStyle(status: Restaurant["status"]) {
-  switch (status) {
-    case "Active": return { color: D.green,  dot: D.green  }
-    case "Trial":  return { color: D.orange, dot: D.orange }
-    case "Paused": return { color: D.muted,  dot: D.muted  }
-  }
+function fmtRefresh(d: Date | null) {
+  if (!d) return "Never"
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })
 }
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 export default function OwnerPage() {
+  const router = useRouter()
   const [authed,      setAuthed]      = useState(false)
   const [passInput,   setPassInput]   = useState("")
   const [passErr,     setPassErr]     = useState(false)
   const [showPass,    setShowPass]    = useState(false)
-  const [restaurants, setRestaurants] = useState<Restaurant[]>(MOCK_RESTAURANTS)
-  const [loading,     setLoading]     = useState(false)
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
-  // ── System health state ──
-  type SvcStatus = "up"|"degraded"|"down"|"checking"
-  const [apiPing,    setApiPing]    = useState<number | null>(null)
-  const [railwaySvc, setRailwaySvc] = useState<SvcStatus>("checking")
-  const [githubSvc,  setGithubSvc]  = useState<SvcStatus>("checking")
-  const [dbSvc,      setDbSvc]      = useState<SvcStatus>("checking")
-  const [integrations, setIntegrations] = useState<Record<string, boolean>>({
-    "7shifts": false, homebase: false, wheniwork: false, square: false, opentable: false,
+  // Service states
+  const [railway,    setRailway]    = useState<Svc>({ status: "checking", detail: "" })
+  const [github,     setGithub]     = useState<Svc>({ status: "checking", detail: "" })
+  const [textbelt,   setTextbelt]   = useState<Svc>({ status: "checking", detail: "" })
+  const [db,         setDb]         = useState<Svc>({ status: "checking", detail: "" })
+
+  // Per-restaurant live data
+  const [liveData, setLiveData] = useState<Record<string, RestLive>>({
+    walters: { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
+    demo:    { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
   })
+
+  // Demo requests
+  const [demoReqs,      setDemoReqs]      = useState<DemoReq[]>([])
+  const [demoLoading,   setDemoLoading]   = useState(false)
+  const [lastRefresh,   setLastRefresh]   = useState<Date | null>(null)
+  const [refreshing,    setRefreshing]    = useState(false)
 
   useEffect(() => {
     if (sessionStorage.getItem("host_owner_authed") === "1") setAuthed(true)
   }, [])
 
-  const fetchLive = useCallback(async () => {
-    setLoading(true)
-    try {
-      // Fetch live data for every restaurant that has isLive: true
-      // Walter's uses no restaurant_id param; others use liveRid
-      const liveRestaurants = MOCK_RESTAURANTS.filter(r => r.isLive)
-      const results = await Promise.all(
-        liveRestaurants.map(async r => {
-          const rid    = r.liveRid ? `?restaurant_id=${r.liveRid}` : ""
-          const [insRes, qRes] = await Promise.all([
-            fetch(`${WALTERS_API}/insights${rid}`),
-            fetch(`${WALTERS_API}/queue${rid}`),
-          ])
-          const ins = insRes.ok ? await insRes.json() : null
-          const q   = qRes.ok  ? await qRes.json()   : []
-          return {
-            id:             r.id,
-            seatedToday:    ins?.parties_seated_today ?? r.seatedToday,
-            avgWait:        Math.round(ins?.avg_wait_estimate ?? r.avgWait),
-            queueNow:       Array.isArray(q) ? q.filter((e: { status: string }) => ["waiting","ready"].includes(e.status)).length : r.queueNow,
-            coversThisWeek: ins?.covers_this_week ?? r.coversThisWeek,
-          }
+  // ── Fetch all data ────────────────────────────────────────────────────────────
+  const fetchAll = useCallback(async () => {
+    setRefreshing(true)
+
+    // --- Service checks (parallel) ---
+    const t0 = Date.now()
+    const [railwayResult, githubResult, textbeltResult] = await Promise.allSettled([
+      // Railway + DB
+      (async () => {
+        const t = Date.now()
+        const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RID}`, { cache: "no-store" })
+        const ms = Date.now() - t
+        return { ok: r.ok, ms }
+      })(),
+      // GitHub status
+      (async () => {
+        const r = await fetch("https://www.githubstatus.com/api/v2/status.json", { cache: "no-store" })
+        return await r.json()
+      })(),
+      // Textbelt quota (server-side proxy)
+      (async () => {
+        const r = await fetch("/api/textbelt", { cache: "no-store" })
+        return await r.json()
+      })(),
+    ])
+
+    // Railway
+    if (railwayResult.status === "fulfilled") {
+      const { ok, ms } = railwayResult.value
+      setRailway({ status: ok ? (ms > 3000 ? "degraded" : "up") : "down", detail: ok ? `${ms}ms response` : "No response", latency: ms })
+      setDb({ status: ok ? "up" : "down", detail: ok ? "Connected" : "Unreachable" })
+    } else {
+      setRailway({ status: "down", detail: "Request failed" })
+      setDb({ status: "down", detail: "Unreachable" })
+    }
+
+    // GitHub
+    if (githubResult.status === "fulfilled") {
+      const d = githubResult.value
+      const ind: string = d?.status?.indicator ?? "none"
+      setGithub({ status: ind === "none" ? "up" : ind === "minor" ? "degraded" : "down", detail: d?.status?.description ?? "" })
+    } else {
+      setGithub({ status: "down", detail: "Status unavailable" })
+    }
+
+    // Textbelt
+    if (textbeltResult.status === "fulfilled") {
+      const d = textbeltResult.value
+      if (d.error && d.quotaRemaining === null && d.error === "TEXTBELT_KEY not configured") {
+        setTextbelt({ status: "degraded", detail: "API key not set in environment" })
+      } else if (typeof d.quotaRemaining === "number") {
+        const quota = d.quotaRemaining as number
+        setTextbelt({
+          status: quota > 0 ? "up" : "down",
+          detail: `${quota.toLocaleString()} texts remaining`,
         })
-      )
-      const liveMap = new Map(results.map(r => [r.id, r]))
-      setRestaurants(prev => prev.map(r => {
-        const live = liveMap.get(r.id)
-        if (!live) return r
-        return { ...r, ...live }
-      }))
-      setLastRefresh(new Date())
-    } catch {}
-    setLoading(false)
+      } else {
+        setTextbelt({ status: "degraded", detail: "Awaiting whitelist approval" })
+      }
+    } else {
+      setTextbelt({ status: "down", detail: "Quota check failed" })
+    }
+
+    void t0 // suppress lint
+
+    // --- Restaurant live data (parallel) ---
+    await Promise.all(RESTS.map(async (rest) => {
+      setLiveData(prev => ({ ...prev, [rest.id]: { ...prev[rest.id], loading: true, error: false } }))
+      try {
+        const ridParam = rest.rid ? `?restaurant_id=${rest.rid}` : ""
+        const [insRes, qRes] = await Promise.all([
+          fetch(`${API}/insights${ridParam}`, { cache: "no-store" }),
+          fetch(`${API}/queue${ridParam}`,    { cache: "no-store" }),
+        ])
+        const ins = insRes.ok ? await insRes.json() : null
+        const q   = qRes.ok  ? await qRes.json()   : []
+
+        setLiveData(prev => ({
+          ...prev,
+          [rest.id]: {
+            queueNow:       Array.isArray(q) ? q.filter((e: { status: string }) => ["waiting","ready"].includes(e.status)).length : 0,
+            seatedToday:    ins?.parties_seated_today ?? 0,
+            avgWait:        Math.round(ins?.avg_wait_estimate ?? 0),
+            coversThisWeek: ins?.covers_this_week ?? 0,
+            loading:        false,
+            error:          false,
+          }
+        }))
+      } catch {
+        setLiveData(prev => ({ ...prev, [rest.id]: { ...prev[rest.id], loading: false, error: true } }))
+      }
+    }))
+
+    // --- Demo requests ---
+    setDemoLoading(true)
+    try {
+      const r = await fetch(`/api/demo?secret=${PASS}`, { cache: "no-store" })
+      if (r.ok) setDemoReqs(await r.json())
+    } catch { /* ignore */ }
+    setDemoLoading(false)
+
+    setLastRefresh(new Date())
+    setRefreshing(false)
   }, [])
 
-  useEffect(() => { if (authed) fetchLive() }, [authed, fetchLive])
-
-  // Poll infrastructure status + read integrations from localStorage
   useEffect(() => {
-    if (!authed) return
-
-    async function checkHealth() {
-      // 1. HOST API (Railway) — measure response time
-      const t0 = Date.now()
-      try {
-        const r = await fetch(`${WALTERS_API}/queue?restaurant_id=${DEMO_RID}`, { cache: "no-store" })
-        const ms = Date.now() - t0
-        setApiPing(ms)
-        setRailwaySvc(r.ok ? (ms > 2000 ? "degraded" : "up") : "down")
-        setDbSvc(r.ok ? "up" : "down")
-      } catch {
-        setApiPing(null)
-        setRailwaySvc("down")
-        setDbSvc("down")
-      }
-
-      // 2. GitHub status (public CORS-friendly API)
-      try {
-        const r = await fetch("https://www.githubstatus.com/api/v2/status.json", { cache: "no-store" })
-        const d = await r.json()
-        const ind: string = d?.status?.indicator ?? "none"
-        setGithubSvc(ind === "none" ? "up" : ind === "minor" ? "degraded" : "down")
-      } catch {
-        setGithubSvc("down")
-      }
-    }
-
-    // 3. Read integrations from localStorage (client-only)
-    function readIntegrations() {
-      setIntegrations({
-        "7shifts":  !!localStorage.getItem("host_7shifts_company"),
-        homebase:   !!localStorage.getItem("host_homebase_company"),
-        wheniwork:  !!localStorage.getItem("host_wheniwork_company"),
-        square:     !!localStorage.getItem("host_square"),
-        opentable:  !!localStorage.getItem("host_opentable_url"),
-      })
-    }
-
-    checkHealth()
-    readIntegrations()
-    const t = setInterval(checkHealth, 5 * 60_000)
-    return () => clearInterval(t)
+    if (authed) fetchAll()
+    // Re-poll services every 5 min
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
 
+  useEffect(() => {
+    if (!authed) return
+    const t = setInterval(fetchAll, 5 * 60_000)
+    return () => clearInterval(t)
+  }, [authed, fetchAll])
+
   function tryLogin() {
-    if (passInput.trim() === OWNER_PASS) {
+    if (passInput.trim() === PASS) {
       sessionStorage.setItem("host_owner_authed", "1")
       setAuthed(true); setPassErr(false)
     } else { setPassErr(true) }
@@ -199,52 +244,37 @@ export default function OwnerPage() {
   function logout() {
     sessionStorage.removeItem("host_owner_authed")
     setAuthed(false); setPassInput("")
+    router.push("/")
   }
 
-  const totalMRR    = restaurants.reduce((s, r) => s + r.mrr, 0)
-  const activeCount = restaurants.filter(r => r.status === "Active").length
-  const trialCount  = restaurants.filter(r => r.status === "Trial").length
-  const totalSeated = restaurants.reduce((s, r) => s + r.seatedToday, 0)
-  const totalQueue  = restaurants.reduce((s, r) => s + r.queueNow, 0)
+  const font = "'Inter', system-ui, -apple-system, sans-serif"
 
-  const font      = "var(--font-geist), 'Inter', system-ui, -apple-system, sans-serif"
-  const fontSerif = "var(--font-playfair), Georgia, 'Times New Roman', serif"
-
-  // ── PASSWORD GATE ──
+  // ── LOGIN GATE ────────────────────────────────────────────────────────────────
   if (!authed) return (
     <div style={{
       minHeight: "100vh", background: D.bg,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: font, position: "relative", overflow: "hidden",
+      fontFamily: font, color: D.text,
     }}>
-      {/* Glow */}
-      <div style={{ position: "absolute", top: "30%", left: "50%", transform: "translateX(-50%)", width: 600, height: 400, background: "radial-gradient(ellipse, rgba(217,50,28,0.10) 0%, transparent 70%)", pointerEvents: "none" }} />
-      {/* Grid */}
-      <div style={{ position: "absolute", inset: 0, opacity: 0.03, backgroundImage: "linear-gradient(rgba(255,255,255,0.8) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.8) 1px,transparent 1px)", backgroundSize: "60px 60px", pointerEvents: "none" }} />
-
       <div style={{
-        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 10, padding: "44px 40px", width: 400, maxWidth: "92vw",
-        display: "flex", flexDirection: "column", gap: 28,
-        backdropFilter: "blur(20px)", boxShadow: "0 40px 80px rgba(0,0,0,0.5)",
-        position: "relative",
+        width: 380, maxWidth: "92vw",
+        background: D.surface,
+        border: `1px solid ${D.border}`,
+        borderRadius: 10,
+        padding: "40px 36px",
       }}>
-        {/* Logo */}
-        <div style={{ textAlign: "center", paddingBottom: 4 }}>
-          <div style={{ fontSize: 40, fontWeight: 900, color: "#fff", fontFamily: "'Arial Black', Arial, Helvetica, sans-serif", letterSpacing: "-0.04em", lineHeight: 1 }}>
-            HOST
-          </div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: D.muted, letterSpacing: "0.18em", marginTop: 6, textTransform: "uppercase" }}>
+        {/* Wordmark */}
+        <div style={{ textAlign: "center", marginBottom: 32 }}>
+          <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>HOST</div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: D.muted, letterSpacing: "0.2em", textTransform: "uppercase", marginTop: 8 }}>
             Owner Console
           </div>
-          <div style={{ width: 32, height: 1, background: D.accent, margin: "12px auto 0" }} />
         </div>
 
-        {/* Input */}
-        <div>
-          <label style={{ fontSize: 12, fontWeight: 600, color: D.muted, display: "block", marginBottom: 8, letterSpacing: "0.04em" }}>
-            ACCESS PASSWORD
-          </label>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: D.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
+            Password
+          </div>
           <div style={{ position: "relative" }}>
             <input
               type={showPass ? "text" : "password"}
@@ -255,524 +285,383 @@ export default function OwnerPage() {
               autoFocus
               style={{
                 width: "100%", boxSizing: "border-box",
-                padding: "12px 44px 12px 16px",
+                padding: "11px 42px 11px 14px",
                 background: "rgba(255,255,255,0.05)",
-                border: `1px solid ${passErr ? "rgba(217,50,28,0.5)" : "rgba(255,255,255,0.1)"}`,
-                borderRadius: 10, outline: "none",
-                color: "#fff", fontSize: 14, fontFamily: "monospace",
+                border: `1px solid ${passErr ? "rgba(239,68,68,0.5)" : D.border}`,
+                borderRadius: 8, outline: "none",
+                color: D.text, fontSize: 14, fontFamily: "monospace",
               }}
             />
-            <button onClick={() => setShowPass(v => !v)} style={{
-              position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)",
-              background: "none", border: "none", cursor: "pointer", padding: 0, color: D.muted,
-              display: "flex", alignItems: "center",
-            }}>
-              {showPass ? <EyeOff style={{ width: 15, height: 15 }} /> : <Eye style={{ width: 15, height: 15 }} />}
+            <button
+              onClick={() => setShowPass(v => !v)}
+              style={{
+                position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+                color: D.muted, fontSize: 11, lineHeight: 1,
+              }}
+            >
+              {showPass ? "HIDE" : "SHOW"}
             </button>
           </div>
           {passErr && (
-            <p style={{ fontSize: 11, color: D.accent, margin: "6px 0 0", fontWeight: 500 }}>
-              Incorrect password
-            </p>
+            <div style={{ fontSize: 12, color: D.red, marginTop: 6 }}>Incorrect password.</div>
           )}
         </div>
 
-        {/* Submit */}
-        <button onClick={tryLogin} style={{
-          width: "100%", padding: "13px 20px", borderRadius: 10,
-          background: "linear-gradient(135deg, #D9321C, #A52010)",
-          border: "none", color: "#fff", fontSize: 14, fontWeight: 700,
-          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-          boxShadow: "0 4px 20px rgba(217,50,28,0.3)", fontFamily: font,
-        }}>
-          Access Console
-          <ArrowRight style={{ width: 15, height: 15 }} />
+        <button
+          onClick={tryLogin}
+          style={{
+            width: "100%", padding: "12px", borderRadius: 8,
+            background: D.accent, border: "none", color: "#fff",
+            fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 8,
+          }}
+        >
+          Sign In
         </button>
 
-        <div style={{ textAlign: "center" }}>
+        <div style={{ textAlign: "center", marginTop: 20 }}>
           <a href="/" style={{ fontSize: 12, color: D.muted, textDecoration: "none" }}>← Back to HOST</a>
         </div>
       </div>
     </div>
   )
 
-  // ── AUTHENTICATED DASHBOARD ──
+  // ── DASHBOARD ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{
-      minHeight: "100vh", background: D.bg,
-      fontFamily: font, color: D.text,
-    }}>
+    <div style={{ minHeight: "100vh", background: D.bg, fontFamily: font, color: D.text }}>
 
-      {/* Top nav */}
+      {/* ── Nav ── */}
       <div style={{
-        background: "rgba(8,12,16,0.90)", backdropFilter: "blur(20px)",
-        borderBottom: `1px solid ${D.border}`,
-        padding: "0 32px", height: 60,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
         position: "sticky", top: 0, zIndex: 50,
+        background: "rgba(8,12,16,0.95)",
+        backdropFilter: "blur(16px)",
+        borderBottom: `1px solid ${D.border}`,
+        height: 56, padding: "0 28px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
+        {/* Left: wordmark */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 8,
-            background: "linear-gradient(135deg, #D9321C, #A52010)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 0 12px rgba(217,50,28,0.35)",
-          }}>
-            <Zap style={{ width: 14, height: 14, color: "#fff", fill: "#fff" }} />
-          </div>
-          <span style={{ fontSize: 20, fontWeight: 900, color: "#fff", fontFamily: "'Arial Black', Arial, Helvetica, sans-serif", letterSpacing: "-0.03em" }}>HOST</span>
-          <span style={{
-            fontSize: 9, fontWeight: 700, letterSpacing: "0.1em",
-            background: D.purpleBg, color: D.purple, border: `1px solid ${D.purpleBorder}`,
-            borderRadius: 4, padding: "2px 7px",
-          }}>OWNER CONSOLE</span>
+          <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.04em" }}>HOST</div>
+          <div style={{ width: 1, height: 18, background: D.border }} />
+          <div style={{ fontSize: 12, fontWeight: 500, color: D.muted, letterSpacing: "0.06em" }}>Owner Console</div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {lastRefresh && (
-            <span style={{ fontSize: 11, color: D.muted }}>
-              {lastRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          <button onClick={fetchLive} disabled={loading} style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-            borderRadius: 8, border: `1px solid ${D.border}`,
-            background: D.surface, color: D.text2,
-            fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font,
-          }}>
-            {loading
-              ? <Loader2 style={{ width: 12, height: 12 }} />
-              : <RefreshCw style={{ width: 12, height: 12 }} />}
+        {/* Right: last refresh + buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ fontSize: 11, color: D.muted }}>
+            Refreshed {fmtRefresh(lastRefresh)}
+          </div>
+          <button
+            onClick={fetchAll}
+            disabled={refreshing}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "7px 14px", borderRadius: 7,
+              background: D.surface, border: `1px solid ${D.border}`,
+              color: D.text2, fontSize: 12, fontWeight: 500,
+              cursor: refreshing ? "not-allowed" : "pointer", opacity: refreshing ? 0.5 : 1,
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }}>
+              <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            </svg>
             Refresh
           </button>
-          <a href="/" style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-            borderRadius: 8, border: `1px solid ${D.border}`,
-            background: D.surface, color: D.muted,
-            fontSize: 11, fontWeight: 600, textDecoration: "none",
-          }}>
-            ← HOST
-          </a>
-          <button onClick={logout} style={{
-            display: "flex", alignItems: "center", gap: 5, padding: "7px 12px",
-            borderRadius: 8, border: `1px solid ${D.border}`,
-            background: D.surface, color: D.muted,
-            fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: font,
-          }}>
-            <LogOut style={{ width: 12, height: 12 }} />
-            Logout
+          <button
+            onClick={logout}
+            style={{
+              padding: "7px 14px", borderRadius: 7,
+              background: "none", border: `1px solid ${D.border}`,
+              color: D.muted, fontSize: 12, fontWeight: 500, cursor: "pointer",
+            }}
+          >
+            Sign Out
           </button>
         </div>
       </div>
 
-      {/* Body */}
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "36px 32px 80px" }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-        {/* Page title */}
-        <div style={{ marginBottom: 36, paddingBottom: 24, borderBottom: `1px solid ${D.border}` }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: D.accent, letterSpacing: "0.18em", textTransform: "uppercase", marginBottom: 10 }}>
-            Owner Console
-          </div>
-          <h1 style={{ fontSize: 36, fontWeight: 800, color: D.text, margin: "0 0 8px", fontFamily: fontSerif, letterSpacing: "-0.01em", lineHeight: 1.1 }}>
-            Account Overview
-          </h1>
-          <p style={{ fontSize: 13, color: D.muted, margin: 0 }}>
-            All HOST locations · live data where available
-          </p>
-        </div>
+      {/* ── Main content ── */}
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 28px 60px" }}>
 
-        {/* KPI row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
-          {[
-            { icon: Building2,    label: "LOCATIONS",     value: restaurants.length, color: D.purple, bg: D.purpleBg, border: D.purpleBorder },
-            { icon: CheckCircle2, label: "ACTIVE",         value: activeCount,        color: D.green,  bg: D.greenBg,  border: D.greenBorder  },
-            { icon: Star,         label: "TRIALS",         value: trialCount,         color: D.orange, bg: D.orangeBg, border: D.orangeBorder },
-            { icon: DollarSign,   label: "MRR",            value: `$${totalMRR}`,     color: D.blue,   bg: D.blueBg,   border: D.blueBorder   },
-            { icon: Users,        label: "QUEUE NOW",      value: totalQueue,         color: D.accent, bg: D.accentBg, border: D.accentBorder },
-          ].map(({ icon: Icon, label, value, color, bg, border }) => (
-            <div key={label} style={{
-              background: D.surface, border: `1px solid ${D.border}`,
-              borderRadius: 8, padding: "18px 20px",
-              display: "flex", flexDirection: "column", gap: 12,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: D.muted, letterSpacing: "0.06em" }}>{label}</span>
-                <div style={{ width: 28, height: 28, borderRadius: 7, background: bg, border: `1px solid ${border}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <Icon style={{ width: 13, height: 13, color }} />
-                </div>
-              </div>
-              <div style={{ fontSize: 30, fontWeight: 800, color: D.text, lineHeight: 1, fontFamily: fontSerif, letterSpacing: "-0.02em" }}>
-                {value}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Seated today banner */}
+        {/* ── Section: Service Status ── */}
+        <SectionLabel>Service Status</SectionLabel>
         <div style={{
-          background: "linear-gradient(135deg, rgba(217,50,28,0.12), rgba(217,50,28,0.04))",
-          border: `1px solid ${D.accentBorder}`,
-          borderRadius: 8, padding: "20px 28px", marginBottom: 24,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          gap: 12,
+          marginBottom: 36,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: D.accentBg, border: `1px solid ${D.accentBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Activity style={{ width: 18, height: 18, color: D.accent }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: D.muted, marginBottom: 6, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-                Parties Seated Today · All Locations
-              </div>
-              <div style={{ fontSize: 42, fontWeight: 800, color: D.text, lineHeight: 1, fontFamily: fontSerif, letterSpacing: "-0.02em" }}>
-                {loading ? <Loader2 style={{ width: 24, height: 24, display: "inline" }} /> : totalSeated}
-              </div>
-            </div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 11, color: D.muted }}>{restaurants.length} locations</div>
-            <div style={{ fontSize: 10, color: D.accentBorder, marginTop: 2 }}>Live · Walter&apos;s 303</div>
-          </div>
+          <SvcCard name="HOST API (Railway)" svc={railway} icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          } extra={railway.latency != null ? `${railway.latency}ms` : undefined} />
+
+          <SvcCard name="GitHub" svc={github} icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          } />
+
+          <SvcCard name="Textbelt SMS" svc={textbelt} icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          } />
+
+          <SvcCard name="Backend DB" svc={db} icon={
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          } />
         </div>
 
-        {/* Section label */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.14em", textTransform: "uppercase" }}>Locations</div>
-          <div style={{ flex: 1, height: 1, background: D.border }} />
-        </div>
+        {/* ── Section: Restaurants ── */}
+        <SectionLabel>Restaurants</SectionLabel>
+        <div style={{
+          border: `1px solid ${D.border}`,
+          borderRadius: 10,
+          overflow: "hidden",
+          marginBottom: 36,
+        }}>
+          {/* Table header */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 90px 90px 100px 120px 140px",
+            padding: "11px 20px",
+            background: D.surface,
+            borderBottom: `1px solid ${D.border}`,
+          }}>
+            {["Restaurant","Status","In Queue","Seated Today","Avg Wait",""].map((h, i) => (
+              <div key={i} style={{ fontSize: 11, fontWeight: 600, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: i >= 2 ? "center" : "left" }}>
+                {h}
+              </div>
+            ))}
+          </div>
 
-        {/* Restaurant grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 24 }}>
-          {restaurants.map(r => {
-            const ps = planStyle(r.plan)
-            const ss = statusStyle(r.status)
+          {RESTS.map((rest, idx) => {
+            const live = liveData[rest.id]
             return (
-              <div key={r.id} style={{
-                background: r.isLive
-                  ? "linear-gradient(135deg, rgba(34,197,94,0.05), rgba(34,197,94,0.02))"
-                  : D.surface,
-                border: `1px solid ${r.isLive ? D.greenBorder : D.border}`,
-                borderRadius: 8, padding: 22, display: "flex", flexDirection: "column", gap: 16,
-              }}>
-                {/* Header */}
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{
-                      width: 38, height: 38, borderRadius: 9,
-                      background: r.isLive ? D.greenBg : "rgba(255,255,255,0.04)",
-                      border: `1px solid ${r.isLive ? D.greenBorder : D.border}`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      <Building2 style={{ width: 17, height: 17, color: r.isLive ? D.green : D.muted }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: D.text, display: "flex", alignItems: "center", gap: 8, fontFamily: fontSerif, letterSpacing: "-0.01em" }}>
-                        {r.name}
-                        {r.isLive && <span style={{ fontSize: 9, fontWeight: 700, color: D.green, fontFamily: font }}>● LIVE</span>}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
-                        <MapPin style={{ width: 10, height: 10, color: D.muted }} />
-                        <span style={{ fontSize: 11, color: D.muted }}>{r.city}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.04em", padding: "3px 8px", borderRadius: 4, background: ps.bg, color: ps.color, border: `1px solid ${ps.border}` }}>
-                      {r.plan.toUpperCase()}
-                    </span>
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 4, color: ss.color, background: `${ss.dot}12`, border: `1px solid ${ss.dot}30`, display: "flex", alignItems: "center", gap: 3 }}>
-                      <CircleDot style={{ width: 7, height: 7 }} />{r.status}
-                    </span>
-                  </div>
+              <div
+                key={rest.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 90px 90px 100px 120px 140px",
+                  padding: "16px 20px",
+                  borderBottom: idx < RESTS.length - 1 ? `1px solid ${D.border}` : "none",
+                  alignItems: "center",
+                  background: "transparent",
+                  transition: "background 0.12s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = D.surfaceHover)}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
+                {/* Name + city */}
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{rest.name}</div>
+                  <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>{rest.city}</div>
                 </div>
 
-                {/* Metrics */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, borderTop: `1px solid ${D.border}`, borderBottom: `1px solid ${D.border}`, padding: "14px 0" }}>
-                  {[
-                    { label: "Seated Today",  value: loading && r.isLive ? "…" : r.seatedToday   },
-                    { label: "Avg Wait",       value: loading && r.isLive ? "…" : `${r.avgWait}m` },
-                    { label: "Queue Now",      value: loading && r.isLive ? "…" : r.queueNow      },
-                    { label: "Covers / Week",  value: loading && r.isLive ? "…" : r.coversThisWeek},
-                  ].map(({ label, value }) => (
-                    <div key={label} style={{ textAlign: "center" }}>
-                      <div style={{ fontSize: 9, fontWeight: 600, color: D.muted, letterSpacing: "0.04em", marginBottom: 4 }}>{label.toUpperCase()}</div>
-                      <div style={{ fontSize: 20, fontWeight: 800, color: D.text, letterSpacing: "-0.03em" }}>{value}</div>
-                    </div>
-                  ))}
+                {/* Status */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{
+                    width: 7, height: 7, borderRadius: "50%",
+                    background: rest.label === "Active" ? D.green : D.orange,
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ fontSize: 12, color: rest.label === "Active" ? D.green : D.orange, fontWeight: 500 }}>
+                    {rest.label}
+                  </span>
                 </div>
 
-                {/* Footer */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                    <span style={{ fontSize: 11, color: D.muted }}><span style={{ fontWeight: 700, color: D.text2 }}>{r.nfcTaps}</span> NFC taps</span>
-                    <span style={{ fontSize: 11, color: D.muted }}>Since <span style={{ fontWeight: 700, color: D.text2 }}>{sinceLabel(r.since)}</span></span>
-                    {r.mrr > 0
-                      ? <span style={{ fontSize: 11, fontWeight: 700, color: D.blue }}>${r.mrr}/mo</span>
-                      : <span style={{ fontSize: 10, fontWeight: 700, color: D.orange }}>Trial</span>}
-                  </div>
-                  {r.dashboardUrl ? (
-                    <a
-                      href={r.dashboardUrl}
-                      onClick={() => {
-                        if (r.id === "demo") sessionStorage.setItem("host_demo_authed", "1")
-                      }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 5, padding: "7px 14px",
-                        borderRadius: 8, background: "linear-gradient(135deg, #D9321C, #A52010)",
-                        fontSize: 11, fontWeight: 700, color: "#fff", textDecoration: "none",
-                        boxShadow: "0 2px 12px rgba(217,50,28,0.25)",
-                      }}
-                    >
-                      <ArrowUpRight style={{ width: 11, height: 11 }} />
-                      Dashboard
-                    </a>
+                {/* In Queue */}
+                <LiveNum live={live} value={live.queueNow} />
+
+                {/* Seated Today */}
+                <LiveNum live={live} value={live.seatedToday} />
+
+                {/* Avg Wait */}
+                <div style={{ textAlign: "center" }}>
+                  {live.loading ? (
+                    <span style={{ fontSize: 13, color: D.muted }}>—</span>
+                  ) : live.error ? (
+                    <span style={{ fontSize: 13, color: D.red }}>Error</span>
                   ) : (
-                    <span style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, background: D.surface, border: `1px solid ${D.border}`, fontSize: 11, fontWeight: 600, color: D.muted }}>
-                      <AlertCircle style={{ width: 11, height: 11 }} />Demo
+                    <span style={{ fontSize: 14, fontWeight: 600, color: live.avgWait > 0 ? D.text : D.muted }}>
+                      {live.avgWait > 0 ? `${live.avgWait}m` : "—"}
                     </span>
                   )}
+                </div>
+
+                {/* Dashboard link */}
+                <div style={{ textAlign: "right" }}>
+                  <a
+                    href={rest.dashUrl}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 5,
+                      fontSize: 12, fontWeight: 600, color: D.text2,
+                      textDecoration: "none",
+                      padding: "7px 12px", borderRadius: 7,
+                      border: `1px solid ${D.border}`,
+                      background: D.surface,
+                      transition: "border-color 0.12s, color 0.12s",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = D.borderStrong; (e.currentTarget as HTMLElement).style.color = D.text }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = D.border; (e.currentTarget as HTMLElement).style.color = D.text2 }}
+                  >
+                    Open Dashboard
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+                  </a>
                 </div>
               </div>
             )
           })}
         </div>
 
-        {/* Bottom row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 24 }}>
-          {/* Revenue */}
-          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "22px 24px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: D.blueBg, border: `1px solid ${D.blueBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <DollarSign style={{ width: 13, height: 13, color: D.blue }} />
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: D.text, fontFamily: fontSerif, letterSpacing: "-0.01em" }}>Revenue Breakdown</div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {restaurants.filter(r => r.mrr > 0).map(r => (
-                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 12, color: D.text2 }}>{r.name}</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ height: 5, borderRadius: 3, background: `linear-gradient(90deg, #3B82F6, #60A5FA)`, width: Math.round((r.mrr / totalMRR) * 100) }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: D.text }}>${r.mrr}/mo</span>
-                  </div>
-                </div>
-              ))}
-              <div style={{ borderTop: `1px solid ${D.border}`, paddingTop: 12, marginTop: 4, display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: D.text2 }}>Total MRR</span>
-                <span style={{ fontSize: 18, fontWeight: 800, color: D.blue, fontFamily: fontSerif, letterSpacing: "-0.02em" }}>${totalMRR}/mo</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 11, color: D.muted }}>ARR (projected)</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: D.muted }}>${(totalMRR * 12).toLocaleString()}/yr</span>
-              </div>
-            </div>
+        {/* ── Section: Demo Requests ── */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+            Demo Requests
           </div>
-
-          {/* Activity */}
-          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "22px 24px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: D.greenBg, border: `1px solid ${D.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <TrendingUp style={{ width: 13, height: 13, color: D.green }} />
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: D.text, fontFamily: fontSerif, letterSpacing: "-0.01em" }}>Pipeline & Activity</div>
+          {demoReqs.length > 0 && (
+            <div style={{
+              fontSize: 11, fontWeight: 700, color: D.text,
+              background: D.accent, borderRadius: 100,
+              padding: "2px 8px", lineHeight: 1.5,
+            }}>
+              {demoReqs.length}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[
-                { label: "Guard and Grace started trial",     time: "2h ago",  type: "trial"   },
-                { label: "Elway's started trial",             time: "2d ago",  type: "trial"   },
-                { label: "Panzano upgraded to Growth",        time: "18d ago", type: "upgrade" },
-                { label: "Capital Grille went Enterprise",    time: "30d ago", type: "upgrade" },
-                { label: "Walter's 303 launched on HOST",     time: "47d ago", type: "launch"  },
-              ].map((ev, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{
-                    width: 22, height: 22, borderRadius: 4, flexShrink: 0,
-                    background: ev.type === "upgrade" ? D.blueBg : ev.type === "trial" ? D.orangeBg : D.greenBg,
-                    border: `1px solid ${ev.type === "upgrade" ? D.blueBorder : ev.type === "trial" ? D.orangeBorder : D.greenBorder}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {ev.type === "upgrade"
-                      ? <TrendingUp style={{ width: 9, height: 9, color: D.blue }} />
-                      : ev.type === "trial"
-                        ? <Star style={{ width: 9, height: 9, color: D.orange }} />
-                        : <CheckCircle2 style={{ width: 9, height: 9, color: D.green }} />}
-                  </div>
-                  <div style={{ flex: 1, fontSize: 11, color: D.text2 }}>{ev.label}</div>
-                  <span style={{ fontSize: 10, color: D.muted, flexShrink: 0 }}>{ev.time}</span>
+          )}
+        </div>
+
+        {demoLoading ? (
+          <div style={{ fontSize: 13, color: D.muted, padding: "24px 0" }}>Loading…</div>
+        ) : demoReqs.length === 0 ? (
+          <div style={{
+            border: `1px solid ${D.border}`, borderRadius: 10,
+            padding: "32px 20px", textAlign: "center",
+            color: D.muted, fontSize: 13,
+          }}>
+            No demo requests yet. Submissions from hostplatform.net will appear here.
+          </div>
+        ) : (
+          <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden" }}>
+            {/* Header */}
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1.2fr 100px 100px 100px 170px",
+              padding: "11px 20px",
+              background: D.surface,
+              borderBottom: `1px solid ${D.border}`,
+            }}>
+              {["Name","Restaurant","Email","Phone","City","Type","Submitted"].map((h, i) => (
+                <div key={i} style={{ fontSize: 11, fontWeight: 600, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                  {h}
                 </div>
               ))}
             </div>
-          </div>
-        </div>
 
-        {/* Plan distribution */}
-        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "22px 24px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: D.purpleBg, border: `1px solid ${D.purpleBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <BarChart3 style={{ width: 13, height: 13, color: D.purple }} />
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: D.text, fontFamily: fontSerif, letterSpacing: "-0.01em" }}>Plan Distribution</div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-            {(["Enterprise","Growth","Starter","Trial"] as const).map(plan => {
-              const count = restaurants.filter(r => r.plan === plan).length
-              const ps    = planStyle(plan)
-              return (
-                <div key={plan} style={{ background: ps.bg, border: `1px solid ${ps.border}`, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
-                  <div style={{ fontSize: 30, fontWeight: 800, color: ps.color, fontFamily: fontSerif, letterSpacing: "-0.02em" }}>{count}</div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: ps.color, letterSpacing: "0.04em", marginTop: 4 }}>{plan.toUpperCase()}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* ── System Health ─────────────────────────────────────────── */}
-        {(() => {
-          function svcColor(s: SvcStatus) {
-            return s === "up" ? D.green : s === "degraded" ? D.orange : s === "down" ? D.accent : D.muted
-          }
-          function svcBg(s: SvcStatus) {
-            return s === "up" ? D.greenBg : s === "degraded" ? D.orangeBg : s === "down" ? D.accentBg : D.surface
-          }
-          function svcBorder(s: SvcStatus) {
-            return s === "up" ? D.greenBorder : s === "degraded" ? D.orangeBorder : s === "down" ? D.accentBorder : D.border
-          }
-          function svcLabel(s: SvcStatus) {
-            return s === "checking" ? "Checking…" : s === "up" ? "Operational" : s === "degraded" ? "Degraded" : "Down"
-          }
-
-          const infraItems: { icon: React.ElementType; label: string; status: SvcStatus; detail: string }[] = [
-            {
-              icon: Server,
-              label: "Railway",
-              status: railwaySvc,
-              detail: railwaySvc === "up" ? "Hosting HOST API" : railwaySvc === "degraded" ? "Slow response" : "Unreachable",
-            },
-            {
-              icon: Github,
-              label: "GitHub",
-              status: githubSvc,
-              detail: githubSvc === "up" ? "Deployments & CI" : githubSvc === "degraded" ? "Minor incident" : "Service incident",
-            },
-            {
-              icon: Database,
-              label: "Database",
-              status: dbSvc,
-              detail: dbSvc === "up" ? "Supabase connected" : dbSvc === "degraded" ? "Slow queries" : "Unreachable",
-            },
-            {
-              icon: Activity,
-              label: "HOST API",
-              status: railwaySvc,
-              detail: apiPing !== null ? `${apiPing} ms response` : "No response",
-            },
-          ]
-
-          const integList: { label: string; key: string; icon: React.ElementType; hint: string }[] = [
-            { label: "7Shifts",   key: "7shifts",   icon: CalendarDays, hint: "Staff scheduling"     },
-            { label: "Homebase",  key: "homebase",  icon: Clock,        hint: "Staff scheduling"     },
-            { label: "WhenIWork", key: "wheniwork", icon: Clock,        hint: "Staff scheduling"     },
-            { label: "Square",    key: "square",    icon: Zap,          hint: "Point of sale"        },
-            { label: "OpenTable", key: "opentable", icon: CalendarDays, hint: "Reservations iCal"    },
-          ]
-
-          return (
-            <div style={{ marginTop: 24 }}>
-              {/* Section label */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.14em", textTransform: "uppercase" }}>System Health</div>
-                <div style={{ flex: 1, height: 1, background: D.border }} />
-                {railwaySvc !== "checking" && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{
-                      width: 7, height: 7, borderRadius: "50%",
-                      background: svcColor(railwaySvc === "up" && githubSvc === "up" ? "up" : railwaySvc === "down" || githubSvc === "down" ? "down" : "degraded"),
-                      boxShadow: `0 0 5px ${svcColor(railwaySvc === "up" && githubSvc === "up" ? "up" : railwaySvc === "down" || githubSvc === "down" ? "down" : "degraded")}88`,
-                    }} />
-                    <span style={{ fontSize: 10, fontWeight: 700, color: D.muted }}>
-                      {railwaySvc === "up" && githubSvc === "up" ? "All Systems Operational" :
-                       railwaySvc === "down" || githubSvc === "down" ? "Service Disruption" : "Partial Degradation"}
-                    </span>
-                  </div>
-                )}
+            {demoReqs.map((req, idx) => (
+              <div
+                key={req.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1.2fr 100px 100px 100px 170px",
+                  padding: "14px 20px",
+                  borderBottom: idx < demoReqs.length - 1 ? `1px solid ${D.border}` : "none",
+                  alignItems: "center",
+                  background: "transparent",
+                  transition: "background 0.12s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = D.surfaceHover)}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
+                <Cell>{req.name}</Cell>
+                <Cell>{req.restaurant}</Cell>
+                <Cell>
+                  <a href={`mailto:${req.email}`} style={{ color: D.blue, textDecoration: "none", fontSize: 13 }}>
+                    {req.email}
+                  </a>
+                </Cell>
+                <Cell muted={!req.phone}>{req.phone || "—"}</Cell>
+                <Cell muted={!req.city}>{req.city || "—"}</Cell>
+                <Cell muted={!req.type}>{req.type || "—"}</Cell>
+                <div style={{ fontSize: 12, color: D.muted }}>{fmtTime(req.submittedAt)}</div>
               </div>
+            ))}
+          </div>
+        )}
 
-              {/* Infrastructure grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
-                {infraItems.map(({ icon: Icon, label, status, detail }) => (
-                  <div key={label} style={{
-                    background: svcBg(status), border: `1px solid ${svcBorder(status)}`,
-                    borderRadius: 8, padding: "16px 18px",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(255,255,255,0.06)", border: `1px solid ${svcBorder(status)}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        <Icon style={{ width: 13, height: 13, color: svcColor(status) }} />
-                      </div>
-                      <span style={{
-                        fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", padding: "2px 7px", borderRadius: 4,
-                        background: `${svcColor(status)}18`, color: svcColor(status), border: `1px solid ${svcBorder(status)}`,
-                      }}>
-                        {svcLabel(status)}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: D.text, marginBottom: 2 }}>{label}</div>
-                    <div style={{ fontSize: 10, color: D.muted }}>{detail}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Integrations */}
-              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, padding: "20px 24px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 7, background: D.purpleBg, border: `1px solid ${D.purpleBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Shield style={{ width: 12, height: 12, color: D.purple }} />
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: D.text, fontFamily: fontSerif, letterSpacing: "-0.01em" }}>
-                    Connected Integrations
-                  </div>
-                  <div style={{ fontSize: 11, color: D.muted, marginLeft: 4 }}>· from Admin → Inputs</div>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
-                  {integList.map(({ label, key, icon: Icon, hint }) => {
-                    const connected = integrations[key]
-                    return (
-                      <div key={key} style={{
-                        borderRadius: 8, padding: "14px 16px",
-                        background: connected ? D.greenBg : "rgba(255,255,255,0.02)",
-                        border: `1px solid ${connected ? D.greenBorder : D.border}`,
-                        display: "flex", flexDirection: "column", gap: 8,
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                          <Icon style={{ width: 14, height: 14, color: connected ? D.green : D.muted }} />
-                          {connected
-                            ? <Link2    style={{ width: 10, height: 10, color: D.green }} />
-                            : <Link2Off style={{ width: 10, height: 10, color: D.muted }} />}
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: connected ? D.text : D.muted }}>{label}</div>
-                          <div style={{ fontSize: 9, color: D.muted, marginTop: 1 }}>{hint}</div>
-                        </div>
-                        <div style={{
-                          fontSize: 8, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase",
-                          color: connected ? D.green : D.muted,
-                        }}>
-                          {connected ? "● Connected" : "○ Not linked"}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          )
-        })()}
-
-        {/* Footer */}
-        <div style={{ marginTop: 40, paddingTop: 24, borderTop: `1px solid ${D.border}`, textAlign: "center" }}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: fontSerif, color: D.muted, letterSpacing: "0.02em" }}>HOST</div>
-          <div style={{ fontSize: 10, color: D.muted, marginTop: 4, letterSpacing: "0.1em", textTransform: "uppercase" }}>Owner Console · Private · hostplatform.net</div>
-        </div>
       </div>
+    </div>
+  )
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.28)",
+      letterSpacing: "0.12em", textTransform: "uppercase",
+      marginBottom: 14,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function SvcCard({ name, svc, icon, extra }: { name: string; svc: Svc; icon: React.ReactNode; extra?: string }) {
+  const dot = svcDot(svc.status)
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.03)",
+      border: `1px solid rgba(255,255,255,0.08)`,
+      borderRadius: 10,
+      padding: "18px 20px",
+    }}>
+      {/* Icon + name row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, color: "rgba(255,255,255,0.40)" }}>
+        {icon}
+        <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.50)", letterSpacing: "0.01em" }}>{name}</span>
+      </div>
+
+      {/* Status */}
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+        <div style={{
+          width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0,
+          boxShadow: svc.status === "up" ? `0 0 6px ${dot}` : "none",
+        }} />
+        <span style={{ fontSize: 14, fontWeight: 700, color: dot }}>
+          {svcLabel(svc.status)}
+        </span>
+        {extra && (
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.30)", marginLeft: 2 }}>{extra}</span>
+        )}
+      </div>
+
+      {/* Detail */}
+      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.4 }}>
+        {svc.detail || (svc.status === "checking" ? "Checking…" : "")}
+      </div>
+    </div>
+  )
+}
+
+function LiveNum({ live, value }: { live: RestLive; value: number }) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      {live.loading ? (
+        <span style={{ fontSize: 13, color: "rgba(255,255,255,0.28)" }}>—</span>
+      ) : live.error ? (
+        <span style={{ fontSize: 13, color: "#EF4444" }}>Error</span>
+      ) : (
+        <span style={{ fontSize: 14, fontWeight: 600, color: value > 0 ? "#FFFFFF" : "rgba(255,255,255,0.28)" }}>
+          {value}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function Cell({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
+  return (
+    <div style={{ fontSize: 13, color: muted ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.80)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
+      {children}
     </div>
   )
 }
