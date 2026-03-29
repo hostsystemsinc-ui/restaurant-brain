@@ -450,19 +450,31 @@ export default function HistoryPage() {
                     <div>
                       <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Accuracy</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 28, fontWeight: 700, color: accuracy == null ? "rgba(255,255,255,0.30)" : Math.abs(accuracy) <= 3 ? "#4ade80" : accuracy > 0 ? "#f87171" : "#facc15" }}>
-                          {accuracy == null ? "—" : Math.abs(accuracy) <= 3 ? "On" : accuracy > 0 ? "Under" : "Over"}
+                        <span style={{
+                          fontSize: 28, fontWeight: 700,
+                          color: accuracy == null
+                            ? "rgba(255,255,255,0.30)"
+                            : accuracy < -3   ? "#4ade80"   // beat it — green
+                            : accuracy <= 3   ? "#facc15"   // close   — yellow
+                            :                  "#f87171"    // over    — red
+                        }}>
+                          {accuracy == null ? "—" : accuracy < -3 ? "Early" : accuracy <= 3 ? "On Time" : "Late"}
                         </span>
-                        {accuracy != null && Math.abs(accuracy) > 3 && (
-                          accuracy > 0
-                            ? <TrendingUp style={{ width: 18, height: 18, color: "#f87171" }} />
-                            : <TrendingDown style={{ width: 18, height: 18, color: "#facc15" }} />
+                        {accuracy != null && (
+                          accuracy < -3
+                            ? <TrendingDown style={{ width: 18, height: 18, color: "#4ade80" }} />
+                            : accuracy <= 3
+                            ? <Minus style={{ width: 18, height: 18, color: "#facc15" }} />
+                            : <TrendingUp style={{ width: 18, height: 18, color: "#f87171" }} />
                         )}
-                        {accuracy != null && Math.abs(accuracy) <= 3 && <Minus style={{ width: 18, height: 18, color: "#4ade80" }} />}
                       </div>
-                      {accuracy != null && Math.abs(accuracy) > 3 && (
+                      {accuracy != null && (
                         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.32)", marginTop: 2 }}>
-                          {Math.abs(accuracy)}m {accuracy > 0 ? "longer than quoted" : "shorter than quoted"}
+                          {accuracy < -3
+                            ? `${Math.abs(accuracy)}m faster than quoted`
+                            : accuracy > 3
+                            ? `${accuracy}m longer than quoted`
+                            : `Within ${Math.abs(accuracy)}m of quoted`}
                         </div>
                       )}
                     </div>
