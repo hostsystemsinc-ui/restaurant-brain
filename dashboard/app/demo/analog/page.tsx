@@ -34,21 +34,21 @@ interface Table {
 }
 
 interface AnalogRow {
-  localId:       string
-  queueEntryId:  string | null
-  name:          string
-  phone:         string
-  partySize:     number
-  quotedWait:    number | null
-  status:        "filling" | "waiting" | "ready" | "seated" | "removed"
-  source:        "analog" | "nfc" | "web" | "host"
-  addedMs:       number | null
-  notifiedMs:    number | null
-  seatedMs:      number | null
-  deadlineMs:    number | null
-  isPaused:      boolean
+  localId:        string
+  queueEntryId:   string | null
+  name:           string
+  phone:          string
+  partySize:      number
+  quotedWait:     number | null
+  status:         "filling" | "waiting" | "ready" | "seated" | "removed"
+  source:         "analog" | "nfc" | "web" | "host"
+  addedMs:        number | null
+  notifiedMs:     number | null
+  seatedMs:       number | null
+  deadlineMs:     number | null
+  isPaused:       boolean
   pausedSecsLeft: number
-  checkState:    "unchecked" | "confirming"
+  notes:          string
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ const makeRow = (overrides: Partial<AnalogRow> = {}): AnalogRow => ({
   localId: uid(), queueEntryId: null, name: "", phone: "",
   partySize: 2, quotedWait: null, status: "filling", source: "analog",
   addedMs: null, notifiedMs: null, seatedMs: null, deadlineMs: null,
-  isPaused: false, pausedSecsLeft: 0, checkState: "unchecked",
+  isPaused: false, pausedSecsLeft: 0, notes: "",
   ...overrides,
 })
 
@@ -88,6 +88,17 @@ function waitedLabel(row: AnalogRow): string {
   return `${m}m`
 }
 
+async function sendSMS(phone: string, message: string) {
+  if (!phone.trim()) return
+  try {
+    await fetch("/api/textbelt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message }),
+    })
+  } catch {}
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function AnalogPage() {
@@ -97,6 +108,7 @@ export default function AnalogPage() {
   const [confirmFor,      setConfirmFor]     = useState<string | null>(null)
   const [tables,          setTables]         = useState<Table[]>([])
   const [toast,           setToast]          = useState<string | null>(null)
+  const [zoom,            setZoom]           = useState(1.0)
   const [,                tick]              = useState(0)
   const knownIdsRef = useRef(new Set<string>())
 
@@ -123,7 +135,7 @@ export default function AnalogPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, rows.map(r => r.name + r.status + r.queueEntryId).join("|")])
 
-  // ── Fetch tables (for seat-to-table) ────────────────────────────────────────
+  // ── Fetch tables ─────────────────────────────────────────────────────────────
   useEffect(() => {
     fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
       .then(r => r.ok ? r.json() : [])
@@ -142,25 +154,29 @@ export default function AnalogPage() {
         let updated = [...prev]
 
         data.forEach(entry => {
-          // Already have a row for this entry?
           const existingIdx = updated.findIndex(r => r.queueEntryId === entry.id)
 
           if (existingIdx >= 0) {
             const existing = updated[existingIdx]
-            // Sync seat/remove from digital station
             if (entry.status === "seated" && existing.status !== "seated") {
               updated = updated.map((r, i) => i === existingIdx
-                ? { ...r, status: "seated" as const, seatedMs: r.seatedMs ?? Date.now(), checkState: "unchecked" as const }
+                ? { ...r, status: "seated" as const, seatedMs: r.seatedMs ?? Date.now() }
                 : r)
             } else if (entry.status === "removed" && existing.status !== "removed") {
               updated = updated.map((r, i) => i === existingIdx
-                ? { ...r, status: "removed" as const, seatedMs: r.seatedMs ?? Date.now(), checkState: "unchecked" as const }
+                ? { ...r, status: "removed" as const, seatedMs: r.seatedMs ?? Date.now() }
                 : r)
             }
             return
           }
 
-          // New entry not yet tracked
+          // Skip entries created by this analog page — they're tracked via patchRow
+          // Using source "analog" prevents duplication during the async join window
+          if (entry.source === "analog" && !knownIdsRef.current.has(entry.id)) {
+            knownIdsRef.current.add(entry.id)
+            return
+          }
+
           if (knownIdsRef.current.has(entry.id)) return
           knownIdsRef.current.add(entry.id)
 
@@ -173,12 +189,11 @@ export default function AnalogPage() {
             partySize:    entry.party_size,
             quotedWait:   entry.quoted_wait,
             status:       isQuoted ? "waiting" : "filling",
-            source:       entry.source === "nfc" ? "nfc" : "web",
+            source:       entry.source === "nfc" ? "nfc" : entry.source === "host" ? "host" : "web",
             addedMs:      isQuoted ? arrivalMs : null,
             deadlineMs:   isQuoted ? arrivalMs + (entry.quoted_wait! * 60_000) : null,
           })
 
-          // Insert before the last blank row
           const blankIdx = updated.findLastIndex(r =>
             !r.name && !r.phone && r.quotedWait === null && r.status === "filling" && !r.queueEntryId
           )
@@ -205,17 +220,16 @@ export default function AnalogPage() {
     setRows(prev => prev.map(r => r.localId === localId ? { ...r, ...patch } : r))
   }, [])
 
-  // ── Set quote (creates entry for analog guests; sets wait for NFC guests) ────
+  // ── Set quote ────────────────────────────────────────────────────────────────
   const setQuote = useCallback(async (localId: string, minutes: number) => {
     setRows(prev => {
       const row = prev.find(r => r.localId === localId)
       if (!row) return prev
 
-      // Fire async action without blocking state update
       ;(async () => {
         const now = Date.now()
         if (row.queueEntryId) {
-          // NFC guest — just set wait time
+          // NFC/web guest — just patch wait time
           try {
             await fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" })
           } catch {}
@@ -224,6 +238,12 @@ export default function AnalogPage() {
             addedMs:    row.addedMs ?? now,
             deadlineMs: (row.addedMs ?? now) + minutes * 60_000,
           })
+          // Initial SMS for NFC guests who have a phone
+          if (row.phone.trim()) {
+            const waitUrl = `${window.location.origin}/wait/${row.queueEntryId}`
+            sendSMS(row.phone.trim(),
+              `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
+          }
         } else {
           // Analog guest — create queue entry
           if (!row.name.trim() && !row.partySize) return
@@ -236,7 +256,8 @@ export default function AnalogPage() {
                 party_size:    row.partySize,
                 phone:         row.phone.trim() || null,
                 restaurant_id: DEMO_RESTAURANT_ID,
-                source:        "host",
+                source:        "analog",
+                notes:         row.notes.trim() || null,
               }),
             })
             if (!joinRes.ok) { showToast("Could not add guest"); return }
@@ -248,15 +269,21 @@ export default function AnalogPage() {
               addedMs: now, deadlineMs: now + minutes * 60_000,
             })
             showToast(`${row.name || "Guest"} added · ${minutes}m`)
+            // Initial SMS
+            if (row.phone.trim()) {
+              const waitUrl = `${window.location.origin}/wait/${joined.id}`
+              sendSMS(row.phone.trim(),
+                `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
+            }
           } catch { showToast("Could not add guest") }
         }
       })()
 
-      return prev // state updated via patchRow inside async
+      return prev
     })
   }, [patchRow, showToast])
 
-  // ── Adjust timer (+/– min) ───────────────────────────────────────────────────
+  // ── Adjust timer ─────────────────────────────────────────────────────────────
   const adjustTimer = useCallback((localId: string, delta: number) => {
     setRows(prev => prev.map(r => {
       if (r.localId !== localId) return r
@@ -290,6 +317,10 @@ export default function AnalogPage() {
     try {
       await fetch(`${API}/queue/${row.queueEntryId}/notify`, { method: "POST" })
       patchRow(localId, { status: "ready", notifiedMs: Date.now() })
+      if (row.phone.trim()) {
+        sendSMS(row.phone.trim(),
+          `${row.name || "Your party"}, your table at Demo Restaurant is Ready! Please head to the host stand.`)
+      }
       showToast(`${row.name || "Guest"} notified`)
     } catch { showToast("Could not notify") }
   }, [rows, patchRow, showToast])
@@ -307,13 +338,13 @@ export default function AnalogPage() {
       if (row.queueEntryId) {
         try { await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" }) } catch {}
       }
-      patchRow(localId, { status: "seated", seatedMs: Date.now(), checkState: "unchecked" })
+      patchRow(localId, { status: "seated", seatedMs: Date.now() })
       showToast(`${row.name || "Guest"} seated`)
     } else {
       if (row.queueEntryId) {
         try { await fetch(`${API}/queue/${row.queueEntryId}/remove`, { method: "POST" }) } catch {}
       }
-      patchRow(localId, { status: "removed", seatedMs: Date.now(), checkState: "unchecked" })
+      patchRow(localId, { status: "removed", seatedMs: Date.now() })
       showToast(`${row.name || "Guest"} left`)
     }
   }, [rows, tableAssignment, patchRow, showToast])
@@ -334,9 +365,19 @@ export default function AnalogPage() {
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
   }, [rows, tables, patchRow, showToast])
 
+  // ── Scribble-safe select-all ─────────────────────────────────────────────────
+  const selectAll = (e: React.FocusEvent<HTMLInputElement> | React.PointerEvent<HTMLInputElement>) => {
+    const el = e.currentTarget
+    setTimeout(() => { el.select() }, 0)
+  }
+  const selectAllOnPen = (e: React.PointerEvent<HTMLInputElement>) => {
+    if (e.pointerType === "pen") selectAll(e)
+  }
+
   // ── Derived ──────────────────────────────────────────────────────────────────
   const activeRows    = rows.filter(r => r.status !== "seated" && r.status !== "removed")
   const completedRows = rows.filter(r => r.status === "seated" || r.status === "removed").reverse()
+  const confirmRow    = confirmFor ? rows.find(r => r.localId === confirmFor) : null
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -351,49 +392,62 @@ export default function AnalogPage() {
         position: "sticky", top: 0, zIndex: 50,
         background: "rgba(255,255,255,0.96)", backdropFilter: "blur(16px)",
         borderBottom: "1px solid rgba(0,0,0,0.09)",
-        padding: "0 20px", height: 52,
+        padding: "0 16px", height: 56,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         flexShrink: 0,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Link href="/demo/station" style={{ display: "flex", alignItems: "center", gap: 4, color: "rgba(0,0,0,0.35)", textDecoration: "none", fontSize: 13, padding: "4px 6px", borderRadius: 8 }}>
-            <ChevronLeft style={{ width: 15, height: 15 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Link href="/demo/station" style={{ display: "flex", alignItems: "center", color: "rgba(0,0,0,0.35)", textDecoration: "none", padding: "6px 6px", borderRadius: 8 }}>
+            <ChevronLeft style={{ width: 16, height: 16 }} />
           </Link>
-          <div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-              <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "0.04em", color: "#111" }}>HOST</span>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: "rgba(0,0,0,0.35)", textTransform: "uppercase" }}>Analog</span>
-            </div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "0.04em", color: "#111" }}>HOST</span>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: "rgba(0,0,0,0.35)", textTransform: "uppercase" }}>Analog</span>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Zoom controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: 2, background: "rgba(0,0,0,0.04)", borderRadius: 10, padding: "2px 4px" }}>
+            <button
+              onClick={() => setZoom(z => Math.max(0.6, parseFloat((z - 0.1).toFixed(1))))}
+              style={{ width: 32, height: 32, border: "none", background: "transparent", color: "rgba(0,0,0,0.50)", fontSize: 18, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}
+            >−</button>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(0,0,0,0.40)", minWidth: 32, textAlign: "center" }}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={() => setZoom(z => Math.min(2.0, parseFloat((z + 0.1).toFixed(1))))}
+              style={{ width: 32, height: 32, border: "none", background: "transparent", color: "rgba(0,0,0,0.50)", fontSize: 18, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}
+            >+</button>
+          </div>
+
           {/* Table Assignment Toggle */}
           <button
             onClick={() => setTableAssignment(v => !v)}
             style={{
-              display: "flex", alignItems: "center", gap: 7, padding: "5px 12px",
+              display: "flex", alignItems: "center", gap: 6, padding: "5px 11px",
               borderRadius: 99, border: `1px solid ${tableAssignment ? "rgba(34,197,94,0.35)" : "rgba(0,0,0,0.12)"}`,
               background: tableAssignment ? "rgba(34,197,94,0.07)" : "rgba(0,0,0,0.03)",
               cursor: "pointer", transition: "all 0.15s",
             }}
           >
             {tableAssignment
-              ? <ToggleRight style={{ width: 16, height: 16, color: "#22c55e" }} />
-              : <ToggleLeft  style={{ width: 16, height: 16, color: "rgba(0,0,0,0.35)" }} />}
-            <span style={{ fontSize: 12, fontWeight: 600, color: tableAssignment ? "#16a34a" : "rgba(0,0,0,0.40)", letterSpacing: "0.04em" }}>
-              Table Assignment
+              ? <ToggleRight style={{ width: 15, height: 15, color: "#22c55e" }} />
+              : <ToggleLeft  style={{ width: 15, height: 15, color: "rgba(0,0,0,0.35)" }} />}
+            <span style={{ fontSize: 11, fontWeight: 600, color: tableAssignment ? "#16a34a" : "rgba(0,0,0,0.40)", letterSpacing: "0.04em" }}>
+              Tables
             </span>
           </button>
 
           {/* History */}
           <Link
-            href="/demo/history?analog=1"
+            href="/demo/history?analog=1&tab=stats"
             style={{
-              display: "flex", alignItems: "center", gap: 5, padding: "5px 12px",
+              display: "flex", alignItems: "center", gap: 5, padding: "5px 11px",
               borderRadius: 99, border: "1px solid rgba(0,0,0,0.10)",
               background: "rgba(0,0,0,0.02)", color: "rgba(0,0,0,0.50)",
-              textDecoration: "none", fontSize: 12, fontWeight: 600,
+              textDecoration: "none", fontSize: 11, fontWeight: 600,
             }}
           >
             <History style={{ width: 13, height: 13 }} />
@@ -402,306 +456,368 @@ export default function AnalogPage() {
         </div>
       </header>
 
-      {/* ── Column Headers ── */}
-      <div style={{
-        position: "sticky", top: 52, zIndex: 40,
-        background: "rgba(250,250,248,0.97)", backdropFilter: "blur(8px)",
-        borderBottom: "1px solid rgba(0,0,0,0.07)",
-        display: "grid",
-        gridTemplateColumns: "44px 1fr 96px 1fr 1fr",
-        gap: 0, padding: "6px 16px",
-      }}>
-        {["", "Name", "Party", "Phone", "Wait / Timer"].map((h, i) => (
-          <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(0,0,0,0.28)", paddingLeft: i > 0 ? 8 : 0 }}>
-            {h}
+      {/* ── Scaled content ── */}
+      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        <div style={{ overflowY: "auto", height: "100%" }}>
+          <div style={{
+            transform: `scale(${zoom})`,
+            transformOrigin: "top left",
+            width: `${(1 / zoom) * 100}%`,
+            minHeight: `${(1 / zoom) * 100}%`,
+          }}>
+
+            {/* ── Column Headers ── */}
+            <div style={{
+              background: "rgba(250,250,248,0.97)",
+              borderBottom: "1px solid rgba(0,0,0,0.07)",
+              display: "grid",
+              gridTemplateColumns: "52px 1fr 100px 1fr minmax(170px,1.2fr)",
+              padding: "6px 16px",
+            }}>
+              {["", "Name", "Party", "Phone", "Wait / Timer"].map((h, i) => (
+                <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "rgba(0,0,0,0.28)", paddingLeft: i > 0 ? 8 : 0 }}>
+                  {h}
+                </div>
+              ))}
+            </div>
+
+            {/* ── Active Rows ── */}
+            {activeRows.map((row) => {
+              const isBlank    = !row.name && !row.phone && row.quotedWait === null && !row.queueEntryId
+              const isExternal = row.source === "nfc" || row.source === "web" || row.source === "host"
+              const needsQuote = row.status === "filling" && !!row.queueEntryId && isExternal
+              const isWaiting  = row.status === "waiting" || row.status === "ready"
+              const secs       = computeSecs(row)
+              const isOverdue  = isWaiting && secs === 0
+
+              // Source badge
+              const sourceBadge = row.source === "nfc" ? { label: "NFC", color: "rgba(251,191,36,0.90)" }
+                : row.source === "web"   ? { label: "Web",        color: "rgba(99,102,241,0.75)" }
+                : row.source === "host"  ? { label: "Host",       color: "rgba(0,0,0,0.35)" }
+                : !isBlank               ? { label: "Host Stand", color: "rgba(0,0,0,0.30)" }
+                : null
+
+              return (
+                <div
+                  key={row.localId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "52px 1fr 100px 1fr minmax(170px,1.2fr)",
+                    alignItems: "center",
+                    minHeight: 68,
+                    borderBottom: "1px solid rgba(0,0,0,0.07)",
+                    background: needsQuote
+                      ? "rgba(251,191,36,0.06)"
+                      : isOverdue
+                      ? "rgba(239,68,68,0.04)"
+                      : "transparent",
+                    padding: "8px 0",
+                  }}
+                >
+                  {/* ── Checkbox ── */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {!isBlank && (
+                      <button
+                        onPointerDown={() => isWaiting && setConfirmFor(row.localId)}
+                        disabled={!isWaiting}
+                        style={{
+                          width: 44, height: 44, borderRadius: 10,
+                          border: `2px solid ${isWaiting ? "rgba(0,0,0,0.22)" : "rgba(0,0,0,0.08)"}`,
+                          background: "white",
+                          cursor: isWaiting ? "pointer" : "default",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          touchAction: "manipulation",
+                          boxShadow: isWaiting ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* ── Name ── */}
+                  <div style={{ padding: "0 8px" }}>
+                    {isExternal && !row.name ? (
+                      <span style={{ fontSize: 13, color: "rgba(0,0,0,0.28)", fontStyle: "italic" }}>
+                        {row.source === "nfc" ? "NFC guest" : "Guest"}
+                      </span>
+                    ) : (
+                      <input
+                        type="text"
+                        value={row.name}
+                        onChange={e => patchRow(row.localId, { name: e.target.value })}
+                        onFocus={selectAll}
+                        onPointerDown={selectAllOnPen}
+                        placeholder="Write name…"
+                        inputMode="text"
+                        style={{
+                          width: "100%", border: "none", outline: "none",
+                          background: "transparent", fontSize: 15, fontWeight: 500,
+                          color: "#111", padding: "4px 0", caretColor: "#22c55e",
+                        }}
+                      />
+                    )}
+                    {sourceBadge && (
+                      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: sourceBadge.color, marginTop: 1 }}>
+                        {sourceBadge.label}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Party size ── */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }}>
+                    <button
+                      onPointerDown={() => patchRow(row.localId, { partySize: Math.max(1, row.partySize - 1) })}
+                      style={{ width: 32, height: 40, border: "none", background: "transparent", color: "rgba(0,0,0,0.35)", fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}
+                    >−</button>
+                    <span style={{ width: 28, textAlign: "center", fontSize: 16, fontWeight: 700, color: "#111" }}>{row.partySize}</span>
+                    <button
+                      onPointerDown={() => patchRow(row.localId, { partySize: Math.min(20, row.partySize + 1) })}
+                      style={{ width: 32, height: 40, border: "none", background: "transparent", color: "rgba(0,0,0,0.35)", fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}
+                    >+</button>
+                  </div>
+
+                  {/* ── Phone ── */}
+                  <div style={{ padding: "0 8px" }}>
+                    <input
+                      type="tel"
+                      value={row.phone}
+                      onChange={e => patchRow(row.localId, { phone: e.target.value })}
+                      onFocus={selectAll}
+                      onPointerDown={selectAllOnPen}
+                      placeholder="Write number…"
+                      inputMode="tel"
+                      style={{
+                        width: "100%", border: "none", outline: "none",
+                        background: "transparent", fontSize: 15, fontWeight: 500,
+                        color: "#111", padding: "4px 0", caretColor: "#22c55e",
+                      }}
+                    />
+                  </div>
+
+                  {/* ── Wait Quote / Timer ── */}
+                  <div style={{ padding: "0 10px 0 6px" }}>
+                    {!isWaiting ? (
+                      /* Quote preset buttons */
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
+                        {QUOTE_PRESETS.map(t => (
+                          <button
+                            key={t}
+                            onPointerDown={() => !isBlank && setQuote(row.localId, t)}
+                            disabled={isBlank}
+                            style={{
+                              height: 48, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)",
+                              background: isBlank ? "rgba(0,0,0,0.03)" : "white",
+                              color: isBlank ? "rgba(0,0,0,0.20)" : "#111",
+                              fontSize: 15, fontWeight: 700, cursor: isBlank ? "default" : "pointer",
+                              boxShadow: isBlank ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+                              touchAction: "manipulation",
+                            }}
+                          >{t}</button>
+                        ))}
+                      </div>
+                    ) : (
+                      /* Live countdown + controls */
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {/* Countdown */}
+                        <div style={{ textAlign: "center", minWidth: 56 }}>
+                          <div style={{
+                            fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1,
+                            color: isOverdue ? "#dc2626" : secs < 60 ? "#f97316" : "#111",
+                            fontVariantNumeric: "tabular-nums",
+                          }}>
+                            {row.isPaused
+                              ? <span style={{ color: "rgba(0,0,0,0.40)" }}>{fmtCountdown(row.pausedSecsLeft)}</span>
+                              : fmtCountdown(secs)}
+                          </div>
+                          {row.isPaused && (
+                            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "rgba(0,0,0,0.30)", textTransform: "uppercase", marginTop: 2 }}>Paused</div>
+                          )}
+                        </div>
+
+                        {/* Controls */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1 }}>
+                          {/* +/- pause row */}
+                          <div style={{ display: "flex", gap: 5 }}>
+                            <button onPointerDown={() => adjustTimer(row.localId, -1)} style={ctrlBtn}>
+                              <Minus style={{ width: 15, height: 15 }} />
+                            </button>
+                            <button onPointerDown={() => togglePause(row.localId)} style={ctrlBtn}>
+                              {row.isPaused
+                                ? <Play  style={{ width: 15, height: 15 }} />
+                                : <Pause style={{ width: 15, height: 15 }} />}
+                            </button>
+                            <button onPointerDown={() => adjustTimer(row.localId, 1)} style={ctrlBtn}>
+                              <Plus style={{ width: 15, height: 15 }} />
+                            </button>
+                          </div>
+                          {/* Notify button */}
+                          <button
+                            onPointerDown={() => row.status !== "ready" && notifyGuest(row.localId)}
+                            style={{
+                              height: 44, borderRadius: 10, border: "none", cursor: row.status === "ready" ? "default" : "pointer",
+                              fontSize: 13, fontWeight: 700, touchAction: "manipulation",
+                              background: row.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(34,197,94,0.88)",
+                              color: row.status === "ready" ? "#16a34a" : "white",
+                              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                              transition: "all 0.12s",
+                              boxShadow: row.status === "ready" ? "none" : "0 2px 8px rgba(34,197,94,0.25)",
+                            }}
+                          >
+                            <Bell style={{ width: 14, height: 14 }} />
+                            {row.status === "ready" ? "Notified" : "Notify"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                {/* ── Notes (full-width sub-row) ── */}
+                {!isBlank && (
+                  <div style={{ gridColumn: "1 / -1", padding: "0 16px 8px 60px" }}>
+                    <input
+                      type="text"
+                      value={row.notes}
+                      onChange={e => patchRow(row.localId, { notes: e.target.value })}
+                      onFocus={selectAll}
+                      onPointerDown={selectAllOnPen}
+                      placeholder="Notes (allergies, special requests…)"
+                      inputMode="text"
+                      style={{
+                        width: "100%", border: "none", borderBottom: "1px solid rgba(0,0,0,0.08)",
+                        outline: "none", background: "transparent",
+                        fontSize: 12, color: "rgba(0,0,0,0.55)", padding: "2px 0 4px",
+                        caretColor: "#22c55e",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+              )
+            })}
+
+            {/* ── Completed rows ── */}
+            {completedRows.length > 0 && (
+              <>
+                <div style={{ padding: "14px 16px 6px", borderTop: "1px solid rgba(0,0,0,0.08)", marginTop: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(0,0,0,0.28)" }}>
+                    Completed · {completedRows.length}
+                  </span>
+                </div>
+                {completedRows.map(row => (
+                  <div
+                    key={row.localId}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "52px 1fr 100px 1fr minmax(170px,1.2fr)",
+                      alignItems: "center",
+                      minHeight: 48,
+                      borderBottom: "1px solid rgba(0,0,0,0.05)",
+                      background: "rgba(0,0,0,0.025)",
+                      padding: "6px 0",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 8,
+                        background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)",
+                        border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {row.status === "seated"
+                          ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} />
+                          : <X     style={{ width: 14, height: 14, color: "#dc2626" }} />}
+                      </div>
+                    </div>
+                    <div style={{ padding: "0 8px" }}>
+                      <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(0,0,0,0.45)" }}>{row.name || "Guest"}</span>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <span style={{ fontSize: 13, color: "rgba(0,0,0,0.35)" }}>{row.partySize}p</span>
+                    </div>
+                    <div style={{ padding: "0 8px" }}>
+                      <span style={{ fontSize: 12, color: "rgba(0,0,0,0.30)" }}>{row.phone || "—"}</span>
+                    </div>
+                    <div style={{ padding: "0 10px 0 6px" }}>
+                      <div style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
+                        <span>In {fmtClock(row.addedMs)}</span>
+                        {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
+                        <span>Waited {waitedLabel(row)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            <div style={{ height: 80 }} />
           </div>
-        ))}
+        </div>
       </div>
 
-      {/* ── Rows ── */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
-
-        {/* Active rows */}
-        {activeRows.map((row, i) => {
-          const isBlank   = !row.name && !row.phone && row.quotedWait === null && !row.queueEntryId
-          const isNfc     = row.source === "nfc" || row.source === "web"
-          const needsQuote= row.status === "filling" && !!row.queueEntryId && isNfc
-          const isWaiting = row.status === "waiting" || row.status === "ready"
-          const secs      = computeSecs(row)
-          const isOverdue = isWaiting && secs === 0
-          const isConfirming = confirmFor === row.localId
-
-          return (
-            <div
-              key={row.localId}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "44px 1fr 96px 1fr 1fr",
-                alignItems: "center",
-                minHeight: 64,
-                borderBottom: "1px solid rgba(0,0,0,0.07)",
-                background: isConfirming
-                  ? "rgba(0,0,0,0.03)"
-                  : needsQuote
-                  ? "rgba(251,191,36,0.06)"
-                  : isOverdue
-                  ? "rgba(239,68,68,0.04)"
-                  : "transparent",
-                position: "relative",
-                padding: "8px 0",
-              }}
-            >
-              {/* ── Checkbox ── */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {!isBlank && (
-                  isConfirming ? (
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                      <button
-                        onClick={() => confirmAction(row.localId, "seat")}
-                        style={{ width: 32, height: 28, borderRadius: 7, background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", color: "#16a34a", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                      >Seat</button>
-                      <button
-                        onClick={() => confirmAction(row.localId, "left")}
-                        style={{ width: 32, height: 28, borderRadius: 7, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#dc2626", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-                      >Left</button>
-                      <button
-                        onClick={() => setConfirmFor(null)}
-                        style={{ width: 32, height: 20, borderRadius: 6, background: "transparent", border: "none", color: "rgba(0,0,0,0.30)", fontSize: 10, cursor: "pointer" }}
-                      >✕</button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => isWaiting && setConfirmFor(row.localId)}
-                      disabled={!isWaiting}
-                      style={{
-                        width: 28, height: 28, borderRadius: 6,
-                        border: `2px solid ${isWaiting ? "rgba(0,0,0,0.22)" : "rgba(0,0,0,0.10)"}`,
-                        background: "white",
-                        cursor: isWaiting ? "pointer" : "default",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        transition: "border-color 0.12s",
-                        boxShadow: isWaiting ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
-                      }}
-                      title={isWaiting ? "Check to seat or remove" : "Set a wait time first"}
-                    />
-                  )
-                )}
-              </div>
-
-              {/* ── Name ── */}
-              <div style={{ padding: "0 8px" }}>
-                {isNfc && !row.name ? (
-                  <span style={{ fontSize: 13, color: "rgba(0,0,0,0.28)", fontStyle: "italic" }}>NFC guest</span>
-                ) : (
-                  <input
-                    type="text"
-                    value={row.name}
-                    onChange={e => patchRow(row.localId, { name: e.target.value })}
-                    placeholder="Write name…"
-                    inputMode="text"
-                    style={{
-                      width: "100%", border: "none", outline: "none",
-                      background: "transparent", fontSize: 15, fontWeight: 500,
-                      color: "#111", padding: "4px 0",
-                      caretColor: "#22c55e",
-                    }}
-                  />
-                )}
-                {isNfc && (
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", textTransform: "uppercase", color: "rgba(251,191,36,0.85)", marginTop: 1 }}>
-                    {row.source === "nfc" ? "NFC" : "Web"}
-                  </div>
-                )}
-              </div>
-
-              {/* ── Party size ── */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }}>
-                <button
-                  onClick={() => patchRow(row.localId, { partySize: Math.max(1, row.partySize - 1) })}
-                  style={{ width: 28, height: 36, border: "none", background: "transparent", color: "rgba(0,0,0,0.35)", fontSize: 18, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}
-                >−</button>
-                <span style={{ width: 26, textAlign: "center", fontSize: 16, fontWeight: 700, color: "#111" }}>{row.partySize}</span>
-                <button
-                  onClick={() => patchRow(row.localId, { partySize: Math.min(20, row.partySize + 1) })}
-                  style={{ width: 28, height: 36, border: "none", background: "transparent", color: "rgba(0,0,0,0.35)", fontSize: 18, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center" }}
-                >+</button>
-              </div>
-
-              {/* ── Phone ── */}
-              <div style={{ padding: "0 8px" }}>
-                <input
-                  type="tel"
-                  value={row.phone}
-                  onChange={e => patchRow(row.localId, { phone: e.target.value })}
-                  placeholder="Write number…"
-                  inputMode="tel"
-                  style={{
-                    width: "100%", border: "none", outline: "none",
-                    background: "transparent", fontSize: 15, fontWeight: 500,
-                    color: "#111", padding: "4px 0",
-                    caretColor: "#22c55e",
-                  }}
-                />
-              </div>
-
-              {/* ── Wait Quote / Timer ── */}
-              <div style={{ padding: "0 10px 0 6px" }}>
-                {!isWaiting ? (
-                  /* Quote preset buttons */
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
-                    {QUOTE_PRESETS.map(t => (
-                      <button
-                        key={t}
-                        onClick={() => !isBlank && setQuote(row.localId, t)}
-                        disabled={isBlank}
-                        style={{
-                          height: 44, borderRadius: 10, border: "1px solid rgba(0,0,0,0.12)",
-                          background: isBlank ? "rgba(0,0,0,0.03)" : "white",
-                          color: isBlank ? "rgba(0,0,0,0.20)" : "#111",
-                          fontSize: 14, fontWeight: 700, cursor: isBlank ? "default" : "pointer",
-                          boxShadow: isBlank ? "none" : "0 1px 3px rgba(0,0,0,0.06)",
-                          transition: "all 0.1s",
-                        }}
-                      >{t}</button>
-                    ))}
-                  </div>
-                ) : (
-                  /* Live countdown + controls */
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {/* Countdown */}
-                    <div style={{ textAlign: "center", minWidth: 52 }}>
-                      <div style={{
-                        fontSize: 22, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1,
-                        color: isOverdue ? "#dc2626" : secs < 60 ? "#f97316" : "#111",
-                        fontVariantNumeric: "tabular-nums",
-                      }}>
-                        {row.isPaused ? <span style={{ color: "rgba(0,0,0,0.40)" }}>{fmtCountdown(row.pausedSecsLeft)}</span> : fmtCountdown(secs)}
-                      </div>
-                      {row.isPaused && <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "rgba(0,0,0,0.30)", textTransform: "uppercase", marginTop: 2 }}>Paused</div>}
-                    </div>
-
-                    {/* Controls */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                      {/* Timer controls row */}
-                      <div style={{ display: "flex", gap: 3 }}>
-                        <button onClick={() => adjustTimer(row.localId, -1)} style={ctrlBtn}>
-                          <Minus style={{ width: 11, height: 11 }} />
-                        </button>
-                        <button onClick={() => togglePause(row.localId)} style={ctrlBtn}>
-                          {row.isPaused ? <Play style={{ width: 11, height: 11 }} /> : <Pause style={{ width: 11, height: 11 }} />}
-                        </button>
-                        <button onClick={() => adjustTimer(row.localId, 1)} style={ctrlBtn}>
-                          <Plus style={{ width: 11, height: 11 }} />
-                        </button>
-                      </div>
-                      {/* Notify button */}
-                      <button
-                        onClick={() => notifyGuest(row.localId)}
-                        style={{
-                          height: 24, borderRadius: 7, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700,
-                          background: row.status === "ready" ? "rgba(34,197,94,0.12)" : "rgba(34,197,94,0.85)",
-                          color: row.status === "ready" ? "#16a34a" : "white",
-                          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
-                          transition: "all 0.12s",
-                        }}
-                      >
-                        <Bell style={{ width: 10, height: 10 }} />
-                        {row.status === "ready" ? "Notified" : "Notify"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )
-        })}
-
-        {/* ── Completed rows ── */}
-        {completedRows.length > 0 && (
-          <>
-            <div style={{ padding: "14px 16px 6px", borderTop: "1px solid rgba(0,0,0,0.08)", marginTop: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(0,0,0,0.28)" }}>
-                Completed · {completedRows.length}
-              </span>
-            </div>
-            {completedRows.map(row => (
-              <div
-                key={row.localId}
+      {/* ── Confirm Modal (big seat / left) ── */}
+      {confirmFor && confirmRow && (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,0.40)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end" }}
+          onPointerDown={() => setConfirmFor(null)}
+        >
+          <div
+            style={{ width: "100%", background: "white", borderRadius: "24px 24px 0 0", padding: "28px 24px 48px" }}
+            onPointerDown={e => e.stopPropagation()}
+          >
+            <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.40)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              {confirmRow.name || "Guest"} · Party of {confirmRow.partySize}
+            </p>
+            <p style={{ margin: "0 0 24px", fontSize: 19, fontWeight: 700, color: "#111" }}>
+              Seat or mark as left?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <button
+                onPointerDown={() => confirmAction(confirmFor, "seat")}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "44px 1fr 96px 1fr 1fr",
-                  alignItems: "center",
-                  minHeight: 48,
-                  borderBottom: "1px solid rgba(0,0,0,0.05)",
-                  background: "rgba(0,0,0,0.025)",
-                  padding: "6px 0",
+                  height: 68, borderRadius: 18, border: "none", cursor: "pointer", fontSize: 18, fontWeight: 800,
+                  background: "rgba(34,197,94,0.88)", color: "white",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  boxShadow: "0 4px 16px rgba(34,197,94,0.28)", touchAction: "manipulation",
                 }}
               >
-                {/* Check mark */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: 6,
-                    background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)",
-                    border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {row.status === "seated"
-                      ? <Check style={{ width: 12, height: 12, color: "#16a34a" }} />
-                      : <X     style={{ width: 12, height: 12, color: "#dc2626" }} />}
-                  </div>
-                </div>
-
-                {/* Name */}
-                <div style={{ padding: "0 8px" }}>
-                  <span style={{ fontSize: 14, fontWeight: 500, color: "rgba(0,0,0,0.45)" }}>{row.name || "Guest"}</span>
-                </div>
-
-                {/* Party */}
-                <div style={{ textAlign: "center" }}>
-                  <span style={{ fontSize: 13, color: "rgba(0,0,0,0.35)" }}>{row.partySize}p</span>
-                </div>
-
-                {/* Phone */}
-                <div style={{ padding: "0 8px" }}>
-                  <span style={{ fontSize: 12, color: "rgba(0,0,0,0.30)" }}>{row.phone || "—"}</span>
-                </div>
-
-                {/* Stats */}
-                <div style={{ padding: "0 10px 0 6px" }}>
-                  <div style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
-                    <span>In {fmtClock(row.addedMs)}</span>
-                    {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
-                    <span>Waited {waitedLabel(row)}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* Bottom padding so last row isn't cut off by keyboard */}
-        <div style={{ height: 80 }} />
-      </div>
+                <Check style={{ width: 22, height: 22 }} />
+                Seat Guest
+              </button>
+              <button
+                onPointerDown={() => confirmAction(confirmFor, "left")}
+                style={{
+                  height: 68, borderRadius: 18, border: "none", cursor: "pointer", fontSize: 18, fontWeight: 800,
+                  background: "rgba(239,68,68,0.88)", color: "white",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                  boxShadow: "0 4px 16px rgba(239,68,68,0.20)", touchAction: "manipulation",
+                }}
+              >
+                <X style={{ width: 22, height: 22 }} />
+                Guest Left
+              </button>
+              <button
+                onPointerDown={() => setConfirmFor(null)}
+                style={{ height: 44, borderRadius: 12, border: "1px solid rgba(0,0,0,0.10)", background: "rgba(0,0,0,0.03)", color: "rgba(0,0,0,0.40)", fontSize: 14, fontWeight: 600, cursor: "pointer", touchAction: "manipulation" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Table Picker Modal ── */}
       {tablePickFor && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 100,
-          background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)",
-          display: "flex", alignItems: "flex-end",
-        }}
-          onClick={() => setTablePickFor(null)}
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end" }}
+          onPointerDown={() => setTablePickFor(null)}
         >
           <div
-            style={{
-              width: "100%", background: "white", borderRadius: "20px 20px 0 0",
-              padding: "24px 20px 40px", maxHeight: "60dvh", overflowY: "auto",
-            }}
-            onClick={e => e.stopPropagation()}
+            style={{ width: "100%", background: "white", borderRadius: "20px 20px 0 0", padding: "24px 20px 44px", maxHeight: "65dvh", overflowY: "auto" }}
+            onPointerDown={e => e.stopPropagation()}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
               <p style={{ fontSize: 17, fontWeight: 700, color: "#111", margin: 0 }}>Select Table</p>
-              <button onClick={() => setTablePickFor(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "rgba(0,0,0,0.40)", fontSize: 20, lineHeight: 1 }}>✕</button>
+              <button onPointerDown={() => setTablePickFor(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "rgba(0,0,0,0.40)", fontSize: 20, lineHeight: 1, touchAction: "manipulation" }}>✕</button>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {TABLE_NUMBERS.map(n => {
@@ -710,15 +826,16 @@ export default function AnalogPage() {
                 return (
                   <button
                     key={n}
-                    onClick={() => !occupied && seatToTable(tablePickFor!, n)}
+                    onPointerDown={() => !occupied && seatToTable(tablePickFor!, n)}
                     disabled={occupied}
                     style={{
-                      height: 56, borderRadius: 14,
-                      border: `1.5px solid ${occupied ? "rgba(239,68,68,0.30)" : "rgba(0,0,0,0.12)"}`,
-                      background: occupied ? "rgba(239,68,68,0.06)" : "white",
-                      color: occupied ? "rgba(239,68,68,0.60)" : "#111",
-                      fontSize: 18, fontWeight: 700, cursor: occupied ? "default" : "pointer",
-                      boxShadow: occupied ? "none" : "0 1px 4px rgba(0,0,0,0.07)",
+                      height: 60, borderRadius: 14,
+                      border: `2px solid ${occupied ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.40)"}`,
+                      background: occupied ? "rgba(239,68,68,0.07)" : "rgba(34,197,94,0.07)",
+                      color: occupied ? "#dc2626" : "#16a34a",
+                      fontSize: 20, fontWeight: 800, cursor: occupied ? "default" : "pointer",
+                      boxShadow: occupied ? "none" : "0 1px 4px rgba(34,197,94,0.12)",
+                      touchAction: "manipulation",
                     }}
                   >
                     {n}
@@ -736,7 +853,7 @@ export default function AnalogPage() {
           position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)",
           background: "rgba(0,0,0,0.82)", color: "white",
           padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-          backdropFilter: "blur(12px)", zIndex: 200, whiteSpace: "nowrap",
+          backdropFilter: "blur(12px)", zIndex: 300, whiteSpace: "nowrap",
         }}>
           {toast}
         </div>
@@ -745,12 +862,14 @@ export default function AnalogPage() {
   )
 }
 
-// ── Shared mini control button style ────────────────────────────────────────────
+// ── Shared control button style ───────────────────────────────────────────────
 
 const ctrlBtn: React.CSSProperties = {
-  width: 26, height: 26, borderRadius: 7,
+  width: 42, height: 42, borderRadius: 10,
   border: "1px solid rgba(0,0,0,0.12)", background: "white",
   color: "rgba(0,0,0,0.55)", cursor: "pointer",
   display: "flex", alignItems: "center", justifyContent: "center",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+  boxShadow: "0 1px 3px rgba(0,0,0,0.07)",
+  touchAction: "manipulation",
+  flex: 1,
 }

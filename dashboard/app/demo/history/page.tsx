@@ -78,7 +78,7 @@ function fmtDuration(min: number | null) {
 }
 
 function fmtSource(s: string) {
-  const map: Record<string, string> = { nfc: "NFC", host: "Host", phone: "Phone", web: "Web", app: "App", opentable: "OpenTable", "walk-in": "Walk-in" }
+  const map: Record<string, string> = { nfc: "NFC", host: "Host", analog: "Host Stand", phone: "Phone", web: "Web", app: "App", opentable: "OpenTable", "walk-in": "Walk-in" }
   return map[s?.toLowerCase()] ?? s ?? "—"
 }
 
@@ -138,6 +138,7 @@ export default function HistoryPage() {
 function HistoryContent() {
   const searchParams = useSearchParams()
   const isAnalog     = searchParams.get("analog") === "1"
+  const tabParam     = searchParams.get("tab") as "log" | "stats" | null
 
   // Theme tokens — dark (station) vs light (analog)
   const T = isAnalog ? {
@@ -182,7 +183,7 @@ function HistoryContent() {
 
   const dateOptions = useMemo(() => buildDateOptions(), [])
 
-  const [tab,        setTab]        = useState<"log" | "stats">("log")
+  const [tab,        setTab]        = useState<"log" | "stats">(tabParam === "stats" ? "stats" : "log")
   const [selectedDate, setSelectedDate] = useState(dateOptions[0].value)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [records,    setRecords]    = useState<GuestLogRecord[]>([])
