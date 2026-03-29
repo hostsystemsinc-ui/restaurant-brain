@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
   ChevronLeft, RefreshCw, Download, ChevronDown,
@@ -127,6 +128,50 @@ async function exportExcel(records: GuestLogRecord[], dateStr: string) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function HistoryPage() {
+  const searchParams = useSearchParams()
+  const isAnalog     = searchParams.get("analog") === "1"
+
+  // Theme tokens — dark (station) vs light (analog)
+  const T = isAnalog ? {
+    page:       "#FAFAF8",
+    header:     "rgba(255,255,255,0.96)",
+    headerBdr:  "rgba(0,0,0,0.09)",
+    cardBg:     "rgba(0,0,0,0.03)",
+    cardBdr:    "rgba(0,0,0,0.07)",
+    text:       "#111",
+    textSub:    "rgba(0,0,0,0.45)",
+    textMuted:  "rgba(0,0,0,0.28)",
+    tabActive:  "#111",
+    tabInactive:"rgba(0,0,0,0.35)",
+    tabBdr:     "rgba(0,0,0,0.12)",
+    tabActiveBg:"rgba(0,0,0,0.04)",
+    sectionBdr: "rgba(0,0,0,0.06)",
+    rowEven:    "rgba(0,0,0,0.02)",
+    rowOdd:     "transparent",
+    rowBdr:     "rgba(0,0,0,0.04)",
+    backColor:  "rgba(0,0,0,0.35)",
+    backHref:   "/demo/analog",
+  } : {
+    page:       "#0A0A0A",
+    header:     "rgba(7,4,2,0.98)",
+    headerBdr:  "rgba(255,185,100,0.18)",
+    cardBg:     "rgba(255,255,255,0.04)",
+    cardBdr:    "rgba(255,255,255,0.07)",
+    text:       "rgba(255,255,255,0.92)",
+    textSub:    "rgba(255,255,255,0.45)",
+    textMuted:  "rgba(255,255,255,0.28)",
+    tabActive:  "rgba(255,255,255,0.92)",
+    tabInactive:"rgba(255,255,255,0.35)",
+    tabBdr:     "rgba(255,255,255,0.12)",
+    tabActiveBg:"rgba(255,255,255,0.07)",
+    sectionBdr: "rgba(255,255,255,0.06)",
+    rowEven:    "rgba(255,255,255,0.02)",
+    rowOdd:     "transparent",
+    rowBdr:     "rgba(255,255,255,0.04)",
+    backColor:  "rgba(255,200,150,0.65)",
+    backHref:   "/demo/station",
+  }
+
   const dateOptions = useMemo(() => buildDateOptions(), [])
 
   const [tab,        setTab]        = useState<"log" | "stats">("log")
@@ -229,17 +274,17 @@ export default function HistoryPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: "100dvh", background: "#0A0A0A", color: "#fff", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+    <div style={{ height: "100dvh", background: T.page, color: T.text, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
 
       {/* ── Header ── */}
-      <header style={{ height: 52, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.18)", backdropFilter: "blur(20px)", flexShrink: 0 }}>
+      <header style={{ height: 52, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", background: T.header, borderBottom: `1px solid ${T.headerBdr}`, backdropFilter: "blur(20px)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <Link href="/demo/station" style={{ display: "flex", alignItems: "center", gap: 4, color: "rgba(255,200,150,0.65)", textDecoration: "none", fontSize: 13, fontWeight: 500, padding: "4px 6px", borderRadius: 8 }}>
+          <Link href={T.backHref} style={{ display: "flex", alignItems: "center", gap: 4, color: T.backColor, textDecoration: "none", fontSize: 13, fontWeight: 500, padding: "4px 6px", borderRadius: 8 }}>
             <ChevronLeft style={{ width: 15, height: 15 }} />
-            Station
+            {isAnalog ? "Analog" : "Station"}
           </Link>
-          <span style={{ color: "rgba(255,185,100,0.20)", fontSize: 14 }}>/</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>History</span>
+          <span style={{ color: T.textMuted, fontSize: 14 }}>/</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>History</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

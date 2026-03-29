@@ -2446,6 +2446,10 @@ export default function DemoHostDashboard() {
               <BarChart2 className="w-3 h-3" /> History
             </Link>
 
+            <Link href="/demo/analog" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-semibold transition-colors" style={{ color: "rgba(255,248,240,0.85)", background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)" }}>
+              <Pencil className="w-3 h-3" /> Analog
+            </Link>
+
             <Link href="/demo/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>

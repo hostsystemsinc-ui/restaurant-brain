@@ -1,14 +1,20 @@
 {
-  "name": "Restaurant Brain",
-  "short_name": "RB Wait",
-  "description": "Live waitlist status for your table",
-  "start_url": "/join",
+  "name": "HOST Station",
+  "short_name": "HOST",
+  "description": "HOST restaurant waitlist station",
+  "start_url": "/demo/station",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
-  "orientation": "portrait",
+  "background_color": "#0C0907",
+  "theme_color": "#0C0907",
+  "orientation": "any",
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
-  ]
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "HOST Analog", "url": "/demo/analog", "description": "Digital clipboard mode" },
+    { "name": "History",     "url": "/demo/history", "description": "Guest log and stats" }
+  ],
+  "categories": ["productivity", "business"]
 }
