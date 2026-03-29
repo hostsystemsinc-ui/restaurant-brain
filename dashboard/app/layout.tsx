@@ -13,12 +13,6 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "HOST",
   description: "The smarter waitlist.",
-  manifest: "/manifest.json",
-  appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "HOST Station" },
-  icons: {
-    apple: "/icon-192.png",
-    icon:  "/icon-32.png",
-  },
 }
 
 export const viewport: Viewport = {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
@@ -128,6 +128,14 @@ async function exportExcel(records: GuestLogRecord[], dateStr: string) {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function HistoryPage() {
+  return (
+    <Suspense fallback={null}>
+      <HistoryContent />
+    </Suspense>
+  )
+}
+
+function HistoryContent() {
   const searchParams = useSearchParams()
   const isAnalog     = searchParams.get("analog") === "1"
 

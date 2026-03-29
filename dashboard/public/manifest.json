@@ -3,7 +3,7 @@
   "short_name": "HOST",
   "description": "HOST restaurant waitlist station",
   "start_url": "/demo/station",
-  "scope": "/",
+  "scope": "/demo/",
   "display": "standalone",
   "background_color": "#0C0907",
   "theme_color": "#0C0907",
