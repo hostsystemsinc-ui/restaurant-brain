@@ -19,6 +19,7 @@ interface QueueEntry {
   status: "waiting" | "ready" | "seated" | "removed"
   source: string; quoted_wait: number | null
   arrival_time: string; phone: string | null; notes: string | null
+  wait_set_at?: string | null
 }
 
 interface Table { id: string; table_number: number; capacity: number; status: string }
@@ -261,10 +262,24 @@ export default function AnalogPage() {
           const existingIdx = updated.findIndex(r => r.queueEntryId === entry.id)
           if (existingIdx >= 0) {
             const ex = updated[existingIdx]
+            let patch: Partial<AnalogRow> = {}
+            // Status sync
             if (entry.status === "seated" && ex.status !== "seated")
-              updated = updated.map((r, i) => i === existingIdx ? { ...r, status: "seated" as const, seatedMs: r.seatedMs ?? Date.now() } : r)
+              patch = { ...patch, status: "seated", seatedMs: ex.seatedMs ?? Date.now() }
             else if (entry.status === "removed" && ex.status !== "removed")
-              updated = updated.map((r, i) => i === existingIdx ? { ...r, status: "removed" as const, seatedMs: r.seatedMs ?? Date.now(), removedByGuest: true } : r)
+              patch = { ...patch, status: "removed", seatedMs: ex.seatedMs ?? Date.now(), removedByGuest: ex.source === "nfc" || ex.source === "web" }
+            else if (entry.status === "ready" && ex.status !== "ready")
+              patch = { ...patch, status: "ready" }
+            // Sync quoted_wait when HOST standard changes it
+            if (entry.quoted_wait !== null && entry.quoted_wait !== ex.quotedWait) {
+              const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : Date.now()
+              patch = { ...patch, quotedWait: entry.quoted_wait, status: (ex.status === "filling" ? "waiting" : ex.status) as AnalogRow["status"], addedMs: ex.addedMs ?? base, deadlineMs: base + entry.quoted_wait * 60_000 }
+            }
+            // Sync party size and phone edits from HOST standard
+            if (entry.party_size !== ex.partySize) patch = { ...patch, partySize: entry.party_size }
+            if (entry.phone && entry.phone !== ex.phone) patch = { ...patch, phone: entry.phone }
+            if (Object.keys(patch).length > 0)
+              updated = updated.map((r, i) => i === existingIdx ? { ...r, ...patch } : r)
             return
           }
           if (entry.source === "analog" && !knownIdsRef.current.has(entry.id)) { knownIdsRef.current.add(entry.id); return }
@@ -288,7 +303,7 @@ export default function AnalogPage() {
     } catch {}
   }, [])
 
-  useEffect(() => { pollQueue(); const t = setInterval(pollQueue, 5_000); return () => clearInterval(t) }, [pollQueue])
+  useEffect(() => { pollQueue(); const t = setInterval(pollQueue, 3_000); return () => clearInterval(t) }, [pollQueue])
 
   const patchRow = useCallback((localId: string, patch: Partial<AnalogRow>) => {
     setRows(prev => prev.map(r => r.localId === localId ? { ...r, ...patch } : r))
@@ -296,17 +311,17 @@ export default function AnalogPage() {
 
   // ── Set quote ─────────────────────────────────────────────────────────────────
   const setQuote = useCallback(async (localId: string, minutes: number) => {
-    // Read row directly — do NOT nest async work inside setRows
     const row = rows.find(r => r.localId === localId)
     if (!row) return
+    if (!row.queueEntryId && !row.name.trim() && !row.phone.trim()) return
     const now = Date.now()
+    // Optimistic UI — timer starts immediately without waiting on network
+    patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
     if (row.queueEntryId) {
-      // Guest already in queue — PATCH wait; backend fires link SMS on first quote automatically
-      try { await fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" }) } catch {}
-      patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
+      // Already in queue — PATCH wait; backend fires SMS on first quote
+      fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
     } else {
-      // New guest — join + quote in one call; backend fires link SMS automatically for source "analog"
-      if (!row.name.trim() && !row.phone.trim()) return
+      // New guest — join with quoted_wait so backend fires SMS immediately at join
       try {
         const joinRes = await fetch(`${API}/queue/join`, {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -316,9 +331,8 @@ export default function AnalogPage() {
         const joined = await joinRes.json()
         const entryId = joined.entry?.id ?? joined.id  // API returns { entry: { id } }
         if (!entryId) { showToast("Could not add guest"); return }
-        await fetch(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
         knownIdsRef.current.add(entryId)
-        patchRow(localId, { queueEntryId: entryId, quotedWait: minutes, status: "waiting", addedMs: now, deadlineMs: now + minutes * 60_000 })
+        patchRow(localId, { queueEntryId: entryId })  // timer already running; just attach the ID
         showToast(`${row.name || "Guest"} added · ${minutes}m`)
       } catch { showToast("Could not add guest") }
     }

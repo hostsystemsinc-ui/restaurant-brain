@@ -392,10 +392,12 @@ def get_waitlist_legacy():
 
 def _send_join_sms(phone: str, rest_name: str, entry_id: str) -> None:
     wait_url = f"https://hostplatform.net/wait/{entry_id}"
+    print(f"[SMS] Sending join SMS to {phone!r} for entry {entry_id}")
     ok, err = _send_sms(
         to_phone=phone,
         body=f"Welcome to {rest_name}, you've been added to the waitlist! Track your wait here: {wait_url} Reply STOP to opt out.",
     )
+    print(f"[SMS] Join SMS result: ok={ok} err={err!r}")
     if not ok:
         print(f"[SMS] Join SMS failed: {err}")
 
@@ -430,8 +432,12 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         new_entry = entry.data[0]
         if req.quoted_wait is not None:
             _wait_set_at[new_entry["id"]] = _now()
-        # No link SMS at join time — it fires from PATCH /wait on first quote,
-        # so the guest gets the text at the moment their wait is set.
+        # Fire link SMS immediately for host/analog guests who are quoted at join time.
+        # (NFC/web guests joined themselves so they don't need the link.)
+        if req.quoted_wait is not None and req.phone and req.source in ("host", "analog"):
+            rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
+            rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
+            threading.Thread(target=_send_join_sms, args=(req.phone, rest_name, new_entry["id"]), daemon=True).start()
         return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
