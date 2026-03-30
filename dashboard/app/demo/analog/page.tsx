@@ -181,14 +181,16 @@ function waitedLabel(row: AnalogRow): string {
   return `${Math.round(((row.seatedMs ?? Date.now()) - row.addedMs) / 60_000)}m`
 }
 
-async function sendSMS(phone: string, message: string) {
-  if (!phone.trim()) return
+async function sendSMS(phone: string, message: string): Promise<boolean> {
+  if (!phone.trim()) return false
   try {
-    await fetch("/api/textbelt", {
+    const r = await fetch("/api/textbelt", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone, message }),
     })
-  } catch {}
+    const data = await r.json()
+    return !!data.success
+  } catch { return false }
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
@@ -307,24 +309,28 @@ export default function AnalogPage() {
           patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
           if (row.phone.trim()) {
             const waitUrl = `${window.location.origin}/wait/${row.queueEntryId}`
-            sendSMS(row.phone.trim(), `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
+            const ok = await sendSMS(row.phone.trim(), `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
+            if (!ok) showToast("Text failed — check phone number")
           }
         } else {
-          if (!row.name.trim() && !row.partySize) return
+          if (!row.name.trim() && !row.phone.trim()) return
           try {
             const joinRes = await fetch(`${API}/queue/join`, {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: row.name.trim() || "Guest", party_size: row.partySize, phone: row.phone.trim() || null, notes: row.notes.trim() || null, restaurant_id: DEMO_RESTAURANT_ID, source: "analog" }),
+              // Pass quoted_wait here so station sees it as already-quoted on first poll
+              body: JSON.stringify({ name: row.name.trim() || "Guest", party_size: row.partySize, phone: row.phone.trim() || null, notes: row.notes.trim() || null, restaurant_id: DEMO_RESTAURANT_ID, source: "analog", quoted_wait: minutes }),
             })
             if (!joinRes.ok) { showToast("Could not add guest"); return }
             const joined = await joinRes.json()
-            await fetch(`${API}/queue/${joined.id}/wait?minutes=${minutes}`, { method: "PATCH" })
+            // Belt-and-suspenders: also PATCH in case server ignores quoted_wait in join
+            await fetch(`${API}/queue/${joined.id}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
             knownIdsRef.current.add(joined.id)
             patchRow(localId, { queueEntryId: joined.id, quotedWait: minutes, status: "waiting", addedMs: now, deadlineMs: now + minutes * 60_000 })
             showToast(`${row.name || "Guest"} added · ${minutes}m`)
             if (row.phone.trim()) {
               const waitUrl = `${window.location.origin}/wait/${joined.id}`
-              sendSMS(row.phone.trim(), `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
+              const ok = await sendSMS(row.phone.trim(), `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
+              if (!ok) showToast("Text failed — check phone number")
             }
           } catch { showToast("Could not add guest") }
         }
@@ -354,13 +360,18 @@ export default function AnalogPage() {
 
   const notifyGuest = useCallback(async (localId: string) => {
     const row = rows.find(r => r.localId === localId)
-    if (!row?.queueEntryId) return
+    if (!row) return
+    if (!row.queueEntryId) { showToast("Set a wait time first"); return }
     try {
       await fetch(`${API}/queue/${row.queueEntryId}/notify`, { method: "POST" })
       patchRow(localId, { status: "ready", notifiedMs: Date.now() })
-      if (row.phone.trim())
-        sendSMS(row.phone.trim(), `${row.name || "Your party"}, your table at Demo Restaurant is Ready! Please head to the host stand.`)
-      showToast(`${row.name || "Guest"} notified`)
+      if (row.phone.trim()) {
+        const ok = await sendSMS(row.phone.trim(), `${row.name || "Your party"}, your table at Demo Restaurant is Ready! Please head to the host stand.`)
+        if (!ok) showToast(`${row.name || "Guest"} notified — text failed`)
+        else showToast(`${row.name || "Guest"} notified`)
+      } else {
+        showToast(`${row.name || "Guest"} notified`)
+      }
     } catch { showToast("Could not notify") }
   }, [rows, patchRow, showToast])
 
@@ -538,7 +549,7 @@ export default function AnalogPage() {
 
       {/* ── Scaled content ── */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <div style={{ overflowY: "auto", height: "100%" }}>
+        <div style={{ overflowY: "auto", height: "100%", boxSizing: "border-box", paddingBottom: `calc(80vh / ${zoom})` }}>
           <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${(1 / zoom) * 100}%`, minHeight: `${(1 / zoom) * 100}%` }}>
 
             {/* ── Column Headers ── */}
@@ -605,9 +616,8 @@ export default function AnalogPage() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {!isBlank && (
                       <button
-                        onPointerDown={() => isWaiting && setConfirmFor(row.localId)}
-                        disabled={!isWaiting}
-                        style={{ width: 44, height: 44, borderRadius: 10, border: `2px solid ${isWaiting ? V.textSub : V.rowBorder}`, background: visual === "modern" ? "rgba(255,255,255,0.05)" : "white", cursor: isWaiting ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation", boxShadow: isWaiting ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}
+                        onPointerDown={() => setConfirmFor(row.localId)}
+                        style={{ width: 44, height: 44, borderRadius: 10, border: `2px solid ${isWaiting ? V.textSub : V.rowBorder}`, background: visual === "modern" ? "rgba(255,255,255,0.05)" : "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation", boxShadow: isWaiting ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}
                       />
                     )}
                   </div>
@@ -725,7 +735,7 @@ export default function AnalogPage() {
               )
             })}
 
-            <div style={{ height: 80 }} />
+            <div style={{ height: 40 }} />
           </div>
         </div>
       </div>

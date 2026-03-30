@@ -113,7 +113,7 @@ export default function WaitPage() {
 
   useEffect(() => {
     fetchEntry()
-    const poll = setInterval(fetchEntry, 5000)
+    const poll = setInterval(fetchEntry, 3000)
     return () => clearInterval(poll)
   }, [fetchEntry])
 
