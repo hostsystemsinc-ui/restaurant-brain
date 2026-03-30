@@ -32,6 +32,7 @@ interface AnalogRow {
   addedMs: number | null; notifiedMs: number | null
   seatedMs: number | null; deadlineMs: number | null
   isPaused: boolean; pausedSecsLeft: number
+  removedByGuest?: boolean
 }
 
 type Visual = "basic" | "classic" | "modern"
@@ -181,12 +182,20 @@ function waitedLabel(row: AnalogRow): string {
   return `${Math.round(((row.seatedMs ?? Date.now()) - row.addedMs) / 60_000)}m`
 }
 
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  return phone
+}
+
 async function sendSMS(phone: string, message: string): Promise<boolean> {
-  if (!phone.trim()) return false
+  const normalized = normalizePhone(phone)
+  if (!normalized.trim()) return false
   try {
     const r = await fetch("/api/textbelt", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message }),
+      body: JSON.stringify({ phone: normalized, message }),
     })
     const data = await r.json()
     return data.success === true
@@ -267,7 +276,7 @@ export default function AnalogPage() {
             if (entry.status === "seated" && ex.status !== "seated")
               updated = updated.map((r, i) => i === existingIdx ? { ...r, status: "seated" as const, seatedMs: r.seatedMs ?? Date.now() } : r)
             else if (entry.status === "removed" && ex.status !== "removed")
-              updated = updated.map((r, i) => i === existingIdx ? { ...r, status: "removed" as const, seatedMs: r.seatedMs ?? Date.now() } : r)
+              updated = updated.map((r, i) => i === existingIdx ? { ...r, status: "removed" as const, seatedMs: r.seatedMs ?? Date.now(), removedByGuest: true } : r)
             return
           }
           if (entry.source === "analog" && !knownIdsRef.current.has(entry.id)) { knownIdsRef.current.add(entry.id); return }
@@ -545,13 +554,13 @@ export default function AnalogPage() {
 
       {/* Classic notepad double margin lines — fixed so they run infinite height */}
       {visual === "classic" && <>
-        <div style={{ position: "fixed", top: 56, bottom: 0, left: 3,  width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
-        <div style={{ position: "fixed", top: 56, bottom: 0, left: 8,  width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
+        <div style={{ position: "fixed", top: 56, bottom: 0, left: 53, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
+        <div style={{ position: "fixed", top: 56, bottom: 0, left: 59, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
       </>}
 
       {/* ── Scaled content ── */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <div style={{ overflowY: "auto", height: "100%", boxSizing: "border-box", paddingBottom: `calc(80vh / ${zoom})` }}>
+        <div style={{ overflowY: "auto", height: "100%", boxSizing: "border-box", paddingBottom: `calc(100dvh / ${zoom})` }}>
           <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${(1 / zoom) * 100}%`, minHeight: `${(1 / zoom) * 100}%` }}>
 
             {/* ── Column Headers ── */}
@@ -579,7 +588,7 @@ export default function AnalogPage() {
                     <div style={{ padding: "0 8px" }}><span style={{ fontSize: 12, color: V.textMuted }}>{row.phone || "—"}</span></div>
                     <div style={{ padding: "0 10px 0 6px" }}>
                       <div style={{ fontSize: 11, color: V.textMuted, display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
-                        {row.status === "removed" && <span style={{ color: "rgba(239,68,68,0.70)", fontWeight: 600 }}>Left waitlist</span>}
+                        {row.status === "removed" && <span style={{ color: "rgba(239,68,68,0.70)", fontWeight: 600 }}>{row.removedByGuest ? "Left waitlist" : "Removed by host"}</span>}
                         <span>In {fmtClock(row.addedMs)}</span>
                         {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
                         <span>Waited {waitedLabel(row)}</span>
