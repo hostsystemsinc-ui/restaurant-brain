@@ -512,9 +512,15 @@ export default function AnalogPage() {
       {/* Click away from visuals popup */}
       {showVisuals && <div style={{ position: "fixed", inset: 0, zIndex: 49 }} onClick={() => setShowVisuals(false)} />}
 
+      {/* Classic notepad double margin lines — fixed so they run infinite height */}
+      {visual === "classic" && <>
+        <div style={{ position: "fixed", top: 56, bottom: 0, left: 3,  width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
+        <div style={{ position: "fixed", top: 56, bottom: 0, left: 8,  width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
+      </>}
+
       {/* ── Scaled content ── */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <div style={{ overflowY: "auto", height: "100%", backgroundImage: V.pageMarginBg || undefined, backgroundAttachment: "local" }}>
+        <div style={{ overflowY: "auto", height: "100%" }}>
           <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${(1 / zoom) * 100}%`, minHeight: `${(1 / zoom) * 100}%` }}>
 
             {/* ── Column Headers ── */}
