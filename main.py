@@ -408,7 +408,7 @@ def get_waitlist_legacy():
     return get_queue()
 
 def _send_join_sms(phone: str, rest_name: str, entry_id: str) -> None:
-    wait_url = f"https://hostplatform.net/wait/{entry_id}"
+    wait_url = f"hostplatform.net/wait/{entry_id}"
     print(f"[SMS] Sending join SMS to {phone!r} for entry {entry_id}")
     ok, err = _send_sms(
         to_phone=phone,
@@ -455,7 +455,7 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         if req.quoted_wait is not None and req.phone and req.source in ("host", "analog"):
             rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
             rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-            wait_url  = f"https://hostplatform.net/wait/{new_entry['id']}"
+            wait_url  = f"hostplatform.net/wait/{new_entry['id']}"
             print(f"[SMS] join_queue: firing SMS to {req.phone!r} entry={new_entry['id']}")
             sms_sent, sms_error = _send_sms(
                 to_phone=req.phone,
@@ -634,7 +634,7 @@ def update_wait(entry_id: str, minutes: int):
         rid_used = entry.get("restaurant_id") or RESTAURANT_ID
         rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
         rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-        wait_url  = f"https://hostplatform.net/wait/{entry_id}"
+        wait_url  = f"hostplatform.net/wait/{entry_id}"
         print(f"[SMS] update_wait: firing SMS to {phone!r} entry={entry_id}")
         sms_sent, sms_error = _send_sms(
             to_phone=phone,
