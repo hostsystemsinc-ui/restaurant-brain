@@ -128,6 +128,16 @@ export default function StatsPage() {
   const [bizDate,  setBizDate]  = useState("")
   const [lastSync, setLastSync] = useState(new Date())
   const [reset,    setReset]    = useState(timeUntilReset())
+  const [smsQuota, setSmsQuota] = useState<number | null | "error">(null)
+
+  const loadQuota = useCallback(async () => {
+    try {
+      const r = await fetch("https://restaurant-brain-production.up.railway.app/sms/quota")
+      const d = await r.json()
+      if (!d.key_configured) { setSmsQuota("error"); return }
+      setSmsQuota(typeof d.quota_remaining === "number" ? d.quota_remaining : "error")
+    } catch { setSmsQuota("error") }
+  }, [])
 
   const load = useCallback(() => {
     const v = localStorage.getItem("analog_visual")
@@ -141,9 +151,10 @@ export default function StatsPage() {
 
   useEffect(() => {
     load()
+    loadQuota()
     const t = setInterval(load, 15_000)
     return () => clearInterval(t)
-  }, [load])
+  }, [load, loadQuota])
 
   const T = makeT(visual)
 
@@ -341,6 +352,11 @@ export default function StatsPage() {
             {/* ── Footer ── */}
             <p style={{ textAlign: "center", fontSize: 11, color: T.textMuted, margin: "6px 0 0", letterSpacing: "0.03em" }}>
               Updated {lastSync.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} · refreshes every 15s
+              {" · "}
+              {smsQuota === null ? "Checking SMS…"
+                : smsQuota === "error" ? "SMS: key not configured"
+                : <span style={{ color: (smsQuota as number) > 10 ? T.seated : (smsQuota as number) > 0 ? "#f59e0b" : "#f87171" }}>SMS: {smsQuota as number} texts left</span>
+              }
             </p>
 
           </div>

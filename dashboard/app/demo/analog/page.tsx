@@ -182,24 +182,9 @@ function waitedLabel(row: AnalogRow): string {
   return `${Math.round(((row.seatedMs ?? Date.now()) - row.addedMs) / 60_000)}m`
 }
 
-function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "")
-  if (digits.length === 10) return `+1${digits}`
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
-  return phone
-}
-
-async function sendSMS(phone: string, message: string): Promise<boolean> {
-  const normalized = normalizePhone(phone)
-  if (!normalized.trim()) return false
-  try {
-    const r = await fetch("/api/textbelt", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: normalized, message }),
-    })
-    const data = await r.json()
-    return data.success === true
-  } catch { return false }
+// All SMS goes through the backend (which has TEXTBELT_KEY); the Next.js env does not.
+async function backendSMS(endpoint: string): Promise<void> {
+  try { await fetch(endpoint, { method: "POST" }) } catch {}
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
@@ -314,19 +299,19 @@ export default function AnalogPage() {
       ;(async () => {
         const now = Date.now()
         if (row.queueEntryId) {
+          // Guest already in queue — set quote and send welcome SMS via backend
           try { await fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" }) } catch {}
           patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
           if (row.phone.trim()) {
-            const waitUrl = `${window.location.origin}/wait/${row.queueEntryId}`
-            const ok = await sendSMS(row.phone.trim(), `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
-            if (!ok) showToast("Text failed — check phone number")
+            // Backend sends the link SMS using its own TEXTBELT_KEY
+            backendSMS(`${API}/queue/${row.queueEntryId}/welcome-sms`)
           }
         } else {
+          // New guest — join + quote in one call; backend sends link SMS automatically
           if (!row.name.trim() && !row.phone.trim()) return
           try {
             const joinRes = await fetch(`${API}/queue/join`, {
               method: "POST", headers: { "Content-Type": "application/json" },
-              // Pass quoted_wait here so station sees it as already-quoted on first poll
               body: JSON.stringify({ name: row.name.trim() || "Guest", party_size: row.partySize, phone: row.phone.trim() || null, notes: row.notes.trim() || null, restaurant_id: DEMO_RESTAURANT_ID, source: "analog", quoted_wait: minutes }),
             })
             if (!joinRes.ok) { showToast("Could not add guest"); return }
@@ -336,11 +321,6 @@ export default function AnalogPage() {
             knownIdsRef.current.add(joined.id)
             patchRow(localId, { queueEntryId: joined.id, quotedWait: minutes, status: "waiting", addedMs: now, deadlineMs: now + minutes * 60_000 })
             showToast(`${row.name || "Guest"} added · ${minutes}m`)
-            if (row.phone.trim()) {
-              const waitUrl = `${window.location.origin}/wait/${joined.id}`
-              const ok = await sendSMS(row.phone.trim(), `You've been added to the waitlist at Demo Restaurant, track your progress here: ${waitUrl} — Text STOP to opt out`)
-              if (!ok) showToast("Text failed — check phone number")
-            }
           } catch { showToast("Could not add guest") }
         }
       })()
@@ -374,15 +354,10 @@ export default function AnalogPage() {
     if (!row) return
     if (!row.queueEntryId) { showToast("Set a wait time first"); return }
     try {
+      // Backend marks as ready AND sends the "table ready" SMS (has TEXTBELT_KEY)
       await fetch(`${API}/queue/${row.queueEntryId}/notify`, { method: "POST" })
       patchRow(localId, { status: "ready", notifiedMs: Date.now() })
-      if (row.phone.trim()) {
-        const ok = await sendSMS(row.phone.trim(), `${row.name || "Your party"}, your table at Demo Restaurant is Ready! Please head to the host stand.`)
-        if (!ok) showToast(`${row.name || "Guest"} notified — text failed`)
-        else showToast(`${row.name || "Guest"} notified`)
-      } else {
-        showToast(`${row.name || "Guest"} notified`)
-      }
+      showToast(`${row.name || "Guest"} notified${row.phone.trim() ? " · text sent" : ""}`)
     } catch { showToast("Could not notify") }
   }, [rows, patchRow, showToast])
 

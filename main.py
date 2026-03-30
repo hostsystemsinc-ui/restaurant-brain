@@ -298,6 +298,21 @@ def test_sms(phone: str = "+18312470552"):
     except Exception as e:
         return {"ok": False, "error": str(e), "to": phone_e164, "from": TWILIO_FROM}
 
+@app.get("/sms/quota")
+def sms_quota():
+    """Return remaining Textbelt quota for the configured key."""
+    key_set = bool(TEXTBELT_KEY and TEXTBELT_KEY != "textbelt")
+    if not key_set:
+        return {"quota_remaining": None, "key_configured": False}
+    try:
+        import urllib.request, json as _json
+        url = f"https://textbelt.com/quota/{urllib.parse.quote(TEXTBELT_KEY)}"
+        with urllib.request.urlopen(url, timeout=6) as resp:
+            data = _json.loads(resp.read())
+        return {"quota_remaining": data.get("quotaRemaining"), "key_configured": True, "success": data.get("success")}
+    except Exception as e:
+        return {"quota_remaining": None, "key_configured": True, "error": str(e)}
+
 @app.post("/debug/sms/test")
 def test_sms_full(phone: str = "+18312470552"):
     """Test the full _send_sms pipeline (Textbelt → Twilio) and return the result."""
@@ -414,7 +429,7 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         new_entry = entry.data[0]
         if req.quoted_wait is not None:
             _wait_set_at[new_entry["id"]] = _now()
-        if req.phone and req.source == "host":
+        if req.phone and req.source in ("host", "analog"):
             try:
                 rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
                 rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
@@ -502,6 +517,26 @@ def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
         body=f"Your table at {rest_name} is ready! Please go to the host stand. Reply STOP to opt out.",
     )
     print(f"[notify] sms_sent={ok} sms_error={err!r}")
+
+@app.post("/queue/{entry_id}/welcome-sms")
+def send_welcome_sms(entry_id: str, background_tasks: BackgroundTasks):
+    """Send the waitlist-link SMS to a guest who was already in the queue when the host first quoted them."""
+    try:
+        entry_res = supabase.table("queue_entries").select("phone, restaurant_id").eq("id", entry_id).execute()
+        if not entry_res.data:
+            raise HTTPException(status_code=404, detail="Entry not found")
+        phone = entry_res.data[0].get("phone")
+        if not phone:
+            return {"status": "no_phone"}
+        rid_used  = entry_res.data[0].get("restaurant_id") or RESTAURANT_ID
+        rest_res  = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
+        rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
+        background_tasks.add_task(_send_join_sms, phone, rest_name, entry_id)
+        return {"status": "queued"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/queue/{entry_id}/notify")
 def notify_ready(entry_id: str, background_tasks: BackgroundTasks):
