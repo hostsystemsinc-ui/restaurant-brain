@@ -27,6 +27,10 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Cleared on server restart (acceptable — guests resume with best-effort timing).
 _wait_set_at: dict = {}
 
+# In-memory: tracks which guest is at which table (keyed by "rid:table_number").
+# Populated by seat-to-table, cleared by table clear.
+_table_occupants: dict = {}   # { "rid:table_number": { "name": str, "party_size": int, "entry_id": str } }
+
 app = FastAPI(title="Restaurant Brain API")
 
 app.add_middleware(
@@ -352,11 +356,24 @@ def occupy_table(table_id: str):
 @app.post("/tables/{table_id}/clear")
 def clear_table(table_id: str):
     supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
+    # Remove occupant tracking
+    tbl_res = supabase.table("tables").select("table_number, restaurant_id").eq("id", table_id).execute()
+    if tbl_res.data:
+        t = tbl_res.data[0]
+        rid = t.get("restaurant_id") or RESTAURANT_ID
+        _table_occupants.pop(f"{rid}:{t['table_number']}", None)
     return {"status": "cleared"}
 
 @app.post("/clear-table/{table_id}")  # legacy
 def clear_table_legacy(table_id: str):
     return clear_table(table_id)
+
+@app.get("/tables/occupants")
+def get_table_occupants(restaurant_id: Optional[str] = None):
+    """Return in-memory table→guest mapping so both HOST views stay synced."""
+    rid = _rid(restaurant_id)
+    prefix = f"{rid}:"
+    return {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
 
 # ── Queue ────────────────────────────────────────────────────────────────────
 
@@ -501,8 +518,17 @@ def seat_entry(entry_id: str):
 @app.post("/queue/{entry_id}/seat-to-table/{table_id}")
 def seat_to_table(entry_id: str, table_id: str):
     """Seat a queue entry and mark a specific table as occupied (used by floor-map drag-and-drop)."""
+    entry_res = supabase.table("queue_entries").select("name, party_size, restaurant_id").eq("id", entry_id).execute()
     supabase.table("queue_entries").update({"status": "seated"}).eq("id", entry_id).execute()
     supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table_id).execute()
+    # Track occupant in memory for cross-view sync
+    if entry_res.data:
+        e = entry_res.data[0]
+        rid = e.get("restaurant_id") or RESTAURANT_ID
+        tbl_res = supabase.table("tables").select("table_number").eq("id", table_id).execute()
+        if tbl_res.data:
+            tnum = tbl_res.data[0]["table_number"]
+            _table_occupants[f"{rid}:{tnum}"] = {"name": e.get("name") or "Guest", "party_size": e.get("party_size", 2), "entry_id": entry_id}
     try:
         supabase.table("seating_events").insert({
             "restaurant_id": RESTAURANT_ID, "table_id": table_id,

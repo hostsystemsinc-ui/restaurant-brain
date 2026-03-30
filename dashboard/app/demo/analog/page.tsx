@@ -217,7 +217,17 @@ export default function AnalogPage() {
   const [showVisuals,     setShowVisuals]    = useState(false)
   const [isLandscape,     setIsLandscape]    = useState(false)
   const [,                tick]              = useState(0)
-  const knownIdsRef = useRef(new Set<string>())
+  const knownIdsRef = useRef<Set<string>>((() => {
+    // Seed from localStorage rows so we don't skip/duplicate entries across sessions
+    try {
+      const s = localStorage.getItem("analog_rows")
+      if (s) {
+        const p = JSON.parse(s) as AnalogRow[]
+        return new Set(p.filter(r => r.queueEntryId).map(r => r.queueEntryId!))
+      }
+    } catch {}
+    return new Set<string>()
+  })())
 
   const V = makeV(visual)
 
@@ -246,9 +256,11 @@ export default function AnalogPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, rows.map(r => r.name + r.status + r.queueEntryId).join("|")])
 
-  useEffect(() => {
+  // Fetch tables periodically (not just on mount) so both views stay synced
+  const fetchTables = useCallback(() => {
     fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`).then(r => r.ok ? r.json() : []).then(setTables).catch(() => {})
   }, [])
+  useEffect(() => { fetchTables(); const t = setInterval(fetchTables, 4_000); return () => clearInterval(t) }, [fetchTables])
 
   // ── Poll queue ────────────────────────────────────────────────────────────────
   const pollQueue = useCallback(async () => {
@@ -256,8 +268,10 @@ export default function AnalogPage() {
       const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (!r.ok) return
       const data: QueueEntry[] = await r.json()
+      const serverIds = new Set(data.map(e => e.id))
       setRows(prev => {
         let updated = [...prev]
+        // Sync existing + add new entries from server
         data.forEach(entry => {
           const existingIdx = updated.findIndex(r => r.queueEntryId === entry.id)
           if (existingIdx >= 0) {
@@ -282,7 +296,6 @@ export default function AnalogPage() {
               updated = updated.map((r, i) => i === existingIdx ? { ...r, ...patch } : r)
             return
           }
-          if (entry.source === "analog" && !knownIdsRef.current.has(entry.id)) { knownIdsRef.current.add(entry.id); return }
           if (knownIdsRef.current.has(entry.id)) return
           knownIdsRef.current.add(entry.id)
           const isQuoted = !!entry.quoted_wait
@@ -297,6 +310,13 @@ export default function AnalogPage() {
           })
           const blankIdx = updated.findLastIndex(r => !r.name && !r.phone && r.quotedWait === null && r.status === "filling" && !r.queueEntryId)
           updated = blankIdx >= 0 ? [...updated.slice(0, blankIdx), newRow, ...updated.slice(blankIdx)] : [...updated, newRow]
+        })
+        // Detect entries that vanished from server (seated/removed from HOST standard)
+        updated = updated.map(r => {
+          if (r.queueEntryId && (r.status === "waiting" || r.status === "ready" || r.status === "filling") && !serverIds.has(r.queueEntryId)) {
+            return { ...r, status: "seated" as const, seatedMs: r.seatedMs ?? Date.now() }
+          }
+          return r
         })
         return updated
       })

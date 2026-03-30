@@ -2091,7 +2091,24 @@ export default function DemoHostDashboard() {
     finally   { setIsInitialLoad(false) }
   }, [])
   const fetchInsights = useCallback(async () => { try { const r = await fetch(`${API}/insights?restaurant_id=${DEMO_RESTAURANT_ID}`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [])
-  const refreshAll    = useCallback(() => { fetchTables(); fetchQueue() }, [fetchTables, fetchQueue])
+  // Sync table occupants from backend (covers seating done on HOST analog)
+  const syncOccupants = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (!r.ok) return
+      const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
+      setLocalOccupants(prev => {
+        const next = new Map(prev)
+        // Add occupants seated from other views
+        for (const [numStr, occ] of Object.entries(data)) {
+          const num = parseInt(numStr, 10)
+          if (!prev.has(num)) next.set(num, { name: occ.name, party_size: occ.party_size })
+        }
+        return next
+      })
+    } catch {}
+  }, [])
+  const refreshAll    = useCallback(() => { fetchTables(); fetchQueue(); syncOccupants() }, [fetchTables, fetchQueue, syncOccupants])
 
   const fetchReservations = useCallback(async () => {
     try {
