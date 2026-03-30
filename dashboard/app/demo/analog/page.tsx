@@ -541,10 +541,10 @@ export default function AnalogPage() {
             <span style={{ fontSize: 13, fontWeight: 700, color: tableAssignment ? "#16a34a" : V.textSub, letterSpacing: "0.01em" }}>Tables</span>
           </button>
 
-          {/* History */}
-          <Link href="/demo/history?analog=1&tab=stats" style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 15px", borderRadius: 12, border: `1.5px solid ${V.btnBorder}`, background: visual === "modern" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: V.textSub, textDecoration: "none", fontSize: 13, fontWeight: 700, letterSpacing: "0.01em", touchAction: "manipulation" }}>
+          {/* Stats */}
+          <Link href="/demo/stats" style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 15px", borderRadius: 12, border: `1.5px solid ${V.btnBorder}`, background: visual === "modern" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: V.textSub, textDecoration: "none", fontSize: 13, fontWeight: 700, letterSpacing: "0.01em", touchAction: "manipulation" }}>
             <History style={{ width: 16, height: 16 }} />
-            History
+            Stats
           </Link>
         </div>
       </header>
