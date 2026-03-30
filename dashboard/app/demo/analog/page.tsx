@@ -68,7 +68,10 @@ function makeV(v: Visual) {
     clearBtnColor: "rgba(61,43,31,0.50)",
     marginLine:    true,
     marginColor:   "rgba(200,50,50,0.65)",
-    marginBorder:  "8px double rgba(200,50,50,0.65)",
+    marginBorder:  "",
+    pageMarginBg:  "linear-gradient(90deg, rgba(200,50,50,0.70) 0px, rgba(200,50,50,0.70) 2px, transparent 2px, transparent 6px, rgba(200,50,50,0.70) 6px, rgba(200,50,50,0.70) 8px, transparent 8px)",
+    brandText:     "rgba(90,165,195,0.95)",
+    brandSub:      "rgba(90,165,195,0.65)",
     font:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   }
   if (v === "modern") return {
@@ -101,6 +104,9 @@ function makeV(v: Visual) {
     marginLine:    false,
     marginColor:   "transparent",
     marginBorder:  "",
+    pageMarginBg:  "",
+    brandText:     "rgba(255,255,255,0.92)",
+    brandSub:      "rgba(255,255,255,0.28)",
     font:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   }
   // basic
@@ -134,6 +140,9 @@ function makeV(v: Visual) {
     marginLine:    false,
     marginColor:   "transparent",
     marginBorder:  "",
+    pageMarginBg:  "",
+    brandText:     "#111",
+    brandSub:      "rgba(0,0,0,0.28)",
     font:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   }
 }
@@ -415,8 +424,8 @@ export default function AnalogPage() {
             <ChevronLeft style={{ width: 16, height: 16 }} />
           </Link>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "0.04em", color: V.text }}>HOST</span>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: V.textMuted, textTransform: "uppercase" }}>Analog</span>
+            <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "0.04em", color: V.brandText }}>HOST</span>
+            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.18em", color: V.brandSub, textTransform: "uppercase" }}>Analog</span>
           </div>
         </div>
 
@@ -505,11 +514,11 @@ export default function AnalogPage() {
 
       {/* ── Scaled content ── */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <div style={{ overflowY: "auto", height: "100%" }}>
+        <div style={{ overflowY: "auto", height: "100%", backgroundImage: V.pageMarginBg || undefined, backgroundAttachment: "local" }}>
           <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${(1 / zoom) * 100}%`, minHeight: `${(1 / zoom) * 100}%` }}>
 
             {/* ── Column Headers ── */}
-            <div style={{ background: V.colHeaderBg, borderBottom: `1px solid ${V.rowBorder}`, borderLeft: V.marginBorder || undefined, display: "grid", gridTemplateColumns: gridCols, padding: "6px 16px" }}>
+            <div style={{ background: V.colHeaderBg, borderBottom: `1px solid ${V.rowBorder}`, display: "grid", gridTemplateColumns: gridCols, padding: "6px 16px" }}>
               {colHeaders.map((h, i) => (
                 <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: V.colHeaderText, paddingLeft: i > 0 ? 8 : 0 }}>{h}</div>
               ))}
@@ -522,7 +531,7 @@ export default function AnalogPage() {
                   <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: V.textMuted }}>Completed · {completedRows.length}</span>
                 </div>
                 {completedRows.map(row => (
-                  <div key={row.localId} style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0", borderLeft: V.marginBorder || undefined }}>
+                  <div key={row.localId} style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <div style={{ width: 28, height: 28, borderRadius: 8, background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)", border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {row.status === "seated" ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} /> : <X style={{ width: 14, height: 14, color: "#dc2626" }} />}
@@ -564,7 +573,6 @@ export default function AnalogPage() {
                 <div key={row.localId} style={{
                   display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
                   minHeight: 68, borderBottom: `1px solid ${V.rowBorder}`,
-                  borderLeft: V.marginBorder || undefined,
                   background: needsQuote ? V.rowBgNFC : isOverdue ? V.rowBgOverdue : V.rowBgNormal,
                   padding: "8px 0",
                 }}>
