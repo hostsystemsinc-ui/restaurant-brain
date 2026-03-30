@@ -576,9 +576,7 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
 
 @app.patch("/queue/{entry_id}/wait")
 def update_wait(entry_id: str, minutes: int, background_tasks: BackgroundTasks):
-    """Update the quoted wait time for a queue entry (host-set estimate).
-    For host-added guests, fires link SMS on the FIRST quote (when quoted_wait was previously null).
-    """
+    """Update the quoted wait time. Fires link SMS for host-added guests on first quote."""
     res = supabase.table("queue_entries").select("id, quoted_wait, phone, source, restaurant_id").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -587,15 +585,16 @@ def update_wait(entry_id: str, minutes: int, background_tasks: BackgroundTasks):
     now = _now()
     _wait_set_at[entry_id] = now
     supabase.table("queue_entries").update({"quoted_wait": minutes}).eq("id", entry_id).execute()
-    # Fire link SMS only for host-added guests receiving their first quote
-    if was_unquoted and entry.get("source") in ("host", "analog") and entry.get("phone"):
-        try:
-            rid_used  = entry.get("restaurant_id") or RESTAURANT_ID
-            rest_res  = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
-            rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-            background_tasks.add_task(_send_join_sms, entry["phone"], rest_name, entry_id)
-        except Exception:
-            pass
+    # Fire link SMS for host-added guests receiving their first quote
+    phone  = entry.get("phone") or ""
+    source = entry.get("source") or ""
+    print(f"[wait] entry={entry_id} source={source!r} phone={phone!r} was_unquoted={was_unquoted}")
+    if was_unquoted and source in ("host", "analog") and phone:
+        rid_used = entry.get("restaurant_id") or RESTAURANT_ID
+        rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
+        rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
+        print(f"[wait] firing link SMS to {phone!r} rest={rest_name!r}")
+        background_tasks.add_task(_send_join_sms, phone, rest_name, entry_id)
     return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now}
 
 @app.patch("/queue/{entry_id}")
