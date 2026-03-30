@@ -589,16 +589,12 @@ def update_wait(entry_id: str, minutes: int):
     # Fire link SMS for host-added guests receiving their first quote
     phone  = entry.get("phone") or ""
     source = entry.get("source") or ""
-    sms_fired = False
-    print(f"[wait] entry={entry_id} source={source!r} phone={phone!r} was_unquoted={was_unquoted}")
     if was_unquoted and source in ("host", "analog") and phone:
         rid_used = entry.get("restaurant_id") or RESTAURANT_ID
         rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
         rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-        print(f"[wait] firing link SMS to {phone!r} rest={rest_name!r}")
         threading.Thread(target=_send_join_sms, args=(phone, rest_name, entry_id), daemon=True).start()
-        sms_fired = True
-    return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now, "sms_fired": sms_fired, "debug": {"source": source, "phone": bool(phone), "was_unquoted": was_unquoted}}
+    return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now}
 
 @app.patch("/queue/{entry_id}")
 def update_entry(entry_id: str, req: QueueUpdateRequest):
