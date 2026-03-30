@@ -113,7 +113,7 @@ export default function WaitPage() {
 
   useEffect(() => {
     fetchEntry()
-    const poll = setInterval(fetchEntry, 3000)
+    const poll = setInterval(fetchEntry, 2000)
     return () => clearInterval(poll)
   }, [fetchEntry])
 
@@ -318,33 +318,18 @@ export default function WaitPage() {
         `}</style>
 
         <p style={{
-          fontSize: 22, fontWeight: 300, letterSpacing: "0.01em",
-          color: "rgba(255,255,255,0.88)", margin: "0 0 48px",
-          animation: "fadeUp 0.6s 0.05s ease-out both",
+          position: "absolute", top: 52, left: 0, right: 0,
+          fontSize: 11, fontWeight: 500, letterSpacing: "0.18em", textTransform: "uppercase",
+          color: "rgba(255,255,255,0.25)", margin: 0, textAlign: "center",
+          animation: "fadeUp 0.6s 0.0s ease-out both",
         }}>
-          Enjoy your meal.
+          Powered by <strong style={{ fontWeight: 800, color: "rgba(255,255,255,0.45)" }}>HOST</strong>
         </p>
 
-        {/* Restaurant logo placeholder */}
-        <div style={{ animation: "fadeUp 0.6s 0.15s ease-out both", marginBottom: 48 }}>
-          <div style={{
-            width: 80, height: 80, borderRadius: "50%",
-            border: "1px solid rgba(255,255,255,0.14)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 16px",
-            background: "rgba(255,255,255,0.04)",
-          }}>
-            <span style={{ fontSize: 28, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "-0.02em" }}>D</span>
-          </div>
-          <p style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.30)", letterSpacing: "0.12em", textTransform: "uppercase", margin: 0 }}>
-            Demo Restaurant
-          </p>
-        </div>
-
         <p style={{
-          fontSize: 22, fontWeight: 300, letterSpacing: "0.01em",
-          color: "rgba(255,255,255,0.88)", margin: 0,
-          animation: "fadeUp 0.6s 0.25s ease-out both",
+          fontSize: 26, fontWeight: 800, letterSpacing: "-0.01em",
+          color: "rgba(255,255,255,0.92)", margin: 0,
+          animation: "fadeUp 0.6s 0.15s ease-out both",
         }}>
           Enjoy your time.
         </p>
@@ -418,53 +403,6 @@ export default function WaitPage() {
             Head to the host stand
           </p>
 
-          {/* Full green progress bar */}
-          <div style={{ width: "100%", marginBottom: 6 }}>
-            <div style={{
-              width: "100%", height: 8, borderRadius: 99,
-              background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 6,
-            }}>
-              <div style={{
-                width: "100%", height: "100%", borderRadius: 99,
-                background: "linear-gradient(90deg, #22c55e, #86efac)",
-                transition: "width 1.2s ease",
-              }} />
-            </div>
-            <div style={{
-              display: "flex", justifyContent: "space-between",
-              fontSize: 10, color: "rgba(255,255,255,0.25)",
-            }}>
-              <span>Arrived</span>
-              <span>Seated</span>
-            </div>
-          </div>
-
-          {/* Stat cards */}
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr",
-            gap: 10, width: "100%", marginTop: 20, marginBottom: 20,
-          }}>
-            <div style={{
-              background: "#141414", border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 14, padding: "14px 16px",
-            }}>
-              <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Party</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#fff" }}>
-                <Users size={14} style={{ opacity: 0.5 }} />
-                {party_size}
-              </div>
-            </div>
-            <div style={{
-              background: "#141414", border: "1px solid rgba(34,197,94,0.2)",
-              borderRadius: 14, padding: "14px 16px",
-            }}>
-              <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Wait</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#22c55e" }}>
-                <Clock size={14} style={{ opacity: 0.7 }} />
-                Now
-              </div>
-            </div>
-          </div>
 
         </div>
 

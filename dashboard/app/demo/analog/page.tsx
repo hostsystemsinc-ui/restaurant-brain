@@ -189,7 +189,7 @@ async function sendSMS(phone: string, message: string): Promise<boolean> {
       body: JSON.stringify({ phone, message }),
     })
     const data = await r.json()
-    return !!data.success
+    return data.success === true
   } catch { return false }
 }
 
@@ -344,7 +344,7 @@ export default function AnalogPage() {
       if (r.localId !== localId) return r
       const newQuoted = Math.max(1, (r.quotedWait ?? 0) + delta)
       const updated = r.isPaused ? { ...r, quotedWait: newQuoted, pausedSecsLeft: Math.max(0, r.pausedSecsLeft + delta * 60) }
-        : { ...r, quotedWait: newQuoted, deadlineMs: (r.deadlineMs ?? Date.now()) + delta * 60_000 }
+        : { ...r, quotedWait: newQuoted, deadlineMs: (computeSecs(r) === 0 && delta > 0) ? Date.now() + delta * 60_000 : (r.deadlineMs ?? Date.now()) + delta * 60_000 }
       if (r.queueEntryId) fetch(`${API}/queue/${r.queueEntryId}/wait?minutes=${newQuoted}`, { method: "PATCH" }).catch(() => {})
       return updated
     }))
@@ -353,8 +353,10 @@ export default function AnalogPage() {
   const togglePause = useCallback((localId: string) => {
     setRows(prev => prev.map(r => {
       if (r.localId !== localId) return r
-      return r.isPaused ? { ...r, isPaused: false, deadlineMs: Date.now() + r.pausedSecsLeft * 1000 }
-        : { ...r, isPaused: true, pausedSecsLeft: computeSecs(r) }
+      const willPause = !r.isPaused
+      if (r.queueEntryId) fetch(`${API}/queue/${r.queueEntryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paused: willPause }) }).catch(() => {})
+      return willPause ? { ...r, isPaused: true, pausedSecsLeft: computeSecs(r) }
+        : { ...r, isPaused: false, deadlineMs: Date.now() + r.pausedSecsLeft * 1000 }
     }))
   }, [])
 
@@ -577,6 +579,7 @@ export default function AnalogPage() {
                     <div style={{ padding: "0 8px" }}><span style={{ fontSize: 12, color: V.textMuted }}>{row.phone || "—"}</span></div>
                     <div style={{ padding: "0 10px 0 6px" }}>
                       <div style={{ fontSize: 11, color: V.textMuted, display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
+                        {row.status === "removed" && <span style={{ color: "rgba(239,68,68,0.70)", fontWeight: 600 }}>Left waitlist</span>}
                         <span>In {fmtClock(row.addedMs)}</span>
                         {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
                         <span>Waited {waitedLabel(row)}</span>
@@ -645,14 +648,14 @@ export default function AnalogPage() {
 
                   {/* Party size — number input for pen + stepper for finger */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }} onPointerDown={selectOnPen}>
-                    <button onPointerDown={() => patchRow(row.localId, { partySize: Math.max(1, row.partySize - 1) })} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>−</button>
+                    <button onPointerDown={() => { const s = Math.max(1, row.partySize - 1); patchRow(row.localId, { partySize: s }); if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: s }) }).catch(() => {}) }} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>−</button>
                     <input
                       type="number" min={1} max={20} value={row.partySize}
-                      onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) patchRow(row.localId, { partySize: Math.max(1, Math.min(20, v)) }) }}
+                      onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) { const s = Math.max(1, Math.min(20, v)); patchRow(row.localId, { partySize: s }); if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: s }) }).catch(() => {}) } }}
                       inputMode="numeric"
                       style={{ width: 30, textAlign: "center", border: "none", outline: "none", background: "transparent", fontSize: 16, fontWeight: 700, color: V.text, caretColor: "#22c55e", touchAction: "manipulation", MozAppearance: "textfield" } as React.CSSProperties}
                     />
-                    <button onPointerDown={() => patchRow(row.localId, { partySize: Math.min(20, row.partySize + 1) })} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>+</button>
+                    <button onPointerDown={() => { const s = Math.min(20, row.partySize + 1); patchRow(row.localId, { partySize: s }); if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: s }) }).catch(() => {}) }} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>+</button>
                   </div>
 
                   {/* Phone */}
