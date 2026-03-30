@@ -46,6 +46,7 @@ class JoinQueueRequest(BaseModel):
     preference:    Optional[str] = "asap"  # asap | 15min | 30min | HH:MM
     source:        Optional[str] = "nfc"   # nfc | host | phone | web
     restaurant_id: Optional[str] = None    # override env RESTAURANT_ID
+    quoted_wait:   Optional[int] = None    # host-set wait time (minutes)
 
 class CameraEventRequest(BaseModel):
     zone:         str
@@ -72,10 +73,11 @@ class ReservationRequest(BaseModel):
     restaurant_id: Optional[str] = None   # override env RESTAURANT_ID
 
 class QueueUpdateRequest(BaseModel):
-    quoted_wait: Optional[int] = None
-    party_size:  Optional[int] = None
-    phone:       Optional[str] = None
-    notes:       Optional[str] = None
+    quoted_wait: Optional[int]  = None
+    party_size:  Optional[int]  = None
+    phone:       Optional[str]  = None
+    notes:       Optional[str]  = None
+    paused:      Optional[bool] = None
 
 class SettingsRequest(BaseModel):
     opentable_ical_url: Optional[str] = None
@@ -396,7 +398,7 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
             "phone":         req.phone,
             "source":        req.source or "nfc",
             "status":        "waiting",
-            "quoted_wait":   None,   # hostess sets this manually via WaitTimeModal/GuestEdit
+            "quoted_wait":   req.quoted_wait,  # host may supply on join (e.g. analog); null = unquoted
             "arrival_time":  _now(),
             "notes":         req.notes or None,
         }).execute()
@@ -410,6 +412,8 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         except Exception:
             pass
         new_entry = entry.data[0]
+        if req.quoted_wait is not None:
+            _wait_set_at[new_entry["id"]] = _now()
         if req.phone and req.source == "host":
             try:
                 rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
@@ -586,6 +590,8 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
         update["phone"] = req.phone or None
     if req.notes is not None:
         update["notes"] = req.notes or None
+    if req.paused is not None:
+        update["paused"] = req.paused
     if not update:
         return {"status": "nothing_to_update"}
     supabase.table("queue_entries").update(update).eq("id", entry_id).execute()
