@@ -1809,25 +1809,23 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
                             </div>
                           )}
                         </div>
-                        {/* Restore button */}
-                        {e.status === "removed" && (
-                          <button
-                            onClick={() => restore(e.id)}
-                            disabled={restoring === e.id}
-                            style={{
-                              flexShrink: 0, height: 32, padding: "0 13px",
-                              borderRadius: 8, fontSize: 12, fontWeight: 600,
-                              background: "rgba(147,207,255,0.08)",
-                              color: "rgba(147,207,255,0.85)",
-                              border: "1px solid rgba(147,207,255,0.2)",
-                              cursor: "pointer",
-                              opacity: restoring === e.id ? 0.45 : 1,
-                              transition: "opacity 0.15s",
-                            }}
-                          >
-                            {restoring === e.id ? "…" : "Restore"}
-                          </button>
-                        )}
+                        {/* Restore button — available for both seated and removed */}
+                        <button
+                          onClick={() => restore(e.id)}
+                          disabled={restoring === e.id}
+                          style={{
+                            flexShrink: 0, height: 32, padding: "0 13px",
+                            borderRadius: 8, fontSize: 12, fontWeight: 600,
+                            background: "rgba(147,207,255,0.08)",
+                            color: "rgba(147,207,255,0.85)",
+                            border: "1px solid rgba(147,207,255,0.2)",
+                            cursor: "pointer",
+                            opacity: restoring === e.id ? 0.45 : 1,
+                            transition: "opacity 0.15s",
+                          }}
+                        >
+                          {restoring === e.id ? "…" : "Restore"}
+                        </button>
                       </div>
                     ))}
                   </div>

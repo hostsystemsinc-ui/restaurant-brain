@@ -449,13 +449,20 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         new_entry = entry.data[0]
         if req.quoted_wait is not None:
             _wait_set_at[new_entry["id"]] = _now()
-        # Fire link SMS immediately for host/analog guests who are quoted at join time.
-        # (NFC/web guests joined themselves so they don't need the link.)
+        # Fire link SMS synchronously for host/analog guests so we KNOW if it worked.
+        sms_sent = False
+        sms_error = ""
         if req.quoted_wait is not None and req.phone and req.source in ("host", "analog"):
             rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
             rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-            threading.Thread(target=_send_join_sms, args=(req.phone, rest_name, new_entry["id"]), daemon=True).start()
-        return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1}
+            wait_url  = f"https://hostplatform.net/wait/{new_entry['id']}"
+            print(f"[SMS] join_queue: firing SMS to {req.phone!r} entry={new_entry['id']}")
+            sms_sent, sms_error = _send_sms(
+                to_phone=req.phone,
+                body=f"Welcome to {rest_name}, you've been added to the waitlist! Track your wait here: {wait_url} Reply STOP to opt out.",
+            )
+            print(f"[SMS] join_queue result: sent={sms_sent} err={sms_error!r}")
+        return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1, "sms_sent": sms_sent, "sms_error": sms_error}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -618,15 +625,23 @@ def update_wait(entry_id: str, minutes: int):
     now = _now()
     _wait_set_at[entry_id] = now
     supabase.table("queue_entries").update({"quoted_wait": minutes}).eq("id", entry_id).execute()
-    # Fire link SMS for host-added guests receiving their first quote
+    # Fire link SMS synchronously for host-added guests receiving their first quote
+    sms_sent = False
+    sms_error = ""
     phone  = entry.get("phone") or ""
     source = entry.get("source") or ""
     if was_unquoted and source in ("host", "analog") and phone:
         rid_used = entry.get("restaurant_id") or RESTAURANT_ID
         rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
         rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-        threading.Thread(target=_send_join_sms, args=(phone, rest_name, entry_id), daemon=True).start()
-    return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now}
+        wait_url  = f"https://hostplatform.net/wait/{entry_id}"
+        print(f"[SMS] update_wait: firing SMS to {phone!r} entry={entry_id}")
+        sms_sent, sms_error = _send_sms(
+            to_phone=phone,
+            body=f"Welcome to {rest_name}, you've been added to the waitlist! Track your wait here: {wait_url} Reply STOP to opt out.",
+        )
+        print(f"[SMS] update_wait result: sent={sms_sent} err={sms_error!r}")
+    return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now, "sms_sent": sms_sent, "sms_error": sms_error}
 
 @app.patch("/queue/{entry_id}")
 def update_entry(entry_id: str, req: QueueUpdateRequest):

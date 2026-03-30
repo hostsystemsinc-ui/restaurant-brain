@@ -183,6 +183,38 @@ function waitedLabel(row: AnalogRow): string {
   return `${Math.round(((row.seatedMs ?? Date.now()) - row.addedMs) / 60_000)}m`
 }
 
+// ── Swipe-to-discard wrapper ────────────────────────────────────────────────
+function SwipeRow({ onDiscard, enabled, children, style }: { onDiscard: () => void; enabled: boolean; children: React.ReactNode; style?: React.CSSProperties }) {
+  const startX = useRef(0)
+  const offsetX = useRef(0)
+  const elRef = useRef<HTMLDivElement>(null)
+  const swiping = useRef(false)
+  if (!enabled) return <div style={style}>{children}</div>
+  return (
+    <div
+      ref={elRef}
+      onTouchStart={e => { startX.current = e.touches[0].clientX; swiping.current = false }}
+      onTouchMove={e => {
+        const dx = e.touches[0].clientX - startX.current
+        if (Math.abs(dx) > 10) swiping.current = true
+        offsetX.current = dx
+        if (elRef.current && dx < 0) elRef.current.style.transform = `translateX(${dx}px)`
+      }}
+      onTouchEnd={() => {
+        if (offsetX.current < -100) { onDiscard(); return }
+        if (elRef.current) { elRef.current.style.transform = ""; elRef.current.style.transition = "transform 0.2s" ; setTimeout(() => { if (elRef.current) elRef.current.style.transition = "" }, 200) }
+        offsetX.current = 0
+      }}
+      style={{ ...style, position: "relative", overflow: "hidden" }}
+    >
+      {children}
+      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 80, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.85)", color: "white", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", transform: "translateX(80px)", pointerEvents: "none" }}>
+        Discard
+      </div>
+    </div>
+  )
+}
+
 // Format raw input to (XXX) XXX-XXXX as digits are typed / Scribbled
 function formatPhone(raw: string): string {
   const d = raw.replace(/\D/g, "").slice(0, 10)
@@ -339,9 +371,12 @@ export default function AnalogPage() {
     patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
     if (row.queueEntryId) {
       // Already in queue — PATCH wait; backend fires SMS on first quote
-      fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
+      fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.sms_sent) showToast("Text sent"); else if (d?.sms_error) showToast(`Text failed: ${d.sms_error}`) })
+        .catch(() => {})
     } else {
-      // New guest — join with quoted_wait so backend fires SMS immediately at join
+      // New guest — join with quoted_wait; backend fires SMS synchronously and returns result
       try {
         const joinRes = await fetch(`${API}/queue/join`, {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -349,11 +384,12 @@ export default function AnalogPage() {
         })
         if (!joinRes.ok) { showToast("Could not add guest"); return }
         const joined = await joinRes.json()
-        const entryId = joined.entry?.id ?? joined.id  // API returns { entry: { id } }
+        const entryId = joined.entry?.id ?? joined.id
         if (!entryId) { showToast("Could not add guest"); return }
         knownIdsRef.current.add(entryId)
-        patchRow(localId, { queueEntryId: entryId })  // timer already running; just attach the ID
-        showToast(`${row.name || "Guest"} added · ${minutes}m`)
+        patchRow(localId, { queueEntryId: entryId })
+        const smsNote = joined.sms_sent ? " · text sent" : joined.sms_error ? ` · text failed: ${joined.sms_error}` : ""
+        showToast(`${row.name || "Guest"} added · ${minutes}m${smsNote}`)
       } catch { showToast("Could not add guest") }
     }
   }, [rows, patchRow, showToast])
@@ -582,7 +618,16 @@ export default function AnalogPage() {
                   <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: V.textMuted }}>Completed · {completedRows.length}</span>
                 </div>
                 {completedRows.map(row => (
-                  <div key={row.localId} style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0" }}>
+                  <div key={row.localId}
+                    onClick={async () => {
+                      if (!row.queueEntryId) return
+                      try {
+                        await fetch(`${API}/queue/${row.queueEntryId}/restore`, { method: "POST" })
+                        patchRow(row.localId, { status: "waiting", seatedMs: null, removedByGuest: undefined })
+                        showToast(`${row.name || "Guest"} restored to waitlist`)
+                      } catch { showToast("Could not restore") }
+                    }}
+                    style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0", cursor: "pointer", touchAction: "manipulation" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <div style={{ width: 28, height: 28, borderRadius: 8, background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)", border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {row.status === "seated" ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} /> : <X style={{ width: 14, height: 14, color: "#dc2626" }} />}
@@ -621,8 +666,9 @@ export default function AnalogPage() {
                 : !isBlank               ? { label: "Host Stand", color: V.textMuted }
                 : null
 
+              const canSwipeDiscard = row.status === "filling" && !row.queueEntryId && (!!row.name || !!row.phone)
               return (
-                <div key={row.localId} style={{
+                <SwipeRow key={row.localId} enabled={canSwipeDiscard} onDiscard={() => setRows(prev => prev.filter(r => r.localId !== row.localId))} style={{
                   display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
                   minHeight: 68, borderBottom: `1px solid ${V.rowBorder}`,
                   background: needsQuote ? V.rowBgNFC : isOverdue ? V.rowBgOverdue : V.rowBgNormal,
@@ -751,7 +797,7 @@ export default function AnalogPage() {
                       />
                     </div>
                   )}
-                </div>
+                </SwipeRow>
               )
             })}
 
