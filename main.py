@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -575,7 +576,7 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/queue/{entry_id}/wait")
-def update_wait(entry_id: str, minutes: int, background_tasks: BackgroundTasks):
+def update_wait(entry_id: str, minutes: int):
     """Update the quoted wait time. Fires link SMS for host-added guests on first quote."""
     res = supabase.table("queue_entries").select("id, quoted_wait, phone, source, restaurant_id").eq("id", entry_id).execute()
     if not res.data:
@@ -594,7 +595,7 @@ def update_wait(entry_id: str, minutes: int, background_tasks: BackgroundTasks):
         rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
         rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
         print(f"[wait] firing link SMS to {phone!r} rest={rest_name!r}")
-        background_tasks.add_task(_send_join_sms, phone, rest_name, entry_id)
+        threading.Thread(target=_send_join_sms, args=(phone, rest_name, entry_id), daemon=True).start()
     return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now}
 
 @app.patch("/queue/{entry_id}")
