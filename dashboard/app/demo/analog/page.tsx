@@ -182,11 +182,6 @@ function waitedLabel(row: AnalogRow): string {
   return `${Math.round(((row.seatedMs ?? Date.now()) - row.addedMs) / 60_000)}m`
 }
 
-// All SMS goes through the backend (which has TEXTBELT_KEY); the Next.js env does not.
-async function backendSMS(endpoint: string): Promise<void> {
-  try { await fetch(endpoint, { method: "POST" }) } catch {}
-}
-
 // Format raw input to (XXX) XXX-XXXX as digits are typed / Scribbled
 function formatPhone(raw: string): string {
   const d = raw.replace(/\D/g, "").slice(0, 10)

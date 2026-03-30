@@ -429,13 +429,8 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         new_entry = entry.data[0]
         if req.quoted_wait is not None:
             _wait_set_at[new_entry["id"]] = _now()
-        if req.phone and req.source in ("host", "analog"):
-            try:
-                rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
-                rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-                background_tasks.add_task(_send_join_sms, req.phone, rest_name, new_entry["id"])
-            except Exception:
-                pass
+        # No link SMS at join time — it fires from PATCH /wait on first quote,
+        # so the guest gets the text at the moment their wait is set.
         return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -518,29 +513,6 @@ def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
     )
     print(f"[notify] sms_sent={ok} sms_error={err!r}")
 
-@app.post("/queue/{entry_id}/welcome-sms")
-def send_welcome_sms(entry_id: str, background_tasks: BackgroundTasks):
-    """Send the waitlist-link SMS to a guest who was already in the queue when the host first quoted them."""
-    try:
-        entry_res = supabase.table("queue_entries").select("phone, source, restaurant_id").eq("id", entry_id).execute()
-        if not entry_res.data:
-            raise HTTPException(status_code=404, detail="Entry not found")
-        entry = entry_res.data[0]
-        # NFC/web guests are already on the wait page — no link SMS needed
-        if entry.get("source") not in ("host", "analog"):
-            return {"status": "skipped_self_join"}
-        phone = entry.get("phone")
-        if not phone:
-            return {"status": "no_phone"}
-        rid_used  = entry.get("restaurant_id") or RESTAURANT_ID
-        rest_res  = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
-        rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-        background_tasks.add_task(_send_join_sms, phone, rest_name, entry_id)
-        return {"status": "queued"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/queue/{entry_id}/notify")
 def notify_ready(entry_id: str, background_tasks: BackgroundTasks):
