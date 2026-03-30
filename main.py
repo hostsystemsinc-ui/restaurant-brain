@@ -522,13 +522,17 @@ def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
 def send_welcome_sms(entry_id: str, background_tasks: BackgroundTasks):
     """Send the waitlist-link SMS to a guest who was already in the queue when the host first quoted them."""
     try:
-        entry_res = supabase.table("queue_entries").select("phone, restaurant_id").eq("id", entry_id).execute()
+        entry_res = supabase.table("queue_entries").select("phone, source, restaurant_id").eq("id", entry_id).execute()
         if not entry_res.data:
             raise HTTPException(status_code=404, detail="Entry not found")
-        phone = entry_res.data[0].get("phone")
+        entry = entry_res.data[0]
+        # NFC/web guests are already on the wait page — no link SMS needed
+        if entry.get("source") not in ("host", "analog"):
+            return {"status": "skipped_self_join"}
+        phone = entry.get("phone")
         if not phone:
             return {"status": "no_phone"}
-        rid_used  = entry_res.data[0].get("restaurant_id") or RESTAURANT_ID
+        rid_used  = entry.get("restaurant_id") or RESTAURANT_ID
         rest_res  = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
         rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
         background_tasks.add_task(_send_join_sms, phone, rest_name, entry_id)
