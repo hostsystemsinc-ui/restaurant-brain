@@ -306,10 +306,9 @@ export default function AnalogPage() {
     if (!row) return
     const now = Date.now()
     if (row.queueEntryId) {
-      // Guest already in queue — PATCH wait and send link SMS
+      // Guest already in queue — PATCH wait; backend fires link SMS on first quote automatically
       try { await fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" }) } catch {}
       patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
-      if (row.phone.trim()) backendSMS(`${API}/queue/${row.queueEntryId}/welcome-sms`)
     } else {
       // New guest — join + quote in one call; backend fires link SMS automatically for source "analog"
       if (!row.name.trim() && !row.phone.trim()) return
