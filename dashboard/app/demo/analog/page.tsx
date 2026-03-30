@@ -187,6 +187,14 @@ async function backendSMS(endpoint: string): Promise<void> {
   try { await fetch(endpoint, { method: "POST" }) } catch {}
 }
 
+// Format raw input to (XXX) XXX-XXXX as digits are typed / Scribbled
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 10)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function AnalogPage() {
@@ -293,40 +301,32 @@ export default function AnalogPage() {
 
   // ── Set quote ─────────────────────────────────────────────────────────────────
   const setQuote = useCallback(async (localId: string, minutes: number) => {
-    setRows(prev => {
-      const row = prev.find(r => r.localId === localId)
-      if (!row) return prev
-      ;(async () => {
-        const now = Date.now()
-        if (row.queueEntryId) {
-          // Guest already in queue — set quote and send welcome SMS via backend
-          try { await fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" }) } catch {}
-          patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
-          if (row.phone.trim()) {
-            // Backend sends the link SMS using its own TEXTBELT_KEY
-            backendSMS(`${API}/queue/${row.queueEntryId}/welcome-sms`)
-          }
-        } else {
-          // New guest — join + quote in one call; backend sends link SMS automatically
-          if (!row.name.trim() && !row.phone.trim()) return
-          try {
-            const joinRes = await fetch(`${API}/queue/join`, {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name: row.name.trim() || "Guest", party_size: row.partySize, phone: row.phone.trim() || null, notes: row.notes.trim() || null, restaurant_id: DEMO_RESTAURANT_ID, source: "analog", quoted_wait: minutes }),
-            })
-            if (!joinRes.ok) { showToast("Could not add guest"); return }
-            const joined = await joinRes.json()
-            // Belt-and-suspenders: also PATCH in case server ignores quoted_wait in join
-            await fetch(`${API}/queue/${joined.id}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
-            knownIdsRef.current.add(joined.id)
-            patchRow(localId, { queueEntryId: joined.id, quotedWait: minutes, status: "waiting", addedMs: now, deadlineMs: now + minutes * 60_000 })
-            showToast(`${row.name || "Guest"} added · ${minutes}m`)
-          } catch { showToast("Could not add guest") }
-        }
-      })()
-      return prev
-    })
-  }, [patchRow, showToast])
+    // Read row directly — do NOT nest async work inside setRows
+    const row = rows.find(r => r.localId === localId)
+    if (!row) return
+    const now = Date.now()
+    if (row.queueEntryId) {
+      // Guest already in queue — PATCH wait and send link SMS
+      try { await fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" }) } catch {}
+      patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
+      if (row.phone.trim()) backendSMS(`${API}/queue/${row.queueEntryId}/welcome-sms`)
+    } else {
+      // New guest — join + quote in one call; backend fires link SMS automatically for source "analog"
+      if (!row.name.trim() && !row.phone.trim()) return
+      try {
+        const joinRes = await fetch(`${API}/queue/join`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: row.name.trim() || "Guest", party_size: row.partySize, phone: row.phone.trim() || null, notes: row.notes.trim() || null, restaurant_id: DEMO_RESTAURANT_ID, source: "analog", quoted_wait: minutes }),
+        })
+        if (!joinRes.ok) { showToast("Could not add guest"); return }
+        const joined = await joinRes.json()
+        await fetch(`${API}/queue/${joined.id}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
+        knownIdsRef.current.add(joined.id)
+        patchRow(localId, { queueEntryId: joined.id, quotedWait: minutes, status: "waiting", addedMs: now, deadlineMs: now + minutes * 60_000 })
+        showToast(`${row.name || "Guest"} added · ${minutes}m`)
+      } catch { showToast("Could not add guest") }
+    }
+  }, [rows, patchRow, showToast])
 
   const adjustTimer = useCallback((localId: string, delta: number) => {
     setRows(prev => prev.map(r => {
@@ -647,7 +647,7 @@ export default function AnalogPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }} onPointerDown={clearOnPen(row.localId, "phone")}>
                       <input
                         type="tel" value={row.phone}
-                        onChange={e => patchRow(row.localId, { phone: e.target.value })}
+                        onChange={e => patchRow(row.localId, { phone: formatPhone(e.target.value) })}
                         placeholder="Write number…" inputMode="tel"
                         autoCorrect="off" spellCheck={false} autoCapitalize="off"
                         style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: V.inputColor, padding: "8px 0", caretColor: "#22c55e", minWidth: 0, touchAction: "manipulation" }}
@@ -663,7 +663,10 @@ export default function AnalogPage() {
                     {!isWaiting ? (
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 5 }}>
                         {QUOTE_PRESETS.map(t => (
-                          <button key={t} onPointerDown={() => !isBlank && setQuote(row.localId, t)} disabled={isBlank} style={{ height: 48, borderRadius: 12, border: `1px solid ${V.btnBorder}`, background: isBlank ? V.quoteBtnBgOff : V.quoteBtnBg, color: isBlank ? V.textMuted : V.quoteBtnText, fontSize: 15, fontWeight: 700, cursor: isBlank ? "default" : "pointer", boxShadow: isBlank ? "none" : "0 1px 4px rgba(0,0,0,0.07)", touchAction: "manipulation" }}>{t}</button>
+                          <button key={t}
+                            onPointerDown={e => { e.preventDefault(); if (!isBlank) setQuote(row.localId, t) }}
+                            onClick={() => { if (!isBlank) setQuote(row.localId, t) }}
+                            style={{ height: 48, borderRadius: 12, border: `1px solid ${V.btnBorder}`, background: isBlank ? V.quoteBtnBgOff : V.quoteBtnBg, color: isBlank ? V.textMuted : V.quoteBtnText, fontSize: 15, fontWeight: 700, cursor: isBlank ? "default" : "pointer", boxShadow: isBlank ? "none" : "0 1px 4px rgba(0,0,0,0.07)", touchAction: "manipulation", opacity: isBlank ? 0.4 : 1 }}>{t}</button>
                         ))}
                       </div>
                     ) : (
