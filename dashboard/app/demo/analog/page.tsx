@@ -320,9 +320,11 @@ export default function AnalogPage() {
         })
         if (!joinRes.ok) { showToast("Could not add guest"); return }
         const joined = await joinRes.json()
-        await fetch(`${API}/queue/${joined.id}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
-        knownIdsRef.current.add(joined.id)
-        patchRow(localId, { queueEntryId: joined.id, quotedWait: minutes, status: "waiting", addedMs: now, deadlineMs: now + minutes * 60_000 })
+        const entryId = joined.entry?.id ?? joined.id  // API returns { entry: { id } }
+        if (!entryId) { showToast("Could not add guest"); return }
+        await fetch(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" }).catch(() => {})
+        knownIdsRef.current.add(entryId)
+        patchRow(localId, { queueEntryId: entryId, quotedWait: minutes, status: "waiting", addedMs: now, deadlineMs: now + minutes * 60_000 })
         showToast(`${row.name || "Guest"} added · ${minutes}m`)
       } catch { showToast("Could not add guest") }
     }
