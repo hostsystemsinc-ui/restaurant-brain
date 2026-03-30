@@ -194,20 +194,38 @@ async function sendSMS(phone: string, message: string) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function AnalogPage() {
-  const [rows,            setRows]           = useState<AnalogRow[]>([makeRow()])
-  const [tableAssignment, setTableAssignment] = useState(true)
+  const [rows, setRows] = useState<AnalogRow[]>(() => {
+    try { const s = localStorage.getItem("analog_rows"); if (s) { const p = JSON.parse(s) as AnalogRow[]; if (p.length) return p } } catch {}
+    return [makeRow()]
+  })
+  const [tableAssignment, setTableAssignment] = useState(() => {
+    try { const s = localStorage.getItem("analog_tables"); if (s !== null) return s === "true" } catch {}
+    return true
+  })
   const [tablePickFor,    setTablePickFor]   = useState<string | null>(null)
   const [confirmFor,      setConfirmFor]     = useState<string | null>(null)
   const [tables,          setTables]         = useState<Table[]>([])
   const [toast,           setToast]          = useState<string | null>(null)
-  const [zoom,            setZoom]           = useState(1.0)
-  const [visual,          setVisual]         = useState<Visual>("basic")
+  const [zoom, setZoom] = useState(() => {
+    try { const s = localStorage.getItem("analog_zoom"); if (s) return parseFloat(s) || 1.0 } catch {}
+    return 1.0
+  })
+  const [visual, setVisual] = useState<Visual>(() => {
+    try { const s = localStorage.getItem("analog_visual"); if (s === "basic" || s === "classic" || s === "modern") return s } catch {}
+    return "basic"
+  })
   const [showVisuals,     setShowVisuals]    = useState(false)
   const [isLandscape,     setIsLandscape]    = useState(false)
   const [,                tick]              = useState(0)
   const knownIdsRef = useRef(new Set<string>())
 
   const V = makeV(visual)
+
+  // ── Persist to localStorage ───────────────────────────────────────────────────
+  useEffect(() => { try { localStorage.setItem("analog_rows", JSON.stringify(rows)) } catch {} }, [rows])
+  useEffect(() => { try { localStorage.setItem("analog_visual", visual) } catch {} }, [visual])
+  useEffect(() => { try { localStorage.setItem("analog_tables", String(tableAssignment)) } catch {} }, [tableAssignment])
+  useEffect(() => { try { localStorage.setItem("analog_zoom", String(zoom)) } catch {} }, [zoom])
 
   useEffect(() => { const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t) }, [])
   const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }, [])
@@ -443,10 +461,10 @@ export default function AnalogPage() {
           <div style={{ position: "relative" }}>
             <button
               onClick={() => setShowVisuals(v => !v)}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 99, border: `1px solid ${V.btnBorder}`, background: showVisuals ? (visual === "modern" ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.06)") : "transparent", cursor: "pointer" }}
+              style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 15px", borderRadius: 12, border: `1.5px solid ${showVisuals ? V.textSub : V.btnBorder}`, background: showVisuals ? (visual === "modern" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.07)") : (visual === "modern" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)"), cursor: "pointer", touchAction: "manipulation", boxShadow: showVisuals ? "0 2px 12px rgba(0,0,0,0.14)" : "none", transition: "all 0.12s" }}
             >
-              <Palette style={{ width: 13, height: 13, color: V.textSub }} />
-              <span style={{ fontSize: 11, fontWeight: 600, color: V.textSub }}>Visuals</span>
+              <Palette style={{ width: 16, height: 16, color: V.textSub }} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: V.textSub, letterSpacing: "0.01em" }}>Visuals</span>
             </button>
             {showVisuals && (
               <div style={{
@@ -495,15 +513,15 @@ export default function AnalogPage() {
           {/* Table Assignment */}
           <button
             onClick={() => setTableAssignment(v => !v)}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 99, border: `1px solid ${tableAssignment ? "rgba(34,197,94,0.35)" : V.btnBorder}`, background: tableAssignment ? "rgba(34,197,94,0.07)" : "transparent", cursor: "pointer" }}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 15px", borderRadius: 12, border: `1.5px solid ${tableAssignment ? "rgba(34,197,94,0.50)" : V.btnBorder}`, background: tableAssignment ? "rgba(34,197,94,0.11)" : (visual === "modern" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)"), cursor: "pointer", touchAction: "manipulation", boxShadow: tableAssignment ? "0 0 0 1px rgba(34,197,94,0.18), 0 2px 10px rgba(34,197,94,0.18)" : "none", transition: "all 0.12s" }}
           >
-            {tableAssignment ? <ToggleRight style={{ width: 15, height: 15, color: "#22c55e" }} /> : <ToggleLeft style={{ width: 15, height: 15, color: V.textMuted }} />}
-            <span style={{ fontSize: 11, fontWeight: 600, color: tableAssignment ? "#16a34a" : V.textSub }}>Tables</span>
+            {tableAssignment ? <ToggleRight style={{ width: 17, height: 17, color: "#22c55e" }} /> : <ToggleLeft style={{ width: 17, height: 17, color: V.textMuted }} />}
+            <span style={{ fontSize: 13, fontWeight: 700, color: tableAssignment ? "#16a34a" : V.textSub, letterSpacing: "0.01em" }}>Tables</span>
           </button>
 
           {/* History */}
-          <Link href="/demo/history?analog=1&tab=stats" style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 99, border: `1px solid ${V.btnBorder}`, color: V.textSub, textDecoration: "none", fontSize: 11, fontWeight: 600 }}>
-            <History style={{ width: 13, height: 13 }} />
+          <Link href="/demo/history?analog=1&tab=stats" style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 15px", borderRadius: 12, border: `1.5px solid ${V.btnBorder}`, background: visual === "modern" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: V.textSub, textDecoration: "none", fontSize: 13, fontWeight: 700, letterSpacing: "0.01em", touchAction: "manipulation" }}>
+            <History style={{ width: 16, height: 16 }} />
             History
           </Link>
         </div>
