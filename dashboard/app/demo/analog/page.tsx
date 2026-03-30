@@ -45,18 +45,18 @@ function makeV(v: Visual) {
     headerBorder:  "rgba(180,150,60,0.28)",
     colHeaderBg:   "rgba(255,253,220,0.97)",
     colHeaderText: "rgba(100,70,30,0.45)",
-    rowBorder:     "#D4C5A9",
+    rowBorder:     "rgba(168,210,228,0.80)",
     rowBgNormal:   "transparent",
     rowBgNFC:      "rgba(251,191,36,0.09)",
     rowBgOverdue:  "rgba(220,38,38,0.07)",
     completedBg:   "rgba(180,150,60,0.05)",
-    completedDiv:  "rgba(180,150,60,0.22)",
+    completedDiv:  "rgba(168,210,228,0.65)",
     text:          "#3D2B1F",
     textSub:       "rgba(61,43,31,0.55)",
     textMuted:     "rgba(61,43,31,0.38)",
     inputColor:    "#3D2B1F",
-    notesBg:       "rgba(180,150,60,0.07)",
-    notesBorder:   "rgba(180,150,60,0.22)",
+    notesBg:       "rgba(168,210,228,0.12)",
+    notesBorder:   "rgba(168,210,228,0.65)",
     notesLabel:    "rgba(100,70,30,0.40)",
     quoteBtnBg:    "rgba(255,250,200,0.88)",
     quoteBtnBgOff: "rgba(180,150,60,0.07)",
@@ -67,7 +67,8 @@ function makeV(v: Visual) {
     clearBtnBg:    "rgba(180,150,60,0.15)",
     clearBtnColor: "rgba(61,43,31,0.50)",
     marginLine:    true,
-    marginColor:   "rgba(255,120,120,0.55)",
+    marginColor:   "rgba(200,50,50,0.65)",
+    marginBorder:  "8px double rgba(200,50,50,0.65)",
     font:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   }
   if (v === "modern") return {
@@ -99,6 +100,7 @@ function makeV(v: Visual) {
     clearBtnColor: "rgba(255,255,255,0.50)",
     marginLine:    false,
     marginColor:   "transparent",
+    marginBorder:  "",
     font:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   }
   // basic
@@ -131,6 +133,7 @@ function makeV(v: Visual) {
     clearBtnColor: "rgba(0,0,0,0.45)",
     marginLine:    false,
     marginColor:   "transparent",
+    marginBorder:  "",
     font:          "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   }
 }
@@ -506,7 +509,7 @@ export default function AnalogPage() {
           <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${(1 / zoom) * 100}%`, minHeight: `${(1 / zoom) * 100}%` }}>
 
             {/* ── Column Headers ── */}
-            <div style={{ background: V.colHeaderBg, borderBottom: `1px solid ${V.rowBorder}`, display: "grid", gridTemplateColumns: gridCols, padding: "6px 16px" }}>
+            <div style={{ background: V.colHeaderBg, borderBottom: `1px solid ${V.rowBorder}`, borderLeft: V.marginBorder || undefined, display: "grid", gridTemplateColumns: gridCols, padding: "6px 16px" }}>
               {colHeaders.map((h, i) => (
                 <div key={i} style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: V.colHeaderText, paddingLeft: i > 0 ? 8 : 0 }}>{h}</div>
               ))}
@@ -519,7 +522,7 @@ export default function AnalogPage() {
                   <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: V.textMuted }}>Completed · {completedRows.length}</span>
                 </div>
                 {completedRows.map(row => (
-                  <div key={row.localId} style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0", borderLeft: V.marginLine ? `3px solid ${V.marginColor}` : undefined }}>
+                  <div key={row.localId} style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0", borderLeft: V.marginBorder || undefined }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <div style={{ width: 28, height: 28, borderRadius: 8, background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)", border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                         {row.status === "seated" ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} /> : <X style={{ width: 14, height: 14, color: "#dc2626" }} />}
@@ -561,7 +564,7 @@ export default function AnalogPage() {
                 <div key={row.localId} style={{
                   display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
                   minHeight: 68, borderBottom: `1px solid ${V.rowBorder}`,
-                  borderLeft: V.marginLine ? `3px solid ${V.marginColor}` : undefined,
+                  borderLeft: V.marginBorder || undefined,
                   background: needsQuote ? V.rowBgNFC : isOverdue ? V.rowBgOverdue : V.rowBgNormal,
                   padding: "8px 0",
                 }}>
@@ -587,7 +590,8 @@ export default function AnalogPage() {
                           type="text" value={row.name}
                           onChange={e => patchRow(row.localId, { name: e.target.value })}
                           placeholder="Write name…" inputMode="text"
-                          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: V.inputColor, padding: "4px 0", caretColor: "#22c55e", minWidth: 0, touchAction: "manipulation" }}
+                          autoCorrect="off" spellCheck={false} autoCapitalize="words"
+                          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: V.inputColor, padding: "8px 0", caretColor: "#22c55e", minWidth: 0, touchAction: "manipulation" }}
                         />
                         {row.name && (
                           <button onPointerDown={e => { e.preventDefault(); patchRow(row.localId, { name: "" }) }} style={{ width: 20, height: 20, borderRadius: 10, border: "none", background: V.clearBtnBg, color: V.clearBtnColor, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, touchAction: "manipulation" }}>×</button>
@@ -616,7 +620,8 @@ export default function AnalogPage() {
                         type="tel" value={row.phone}
                         onChange={e => patchRow(row.localId, { phone: e.target.value })}
                         placeholder="Write number…" inputMode="tel"
-                        style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: V.inputColor, padding: "4px 0", caretColor: "#22c55e", minWidth: 0, touchAction: "manipulation" }}
+                        autoCorrect="off" spellCheck={false} autoCapitalize="off"
+                        style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 15, fontWeight: 500, color: V.inputColor, padding: "8px 0", caretColor: "#22c55e", minWidth: 0, touchAction: "manipulation" }}
                       />
                       {row.phone && (
                         <button onPointerDown={e => { e.preventDefault(); patchRow(row.localId, { phone: "" }) }} style={{ width: 20, height: 20, borderRadius: 10, border: "none", background: V.clearBtnBg, color: V.clearBtnColor, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, touchAction: "manipulation" }}>×</button>
@@ -665,7 +670,8 @@ export default function AnalogPage() {
                         type="text" value={row.notes}
                         onChange={e => patchRow(row.localId, { notes: e.target.value })}
                         placeholder="Notes…" inputMode="text"
-                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, color: V.inputColor, caretColor: "#22c55e", borderBottom: `1px solid ${V.rowBorder}`, padding: "4px 0", touchAction: "manipulation" }}
+                        autoCorrect="off" spellCheck={false} autoCapitalize="sentences"
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, color: V.inputColor, caretColor: "#22c55e", borderBottom: `1px solid ${V.rowBorder}`, padding: "6px 0", touchAction: "manipulation" }}
                       />
                     </div>
                   )}
@@ -678,6 +684,7 @@ export default function AnalogPage() {
                         type="text" value={row.notes}
                         onChange={e => patchRow(row.localId, { notes: e.target.value })}
                         placeholder="Allergies, special requests…" inputMode="text"
+                        autoCorrect="off" spellCheck={false} autoCapitalize="sentences"
                         style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, color: V.inputColor, caretColor: "#22c55e", touchAction: "manipulation" }}
                       />
                     </div>
