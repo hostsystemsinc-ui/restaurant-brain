@@ -2808,33 +2808,6 @@ export default function DemoHostDashboard() {
               ) : null}
             </div>
 
-            {/* Sidebar footer — system health (3-state) */}
-            {(() => {
-              const level: "green"|"yellow"|"red" =
-                !online ? "red" :
-                ghStatus === "bad" ? "red" :
-                ghStatus === "degraded" ? "yellow" :
-                "green"
-              const dot   = level === "green" ? "#22c55e" : level === "yellow" ? "#f59e0b" : "#ef4444"
-              const label = level === "green" ? "System Good" : level === "yellow" ? "System Check" : "System Down"
-              return (
-                <div className="px-4 py-3 shrink-0 flex items-center justify-between"
-                  style={{ borderTop: "1px solid rgba(255,185,100,0.14)" }}>
-                  <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.35)" }}>
-                    Synced {lastSync.toLocaleTimeString()}
-                  </p>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full" style={{
-                      background: dot,
-                      boxShadow: `0 0 5px ${dot}CC`,
-                    }} />
-                    <span className="text-[10px] font-semibold" style={{ color: dot + "CC" }}>
-                      {label}
-                    </span>
-                  </div>
-                </div>
-              )
-            })()}
           </div>
 
           {/* ── Floor map (desktop only) ───────────────────────────── */}
