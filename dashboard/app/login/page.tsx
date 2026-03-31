@@ -159,7 +159,7 @@ export default function LoginPage() {
           {/* Footer note */}
           <p style={{ textAlign: "center", fontSize: ".77rem", color: "rgba(255,255,255,0.18)", marginTop: 36 }}>
             Need access?{" "}
-            <a href="mailto:hello@hostplatform.net" style={{ color: "rgba(255,255,255,0.32)", textDecoration: "underline" }}>
+            <a href="mailto:demo@hostplatform.net" style={{ color: "rgba(255,255,255,0.32)", textDecoration: "underline" }}>
               Contact us
             </a>
           </p>

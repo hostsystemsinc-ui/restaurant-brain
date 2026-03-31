@@ -5,11 +5,19 @@ import Link from "next/link"
 import {
   History, Plus, Minus, Bell, Pause, Play,
   ChevronLeft, Check, X, ToggleLeft, ToggleRight, Palette,
+  Download,
 } from "lucide-react"
 
 const API                = "/api/brain"
 const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
 const QUOTE_PRESETS      = [5, 10, 15, 20]
+
+// Business day starts at 3am — history before 3am belongs to previous day
+function getBusinessDate(): string {
+  const now = new Date()
+  if (now.getHours() < 3) now.setDate(now.getDate() - 1)
+  return now.toLocaleDateString("en-CA")  // YYYY-MM-DD
+}
 const TABLE_NUMBERS      = Array.from({ length: 16 }, (_, i) => i + 1)
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -183,37 +191,6 @@ function waitedLabel(row: AnalogRow): string {
   return `${Math.round(((row.seatedMs ?? Date.now()) - row.addedMs) / 60_000)}m`
 }
 
-// ── Swipe-to-discard wrapper ────────────────────────────────────────────────
-function SwipeRow({ onDiscard, enabled, children, style }: { onDiscard: () => void; enabled: boolean; children: React.ReactNode; style?: React.CSSProperties }) {
-  const startX = useRef(0)
-  const offsetX = useRef(0)
-  const elRef = useRef<HTMLDivElement>(null)
-  const swiping = useRef(false)
-  if (!enabled) return <div style={style}>{children}</div>
-  return (
-    <div
-      ref={elRef}
-      onTouchStart={e => { startX.current = e.touches[0].clientX; swiping.current = false }}
-      onTouchMove={e => {
-        const dx = e.touches[0].clientX - startX.current
-        if (Math.abs(dx) > 10) swiping.current = true
-        offsetX.current = dx
-        if (elRef.current && dx < 0) elRef.current.style.transform = `translateX(${dx}px)`
-      }}
-      onTouchEnd={() => {
-        if (offsetX.current < -100) { onDiscard(); return }
-        if (elRef.current) { elRef.current.style.transform = ""; elRef.current.style.transition = "transform 0.2s" ; setTimeout(() => { if (elRef.current) elRef.current.style.transition = "" }, 200) }
-        offsetX.current = 0
-      }}
-      style={{ ...style, position: "relative", overflow: "hidden" }}
-    >
-      {children}
-      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 80, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(239,68,68,0.85)", color: "white", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", transform: "translateX(80px)", pointerEvents: "none" }}>
-        Discard
-      </div>
-    </div>
-  )
-}
 
 // Format raw input to (XXX) XXX-XXXX as digits are typed / Scribbled
 function formatPhone(raw: string): string {
@@ -269,6 +246,25 @@ export default function AnalogPage() {
   useEffect(() => { try { localStorage.setItem("analog_tables", String(tableAssignment)) } catch {} }, [tableAssignment])
   useEffect(() => { try { localStorage.setItem("analog_zoom", String(zoom)) } catch {} }, [zoom])
 
+  // ── 3am history clearing — wipe completed rows when business date changes ──
+  useEffect(() => {
+    const BDATE_KEY = "analog_business_date"
+    const check = () => {
+      const bd = getBusinessDate()
+      try {
+        const prev = localStorage.getItem(BDATE_KEY)
+        if (prev && prev !== bd) {
+          // New business day — clear completed rows
+          setRows(r => r.filter(row => row.status !== "seated" && row.status !== "removed"))
+        }
+        localStorage.setItem(BDATE_KEY, bd)
+      } catch {}
+    }
+    check()
+    const t = setInterval(check, 60_000) // re-check every minute
+    return () => clearInterval(t)
+  }, [])
+
   useEffect(() => { const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t) }, [])
   const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000) }, [])
 
@@ -292,7 +288,7 @@ export default function AnalogPage() {
   const fetchTables = useCallback(() => {
     fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`).then(r => r.ok ? r.json() : []).then(setTables).catch(() => {})
   }, [])
-  useEffect(() => { fetchTables(); const t = setInterval(fetchTables, 4_000); return () => clearInterval(t) }, [fetchTables])
+  useEffect(() => { fetchTables(); const t = setInterval(fetchTables, 2_000); return () => clearInterval(t) }, [fetchTables])
 
   // ── Poll queue ────────────────────────────────────────────────────────────────
   const pollQueue = useCallback(async () => {
@@ -309,19 +305,26 @@ export default function AnalogPage() {
           if (existingIdx >= 0) {
             const ex = updated[existingIdx]
             let patch: Partial<AnalogRow> = {}
-            // Status sync
+            // Status sync — handle all transitions including restore
             if (entry.status === "seated" && ex.status !== "seated")
               patch = { ...patch, status: "seated", seatedMs: ex.seatedMs ?? Date.now() }
             else if (entry.status === "removed" && ex.status !== "removed")
               patch = { ...patch, status: "removed", seatedMs: ex.seatedMs ?? Date.now(), removedByGuest: ex.source === "nfc" || ex.source === "web" }
             else if (entry.status === "ready" && ex.status !== "ready")
               patch = { ...patch, status: "ready" }
+            else if (entry.status === "waiting" && (ex.status === "seated" || ex.status === "removed")) {
+              // Restored from another view — bring back to active queue
+              const arrMs = new Date(entry.arrival_time).getTime()
+              const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : arrMs
+              patch = { ...patch, status: "waiting", seatedMs: null, removedByGuest: undefined, quotedWait: entry.quoted_wait, addedMs: arrMs, deadlineMs: entry.quoted_wait ? base + entry.quoted_wait * 60_000 : null }
+            }
             // Sync quoted_wait when HOST standard changes it
-            if (entry.quoted_wait !== null && entry.quoted_wait !== ex.quotedWait) {
+            if (entry.quoted_wait !== null && entry.quoted_wait !== ex.quotedWait && !patch.quotedWait) {
               const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : Date.now()
               patch = { ...patch, quotedWait: entry.quoted_wait, status: (ex.status === "filling" ? "waiting" : ex.status) as AnalogRow["status"], addedMs: ex.addedMs ?? base, deadlineMs: base + entry.quoted_wait * 60_000 }
             }
-            // Sync party size and phone edits from HOST standard
+            // Sync name, party size and phone edits from HOST standard
+            if (entry.name && entry.name !== ex.name) patch = { ...patch, name: entry.name }
             if (entry.party_size !== ex.partySize) patch = { ...patch, partySize: entry.party_size }
             if (entry.phone && entry.phone !== ex.phone) patch = { ...patch, phone: entry.phone }
             if (Object.keys(patch).length > 0)
@@ -355,7 +358,7 @@ export default function AnalogPage() {
     } catch {}
   }, [])
 
-  useEffect(() => { pollQueue(); const t = setInterval(pollQueue, 3_000); return () => clearInterval(t) }, [pollQueue])
+  useEffect(() => { pollQueue(); const t = setInterval(pollQueue, 1_500); return () => clearInterval(t) }, [pollQueue])
 
   const patchRow = useCallback((localId: string, patch: Partial<AnalogRow>) => {
     setRows(prev => prev.map(r => r.localId === localId ? { ...r, ...patch } : r))
@@ -475,9 +478,10 @@ export default function AnalogPage() {
   const completedRows = rows.filter(r => r.status === "seated" || r.status === "removed")
   const confirmRow    = confirmFor ? rows.find(r => r.localId === confirmFor) : null
 
+  const firstCol = visual === "classic" ? "68px" : "52px"
   const gridCols = isLandscape
-    ? "52px 1fr 100px 1fr minmax(170px,1.2fr) minmax(140px,1fr)"
-    : "52px 1fr 100px 1fr minmax(170px,1.2fr)"
+    ? `${firstCol} 1fr 100px 1fr minmax(170px,1.2fr) minmax(140px,1fr)`
+    : `${firstCol} 1fr 100px 1fr minmax(170px,1.2fr)`
   const colHeaders = isLandscape
     ? ["", "Name", "Party", "Phone", "Wait / Timer", "Notes"]
     : ["", "Name", "Party", "Phone", "Wait / Timer"]
@@ -611,6 +615,45 @@ export default function AnalogPage() {
               ))}
             </div>
 
+            {/* ── Export & Clear buttons — visible when scrolling up past history ── */}
+            {completedRows.length > 0 && (
+              <div style={{ display: "flex", gap: 8, padding: "12px 16px", background: V.completedBg, borderBottom: `1px solid ${V.completedDiv}` }}>
+                <button
+                  onClick={() => {
+                    const header = ["Name","Party Size","Phone","Quoted Wait (min)","Status","Arrived","Waited (min)","Notes"]
+                    const csvRows = completedRows.map(r => [
+                      r.name || "Guest",
+                      r.partySize,
+                      r.phone || "",
+                      r.quotedWait ?? "",
+                      r.status === "seated" ? "Seated" : r.removedByGuest ? "Left waitlist" : "Removed",
+                      r.addedMs ? new Date(r.addedMs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : "",
+                      r.addedMs ? Math.round(((r.seatedMs ?? Date.now()) - r.addedMs) / 60_000) : "",
+                      r.notes || "",
+                    ])
+                    const csv = [header, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
+                    const blob = new Blob([csv], { type: "text/csv" })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement("a"); a.href = url; a.download = `waitlist-${getBusinessDate()}.csv`; a.click()
+                    URL.revokeObjectURL(url)
+                    showToast("Exported to CSV")
+                  }}
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: `1.5px solid rgba(34,197,94,0.30)`, background: "rgba(34,197,94,0.08)", color: "#22c55e", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.06em", touchAction: "manipulation" }}
+                >
+                  <Download style={{ width: 14, height: 14 }} /> Export to Excel
+                </button>
+                <button
+                  onClick={() => {
+                    setRows(prev => prev.filter(r => r.status !== "seated" && r.status !== "removed"))
+                    showToast("History cleared")
+                  }}
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: `1.5px solid rgba(239,68,68,0.25)`, background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.75)", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.06em", touchAction: "manipulation" }}
+                >
+                  <X style={{ width: 14, height: 14 }} /> Clear History
+                </button>
+              </div>
+            )}
+
             {/* ── Completed rows (above active — scroll up for history) ── */}
             {completedRows.length > 0 && (
               <>
@@ -622,8 +665,19 @@ export default function AnalogPage() {
                     onClick={async () => {
                       if (!row.queueEntryId) return
                       try {
-                        await fetch(`${API}/queue/${row.queueEntryId}/restore`, { method: "POST" })
-                        patchRow(row.localId, { status: "waiting", seatedMs: null, removedByGuest: undefined })
+                        const res = await fetch(`${API}/queue/${row.queueEntryId}/restore`, { method: "POST" })
+                        if (!res.ok) { showToast("Could not restore"); return }
+                        const data = await res.json()
+                        const entry = data.entry
+                        const arrMs = entry ? new Date(entry.arrival_time).getTime() : row.addedMs
+                        const qw = entry?.quoted_wait ?? row.quotedWait
+                        const base = entry?.wait_set_at ? new Date(entry.wait_set_at).getTime() : (arrMs ?? Date.now())
+                        patchRow(row.localId, {
+                          status: "waiting", seatedMs: null, removedByGuest: undefined,
+                          quotedWait: qw, addedMs: arrMs,
+                          deadlineMs: qw ? base + qw * 60_000 : null,
+                          isPaused: false, pausedSecsLeft: 0,
+                        })
                         showToast(`${row.name || "Guest"} restored to waitlist`)
                       } catch { showToast("Could not restore") }
                     }}
@@ -666,9 +720,8 @@ export default function AnalogPage() {
                 : !isBlank               ? { label: "Host Stand", color: V.textMuted }
                 : null
 
-              const canSwipeDiscard = row.status === "filling" && !row.queueEntryId && (!!row.name || !!row.phone)
               return (
-                <SwipeRow key={row.localId} enabled={canSwipeDiscard} onDiscard={() => setRows(prev => prev.filter(r => r.localId !== row.localId))} style={{
+                <div key={row.localId} style={{
                   display: "grid", gridTemplateColumns: gridCols, alignItems: "center",
                   minHeight: 68, borderBottom: `1px solid ${V.rowBorder}`,
                   background: needsQuote ? V.rowBgNFC : isOverdue ? V.rowBgOverdue : V.rowBgNormal,
@@ -797,7 +850,7 @@ export default function AnalogPage() {
                       />
                     </div>
                   )}
-                </SwipeRow>
+                </div>
               )
             })}
 

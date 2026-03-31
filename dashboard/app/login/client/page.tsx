@@ -129,7 +129,7 @@ export default function ClientPortalLogin() {
 
         <p style={{ textAlign: "center", marginTop: 24, fontSize: ".78rem", color: "rgba(255,255,255,0.2)" }}>
           Need access?{" "}
-          <a href="mailto:hello@hostplatform.net" style={{ color: "rgba(255,255,255,0.38)", textDecoration: "underline" }}>
+          <a href="mailto:demo@hostplatform.net" style={{ color: "rgba(255,255,255,0.38)", textDecoration: "underline" }}>
             Contact us
           </a>
           {" · "}

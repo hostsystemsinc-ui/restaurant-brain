@@ -120,14 +120,21 @@ const MAX_HISTORY      = 300
 // Minimum seatings needed before suggestions are considered statistically valid
 const MIN_SAMPLES_FOR_SUGGESTION = 8
 
+// Business day starts at 3am — history before 3am belongs to previous day
+function getBusinessDate(): string {
+  const now = new Date()
+  if (now.getHours() < 3) now.setDate(now.getDate() - 1)
+  return now.toLocaleDateString("en-CA")  // YYYY-MM-DD
+}
+
 function getHistory(): SeatingRecord[] {
   try {
-    // Auto-wipe history every day (per-restaurant, no cross-day bleed)
-    const today    = new Date().toDateString()
+    // Auto-wipe history at 3am (business day boundary)
+    const bd       = getBusinessDate()
     const lastDate = localStorage.getItem(HISTORY_DATE_KEY)
-    if (lastDate && lastDate !== today) {
+    if (lastDate && lastDate !== bd) {
       localStorage.removeItem(HISTORY_KEY)
-      localStorage.setItem(HISTORY_DATE_KEY, today)
+      localStorage.setItem(HISTORY_DATE_KEY, bd)
       return []
     }
     return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]")
@@ -138,7 +145,7 @@ function addToHistory(r: SeatingRecord) {
     const h = getHistory(); h.push(r)
     if (h.length > MAX_HISTORY) h.splice(0, h.length - MAX_HISTORY)
     localStorage.setItem(HISTORY_KEY, JSON.stringify(h))
-    localStorage.setItem(HISTORY_DATE_KEY, new Date().toDateString())
+    localStorage.setItem(HISTORY_DATE_KEY, getBusinessDate())
   } catch {}
 }
 // Weighted suggestion: favors same party size + nearby hour of day.
@@ -768,20 +775,22 @@ function DraggableQueueCard({
 
       {/* ── Row 3: action buttons or delete confirm ── */}
       {confirmDelete ? (
-        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5, marginTop: 4 }}>
-          <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1, alignSelf: "center" }}>
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
+          <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", textAlign: "center" }}>
             Remove {entry.name || "guest"}?
           </span>
-          <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
-            className="h-11 px-4 rounded-xl text-xs font-semibold transition-all active:scale-95"
-            style={{ background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
-            Cancel
-          </button>
-          <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
-            className="h-11 px-4 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
-            {removing ? "…" : "Remove"}
-          </button>
+          <div style={{ display: "flex", gap: 5 }}>
+            <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
+              className="h-11 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              style={{ flex: 1, background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
+              Cancel
+            </button>
+            <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
+              className="h-11 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+              style={{ flex: 1, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
+              {removing ? "…" : "Remove"}
+            </button>
+          </div>
         </div>
       ) : (
         /* Full-width action row — buttons stretch to fill the card */
@@ -1920,7 +1929,7 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
                 const blob = new Blob([csv], { type: "text/csv" })
                 const url  = URL.createObjectURL(blob)
                 const a    = document.createElement("a"); a.href = url
-                a.download = `seating-${new Date().toLocaleDateString("en-CA")}.csv`; a.click()
+                a.download = `seating-${getBusinessDate()}.csv`; a.click()
                 URL.revokeObjectURL(url); showToast("Exported to CSV", "ok")
               }}
               className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
@@ -2097,10 +2106,10 @@ export default function DemoHostDashboard() {
       const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
       setLocalOccupants(prev => {
         const next = new Map(prev)
-        // Add occupants seated from other views
+        // Merge occupants from backend — always overwrite so cross-view seating syncs
         for (const [numStr, occ] of Object.entries(data)) {
           const num = parseInt(numStr, 10)
-          if (!prev.has(num)) next.set(num, { name: occ.name, party_size: occ.party_size })
+          next.set(num, { name: occ.name, party_size: occ.party_size })
         }
         return next
       })
@@ -2126,7 +2135,7 @@ export default function DemoHostDashboard() {
   useEffect(() => {
     if (!authed) return
     refreshAll(); fetchInsights(); fetchReservations()
-    const fast   = setInterval(refreshAll, 4000)
+    const fast   = setInterval(refreshAll, 2000)
     const slow   = setInterval(fetchInsights, 30000)
     const resInt = setInterval(fetchReservations, 30000)
     return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt) }

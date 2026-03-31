@@ -590,7 +590,9 @@ def restore_entry(entry_id: str):
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
     supabase.table("queue_entries").update({"status": "waiting"}).eq("id", entry_id).execute()
-    return {"status": "restored"}
+    updated = supabase.table("queue_entries").select("*").eq("id", entry_id).execute()
+    entry = updated.data[0] if updated.data else res.data[0]
+    return {"status": "restored", "entry": entry}
 
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
