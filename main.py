@@ -408,11 +408,11 @@ def get_waitlist_legacy():
     return get_queue()
 
 def _send_join_sms(phone: str, rest_name: str, entry_id: str) -> None:
-    wait_url = f"hostplatform.net/wait/{entry_id}"
+    short_id = entry_id[:8]
     print(f"[SMS] Sending join SMS to {phone!r} for entry {entry_id}")
     ok, err = _send_sms(
         to_phone=phone,
-        body=f"Welcome to {rest_name}, you've been added to the waitlist! Track your wait here: {wait_url} Reply STOP to opt out.",
+        body=f"Welcome to {rest_name}! You've been added to the waitlist. Your wait code is {short_id}. We'll text you when your table is ready. Reply STOP to opt out.",
     )
     print(f"[SMS] Join SMS result: ok={ok} err={err!r}")
     if not ok:
@@ -455,11 +455,11 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         if req.quoted_wait is not None and req.phone and req.source in ("host", "analog"):
             rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
             rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-            wait_url  = f"hostplatform.net/wait/{new_entry['id']}"
+            short_id  = new_entry["id"][:8]
             print(f"[SMS] join_queue: firing SMS to {req.phone!r} entry={new_entry['id']}")
             sms_sent, sms_error = _send_sms(
                 to_phone=req.phone,
-                body=f"Welcome to {rest_name}, you've been added to the waitlist! Track your wait here: {wait_url} Reply STOP to opt out.",
+                body=f"Welcome to {rest_name}! You've been added to the waitlist. Your wait code is {short_id}. We'll text you when your table is ready. Reply STOP to opt out.",
             )
             print(f"[SMS] join_queue result: sent={sms_sent} err={sms_error!r}")
         return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1, "sms_sent": sms_sent, "sms_error": sms_error}
@@ -634,11 +634,11 @@ def update_wait(entry_id: str, minutes: int):
         rid_used = entry.get("restaurant_id") or RESTAURANT_ID
         rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
         rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-        wait_url  = f"hostplatform.net/wait/{entry_id}"
+        short_id  = entry_id[:8]
         print(f"[SMS] update_wait: firing SMS to {phone!r} entry={entry_id}")
         sms_sent, sms_error = _send_sms(
             to_phone=phone,
-            body=f"Welcome to {rest_name}, you've been added to the waitlist! Track your wait here: {wait_url} Reply STOP to opt out.",
+            body=f"Welcome to {rest_name}! You've been added to the waitlist. Your wait code is {short_id}. We'll text you when your table is ready. Reply STOP to opt out.",
         )
         print(f"[SMS] update_wait result: sent={sms_sent} err={sms_error!r}")
     return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now, "sms_sent": sms_sent, "sms_error": sms_error}
