@@ -1548,7 +1548,7 @@ function AddGuestDrawer({
           </div>
 
           {/* HOST suggestion chip — only shows after enough data */}
-          {suggestion !== null ? (
+          {suggestion !== null && (
             <div style={{ marginBottom: 10 }}>
               <button
                 onClick={() => setWaitMins(suggestion)}
@@ -1568,11 +1568,7 @@ function AddGuestDrawer({
                 </span>
               </button>
             </div>
-          ) : needed > 0 ? (
-            <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 8, background: "rgba(99,179,237,0.06)", border: "1px solid rgba(99,179,237,0.15)", fontSize: 10, color: "rgba(99,179,237,0.60)", lineHeight: 1.4 }}>
-              HOST suggestions unlock after {needed} more {needed === 1 ? "seating" : "seatings"}
-            </div>
-          ) : null}
+          )}
 
           {/* Presets */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, marginBottom: 10 }}>

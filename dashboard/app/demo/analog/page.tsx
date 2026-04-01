@@ -639,10 +639,10 @@ export default function AnalogPage() {
       {/* Click away from visuals popup */}
       {showVisuals && <div style={{ position: "fixed", inset: 0, zIndex: 49 }} onClick={() => setShowVisuals(false)} />}
 
-      {/* Classic notepad double margin lines — fixed so they run infinite height */}
+      {/* Classic notepad double margin lines — sit in the far-left gutter, never over content */}
       {visual === "classic" && <>
-        <div style={{ position: "fixed", top: 56, bottom: 0, left: 53, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
-        <div style={{ position: "fixed", top: 56, bottom: 0, left: 59, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
+        <div style={{ position: "fixed", top: 56, bottom: 0, left: 10, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
+        <div style={{ position: "fixed", top: 56, bottom: 0, left: 16, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
       </>}
 
       {/* ── Scaled content ── */}
@@ -770,14 +770,27 @@ export default function AnalogPage() {
                   padding: "8px 0",
                 }}>
 
-                  {/* Checkbox */}
+                  {/* Checkbox / Remove */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {!isBlank && (
+                    {!isBlank && !isWaiting && row.status === "filling" ? (
+                      /* Remove button — discard a row being filled in */
+                      <button
+                        onPointerDown={e => {
+                          e.preventDefault()
+                          if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}/remove`, { method: "POST" }).catch(() => {})
+                          setRows(prev => prev.filter(r => r.localId !== row.localId))
+                        }}
+                        style={{ width: 44, height: 44, borderRadius: 10, border: `2px solid rgba(239,68,68,0.25)`, background: "rgba(239,68,68,0.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation", color: "#ef4444" }}
+                        title="Remove"
+                      >
+                        <X style={{ width: 16, height: 16 }} />
+                      </button>
+                    ) : !isBlank ? (
                       <button
                         onPointerDown={() => setConfirmFor(row.localId)}
                         style={{ width: 44, height: 44, borderRadius: 10, border: `2px solid ${isWaiting ? V.textSub : V.rowBorder}`, background: visual === "modern" ? "rgba(255,255,255,0.05)" : "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation", boxShadow: isWaiting ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}
                       />
-                    )}
+                    ) : null}
                   </div>
 
                   {/* Name */}
