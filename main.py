@@ -370,10 +370,32 @@ def clear_table_legacy(table_id: str):
 
 @app.get("/tables/occupants")
 def get_table_occupants(restaurant_id: Optional[str] = None):
-    """Return in-memory table→guest mapping so both HOST views stay synced."""
+    """Return table→guest mapping, merging in-memory dict with DB state so restarts don't clear it."""
     rid = _rid(restaurant_id)
     prefix = f"{rid}:"
-    return {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
+    # Start from in-memory (has name/party_size already set)
+    result: dict = {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
+    # Fill any gaps from DB: find tables with status="occupied" not already in result
+    try:
+        occ_tables = supabase.table("tables").select("id,table_number").eq("restaurant_id", rid).eq("status", "occupied").execute().data or []
+        for t in occ_tables:
+            tnum = str(t["table_number"])
+            if tnum not in result:
+                # Look up most recent seated entry for this table via seating_events
+                ev_res = supabase.table("seating_events").select("queue_entry_id").eq("table_id", t["id"]).eq("action", "seated").order("created_at", desc=True).limit(1).execute()
+                entry_id = ev_res.data[0]["queue_entry_id"] if ev_res.data else None
+                name, party_size = "Guest", 2
+                if entry_id:
+                    ent = supabase.table("queue_entries").select("name,party_size").eq("id", entry_id).execute()
+                    if ent.data:
+                        name = ent.data[0].get("name") or "Guest"
+                        party_size = ent.data[0].get("party_size", 2)
+                result[tnum] = {"name": name, "party_size": party_size, "entry_id": entry_id}
+                # Also repopulate in-memory dict so subsequent calls are fast
+                _table_occupants[f"{rid}:{t['table_number']}"] = result[tnum]
+    except Exception:
+        pass
+    return result
 
 # ── Queue ────────────────────────────────────────────────────────────────────
 
