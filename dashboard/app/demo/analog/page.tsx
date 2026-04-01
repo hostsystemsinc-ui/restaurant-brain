@@ -157,6 +157,29 @@ function makeV(v: Visual) {
   }
 }
 
+// ── Shared seating history (same key as HOST standard Stats tab) ───────────────
+
+const HISTORY_KEY      = "host_demo_seating_history"
+const HISTORY_DATE_KEY = "host_demo_seating_history_date"
+const MAX_HISTORY      = 300
+
+function addToSharedHistory(row: AnalogRow, seatedMs: number) {
+  if (!row.quotedWait || !row.addedMs) return
+  try {
+    const bd = getBusinessDate()
+    const lastDate = localStorage.getItem(HISTORY_DATE_KEY)
+    let hist: { party_size: number; quoted_wait: number; actual_wait_min: number; seated_at: number; day_of_week: number; hour_of_day: number }[] = []
+    if (!lastDate || lastDate === bd) {
+      try { hist = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") } catch {}
+    }
+    const now = new Date(seatedMs)
+    hist.push({ party_size: row.partySize, quoted_wait: row.quotedWait, actual_wait_min: Math.round((seatedMs - row.addedMs) / 60_000), seated_at: seatedMs, day_of_week: now.getDay(), hour_of_day: now.getHours() })
+    if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(hist))
+    localStorage.setItem(HISTORY_DATE_KEY, bd)
+  } catch {}
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 let _seq = 0
@@ -452,7 +475,9 @@ export default function AnalogPage() {
     if (action === "seat") {
       if (tableAssignment && row.queueEntryId) { setTablePickFor(localId); return }
       if (row.queueEntryId) try { await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" }) } catch {}
-      patchRow(localId, { status: "seated", seatedMs: Date.now() })
+      const seatedMs = Date.now()
+      patchRow(localId, { status: "seated", seatedMs })
+      addToSharedHistory(row, seatedMs)
       showToast(`${row.name || "Guest"} seated`)
     } else {
       if (row.queueEntryId) try { await fetch(`${API}/queue/${row.queueEntryId}/remove`, { method: "POST" }) } catch {}
@@ -469,7 +494,9 @@ export default function AnalogPage() {
     try {
       await fetch(apiTable ? `${API}/queue/${row.queueEntryId}/seat-to-table/${apiTable.id}` : `${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
     } catch {}
-    patchRow(localId, { status: "seated", seatedMs: Date.now() })
+    const seatedMs = Date.now()
+    patchRow(localId, { status: "seated", seatedMs })
+    addToSharedHistory(row, seatedMs)
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
   }, [rows, tables, patchRow, showToast])
 

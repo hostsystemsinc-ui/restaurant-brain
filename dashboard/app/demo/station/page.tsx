@@ -2135,28 +2135,17 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (!r.ok) return
       const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
-      const backendNums = new Set(Object.keys(data).map(k => parseInt(k, 10)))
       setLocalOccupants(prev => {
-        const next = new Map<number, LocalOccupant>()
-        // Keep all backend occupants (always overwrite)
+        const next = new Map(prev)
+        // Always add/update from backend — this ensures analog seating shows in standard
         for (const [numStr, occ] of Object.entries(data)) {
           const num = parseInt(numStr, 10)
           next.set(num, { name: occ.name, party_size: occ.party_size })
         }
-        // Preserve local-only occupants that were just placed this session
-        // (not yet in backend) — but remove ones that backend says are cleared
-        for (const [num, occ] of prev) {
-          if (!backendNums.has(num)) {
-            // Check if this table's DB status is still occupied — if so, keep it
-            // Otherwise the backend cleared it, so drop it
-            const dbTable = tables.find(t => t.table_number === num)
-            if (dbTable && dbTable.status === "occupied") next.set(num, occ)
-          }
-        }
         return next
       })
     } catch {}
-  }, [tables])
+  }, [])
   const refreshAll    = useCallback(() => { fetchTables(); fetchQueue(); syncOccupants() }, [fetchTables, fetchQueue, syncOccupants])
 
   const fetchReservations = useCallback(async () => {
