@@ -7,7 +7,7 @@ import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
   LayoutDashboard, GripVertical, CalendarDays, CalendarCheck,
-  Copy, Check, Pencil, Activity, Trash2, BarChart2, AlertTriangle,
+  Copy, Check, Pencil, Activity, Trash2, BarChart2, AlertTriangle, ChevronLeft,
 } from "lucide-react"
 import {
   DndContext, DragOverlay,
@@ -1917,7 +1917,38 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
           )}
         </div>
 
-        {/* Footer */}
+        {/* Footer — Today tab */}
+        {entries.length > 0 && tab === "today" && (
+          <div className="px-5 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <button
+              onClick={() => {
+                const headers = ["Name","Party Size","Status","Arrival","Quoted Wait (min)","Phone","Notes"]
+                const csvRows = entries.map(e => [e.name || "Guest", e.party_size, e.status, fmtTime(e.arrival_time), e.quoted_wait ?? "", e.phone ?? "", (e.notes ?? "").replace(/"/g, '""')])
+                const csv = [headers, ...csvRows].map(r => r.map(v => `"${v}"`).join(",")).join("\n")
+                const blob = new Blob([csv], { type: "text/csv" })
+                const url  = URL.createObjectURL(blob)
+                const a    = document.createElement("a"); a.href = url
+                a.download = `history-${getBusinessDate()}.csv`; a.click()
+                URL.revokeObjectURL(url); showToast("Exported to CSV", "ok")
+              }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(34,197,94,0.07)", color: "rgba(34,197,94,0.65)", border: "1px solid rgba(34,197,94,0.18)", padding: "10px 0" }}
+            >
+              Export to CSV
+            </button>
+            <button
+              onClick={() => {
+                setEntries([])
+                showToast("History cleared", "ok")
+              }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.45)", border: "1px solid rgba(239,68,68,0.12)", padding: "10px 0" }}
+            >
+              Clear History
+            </button>
+          </div>
+        )}
+        {/* Footer — Stats tab */}
         {hist.length > 0 && tab === "stats" && (
           <div className="px-5 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <button
@@ -2104,17 +2135,28 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (!r.ok) return
       const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
+      const backendNums = new Set(Object.keys(data).map(k => parseInt(k, 10)))
       setLocalOccupants(prev => {
-        const next = new Map(prev)
-        // Merge occupants from backend — always overwrite so cross-view seating syncs
+        const next = new Map<number, LocalOccupant>()
+        // Keep all backend occupants (always overwrite)
         for (const [numStr, occ] of Object.entries(data)) {
           const num = parseInt(numStr, 10)
           next.set(num, { name: occ.name, party_size: occ.party_size })
         }
+        // Preserve local-only occupants that were just placed this session
+        // (not yet in backend) — but remove ones that backend says are cleared
+        for (const [num, occ] of prev) {
+          if (!backendNums.has(num)) {
+            // Check if this table's DB status is still occupied — if so, keep it
+            // Otherwise the backend cleared it, so drop it
+            const dbTable = tables.find(t => t.table_number === num)
+            if (dbTable && dbTable.status === "occupied") next.set(num, occ)
+          }
+        }
         return next
       })
     } catch {}
-  }, [])
+  }, [tables])
   const refreshAll    = useCallback(() => { fetchTables(); fetchQueue(); syncOccupants() }, [fetchTables, fetchQueue, syncOccupants])
 
   const fetchReservations = useCallback(async () => {
@@ -2412,10 +2454,15 @@ export default function DemoHostDashboard() {
           style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.18)", backdropFilter: "blur(20px)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
-            {/* Demo Restaurant wordmark */}
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(255,248,240,0.95)" }}>Demo Restaurant</span>
-              <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(255,200,150,0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
+            {/* Back arrow → Analog + Demo Restaurant wordmark */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Link href="/demo/analog" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,200,150,0.65)", textDecoration: "none", flexShrink: 0, transition: "background 0.15s" }} title="Switch to Analog">
+                <ChevronLeft style={{ width: 16, height: 16 }} />
+              </Link>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(255,248,240,0.95)" }}>Demo Restaurant</span>
+                <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(255,200,150,0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
+              </div>
             </div>
 
             <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
@@ -2468,10 +2515,6 @@ export default function DemoHostDashboard() {
 
             <Link href="/demo/history" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <BarChart2 className="w-3 h-3" /> History
-            </Link>
-
-            <Link href="/demo/analog" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-semibold transition-colors" style={{ color: "rgba(255,248,240,0.85)", background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)" }}>
-              <Pencil className="w-3 h-3" /> Analog
             </Link>
 
             <Link href="/demo/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>

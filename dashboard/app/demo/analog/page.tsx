@@ -237,6 +237,8 @@ export default function AnalogPage() {
     } catch {}
     return new Set<string>()
   })())
+  // Track localIds with in-flight join POSTs so the poll doesn't insert duplicates
+  const pendingJoinsRef = useRef<Set<string>>(new Set())
 
   const V = makeV(visual)
 
@@ -284,9 +286,13 @@ export default function AnalogPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, rows.map(r => r.name + r.status + r.queueEntryId).join("|")])
 
-  // Fetch tables periodically (not just on mount) so both views stay synced
+  // Track table occupants from backend for cross-view consistency
+  const [tableOccupants, setTableOccupants] = useState<Record<string, { name: string; party_size: number }>>({})
+
+  // Fetch tables + occupants periodically so both views stay synced
   const fetchTables = useCallback(() => {
     fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`).then(r => r.ok ? r.json() : []).then(setTables).catch(() => {})
+    fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`).then(r => r.ok ? r.json() : {}).then(setTableOccupants).catch(() => {})
   }, [])
   useEffect(() => { fetchTables(); const t = setInterval(fetchTables, 2_000); return () => clearInterval(t) }, [fetchTables])
 
@@ -332,6 +338,13 @@ export default function AnalogPage() {
             return
           }
           if (knownIdsRef.current.has(entry.id)) return
+          // If a local row with the same name is mid-join (pendingJoinsRef), link it instead of creating a duplicate
+          const pendingIdx = updated.findIndex(r => pendingJoinsRef.current.has(r.localId) && !r.queueEntryId && r.name === entry.name && r.partySize === entry.party_size)
+          if (pendingIdx >= 0) {
+            knownIdsRef.current.add(entry.id)
+            updated = updated.map((r, i) => i === pendingIdx ? { ...r, queueEntryId: entry.id } : r)
+            return
+          }
           knownIdsRef.current.add(entry.id)
           const isQuoted = !!entry.quoted_wait
           const arrivalMs = new Date(entry.arrival_time).getTime()
@@ -380,20 +393,22 @@ export default function AnalogPage() {
         .catch(() => {})
     } else {
       // New guest — join with quoted_wait; backend fires SMS synchronously and returns result
+      pendingJoinsRef.current.add(localId)
       try {
         const joinRes = await fetch(`${API}/queue/join`, {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: row.name.trim() || "Guest", party_size: row.partySize, phone: row.phone.trim() || null, notes: row.notes.trim() || null, restaurant_id: DEMO_RESTAURANT_ID, source: "analog", quoted_wait: minutes }),
         })
-        if (!joinRes.ok) { showToast("Could not add guest"); return }
+        if (!joinRes.ok) { pendingJoinsRef.current.delete(localId); showToast("Could not add guest"); return }
         const joined = await joinRes.json()
         const entryId = joined.entry?.id ?? joined.id
-        if (!entryId) { showToast("Could not add guest"); return }
+        if (!entryId) { pendingJoinsRef.current.delete(localId); showToast("Could not add guest"); return }
         knownIdsRef.current.add(entryId)
         patchRow(localId, { queueEntryId: entryId })
         const smsNote = joined.sms_sent ? " · text sent" : joined.sms_error ? ` · text failed: ${joined.sms_error}` : ""
         showToast(`${row.name || "Guest"} added · ${minutes}m${smsNote}`)
       } catch { showToast("Could not add guest") }
+      finally { pendingJoinsRef.current.delete(localId) }
     }
   }, [rows, patchRow, showToast])
 
@@ -888,7 +903,7 @@ export default function AnalogPage() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {TABLE_NUMBERS.map(n => {
-                const occupied = tables.find(t => t.table_number === n)?.status === "occupied"
+                const occupied = tables.find(t => t.table_number === n)?.status === "occupied" || !!tableOccupants[String(n)]
                 return (
                   <button key={n} onPointerDown={() => !occupied && seatToTable(tablePickFor!, n)} disabled={occupied} style={{ height: 60, borderRadius: 14, border: `2px solid ${occupied ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.40)"}`, background: occupied ? "rgba(239,68,68,0.07)" : "rgba(34,197,94,0.07)", color: occupied ? "#dc2626" : "#16a34a", fontSize: 20, fontWeight: 800, cursor: occupied ? "default" : "pointer", touchAction: "manipulation" }}>
                     {n}
