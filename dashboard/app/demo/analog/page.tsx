@@ -195,7 +195,7 @@ function addToSharedHistory(row: AnalogRow, seatedMs: number) {
       try { hist = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]") } catch {}
     }
     const now = new Date(seatedMs)
-    hist.push({ party_size: row.partySize, quoted_wait: row.quotedWait, actual_wait_min: Math.round((seatedMs - row.addedMs) / 60_000), seated_at: seatedMs, day_of_week: now.getDay(), hour_of_day: now.getHours() })
+    hist.push({ party_size: row.partySize, quoted_wait: row.quotedWait ?? 0, actual_wait_min: Math.round((seatedMs - row.addedMs) / 60_000), seated_at: seatedMs, day_of_week: now.getDay(), hour_of_day: now.getHours() })
     if (hist.length > MAX_HISTORY) hist.splice(0, hist.length - MAX_HISTORY)
     localStorage.setItem(HISTORY_KEY, JSON.stringify(hist))
     localStorage.setItem(HISTORY_DATE_KEY, bd)
