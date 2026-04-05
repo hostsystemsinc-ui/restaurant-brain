@@ -7,7 +7,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from supabase import create_client
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -1069,13 +1069,13 @@ def setup_demo():
 # ── Demo request submissions ─────────────────────────────────────────────────
 
 class DemoSubmissionBody(BaseModel):
-    name:         str
-    restaurant:   str
-    email:        str
-    phone:        Optional[str] = None
-    city:         Optional[str] = None
-    type:         Optional[str] = None
-    submittedAt:  Optional[str] = None
+    name:            str
+    restaurant:      str
+    email:           str
+    phone:           Optional[str] = None
+    city:            Optional[str] = None
+    restaurant_type: Optional[str] = Field(default=None, alias="type")
+    submittedAt:     Optional[str] = None
 
 @app.post("/demo-submissions")
 def create_demo_submission(body: DemoSubmissionBody):
@@ -1086,7 +1086,7 @@ def create_demo_submission(body: DemoSubmissionBody):
         "email":       body.email.strip().lower(),
         "phone":       (body.phone or "").strip(),
         "city":        (body.city or "").strip(),
-        "type":        (body.type or "").strip(),
+        "type":        (body.restaurant_type or "").strip(),
         "submittedAt": body.submittedAt or _now(),
         "receivedAt":  _now(),
     }
