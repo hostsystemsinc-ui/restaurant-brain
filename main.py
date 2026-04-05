@@ -3,11 +3,11 @@ import re
 import json as _json
 import uuid as _uuid
 import threading
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from supabase import create_client
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -52,7 +52,8 @@ def _save_demo_sub_to_db(sub: dict):
     except Exception:
         pass
 
-_load_demo_subs()
+# Load existing submissions in the background so startup is never blocked
+threading.Thread(target=_load_demo_subs, daemon=True).start()
 
 app = FastAPI(title="Restaurant Brain API")
 
@@ -1068,26 +1069,26 @@ def setup_demo():
 
 # ── Demo request submissions ─────────────────────────────────────────────────
 
-class DemoSubmissionBody(BaseModel):
-    name:            str
-    restaurant:      str
-    email:           str
-    phone:           Optional[str] = None
-    city:            Optional[str] = None
-    restaurant_type: Optional[str] = Field(default=None, alias="type")
-    submittedAt:     Optional[str] = None
-
 @app.post("/demo-submissions")
-def create_demo_submission(body: DemoSubmissionBody):
+async def create_demo_submission(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+    name = str(body.get("name") or "").strip()
+    restaurant = str(body.get("restaurant") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    if not name or not restaurant or not email:
+        raise HTTPException(status_code=400, detail="Missing required fields")
     sub = {
         "id":          str(_uuid.uuid4()),
-        "name":        body.name.strip(),
-        "restaurant":  body.restaurant.strip(),
-        "email":       body.email.strip().lower(),
-        "phone":       (body.phone or "").strip(),
-        "city":        (body.city or "").strip(),
-        "type":        (body.restaurant_type or "").strip(),
-        "submittedAt": body.submittedAt or _now(),
+        "name":        name,
+        "restaurant":  restaurant,
+        "email":       email,
+        "phone":       str(body.get("phone") or "").strip(),
+        "city":        str(body.get("city") or "").strip(),
+        "type":        str(body.get("type") or "").strip(),
+        "submittedAt": str(body.get("submittedAt") or _now()),
         "receivedAt":  _now(),
     }
     _demo_submissions.insert(0, sub)
