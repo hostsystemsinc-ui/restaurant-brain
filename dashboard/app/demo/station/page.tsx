@@ -2131,9 +2131,9 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (!r.ok) return
       const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
-      setLocalOccupants(prev => {
-        const next = new Map(prev)
-        // Always add/update from backend — this ensures analog seating shows in standard
+      setLocalOccupants(() => {
+        // Full replace from backend — adds new, removes cleared, keeps both views in sync
+        const next = new Map<number, { name: string; party_size: number }>()
         for (const [numStr, occ] of Object.entries(data)) {
           const num = parseInt(numStr, 10)
           next.set(num, { name: occ.name, party_size: occ.party_size })

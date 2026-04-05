@@ -284,9 +284,14 @@ export default function AnalogPage() {
   })())
   // Track localIds with in-flight join POSTs so the poll doesn't insert duplicates
   const pendingJoinsRef = useRef<Set<string>>(new Set())
-  // Debounce refs — prevent rapid tapping from firing a PATCH on every click
-  const adjustTimerDebounce = useRef<Record<string, { timer: ReturnType<typeof setTimeout>; entryId: string; val: number }>>({})
+  // Always-current rows ref — used by debounce callbacks to read final settled value
+  const rowsRef = useRef(rows)
+  useEffect(() => { rowsRef.current = rows }, [rows])
+  // Debounce timers — only the timer handle, no stale val stored here
+  const adjustTimerDebounce = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const partySizeDebounce   = useRef<Record<string, { timer: ReturnType<typeof setTimeout>; entryId: string; val: number }>>({})
+  // Block pollQueue from overriding quotedWait while user is actively tapping ±
+  const adjustingUntilRef = useRef<Record<string, number>>({})
 
   const V = makeV(visual)
 
@@ -372,10 +377,13 @@ export default function AnalogPage() {
               const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : arrMs
               patch = { ...patch, status: "waiting", seatedMs: null, removedByGuest: undefined, quotedWait: entry.quoted_wait, addedMs: arrMs, deadlineMs: entry.quoted_wait ? base + entry.quoted_wait * 60_000 : null }
             }
-            // Sync quoted_wait when HOST standard changes it
+            // Sync quoted_wait when HOST standard changes it — but not while user is tapping ±
             if (entry.quoted_wait !== null && entry.quoted_wait !== ex.quotedWait && !patch.quotedWait) {
-              const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : Date.now()
-              patch = { ...patch, quotedWait: entry.quoted_wait, status: (ex.status === "filling" ? "waiting" : ex.status) as AnalogRow["status"], addedMs: ex.addedMs ?? base, deadlineMs: base + entry.quoted_wait * 60_000 }
+              const isAdjusting = (adjustingUntilRef.current[ex.localId] ?? 0) > Date.now()
+              if (!isAdjusting) {
+                const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : Date.now()
+                patch = { ...patch, quotedWait: entry.quoted_wait, status: (ex.status === "filling" ? "waiting" : ex.status) as AnalogRow["status"], addedMs: ex.addedMs ?? base, deadlineMs: base + entry.quoted_wait * 60_000 }
+              }
             }
             // Sync name, party size and phone edits from HOST standard
             if (entry.name && entry.name !== ex.name) patch = { ...patch, name: entry.name }
@@ -461,24 +469,29 @@ export default function AnalogPage() {
   }, [rows, patchRow, showToast])
 
   const adjustTimer = useCallback((localId: string, delta: number) => {
+    // Mark row as "user adjusting" — blocks pollQueue from overriding for 2s
+    adjustingUntilRef.current[localId] = Date.now() + 2000
+
+    // Pure state update — no side effects inside the updater
     setRows(prev => prev.map(r => {
       if (r.localId !== localId) return r
       const newQuoted = Math.max(1, (r.quotedWait ?? 0) + delta)
-      if (r.queueEntryId) {
-        const existing = adjustTimerDebounce.current[localId]
-        if (existing) clearTimeout(existing.timer)
-        const timer = setTimeout(() => {
-          const pending = adjustTimerDebounce.current[localId]
-          if (pending) {
-            fetch(`${API}/queue/${pending.entryId}/wait?minutes=${pending.val}`, { method: "PATCH" }).catch(() => {})
-            delete adjustTimerDebounce.current[localId]
-          }
-        }, 500)
-        adjustTimerDebounce.current[localId] = { timer, entryId: r.queueEntryId, val: newQuoted }
-      }
-      return r.isPaused ? { ...r, quotedWait: newQuoted, pausedSecsLeft: Math.max(0, r.pausedSecsLeft + delta * 60) }
+      return r.isPaused
+        ? { ...r, quotedWait: newQuoted, pausedSecsLeft: Math.max(0, r.pausedSecsLeft + delta * 60) }
         : { ...r, quotedWait: newQuoted, deadlineMs: (computeSecs(r) === 0 && delta > 0) ? Date.now() + delta * 60_000 : (r.deadlineMs ?? Date.now()) + delta * 60_000 }
     }))
+
+    // Debounce the PATCH — cancel any pending timer and set a new one.
+    // Read the final settled value from rowsRef at fire time (avoids stale closure).
+    const existing = adjustTimerDebounce.current[localId]
+    if (existing) clearTimeout(existing)
+    adjustTimerDebounce.current[localId] = setTimeout(() => {
+      delete adjustTimerDebounce.current[localId]
+      const row = rowsRef.current.find(r => r.localId === localId)
+      if (row?.queueEntryId && row.quotedWait) {
+        fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${row.quotedWait}`, { method: "PATCH" }).catch(() => {})
+      }
+    }, 600)
   }, [])
 
   const togglePause = useCallback((localId: string) => {
@@ -528,9 +541,21 @@ export default function AnalogPage() {
     setTablePickFor(null)
     const row = rows.find(r => r.localId === localId)
     if (!row?.queueEntryId) return
-    const apiTable = tables.find(t => t.table_number === tableNum)
+    // Ensure we have tables data — fetch fresh if the state list is empty
+    let tableList = tables
+    if (tableList.length === 0) {
+      try {
+        const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+        if (tr.ok) tableList = await tr.json()
+      } catch {}
+    }
+    const apiTable = tableList.find(t => t.table_number === tableNum)
     try {
-      await fetch(apiTable ? `${API}/queue/${row.queueEntryId}/seat-to-table/${apiTable.id}` : `${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
+      if (apiTable) {
+        await fetch(`${API}/queue/${row.queueEntryId}/seat-to-table/${apiTable.id}`, { method: "POST" })
+      } else {
+        await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
+      }
     } catch {}
     const seatedMs = Date.now()
     patchRow(localId, { status: "seated", seatedMs })
