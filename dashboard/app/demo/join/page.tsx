@@ -126,10 +126,13 @@ export default function DemoJoinPage() {
   const submit = async () => {
     if (!name.trim()) { setError("Please enter your name."); return }
     setLoading(true); setError("")
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10_000)
     try {
       const res = await fetch(`${API}/queue/join`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
+        signal:  controller.signal,
         body: JSON.stringify({
           name:          name.trim(),
           party_size:    partySize,
@@ -139,13 +142,16 @@ export default function DemoJoinPage() {
           restaurant_id: DEMO_RESTAURANT_ID,
         }),
       })
+      clearTimeout(timeout)
       if (!res.ok) throw new Error()
       const data = await res.json()
       sessionStorage.setItem("host_wait_id", data.entry.id)
       setJoined(true)
       setTimeout(() => router.push(`/wait/${data.entry.id}`), 1050)
-    } catch {
-      setError("Something went wrong. Please try again.")
+    } catch (err: unknown) {
+      clearTimeout(timeout)
+      const isTimeout = err instanceof Error && err.name === "AbortError"
+      setError(isTimeout ? "Request timed out. Please check your connection and try again." : "Something went wrong. Please try again.")
       setLoading(false)
     }
   }

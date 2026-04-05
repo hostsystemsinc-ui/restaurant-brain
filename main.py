@@ -1,5 +1,7 @@
 import os
 import re
+import json as _json
+import uuid as _uuid
 import threading
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +32,27 @@ _wait_set_at: dict = {}
 # In-memory: tracks which guest is at which table (keyed by "rid:table_number").
 # Populated by seat-to-table, cleared by table clear.
 _table_occupants: dict = {}   # { "rid:table_number": { "name": str, "party_size": int, "entry_id": str } }
+
+# ── Demo submissions (persisted in memory + Supabase) ────────────────────────
+_demo_submissions: list = []
+
+def _load_demo_subs():
+    global _demo_submissions
+    try:
+        res = supabase.table("demo_submissions").select("*").order("receivedAt", desc=True).execute()
+        if res.data:
+            _demo_submissions = res.data
+            return
+    except Exception:
+        pass
+
+def _save_demo_sub_to_db(sub: dict):
+    try:
+        supabase.table("demo_submissions").insert(sub).execute()
+    except Exception:
+        pass
+
+_load_demo_subs()
 
 app = FastAPI(title="Restaurant Brain API")
 
@@ -377,21 +400,11 @@ def get_table_occupants(restaurant_id: Optional[str] = None):
     result: dict = {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
     # Fill any gaps from DB: find tables with status="occupied" not already in result
     try:
-        occ_tables = supabase.table("tables").select("id,table_number").eq("restaurant_id", rid).eq("status", "occupied").execute().data or []
+        occ_tables = supabase.table("tables").select("table_number").eq("restaurant_id", rid).eq("status", "occupied").execute().data or []
         for t in occ_tables:
             tnum = str(t["table_number"])
             if tnum not in result:
-                # Look up most recent seated entry for this table via seating_events
-                ev_res = supabase.table("seating_events").select("queue_entry_id").eq("table_id", t["id"]).eq("action", "seated").order("created_at", desc=True).limit(1).execute()
-                entry_id = ev_res.data[0]["queue_entry_id"] if ev_res.data else None
-                name, party_size = "Guest", 2
-                if entry_id:
-                    ent = supabase.table("queue_entries").select("name,party_size").eq("id", entry_id).execute()
-                    if ent.data:
-                        name = ent.data[0].get("name") or "Guest"
-                        party_size = ent.data[0].get("party_size", 2)
-                result[tnum] = {"name": name, "party_size": party_size, "entry_id": entry_id}
-                # Also repopulate in-memory dict so subsequent calls are fast
+                result[tnum] = {"name": "Guest", "party_size": 2, "entry_id": None}
                 _table_occupants[f"{rid}:{t['table_number']}"] = result[tnum]
     except Exception:
         pass
@@ -1051,3 +1064,41 @@ def setup_demo():
         }).execute()
 
     return {"status": "demo setup complete", "restaurant_id": rid, "join_url": "https://hostplatform.net/demo/join"}
+
+
+# ── Demo request submissions ─────────────────────────────────────────────────
+
+class DemoSubmissionBody(BaseModel):
+    name:         str
+    restaurant:   str
+    email:        str
+    phone:        Optional[str] = None
+    city:         Optional[str] = None
+    type:         Optional[str] = None
+    submittedAt:  Optional[str] = None
+
+@app.post("/demo-submissions")
+def create_demo_submission(body: DemoSubmissionBody):
+    sub = {
+        "id":          str(_uuid.uuid4()),
+        "name":        body.name.strip(),
+        "restaurant":  body.restaurant.strip(),
+        "email":       body.email.strip().lower(),
+        "phone":       (body.phone or "").strip(),
+        "city":        (body.city or "").strip(),
+        "type":        (body.type or "").strip(),
+        "submittedAt": body.submittedAt or _now(),
+        "receivedAt":  _now(),
+    }
+    _demo_submissions.insert(0, sub)
+    threading.Thread(target=_save_demo_sub_to_db, args=(sub,), daemon=True).start()
+    print(f"[DEMO REQUEST] {_json.dumps(sub)}")
+    return {"ok": True}
+
+@app.get("/demo-submissions")
+def get_demo_submissions(secret: Optional[str] = None):
+    if secret != "hostowner2025":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not _demo_submissions:
+        _load_demo_subs()
+    return _demo_submissions

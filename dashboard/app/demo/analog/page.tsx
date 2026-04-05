@@ -157,14 +157,36 @@ function makeV(v: Visual) {
   }
 }
 
-// ── Shared seating history (same key as HOST standard Stats tab) ───────────────
+// ── Shared guest log + seating history (same keys as HOST standard) ──────────
+
+interface GuestLogRecord {
+  id: string; name: string; party_size: number; source: string
+  phone: string | null; notes: string | null
+  quoted_wait: number | null; actual_wait_min: number | null
+  joined_ms: number; resolved_ms: number
+  status: "seated" | "removed"
+}
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
+}
+
+function addToGuestLog(r: GuestLogRecord) {
+  try {
+    const key = `host_demo_log_${getBusinessDate()}`
+    const records: GuestLogRecord[] = JSON.parse(localStorage.getItem(key) ?? "[]")
+    const idx = records.findIndex(x => x.id === r.id)
+    if (idx >= 0) records[idx] = r; else records.push(r)
+    localStorage.setItem(key, JSON.stringify(records))
+  } catch {}
+}
 
 const HISTORY_KEY      = "host_demo_seating_history"
 const HISTORY_DATE_KEY = "host_demo_seating_history_date"
 const MAX_HISTORY      = 300
 
 function addToSharedHistory(row: AnalogRow, seatedMs: number) {
-  if (!row.quotedWait || !row.addedMs) return
+  if (!row.addedMs) return
   try {
     const bd = getBusinessDate()
     const lastDate = localStorage.getItem(HISTORY_DATE_KEY)
@@ -262,6 +284,9 @@ export default function AnalogPage() {
   })())
   // Track localIds with in-flight join POSTs so the poll doesn't insert duplicates
   const pendingJoinsRef = useRef<Set<string>>(new Set())
+  // Debounce refs — prevent rapid tapping from firing a PATCH on every click
+  const adjustTimerDebounce = useRef<Record<string, { timer: ReturnType<typeof setTimeout>; entryId: string; val: number }>>({})
+  const partySizeDebounce   = useRef<Record<string, { timer: ReturnType<typeof setTimeout>; entryId: string; val: number }>>({})
 
   const V = makeV(visual)
 
@@ -439,10 +464,20 @@ export default function AnalogPage() {
     setRows(prev => prev.map(r => {
       if (r.localId !== localId) return r
       const newQuoted = Math.max(1, (r.quotedWait ?? 0) + delta)
-      const updated = r.isPaused ? { ...r, quotedWait: newQuoted, pausedSecsLeft: Math.max(0, r.pausedSecsLeft + delta * 60) }
+      if (r.queueEntryId) {
+        const existing = adjustTimerDebounce.current[localId]
+        if (existing) clearTimeout(existing.timer)
+        const timer = setTimeout(() => {
+          const pending = adjustTimerDebounce.current[localId]
+          if (pending) {
+            fetch(`${API}/queue/${pending.entryId}/wait?minutes=${pending.val}`, { method: "PATCH" }).catch(() => {})
+            delete adjustTimerDebounce.current[localId]
+          }
+        }, 500)
+        adjustTimerDebounce.current[localId] = { timer, entryId: r.queueEntryId, val: newQuoted }
+      }
+      return r.isPaused ? { ...r, quotedWait: newQuoted, pausedSecsLeft: Math.max(0, r.pausedSecsLeft + delta * 60) }
         : { ...r, quotedWait: newQuoted, deadlineMs: (computeSecs(r) === 0 && delta > 0) ? Date.now() + delta * 60_000 : (r.deadlineMs ?? Date.now()) + delta * 60_000 }
-      if (r.queueEntryId) fetch(`${API}/queue/${r.queueEntryId}/wait?minutes=${newQuoted}`, { method: "PATCH" }).catch(() => {})
-      return updated
     }))
   }, [])
 
@@ -473,18 +508,21 @@ export default function AnalogPage() {
     const row = rows.find(r => r.localId === localId)
     if (!row) return
     if (action === "seat") {
-      if (tableAssignment && row.queueEntryId) { setTablePickFor(localId); return }
+      if (tableAssignment && row.queueEntryId) { setTablePickFor(localId); fetchTables(); return }
       if (row.queueEntryId) try { await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" }) } catch {}
       const seatedMs = Date.now()
       patchRow(localId, { status: "seated", seatedMs })
       addToSharedHistory(row, seatedMs)
+      addToGuestLog({ id: row.queueEntryId || row.localId, name: row.name || "Guest", party_size: row.partySize, source: row.source || "analog", phone: row.phone || null, notes: row.notes || null, quoted_wait: row.quotedWait, actual_wait_min: row.addedMs ? Math.round((seatedMs - row.addedMs) / 60_000) : null, joined_ms: row.addedMs ?? seatedMs, resolved_ms: seatedMs, status: "seated" })
       showToast(`${row.name || "Guest"} seated`)
     } else {
       if (row.queueEntryId) try { await fetch(`${API}/queue/${row.queueEntryId}/remove`, { method: "POST" }) } catch {}
-      patchRow(localId, { status: "removed", seatedMs: Date.now() })
+      const resolvedMs = Date.now()
+      patchRow(localId, { status: "removed", seatedMs: resolvedMs })
+      addToGuestLog({ id: row.queueEntryId || row.localId, name: row.name || "Guest", party_size: row.partySize, source: row.source || "analog", phone: row.phone || null, notes: row.notes || null, quoted_wait: row.quotedWait, actual_wait_min: null, joined_ms: row.addedMs ?? resolvedMs, resolved_ms: resolvedMs, status: "removed" })
       showToast(`${row.name || "Guest"} left`)
     }
-  }, [rows, tableAssignment, patchRow, showToast])
+  }, [rows, tableAssignment, patchRow, showToast, fetchTables])
 
   const seatToTable = useCallback(async (localId: string, tableNum: number) => {
     setTablePickFor(null)
@@ -497,6 +535,7 @@ export default function AnalogPage() {
     const seatedMs = Date.now()
     patchRow(localId, { status: "seated", seatedMs })
     addToSharedHistory(row, seatedMs)
+    addToGuestLog({ id: row.queueEntryId || row.localId, name: row.name || "Guest", party_size: row.partySize, source: row.source || "analog", phone: row.phone || null, notes: row.notes || null, quoted_wait: row.quotedWait, actual_wait_min: row.addedMs ? Math.round((seatedMs - row.addedMs) / 60_000) : null, joined_ms: row.addedMs ?? seatedMs, resolved_ms: seatedMs, status: "seated" })
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
   }, [rows, tables, patchRow, showToast])
 
@@ -639,15 +678,14 @@ export default function AnalogPage() {
       {/* Click away from visuals popup */}
       {showVisuals && <div style={{ position: "fixed", inset: 0, zIndex: 49 }} onClick={() => setShowVisuals(false)} />}
 
-      {/* Classic notepad double margin lines — sit in the far-left gutter, never over content */}
-      {visual === "classic" && <>
-        <div style={{ position: "fixed", top: 56, bottom: 0, left: 10, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
-        <div style={{ position: "fixed", top: 56, bottom: 0, left: 16, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 1, pointerEvents: "none" }} />
-      </>}
-
       {/* ── Scaled content ── */}
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-        <div style={{ overflowY: "auto", height: "100%", boxSizing: "border-box", paddingBottom: `calc(100dvh / ${zoom})` }}>
+        {/* Classic notepad margin lines — inside overflow:hidden so they don't scroll, outside the zoom transform so they never intersect content */}
+        {visual === "classic" && <>
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: 8, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 2, pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: 0, bottom: 0, left: 14, width: 2, background: "rgba(200,50,50,0.65)", zIndex: 2, pointerEvents: "none" }} />
+        </>}
+        <div style={{ overflowY: "auto", height: "100%", boxSizing: "border-box", paddingLeft: visual === "classic" ? 22 : 0, paddingBottom: `calc(100dvh / ${zoom})` }}>
           <div style={{ transform: `scale(${zoom})`, transformOrigin: "top left", width: `${(1 / zoom) * 100}%`, minHeight: `${(1 / zoom) * 100}%` }}>
 
             {/* ── Column Headers ── */}
@@ -682,7 +720,7 @@ export default function AnalogPage() {
                   }}
                   style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", borderRadius: 10, border: `1.5px solid rgba(34,197,94,0.30)`, background: "rgba(34,197,94,0.08)", color: "#22c55e", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: "0.06em", touchAction: "manipulation" }}
                 >
-                  <Download style={{ width: 14, height: 14 }} /> Export to Excel
+                  <Download style={{ width: 14, height: 14 }} /> Export to CSV
                 </button>
                 <button
                   onClick={() => {
@@ -778,6 +816,8 @@ export default function AnalogPage() {
                         onPointerDown={e => {
                           e.preventDefault()
                           if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}/remove`, { method: "POST" }).catch(() => {})
+                          const resolvedMs = Date.now()
+                          addToGuestLog({ id: row.queueEntryId || row.localId, name: row.name || "Guest", party_size: row.partySize, source: row.source || "analog", phone: row.phone || null, notes: row.notes || null, quoted_wait: row.quotedWait, actual_wait_min: null, joined_ms: row.addedMs ?? resolvedMs, resolved_ms: resolvedMs, status: "removed" })
                           setRows(prev => prev.filter(r => r.localId !== row.localId))
                         }}
                         style={{ width: 44, height: 44, borderRadius: 10, border: `2px solid rgba(239,68,68,0.25)`, background: "rgba(239,68,68,0.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation", color: "#ef4444" }}
@@ -816,14 +856,28 @@ export default function AnalogPage() {
 
                   {/* Party size — number input for pen + stepper for finger */}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }} onPointerDown={selectOnPen}>
-                    <button onPointerDown={() => { const s = Math.max(1, row.partySize - 1); patchRow(row.localId, { partySize: s }); if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: s }) }).catch(() => {}) }} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>−</button>
+                    <button onPointerDown={() => {
+                      const s = Math.max(1, row.partySize - 1); patchRow(row.localId, { partySize: s })
+                      if (row.queueEntryId) {
+                        const ex = partySizeDebounce.current[row.localId]; if (ex) clearTimeout(ex.timer)
+                        const timer = setTimeout(() => { const p = partySizeDebounce.current[row.localId]; if (p) { fetch(`${API}/queue/${p.entryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: p.val }) }).catch(() => {}); delete partySizeDebounce.current[row.localId] } }, 500)
+                        partySizeDebounce.current[row.localId] = { timer, entryId: row.queueEntryId, val: s }
+                      }
+                    }} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>−</button>
                     <input
                       type="number" min={1} max={20} value={row.partySize}
                       onChange={e => { const v = parseInt(e.target.value); if (!isNaN(v)) { const s = Math.max(1, Math.min(20, v)); patchRow(row.localId, { partySize: s }); if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: s }) }).catch(() => {}) } }}
                       inputMode="numeric"
                       style={{ width: 30, textAlign: "center", border: "none", outline: "none", background: "transparent", fontSize: 16, fontWeight: 700, color: V.text, caretColor: "#22c55e", touchAction: "manipulation", MozAppearance: "textfield" } as React.CSSProperties}
                     />
-                    <button onPointerDown={() => { const s = Math.min(20, row.partySize + 1); patchRow(row.localId, { partySize: s }); if (row.queueEntryId) fetch(`${API}/queue/${row.queueEntryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: s }) }).catch(() => {}) }} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>+</button>
+                    <button onPointerDown={() => {
+                      const s = Math.min(20, row.partySize + 1); patchRow(row.localId, { partySize: s })
+                      if (row.queueEntryId) {
+                        const ex = partySizeDebounce.current[row.localId]; if (ex) clearTimeout(ex.timer)
+                        const timer = setTimeout(() => { const p = partySizeDebounce.current[row.localId]; if (p) { fetch(`${API}/queue/${p.entryId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ party_size: p.val }) }).catch(() => {}); delete partySizeDebounce.current[row.localId] } }, 500)
+                        partySizeDebounce.current[row.localId] = { timer, entryId: row.queueEntryId, val: s }
+                      }
+                    }} style={{ width: 30, height: 40, border: "none", background: "transparent", color: V.textSub, fontSize: 20, cursor: "pointer", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>+</button>
                   </div>
 
                   {/* Phone */}

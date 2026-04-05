@@ -104,7 +104,7 @@ const GUEST_LOG_KEY = (dateStr: string) => `host_demo_log_${dateStr}`
 
 function addToGuestLog(r: GuestLogRecord) {
   try {
-    const dateStr = toLocalDateStr(new Date())
+    const dateStr = getBusinessDate()
     const key     = GUEST_LOG_KEY(dateStr)
     const records: GuestLogRecord[] = JSON.parse(localStorage.getItem(key) ?? "[]")
     // Replace if entry ID already present (e.g. re-seat after undo)
@@ -779,15 +779,15 @@ function DraggableQueueCard({
           <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", textAlign: "center" }}>
             Remove {entry.name || "guest"}?
           </span>
-          <div style={{ display: "flex", gap: 5 }}>
+          <div style={{ display: "flex", gap: 5, width: "100%" }}>
             <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
               className="h-11 rounded-xl text-xs font-semibold transition-all active:scale-95"
-              style={{ flex: 1, background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
+              style={{ flex: 1, minWidth: 0, background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
               Cancel
             </button>
             <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
               className="h-11 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
-              style={{ flex: 1, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
+              style={{ flex: 1, minWidth: 0, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
               {removing ? "…" : "Remove"}
             </button>
           </div>
@@ -2213,14 +2213,16 @@ export default function DemoHostDashboard() {
 
   // Core seat action — called directly or after warning confirmation
   const doSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
+    // Resolve tableId from tables array if not passed (ensures seat-to-table is always used)
+    const resolvedTableId = tableId ?? tables.find(t => t.table_number === tableNumber)?.id
     // Capacity warning (non-blocking)
-    const apiTable = tables.find(t => tableId ? t.id === tableId : t.table_number === tableNumber)
+    const apiTable = tables.find(t => resolvedTableId ? t.id === resolvedTableId : t.table_number === tableNumber)
     if (apiTable && entry.party_size > apiTable.capacity) {
       showToast(`Table ${tableNumber} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
     }
     try {
-      const r = tableId
-        ? await fetchT(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
+      const r = resolvedTableId
+        ? await fetchT(`${API}/queue/${entry.id}/seat-to-table/${resolvedTableId}`, { method: "POST" })
         : await fetchT(`${API}/queue/${entry.id}/seat`, { method: "POST" })
       if (!r.ok) throw new Error()
     } catch {
