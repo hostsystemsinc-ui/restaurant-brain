@@ -562,7 +562,9 @@ export default function AnalogPage() {
     addToSharedHistory(row, seatedMs)
     addToGuestLog({ id: row.queueEntryId || row.localId, name: row.name || "Guest", party_size: row.partySize, source: row.source || "analog", phone: row.phone || null, notes: row.notes || null, quoted_wait: row.quotedWait, actual_wait_min: row.addedMs ? Math.round((seatedMs - row.addedMs) / 60_000) : null, joined_ms: row.addedMs ?? seatedMs, resolved_ms: seatedMs, status: "seated" })
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
-  }, [rows, tables, patchRow, showToast])
+    // Refresh tables + occupants so the just-occupied table immediately shows red in picker
+    fetchTables()
+  }, [rows, tables, patchRow, showToast, fetchTables])
 
   // ── Pen helpers ───────────────────────────────────────────────────────────────
   // Apple Pencil: clear text fields so Scribble writes fresh

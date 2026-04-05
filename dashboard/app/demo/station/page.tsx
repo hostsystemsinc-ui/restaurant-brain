@@ -2113,7 +2113,28 @@ export default function DemoHostDashboard() {
     return () => clearInterval(t)
   }, [])
 
-  const fetchTables   = useCallback(async () => { try { const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`);   if (r.ok) setTables(await r.json()) } catch {} }, [])
+  const fetchTables   = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (r.ok) {
+        const data: Table[] = await r.json()
+        setTables(data)
+        // Evict localOccupants for tables the backend says are available
+        // (handles clears from either view without a race condition)
+        setLocalOccupants(prev => {
+          let changed = false
+          const next = new Map(prev)
+          for (const t of data) {
+            if (t.status !== "occupied" && next.has(t.table_number)) {
+              next.delete(t.table_number)
+              changed = true
+            }
+          }
+          return changed ? next : prev
+        })
+      }
+    } catch {}
+  }, [])
   const fetchQueue    = useCallback(async () => {
     try {
       const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RESTAURANT_ID}`)
@@ -2131,9 +2152,11 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (!r.ok) return
       const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
-      setLocalOccupants(() => {
-        // Full replace from backend — adds new, removes cleared, keeps both views in sync
-        const next = new Map<number, { name: string; party_size: number }>()
+      setLocalOccupants(prev => {
+        const next = new Map(prev)
+        // Additive only — add/update from backend, never remove
+        // Removal is handled by fetchTables which evicts tables with status="available"
+        // This avoids the race condition where syncOccupants wipes a just-set optimistic entry
         for (const [numStr, occ] of Object.entries(data)) {
           const num = parseInt(numStr, 10)
           next.set(num, { name: occ.name, party_size: occ.party_size })
