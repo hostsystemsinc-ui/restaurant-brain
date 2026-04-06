@@ -207,7 +207,7 @@ interface QueueEntry {
   notes: string | null
 }
 
-interface LocalOccupant { name: string; party_size: number }
+interface LocalOccupant { name: string; party_size: number; entry_id?: string }
 
 interface Reservation {
   id:         string
@@ -2302,7 +2302,7 @@ export default function DemoHostDashboard() {
       return
     }
     recentlySeateddRef.current.set(tableNumber, Date.now() + 5000) // protect for 5s
-    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
     setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     // Record seating history for suggestions + guest log
     {
@@ -2415,14 +2415,58 @@ export default function DemoHostDashboard() {
       const sourceTable = data.tableNumber as number
       const occupant = data.occupant as LocalOccupant
       if (sourceTable === targetTable) return
+
+      // Fetch fresh table list to get accurate IDs
+      let tableList = tables
+      try {
+        const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+        if (r.ok) tableList = await r.json()
+      } catch {}
+
+      const sourceApiTable = tableList.find(t => t.table_number === sourceTable)
+      const targetApiTable = tableList.find(t => t.table_number === targetTable)
+
+      if (!sourceApiTable || !targetApiTable) {
+        showToast("Could not resolve table IDs — please try again.", "err")
+        return
+      }
+
+      const displaced = localOccupants.get(targetTable)
+
+      // Optimistic update immediately
+      recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
+      if (displaced) recentlySeateddRef.current.set(sourceTable, Date.now() + 5000)
       setLocalOccupants(prev => {
         const next = new Map(prev)
         next.delete(sourceTable)
-        const displaced = prev.get(targetTable)
         if (displaced) next.set(sourceTable, displaced)
         next.set(targetTable, occupant)
         return next
       })
+
+      // Persist to backend
+      try {
+        // Occupy the target table with this guest
+        await fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
+        })
+        if (displaced) {
+          // Swap: put displaced guest at source table
+          await fetch(`${API}/tables/${sourceApiTable.id}/occupy`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: displaced.name, party_size: displaced.party_size, entry_id: displaced.entry_id }),
+          })
+        } else {
+          // No swap: clear the source table
+          await fetch(`${API}/tables/${sourceApiTable.id}/clear`, { method: "POST" })
+        }
+      } catch {
+        showToast("Move saved locally — sync may differ.", "warn")
+      }
+      refreshAll()
       return
     }
 
@@ -2460,7 +2504,7 @@ export default function DemoHostDashboard() {
 
     // Optimistic update — show table as occupied immediately
     recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
-    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
+    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
     setReservedTables(prev => { const n = new Map(prev); n.delete(targetTable); return n })
 
     // Reservation warning

@@ -57,18 +57,34 @@ threading.Thread(target=_load_demo_subs, daemon=True).start()
 
 def _ensure_demo_tables():
     """Guarantee the demo restaurant + its 16 tables exist in the DB.
-    Idempotent — safe to call on every startup."""
+    Idempotent — inserts only the table numbers that are missing.
+    Also clears stale in-memory occupant state for the demo restaurant."""
     try:
         rid = DEMO_RESTAURANT_ID
+        # Ensure demo restaurant row exists
         if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
             supabase.table("restaurants").insert({
                 "id": rid, "name": "Demo Restaurant", "slug": "demo"
             }).execute()
-        if not supabase.table("tables").select("id").eq("restaurant_id", rid).execute().data:
-            supabase.table("tables").insert([
-                {"restaurant_id": rid, "table_number": i+1, "capacity": c, "status": "available"}
-                for i, c in enumerate([2,2,2,4,4,4,6,6,6,4,4,4,1,1,1,1])
-            ]).execute()
+        # Find which table numbers already exist
+        existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
+        existing_nums = {row["table_number"] for row in existing}
+        capacities = [2,2,2,4,4,4,6,6,6,4,4,4,1,1,1,1]
+        missing = [
+            {"restaurant_id": rid, "table_number": i+1, "capacity": c, "status": "available"}
+            for i, c in enumerate(capacities)
+            if (i+1) not in existing_nums
+        ]
+        if missing:
+            supabase.table("tables").insert(missing).execute()
+            print(f"[startup] Inserted {len(missing)} missing demo tables: {[m['table_number'] for m in missing]}")
+        # Clear stale in-memory occupants for demo restaurant on every startup
+        prefix = f"{rid}:"
+        stale_keys = [k for k in list(_table_occupants.keys()) if k.startswith(prefix)]
+        for k in stale_keys:
+            del _table_occupants[k]
+        if stale_keys:
+            print(f"[startup] Cleared {len(stale_keys)} stale demo occupant(s): {stale_keys}")
     except Exception as e:
         print(f"[startup] _ensure_demo_tables failed: {e}")
 
@@ -391,9 +407,26 @@ def get_tables(restaurant_id: Optional[str] = None):
         .data
     )
 
+class OccupyRequest(BaseModel):
+    name:       Optional[str] = None
+    party_size: Optional[int] = None
+    entry_id:   Optional[str] = None
+
 @app.post("/tables/{table_id}/occupy")
-def occupy_table(table_id: str):
+def occupy_table(table_id: str, body: Optional[OccupyRequest] = None):
     supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table_id).execute()
+    # Update in-memory occupant tracking so cross-view sync reflects the new occupant
+    tbl_res = supabase.table("tables").select("table_number, restaurant_id").eq("id", table_id).execute()
+    if tbl_res.data:
+        t = tbl_res.data[0]
+        rid = t.get("restaurant_id") or RESTAURANT_ID
+        tnum = t.get("table_number")
+        if tnum is not None:
+            _table_occupants[f"{rid}:{tnum}"] = {
+                "name": (body.name if body and body.name else None) or "Guest",
+                "party_size": (body.party_size if body and body.party_size else None) or 2,
+                "entry_id": (body.entry_id if body else None),
+            }
     return {"status": "occupied"}
 
 @app.post("/tables/{table_id}/clear")
