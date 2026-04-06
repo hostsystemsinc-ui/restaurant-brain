@@ -38,6 +38,15 @@ const API                = "/api/brain"
 const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
 const NFC_JOIN_URL       = "https://hostplatform.net/demo/join"
 
+// ── Utilities ──────────────────────────────────────────────────────────────────
+
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 10)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
 // ── Floor plan ─────────────────────────────────────────────────────────────────
 
 const CANVAS_W = 920
@@ -631,7 +640,7 @@ function GuestEditModal({
           {/* ── Phone ── */}
           <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
           <input
-            type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+            type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))}
             placeholder="(555) 000-0000"
             className="w-full rounded-xl outline-none mb-4"
             style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
@@ -1516,7 +1525,7 @@ function AddGuestDrawer({
           Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
         </p>
         <input
-          type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+          type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
           style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
         />
