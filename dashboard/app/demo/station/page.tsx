@@ -2096,6 +2096,9 @@ export default function DemoHostDashboard() {
       return s ? new Map(JSON.parse(s) as [number, LocalOccupant][]) : new Map()
     } catch { return new Map() }
   })
+  // Tables seated from THIS view — protected from syncOccupants wiping them during the
+  // brief window between the optimistic set and the backend commit (avoids race condition)
+  const recentlySeateddRef = useRef<Map<number, number>>(new Map()) // tableNum → expiry ms
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -2116,23 +2119,7 @@ export default function DemoHostDashboard() {
   const fetchTables   = useCallback(async () => {
     try {
       const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-      if (r.ok) {
-        const data: Table[] = await r.json()
-        setTables(data)
-        // Evict localOccupants for tables the backend says are available
-        // (handles clears from either view without a race condition)
-        setLocalOccupants(prev => {
-          let changed = false
-          const next = new Map(prev)
-          for (const t of data) {
-            if (t.status !== "occupied" && next.has(t.table_number)) {
-              next.delete(t.table_number)
-              changed = true
-            }
-          }
-          return changed ? next : prev
-        })
-      }
+      if (r.ok) setTables(await r.json())
     } catch {}
   }, [])
   const fetchQueue    = useCallback(async () => {
@@ -2152,14 +2139,23 @@ export default function DemoHostDashboard() {
       const r = await fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (!r.ok) return
       const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
+      // Full replace from backend — authoritative source for cross-view sync.
+      // Preserves tables seated from THIS view during a brief grace period (5s) to avoid
+      // the race where the interval fires before the seat-to-table DB write is visible.
       setLocalOccupants(prev => {
-        const next = new Map(prev)
-        // Additive only — add/update from backend, never remove
-        // Removal is handled by fetchTables which evicts tables with status="available"
-        // This avoids the race condition where syncOccupants wipes a just-set optimistic entry
+        const now2 = Date.now()
+        const next = new Map<number, { name: string; party_size: number }>()
+        // Add everything from backend
         for (const [numStr, occ] of Object.entries(data)) {
-          const num = parseInt(numStr, 10)
-          next.set(num, { name: occ.name, party_size: occ.party_size })
+          next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size })
+        }
+        // Keep any recently-seated local entry that backend hasn't picked up yet
+        for (const [tNum, expiry] of recentlySeateddRef.current) {
+          if (expiry > now2 && prev.has(tNum) && !next.has(tNum)) {
+            next.set(tNum, prev.get(tNum)!)
+          } else if (expiry <= now2) {
+            recentlySeateddRef.current.delete(tNum)
+          }
         }
         return next
       })
@@ -2252,6 +2248,7 @@ export default function DemoHostDashboard() {
       showToast("Could not seat guest — please try again.", "err")
       return
     }
+    recentlySeateddRef.current.set(tableNumber, Date.now() + 5000) // protect for 5s
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
     setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     // Record seating history for suggestions + guest log
@@ -2297,11 +2294,13 @@ export default function DemoHostDashboard() {
       try { await fetchT(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
       fetchTables()
     }
+    recentlySeateddRef.current.set(tableNumber, Date.now() + 5000)
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
     showToast(`${res.guest_name} checked in at Table ${tableNumber}`)
   }, [fetchTables])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
+    recentlySeateddRef.current.delete(tableNumber) // allow immediate eviction
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     if (tableId) {
       try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
