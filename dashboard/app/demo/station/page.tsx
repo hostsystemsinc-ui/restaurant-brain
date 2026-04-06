@@ -1301,24 +1301,6 @@ function SeatTablePicker({
   mode?: "seat" | "reserve"
   now?: Date
 }) {
-  const available = FLOOR_PLAN.filter(pos => {
-    if (localOccupants.has(pos.number)) return false
-    const resInfo = reservedTables?.get(pos.number)
-    if (resInfo && resInfo.resId !== excludeResId) {
-      if (mode === "seat" && now) {
-        // In seat mode: locked (past res time) → block; warning period → show with badge; far future → block
-        const mins = getResMinutesUntil(resInfo.time, now)
-        if (mins <= 0) return false          // locked
-        if (mins <= 60) { /* include — warning badge shown below */ }
-        else return false                    // far future reserved
-      } else {
-        return false  // reserve mode or no now: exclude all other-reserved tables
-      }
-    }
-    const t = tables.find(t => t.table_number === pos.number)
-    return !t || t.status === "available"
-  })
-
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
@@ -1341,48 +1323,78 @@ function SeatTablePicker({
           {mode === "reserve" ? "choose a table to hold" : "choose a table"}
         </p>
 
-        {available.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-xs" style={{ color: "rgba(255,200,150,0.3)" }}>No tables available right now</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
-            {available.map(pos => {
-              const t = tables.find(t => t.table_number === pos.number)
-              const resInfo = reservedTables?.get(pos.number)
-              const isWarn = !!(resInfo && resInfo.resId !== excludeResId && now && (() => {
-                const m = getResMinutesUntil(resInfo.time, now); return m > 0 && m <= 60
-              })())
-              return (
-                <button
-                  key={pos.number}
-                  onClick={() => onConfirm(pos.number, t?.id)}
-                  className="flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all active:scale-95 hover:brightness-125"
-                  style={{
-                    background: isWarn ? "rgba(249,115,22,0.10)" : "rgba(34,197,94,0.07)",
-                    border: `1px solid ${isWarn ? "rgba(249,115,22,0.40)" : "rgba(34,197,94,0.25)"}`,
-                  }}
-                >
-                  <span className="text-xl font-bold" style={{ color: isWarn ? "rgba(249,115,22,0.9)" : "rgba(34,197,94,0.9)" }}>
-                    {pos.number}
+        <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+          {FLOOR_PLAN.map(pos => {
+            const t = tables.find(t => t.table_number === pos.number)
+            // Occupied: either in-memory occupant map or DB status
+            const isOccupied = localOccupants.has(pos.number) || t?.status === "occupied"
+
+            // Reservation logic
+            const resInfo = reservedTables?.get(pos.number)
+            const hasOtherRes = !!(resInfo && resInfo.resId !== excludeResId)
+            let isResLocked = false
+            let isResWarn   = false
+            if (hasOtherRes) {
+              if (mode === "seat" && now) {
+                const mins = getResMinutesUntil(resInfo!.time, now)
+                if (mins <= 0) isResLocked = true
+                else if (mins <= 60) isResWarn = true
+                else isResLocked = true  // far future — block
+              } else {
+                isResLocked = true
+              }
+            }
+
+            const isBlocked  = isOccupied || isResLocked
+
+            // Colour scheme
+            const bg     = isOccupied   ? "rgba(239,68,68,0.10)"
+                         : isResWarn    ? "rgba(249,115,22,0.10)"
+                         : "rgba(34,197,94,0.07)"
+            const border = isOccupied   ? "rgba(239,68,68,0.45)"
+                         : isResWarn    ? "rgba(249,115,22,0.40)"
+                         : "rgba(34,197,94,0.25)"
+            const color  = isOccupied   ? "rgba(239,68,68,0.9)"
+                         : isResWarn    ? "rgba(249,115,22,0.9)"
+                         : "rgba(34,197,94,0.9)"
+            const subColor = isOccupied ? "rgba(239,68,68,0.5)"
+                           : isResWarn  ? "rgba(249,115,22,0.35)"
+                           : "rgba(34,197,94,0.3)"
+
+            return (
+              <button
+                key={pos.number}
+                disabled={isBlocked}
+                onClick={() => !isBlocked && onConfirm(pos.number, t?.id)}
+                className="flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all active:scale-95"
+                style={{
+                  background: bg,
+                  border: `1px solid ${border}`,
+                  opacity: isResLocked && !isOccupied ? 0.45 : 1,
+                  cursor: isBlocked ? "default" : "pointer",
+                }}
+              >
+                <span className="text-xl font-bold" style={{ color }}>
+                  {pos.number}
+                </span>
+                {isOccupied ? (
+                  <span className="text-[9px] font-bold" style={{ color: subColor }}>occupied</span>
+                ) : isResWarn ? (
+                  <span className="text-[9px] font-bold text-center leading-tight" style={{ color: subColor }}>
+                    ⚠ {fmt12Res(resInfo!.time)}
                   </span>
-                  {isWarn ? (
-                    <span className="text-[9px] font-bold text-center leading-tight" style={{ color: "rgba(249,115,22,0.75)" }}>
-                      ⚠ {fmt12Res(resInfo!.time)}
-                    </span>
-                  ) : t ? (
-                    <span className="text-[10px]" style={{ color: "rgba(34,197,94,0.45)" }}>
-                      {t.capacity}p
-                    </span>
-                  ) : null}
-                  <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: isWarn ? "rgba(249,115,22,0.35)" : "rgba(34,197,94,0.3)" }}>
-                    {pos.section}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
+                ) : isResLocked ? (
+                  <span className="text-[9px] font-bold" style={{ color: subColor }}>reserved</span>
+                ) : t ? (
+                  <span className="text-[10px]" style={{ color: subColor }}>{t.capacity}p</span>
+                ) : null}
+                <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: subColor }}>
+                  {pos.section}
+                </span>
+              </button>
+            )
+          })}
+        </div>
 
         <button
           onClick={onClose}
@@ -2237,7 +2249,29 @@ export default function DemoHostDashboard() {
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
     setSelectedEntry(null)
-  }, [])
+    // Fetch fresh table + occupant data so the picker shows live availability
+    fetchTables()
+    fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      .then(r => r.ok ? r.json() : {})
+      .then((data: Record<string, { name: string; party_size: number }>) => {
+        setLocalOccupants(prev => {
+          const now2 = Date.now()
+          const next = new Map<number, { name: string; party_size: number }>()
+          for (const [numStr, occ] of Object.entries(data)) {
+            next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size })
+          }
+          for (const [tNum, expiry] of recentlySeateddRef.current) {
+            if (expiry > now2 && prev.has(tNum) && !next.has(tNum)) {
+              next.set(tNum, prev.get(tNum)!)
+            } else if (expiry <= now2) {
+              recentlySeateddRef.current.delete(tNum)
+            }
+          }
+          return next
+        })
+      })
+      .catch(() => {})
+  }, [fetchTables])
 
   // Core seat action — called directly or after warning confirmation
   const doSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {

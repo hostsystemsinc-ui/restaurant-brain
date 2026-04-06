@@ -722,6 +722,78 @@ export default function AnalogPage() {
               ))}
             </div>
 
+            {/* ── Completed rows (above active — history at top) ── */}
+            {completedRows.length > 0 && (
+              <>
+                <div style={{ height: 1, background: V.completedDiv, margin: "12px 0 0" }} />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 6px", background: V.completedBg }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: V.textMuted }}>Completed · {completedRows.length}</span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={() => {
+                        const header = ["Name","Party Size","Phone","Quoted Wait (min)","Status","Arrived","Waited (min)","Notes"]
+                        const csvRows = completedRows.map(r => [
+                          r.name || "Guest", r.partySize, r.phone || "", r.quotedWait ?? "",
+                          r.status === "seated" ? "Seated" : r.removedByGuest ? "Left waitlist" : "Removed",
+                          r.addedMs ? new Date(r.addedMs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : "",
+                          r.addedMs ? Math.round(((r.seatedMs ?? Date.now()) - r.addedMs) / 60_000) : "",
+                          r.notes || "",
+                        ])
+                        const csv = [header, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
+                        const blob = new Blob([csv], { type: "text/csv" })
+                        const url = URL.createObjectURL(blob)
+                        const a = document.createElement("a"); a.href = url; a.download = `waitlist-${getBusinessDate()}.csv`; a.click()
+                        URL.revokeObjectURL(url)
+                        showToast("Exported to CSV")
+                      }}
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, border: `1.5px solid rgba(34,197,94,0.30)`, background: "rgba(34,197,94,0.08)", color: "#22c55e", fontSize: 11, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
+                    ><Download style={{ width: 12, height: 12 }} /> CSV</button>
+                    <button
+                      onClick={() => { setRows(prev => prev.filter(r => r.status !== "seated" && r.status !== "removed")); showToast("History cleared") }}
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, border: `1.5px solid rgba(239,68,68,0.25)`, background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.75)", fontSize: 11, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
+                    ><X style={{ width: 12, height: 12 }} /> Clear</button>
+                  </div>
+                </div>
+                {completedRows.map(row => (
+                  <div key={row.localId}
+                    onClick={async () => {
+                      if (!row.queueEntryId) return
+                      try {
+                        const res = await fetch(`${API}/queue/${row.queueEntryId}/restore`, { method: "POST" })
+                        if (!res.ok) { showToast("Could not restore"); return }
+                        const data = await res.json()
+                        const entry = data.entry
+                        const arrMs = entry ? new Date(entry.arrival_time).getTime() : row.addedMs
+                        const qw = entry?.quoted_wait ?? row.quotedWait
+                        const base = entry?.wait_set_at ? new Date(entry.wait_set_at).getTime() : (arrMs ?? Date.now())
+                        patchRow(row.localId, { status: "waiting", seatedMs: null, removedByGuest: undefined, quotedWait: qw, addedMs: arrMs, deadlineMs: qw ? base + qw * 60_000 : null, isPaused: false, pausedSecsLeft: 0 })
+                        showToast(`${row.name || "Guest"} restored to waitlist`)
+                      } catch { showToast("Could not restore") }
+                    }}
+                    style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0", cursor: "pointer", touchAction: "manipulation" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)", border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {row.status === "seated" ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} /> : <X style={{ width: 14, height: 14, color: "#dc2626" }} />}
+                      </div>
+                    </div>
+                    <div style={{ padding: "0 8px" }}><span style={{ fontSize: 14, fontWeight: 500, color: V.textSub }}>{row.name || "Guest"}</span></div>
+                    <div style={{ textAlign: "center" }}><span style={{ fontSize: 13, color: V.textMuted }}>{row.partySize}p</span></div>
+                    <div style={{ padding: "0 8px" }}><span style={{ fontSize: 12, color: V.textMuted }}>{row.phone || "—"}</span></div>
+                    <div style={{ padding: "0 10px 0 6px" }}>
+                      <div style={{ fontSize: 11, color: V.textMuted, display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
+                        {row.status === "removed" && <span style={{ color: "rgba(239,68,68,0.70)", fontWeight: 600 }}>{row.removedByGuest ? "Left waitlist" : "Removed by host"}</span>}
+                        <span>In {fmtClock(row.addedMs)}</span>
+                        {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
+                        <span>Waited {waitedLabel(row)}</span>
+                      </div>
+                    </div>
+                    {isLandscape && <div style={{ padding: "0 8px" }}><span style={{ fontSize: 12, color: V.textMuted }}>{row.notes || "—"}</span></div>}
+                  </div>
+                ))}
+                <div style={{ height: 1, background: V.completedDiv, margin: "0 0 12px" }} />
+              </>
+            )}
+
             {/* ── Active Rows ── */}
             {activeRows.map((row) => {
               const isBlank    = !row.name && !row.phone && row.quotedWait === null && !row.queueEntryId
@@ -899,77 +971,6 @@ export default function AnalogPage() {
                 </div>
               )
             })}
-
-            {/* ── Completed rows (below active — scroll down for history) ── */}
-            {completedRows.length > 0 && (
-              <>
-                <div style={{ height: 1, background: V.completedDiv, margin: "12px 0 0" }} />
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 6px", background: V.completedBg }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: V.textMuted }}>Completed · {completedRows.length}</span>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={() => {
-                        const header = ["Name","Party Size","Phone","Quoted Wait (min)","Status","Arrived","Waited (min)","Notes"]
-                        const csvRows = completedRows.map(r => [
-                          r.name || "Guest", r.partySize, r.phone || "", r.quotedWait ?? "",
-                          r.status === "seated" ? "Seated" : r.removedByGuest ? "Left waitlist" : "Removed",
-                          r.addedMs ? new Date(r.addedMs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : "",
-                          r.addedMs ? Math.round(((r.seatedMs ?? Date.now()) - r.addedMs) / 60_000) : "",
-                          r.notes || "",
-                        ])
-                        const csv = [header, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
-                        const blob = new Blob([csv], { type: "text/csv" })
-                        const url = URL.createObjectURL(blob)
-                        const a = document.createElement("a"); a.href = url; a.download = `waitlist-${getBusinessDate()}.csv`; a.click()
-                        URL.revokeObjectURL(url)
-                        showToast("Exported to CSV")
-                      }}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, border: `1.5px solid rgba(34,197,94,0.30)`, background: "rgba(34,197,94,0.08)", color: "#22c55e", fontSize: 11, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
-                    ><Download style={{ width: 12, height: 12 }} /> CSV</button>
-                    <button
-                      onClick={() => { setRows(prev => prev.filter(r => r.status !== "seated" && r.status !== "removed")); showToast("History cleared") }}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, border: `1.5px solid rgba(239,68,68,0.25)`, background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.75)", fontSize: 11, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
-                    ><X style={{ width: 12, height: 12 }} /> Clear</button>
-                  </div>
-                </div>
-                {completedRows.map(row => (
-                  <div key={row.localId}
-                    onClick={async () => {
-                      if (!row.queueEntryId) return
-                      try {
-                        const res = await fetch(`${API}/queue/${row.queueEntryId}/restore`, { method: "POST" })
-                        if (!res.ok) { showToast("Could not restore"); return }
-                        const data = await res.json()
-                        const entry = data.entry
-                        const arrMs = entry ? new Date(entry.arrival_time).getTime() : row.addedMs
-                        const qw = entry?.quoted_wait ?? row.quotedWait
-                        const base = entry?.wait_set_at ? new Date(entry.wait_set_at).getTime() : (arrMs ?? Date.now())
-                        patchRow(row.localId, { status: "waiting", seatedMs: null, removedByGuest: undefined, quotedWait: qw, addedMs: arrMs, deadlineMs: qw ? base + qw * 60_000 : null, isPaused: false, pausedSecsLeft: 0 })
-                        showToast(`${row.name || "Guest"} restored to waitlist`)
-                      } catch { showToast("Could not restore") }
-                    }}
-                    style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 48, borderBottom: `1px solid ${V.rowBorder}`, background: V.completedBg, padding: "6px 0", cursor: "pointer", touchAction: "manipulation" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 8, background: row.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.08)", border: `1.5px solid ${row.status === "seated" ? "rgba(34,197,94,0.35)" : "rgba(239,68,68,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {row.status === "seated" ? <Check style={{ width: 14, height: 14, color: "#16a34a" }} /> : <X style={{ width: 14, height: 14, color: "#dc2626" }} />}
-                      </div>
-                    </div>
-                    <div style={{ padding: "0 8px" }}><span style={{ fontSize: 14, fontWeight: 500, color: V.textSub }}>{row.name || "Guest"}</span></div>
-                    <div style={{ textAlign: "center" }}><span style={{ fontSize: 13, color: V.textMuted }}>{row.partySize}p</span></div>
-                    <div style={{ padding: "0 8px" }}><span style={{ fontSize: 12, color: V.textMuted }}>{row.phone || "—"}</span></div>
-                    <div style={{ padding: "0 10px 0 6px" }}>
-                      <div style={{ fontSize: 11, color: V.textMuted, display: "flex", flexWrap: "wrap", gap: "2px 10px" }}>
-                        {row.status === "removed" && <span style={{ color: "rgba(239,68,68,0.70)", fontWeight: 600 }}>{row.removedByGuest ? "Left waitlist" : "Removed by host"}</span>}
-                        <span>In {fmtClock(row.addedMs)}</span>
-                        {row.notifiedMs && <span>Notified {fmtClock(row.notifiedMs)}</span>}
-                        <span>Waited {waitedLabel(row)}</span>
-                      </div>
-                    </div>
-                    {isLandscape && <div style={{ padding: "0 8px" }}><span style={{ fontSize: 12, color: V.textMuted }}>{row.notes || "—"}</span></div>}
-                  </div>
-                ))}
-              </>
-            )}
 
             <div style={{ height: 40 }} />
           </div>
