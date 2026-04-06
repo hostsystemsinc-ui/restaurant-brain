@@ -55,6 +55,25 @@ def _save_demo_sub_to_db(sub: dict):
 # Load existing submissions in the background so startup is never blocked
 threading.Thread(target=_load_demo_subs, daemon=True).start()
 
+def _ensure_demo_tables():
+    """Guarantee the demo restaurant + its 16 tables exist in the DB.
+    Idempotent — safe to call on every startup."""
+    try:
+        rid = DEMO_RESTAURANT_ID
+        if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
+            supabase.table("restaurants").insert({
+                "id": rid, "name": "Demo Restaurant", "slug": "demo"
+            }).execute()
+        if not supabase.table("tables").select("id").eq("restaurant_id", rid).execute().data:
+            supabase.table("tables").insert([
+                {"restaurant_id": rid, "table_number": i+1, "capacity": c, "status": "available"}
+                for i, c in enumerate([2,2,2,4,4,4,6,6,6,4,4,4,1,1,1,1])
+            ]).execute()
+    except Exception as e:
+        print(f"[startup] _ensure_demo_tables failed: {e}")
+
+threading.Thread(target=_ensure_demo_tables, daemon=True).start()
+
 app = FastAPI(title="Restaurant Brain API")
 
 app.add_middleware(
@@ -531,11 +550,13 @@ def seat_entry(entry_id: str):
     if not party_res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
     party = party_res.data[0]
+    # Use the entry's own restaurant_id so demo and real restaurants are kept separate
+    entry_rid = party.get("restaurant_id") or RESTAURANT_ID
 
     table_res = (
         supabase.table("tables")
         .select("*")
-        .eq("restaurant_id", RESTAURANT_ID)
+        .eq("restaurant_id", entry_rid)
         .eq("status", "available")
         .gte("capacity", party["party_size"])
         .order("capacity")
@@ -548,9 +569,17 @@ def seat_entry(entry_id: str):
 
     if table:
         supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table["id"]).execute()
+        # Track occupant in memory for cross-view sync (same as seat-to-table)
+        tnum = table.get("table_number")
+        if tnum is not None:
+            _table_occupants[f"{entry_rid}:{tnum}"] = {
+                "name": party.get("name") or "Guest",
+                "party_size": party.get("party_size", 2),
+                "entry_id": entry_id,
+            }
         try:
             supabase.table("seating_events").insert({
-                "restaurant_id": RESTAURANT_ID, "table_id": table["id"],
+                "restaurant_id": entry_rid, "table_id": table["id"],
                 "queue_entry_id": entry_id, "action": "seated",
             }).execute()
         except Exception:

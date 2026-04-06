@@ -541,14 +541,12 @@ export default function AnalogPage() {
     setTablePickFor(null)
     const row = rows.find(r => r.localId === localId)
     if (!row?.queueEntryId) return
-    // Ensure we have tables data — fetch fresh if the state list is empty
+    // Always fetch fresh tables so we never miss a tableId and fall back to generic /seat
     let tableList = tables
-    if (tableList.length === 0) {
-      try {
-        const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-        if (tr.ok) tableList = await tr.json()
-      } catch {}
-    }
+    try {
+      const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (tr.ok) tableList = await tr.json()
+    } catch {}
     const apiTable = tableList.find(t => t.table_number === tableNum)
     try {
       if (apiTable) {
@@ -557,12 +555,15 @@ export default function AnalogPage() {
         await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
       }
     } catch {}
+    // Optimistically mark the table occupied in local state so the picker updates immediately
+    setTableOccupants(prev => ({ ...prev, [String(tableNum)]: { name: row.name || "Guest", party_size: row.partySize } }))
+    setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "occupied" } : t))
     const seatedMs = Date.now()
     patchRow(localId, { status: "seated", seatedMs })
     addToSharedHistory(row, seatedMs)
     addToGuestLog({ id: row.queueEntryId || row.localId, name: row.name || "Guest", party_size: row.partySize, source: row.source || "analog", phone: row.phone || null, notes: row.notes || null, quoted_wait: row.quotedWait, actual_wait_min: row.addedMs ? Math.round((seatedMs - row.addedMs) / 60_000) : null, joined_ms: row.addedMs ?? seatedMs, resolved_ms: seatedMs, status: "seated" })
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
-    // Refresh tables + occupants so the just-occupied table immediately shows red in picker
+    // Then refresh from backend to confirm the authoritative state
     fetchTables()
   }, [rows, tables, patchRow, showToast, fetchTables])
 

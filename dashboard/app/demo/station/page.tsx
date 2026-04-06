@@ -2275,8 +2275,18 @@ export default function DemoHostDashboard() {
 
   // Core seat action — called directly or after warning confirmation
   const doSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
-    // Resolve tableId from tables array if not passed (ensures seat-to-table is always used)
-    const resolvedTableId = tableId ?? tables.find(t => t.table_number === tableNumber)?.id
+    // Resolve tableId — prefer passed value, then current tables state, then fetch fresh
+    // (ensures seat-to-table is always used, never the generic /seat fallback)
+    let resolvedTableId = tableId ?? tables.find(t => t.table_number === tableNumber)?.id
+    if (!resolvedTableId) {
+      try {
+        const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+        if (r.ok) {
+          const fresh: { id: string; table_number: number; status: string }[] = await r.json()
+          resolvedTableId = fresh.find(t => t.table_number === tableNumber)?.id
+        }
+      } catch {}
+    }
     // Capacity warning (non-blocking)
     const apiTable = tables.find(t => resolvedTableId ? t.id === resolvedTableId : t.table_number === tableNumber)
     if (apiTable && entry.party_size > apiTable.capacity) {
@@ -2914,8 +2924,14 @@ export default function DemoHostDashboard() {
               now={now}
               onClear={(tableId, tableNumber) => {
                 const occupant = localOccupants.get(tableNumber)
-                if (occupant) setClearConfirm({ tableId, tableNumber, occupant })
-                else clearTable(tableId, tableNumber)
+                const dbOccupied = tables.find(t => t.table_number === tableNumber)?.status === "occupied"
+                // Always confirm before clearing — prevents accidental wipes when a table
+                // is occupied in DB but not yet reflected in localOccupants
+                if (occupant || dbOccupied) {
+                  setClearConfirm({ tableId, tableNumber, occupant: occupant ?? { name: "Guest", party_size: 2 } })
+                } else {
+                  clearTable(tableId, tableNumber)
+                }
               }}
               isDraggingOccupant={!!activeDragOccupant}
               selectedEntry={selectedEntry}
