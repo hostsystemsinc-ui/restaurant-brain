@@ -2355,11 +2355,24 @@ export default function DemoHostDashboard() {
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
     recentlySeateddRef.current.delete(tableNumber) // allow immediate eviction
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
-    if (tableId) {
-      try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
-      fetchTables()
+    // Resolve tableId if not passed — look it up from current tables state,
+    // or fetch fresh if state is stale/empty (critical: without this the API
+    // call is skipped and syncOccupants re-adds the occupant 2s later)
+    let resolvedTableId = tableId ?? tables.find(t => t.table_number === tableNumber)?.id
+    if (!resolvedTableId) {
+      try {
+        const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+        if (r.ok) {
+          const fresh: { id: string; table_number: number }[] = await r.json()
+          resolvedTableId = fresh.find(t => t.table_number === tableNumber)?.id
+        }
+      } catch {}
     }
-  }, [fetchTables])
+    if (resolvedTableId) {
+      try { await fetch(`${API}/tables/${resolvedTableId}/clear`, { method: "POST" }) } catch {}
+    }
+    fetchTables()
+  }, [fetchTables, tables])
 
   // Returns the pre-assigned table number for a given reservation, if any
   const tableForRes = useCallback((resId: string): number | undefined => {
@@ -2387,7 +2400,7 @@ export default function DemoHostDashboard() {
     }
   }
 
-  function handleDragEnd(event: DragEndEvent) {
+  async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     setActiveDrag(null)
     setActiveDragOccupant(null)
@@ -2416,36 +2429,62 @@ export default function DemoHostDashboard() {
     const entry = (data as { entry?: QueueEntry } | undefined)?.entry
     if (!entry) return
     if (localOccupants.has(targetTable)) return
-    const apiTable = tables.find(t => t.table_number === targetTable)
-    if (apiTable && entry.party_size > apiTable.capacity) {
+
+    // Always fetch fresh tables so we get the correct tableId for the drop target.
+    // Without this, a stale/empty tables array causes fallback to generic /seat
+    // which auto-assigns the smallest available table (usually table 1).
+    let tableList = tables
+    if (!tableList.find(t => t.table_number === targetTable)) {
+      try {
+        const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+        if (r.ok) tableList = await r.json()
+      } catch {}
+    }
+
+    const apiTable = tableList.find(t => t.table_number === targetTable)
+    if (!apiTable) {
+      showToast(`Table ${targetTable} not found — please try again.`, "err")
+      return
+    }
+    if (localOccupants.has(targetTable) || apiTable.status === "occupied") {
+      showToast(`Table ${targetTable} is already occupied.`, "err")
+      return
+    }
+    if (entry.party_size > apiTable.capacity) {
       showToast(`Table ${targetTable} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
     }
+
     const resolvedMs = Date.now()
     const arrivalMs  = new Date(entry.arrival_time).getTime()
     const actualWait = Math.round((resolvedMs - arrivalMs) / 60_000)
-    if (apiTable) {
-      fetchT(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
-        .then(r => { if (!r.ok) showToast("Could not seat guest.", "err"); else refreshAll() })
-        .catch(() => showToast("Could not seat guest.", "err"))
-    } else {
-      seat(entry.id)
+
+    // Optimistic update — show table as occupied immediately
+    recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
+    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
+    setReservedTables(prev => { const n = new Map(prev); n.delete(targetTable); return n })
+
+    // Reservation warning
+    const dragResInfo = reservedTables.get(targetTable)
+    if (dragResInfo) {
+      const mins = getResMinutesUntil(dragResInfo.time, new Date())
+      if (mins <= 0) {
+        // Undo optimistic — this is a locked reserved table
+        setLocalOccupants(prev => { const n = new Map(prev); n.delete(targetTable); return n })
+        recentlySeateddRef.current.delete(targetTable)
+        return
+      }
+      if (mins <= 60) showToast(`${dragResInfo.guestName} reserved this table at ${fmt12Res(dragResInfo.time)}`, "warn")
     }
+
+    fetchT(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
+      .then(r => { if (!r.ok) { showToast("Could not seat guest.", "err"); refreshAll() } else refreshAll() })
+      .catch(() => { showToast("Could not seat guest.", "err"); refreshAll() })
+
     // Log to guest history
     if (entry.quoted_wait) {
       addToHistory({ party_size: entry.party_size, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, seated_at: resolvedMs, day_of_week: new Date().getDay(), hour_of_day: new Date().getHours() })
     }
     addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, joined_ms: arrivalMs, resolved_ms: resolvedMs, status: "seated" })
-    // Reservation warning — check before clearing pre-assignment
-    const dragResInfo = reservedTables.get(targetTable)
-    if (dragResInfo) {
-      const mins = getResMinutesUntil(dragResInfo.time, new Date())
-      if (mins <= 0) return  // locked — drop blocked by canReceiveDrop but guard here too
-      if (mins <= 60) {
-        showToast(`${dragResInfo.guestName} reserved this table at ${fmt12Res(dragResInfo.time)}`, "warn")
-      }
-    }
-    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
-    setReservedTables(prev => { const n = new Map(prev); n.delete(targetTable); return n })
   }
 
   const floorOccupied = FLOOR_PLAN.filter(pos => {
