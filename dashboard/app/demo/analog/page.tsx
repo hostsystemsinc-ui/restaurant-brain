@@ -258,6 +258,11 @@ export default function AnalogPage() {
   })
   const [tablePickFor,    setTablePickFor]   = useState<string | null>(null)
   const [confirmFor,      setConfirmFor]     = useState<string | null>(null)
+  // Tap occupied table in picker → ask to clear+seat
+  const [clearAndSeat,    setClearAndSeat]   = useState<{ localId: string; tableNum: number; occupantName: string } | null>(null)
+  // Long-press occupied table in picker → move that guest to another table
+  const [movingFrom,      setMovingFrom]     = useState<number | null>(null)  // table number being moved
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [tables,          setTables]         = useState<Table[]>([])
   const [toast,           setToast]          = useState<string | null>(null)
   const [zoom, setZoom] = useState(() => {
@@ -538,6 +543,80 @@ export default function AnalogPage() {
       showToast(`${row.name || "Guest"} left`)
     }
   }, [rows, tableAssignment, patchRow, showToast, fetchTables])
+
+  // Clear an occupied table then seat the pending guest there
+  const clearAndSeatGuest = useCallback(async (localId: string, tableNum: number) => {
+    setClearAndSeat(null)
+    setTablePickFor(null)
+    let tableList: Table[] = tables
+    try {
+      const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (tr.ok) {
+        const raw: Table[] = await tr.json()
+        const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
+        const byNumber = new Map<number, Table>()
+        for (const t of coerced) {
+          const ex = byNumber.get(t.table_number)
+          if (!ex || t.status === "occupied") byNumber.set(t.table_number, t)
+        }
+        tableList = Array.from(byNumber.values())
+      }
+    } catch {}
+    const apiTable = tableList.find(t => t.table_number === tableNum)
+    if (!apiTable) { showToast("Table not found"); return }
+    // Clear occupant first (restores linked guest to queue if any)
+    try { await fetch(`${API}/tables/${apiTable.id}/clear`, { method: "POST" }) } catch {}
+    setTableOccupants(prev => { const n = { ...prev }; delete n[String(tableNum)]; return n })
+    setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "available" } : t))
+    // Now seat the pending guest
+    await seatToTable(localId, tableNum)
+  }, [tables, seatToTable, showToast])
+
+  // Move an already-seated guest from one table to another (long-press flow)
+  const moveTableGuest = useCallback(async (fromNum: number, toNum: number) => {
+    setMovingFrom(null)
+    if (fromNum === toNum) return
+    let tableList: Table[] = tables
+    try {
+      const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (tr.ok) {
+        const raw: Table[] = await tr.json()
+        const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
+        const byNumber = new Map<number, Table>()
+        for (const t of coerced) {
+          const ex = byNumber.get(t.table_number)
+          if (!ex || t.status === "occupied") byNumber.set(t.table_number, t)
+        }
+        tableList = Array.from(byNumber.values())
+      }
+    } catch {}
+    const fromTable = tableList.find(t => t.table_number === fromNum)
+    const toTable   = tableList.find(t => t.table_number === toNum)
+    if (!fromTable || !toTable) { showToast("Table not found"); return }
+    const occupant = tableOccupants[String(fromNum)]
+    if (!occupant) { showToast("No guest at that table"); return }
+    // Optimistic update
+    setTableOccupants(prev => {
+      const n = { ...prev }
+      delete n[String(fromNum)]
+      n[String(toNum)] = occupant
+      return n
+    })
+    setTables(prev => prev.map(t =>
+      t.table_number === fromNum ? { ...t, status: "available" } :
+      t.table_number === toNum   ? { ...t, status: "occupied"  } : t
+    ))
+    try {
+      await fetch(`${API}/tables/${toTable.id}/occupy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
+      })
+      await fetch(`${API}/tables/${fromTable.id}/clear`, { method: "POST" })
+    } catch { showToast("Move may not have saved — check floor map") }
+    showToast(`Table ${fromNum} → Table ${toNum}`)
+    fetchTables()
+  }, [tables, tableOccupants, showToast, fetchTables])
 
   const seatToTable = useCallback(async (localId: string, tableNum: number) => {
     setTablePickFor(null)
@@ -1010,22 +1089,114 @@ export default function AnalogPage() {
       )}
 
       {/* ── Table Picker ── */}
-      {tablePickFor && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end" }} onPointerDown={() => setTablePickFor(null)}>
+      {(tablePickFor || movingFrom !== null) && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end" }} onPointerDown={() => { setTablePickFor(null); setMovingFrom(null) }}>
           <div style={{ width: "100%", background: "white", borderRadius: "20px 20px 0 0", padding: "24px 20px 44px", maxHeight: "65dvh", overflowY: "auto" }} onPointerDown={e => e.stopPropagation()}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-              <p style={{ fontSize: 17, fontWeight: 700, color: "#111", margin: 0 }}>Select Table</p>
-              <button onPointerDown={() => setTablePickFor(null)} style={{ border: "none", background: "none", cursor: "pointer", color: "rgba(0,0,0,0.40)", fontSize: 20, lineHeight: 1, touchAction: "manipulation" }}>✕</button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <p style={{ fontSize: 17, fontWeight: 700, color: "#111", margin: 0 }}>
+                {movingFrom !== null ? `Move guest from Table ${movingFrom}` : "Select Table"}
+              </p>
+              <button onPointerDown={() => { setTablePickFor(null); setMovingFrom(null) }} style={{ border: "none", background: "none", cursor: "pointer", color: "rgba(0,0,0,0.40)", fontSize: 20, lineHeight: 1, touchAction: "manipulation" }}>✕</button>
             </div>
+            {movingFrom === null && (
+              <p style={{ fontSize: 12, color: "rgba(0,0,0,0.38)", margin: "0 0 16px" }}>
+                Tap an open table to seat · Tap red to swap · Hold red to move
+              </p>
+            )}
+            {movingFrom !== null && (
+              <p style={{ fontSize: 12, color: "rgba(0,0,0,0.38)", margin: "0 0 16px" }}>
+                Tap any table to move the guest there
+              </p>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {TABLE_NUMBERS.map(n => {
-                const occupied = tables.find(t => Number(t.table_number) === n)?.status === "occupied" || !!tableOccupants[String(n)]
+                const occupied     = tables.find(t => Number(t.table_number) === n)?.status === "occupied" || !!tableOccupants[String(n)]
+                const occupantName = tableOccupants[String(n)]?.name
+                const isMoveSrc    = movingFrom === n
+                // In move mode: all other tables are targets
+                if (movingFrom !== null) {
+                  return (
+                    <button
+                      key={n}
+                      onPointerDown={() => moveTableGuest(movingFrom, n)}
+                      style={{
+                        height: 60, borderRadius: 14, display: "flex", flexDirection: "column",
+                        alignItems: "center", justifyContent: "center", gap: 2,
+                        border: `2px solid ${isMoveSrc ? "rgba(251,191,36,0.80)" : occupied ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.40)"}`,
+                        background: isMoveSrc ? "rgba(251,191,36,0.15)" : occupied ? "rgba(239,68,68,0.07)" : "rgba(34,197,94,0.07)",
+                        color: isMoveSrc ? "#b45309" : occupied ? "#dc2626" : "#16a34a",
+                        fontSize: isMoveSrc ? 13 : 20, fontWeight: 800, cursor: "pointer", touchAction: "manipulation",
+                        opacity: isMoveSrc ? 0.6 : 1,
+                      }}
+                    >
+                      {isMoveSrc ? <><span style={{ fontSize: 9, letterSpacing: "0.08em" }}>MOVING</span><span>{n}</span></> : n}
+                    </button>
+                  )
+                }
+                // Normal seating mode
                 return (
-                  <button key={n} onPointerDown={() => !occupied && seatToTable(tablePickFor!, n)} disabled={occupied} style={{ height: 60, borderRadius: 14, border: `2px solid ${occupied ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.40)"}`, background: occupied ? "rgba(239,68,68,0.07)" : "rgba(34,197,94,0.07)", color: occupied ? "#dc2626" : "#16a34a", fontSize: 20, fontWeight: 800, cursor: occupied ? "default" : "pointer", touchAction: "manipulation" }}>
-                    {n}
+                  <button
+                    key={n}
+                    onPointerDown={(e) => {
+                      if (!occupied) { seatToTable(tablePickFor!, n); return }
+                      // Long-press on occupied → enter move mode
+                      longPressTimer.current = setTimeout(() => {
+                        longPressTimer.current = null
+                        setMovingFrom(n)
+                        setTablePickFor(null)
+                      }, 400)
+                    }}
+                    onPointerUp={() => {
+                      if (longPressTimer.current) {
+                        clearTimeout(longPressTimer.current)
+                        longPressTimer.current = null
+                        // Short tap on occupied → confirm clear+seat
+                        if (occupied && tablePickFor) {
+                          setClearAndSeat({ localId: tablePickFor, tableNum: n, occupantName: occupantName || `Table ${n} guest` })
+                        }
+                      }
+                    }}
+                    onPointerLeave={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null } }}
+                    style={{
+                      height: 60, borderRadius: 14, display: "flex", flexDirection: "column",
+                      alignItems: "center", justifyContent: "center", gap: 1,
+                      border: `2px solid ${occupied ? "rgba(239,68,68,0.55)" : "rgba(34,197,94,0.40)"}`,
+                      background: occupied ? "rgba(239,68,68,0.09)" : "rgba(34,197,94,0.07)",
+                      color: occupied ? "#dc2626" : "#16a34a",
+                      cursor: "pointer", touchAction: "manipulation",
+                    }}
+                  >
+                    <span style={{ fontSize: occupied ? 16 : 20, fontWeight: 800, lineHeight: 1 }}>{n}</span>
+                    {occupied && occupantName && <span style={{ fontSize: 8, fontWeight: 600, color: "rgba(220,38,38,0.60)", overflow: "hidden", maxWidth: "90%", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{occupantName}</span>}
                   </button>
                 )
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Clear + Seat confirmation ── */}
+      {clearAndSeat && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 150, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end" }} onPointerDown={() => setClearAndSeat(null)}>
+          <div style={{ width: "100%", background: "white", borderRadius: "24px 24px 0 0", padding: "28px 24px 48px" }} onPointerDown={e => e.stopPropagation()}>
+            <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.40)", letterSpacing: "0.04em", textTransform: "uppercase" }}>Table {clearAndSeat.tableNum} is occupied</p>
+            <p style={{ margin: "0 0 24px", fontSize: 18, fontWeight: 700, color: "#111" }}>
+              Clear <span style={{ color: "#dc2626" }}>{clearAndSeat.occupantName}</span> and seat new guest here?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <button
+                onPointerDown={() => clearAndSeatGuest(clearAndSeat.localId, clearAndSeat.tableNum)}
+                style={{ height: 64, borderRadius: 18, border: "none", cursor: "pointer", fontSize: 17, fontWeight: 800, background: "rgba(34,197,94,0.88)", color: "white", touchAction: "manipulation" }}
+              >
+                Yes, clear and seat here
+              </button>
+              <button
+                onPointerDown={() => { setClearAndSeat(null); setTablePickFor(clearAndSeat.localId); fetchTables() }}
+                style={{ height: 48, borderRadius: 14, border: "1px solid rgba(0,0,0,0.10)", background: "rgba(0,0,0,0.03)", color: "rgba(0,0,0,0.45)", fontSize: 15, fontWeight: 600, cursor: "pointer", touchAction: "manipulation" }}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

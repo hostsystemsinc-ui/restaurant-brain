@@ -108,8 +108,13 @@ export default function OwnerPage() {
     demo:    { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
   })
 
-  // Demo requests
-  const [demoReqs,      setDemoReqs]      = useState<DemoReq[]>([])
+  // Demo requests — seeded from localStorage cache so they survive backend restarts
+  const [demoReqs, setDemoReqs] = useState<DemoReq[]>(() => {
+    try {
+      const cached = localStorage.getItem("host_owner_demo_reqs")
+      return cached ? JSON.parse(cached) : []
+    } catch { return [] }
+  })
   const [demoLoading,   setDemoLoading]   = useState(false)
   const [lastRefresh,   setLastRefresh]   = useState<Date | null>(null)
   const [refreshing,    setRefreshing]    = useState(false)
@@ -211,11 +216,24 @@ export default function OwnerPage() {
       }
     }))
 
-    // --- Demo requests ---
+    // --- Demo requests — merge with localStorage cache so entries survive backend restarts ---
     setDemoLoading(true)
     try {
       const r = await fetch(`/api/demo?secret=${PASS}`, { cache: "no-store" })
-      if (r.ok) setDemoReqs(await r.json())
+      if (r.ok) {
+        const fresh: DemoReq[] = await r.json()
+        setDemoReqs(prev => {
+          // Merge: union of cached + fresh, deduped by id, sorted newest first
+          const map = new Map<string, DemoReq>()
+          for (const req of prev)   map.set(req.id, req)
+          for (const req of fresh)  map.set(req.id, req)
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+          )
+          try { localStorage.setItem("host_owner_demo_reqs", JSON.stringify(merged)) } catch {}
+          return merged
+        })
+      }
     } catch { /* ignore */ }
     setDemoLoading(false)
 
