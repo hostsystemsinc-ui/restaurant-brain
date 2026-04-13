@@ -1656,6 +1656,143 @@ function AddGuestDrawer({
   )
 }
 
+// ── Table click modal ──────────────────────────────────────────────────────────
+
+function TableClickModal({
+  tableNumber, tableId, waitingGuests, onSeatExisting, onAddNew, onClose,
+}: {
+  tableNumber: number
+  tableId: string | undefined
+  waitingGuests: QueueEntry[]
+  onSeatExisting: (entry: QueueEntry) => void
+  onAddNew: (name: string, partySize: number, phone: string) => void
+  onClose: () => void
+}) {
+  const [mode, setMode] = useState<"pick" | "add">(waitingGuests.length > 0 ? "pick" : "add")
+  const [name,      setName]      = useState("")
+  const [partySize, setPartySize] = useState(2)
+  const [phone,     setPhone]     = useState("")
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-6"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+            Table {tableNumber}
+          </p>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Mode toggle */}
+        <div className="flex gap-2 mb-5">
+          <button
+            onClick={() => setMode("pick")}
+            className="flex-1 rounded-xl py-2.5 text-xs font-bold transition-all"
+            style={{
+              background: mode === "pick" ? "rgba(255,185,100,0.14)" : "rgba(255,185,100,0.04)",
+              border: `1px solid ${mode === "pick" ? "rgba(255,185,100,0.45)" : "rgba(255,185,100,0.10)"}`,
+              color: mode === "pick" ? "rgba(255,220,160,0.95)" : "rgba(255,200,150,0.35)",
+            }}
+          >
+            Waiting Guest {waitingGuests.length > 0 && `(${waitingGuests.length})`}
+          </button>
+          <button
+            onClick={() => setMode("add")}
+            className="flex-1 rounded-xl py-2.5 text-xs font-bold transition-all"
+            style={{
+              background: mode === "add" ? "rgba(34,197,94,0.14)" : "rgba(34,197,94,0.04)",
+              border: `1px solid ${mode === "add" ? "rgba(34,197,94,0.45)" : "rgba(34,197,94,0.10)"}`,
+              color: mode === "add" ? "rgba(100,240,160,0.95)" : "rgba(100,200,130,0.35)",
+            }}
+          >
+            New Walk-in
+          </button>
+        </div>
+
+        {mode === "pick" ? (
+          waitingGuests.length === 0 ? (
+            <p className="text-sm py-6 text-center" style={{ color: "rgba(255,200,150,0.40)" }}>
+              No guests waiting — add a new walk-in instead
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+              {waitingGuests.map(entry => (
+                <button
+                  key={entry.id}
+                  onClick={() => onSeatExisting(entry)}
+                  className="flex items-center justify-between rounded-xl px-4 py-3 text-left transition-all hover:brightness-125 active:scale-[0.98]"
+                  style={{
+                    background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
+                    border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.12)"}`,
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold truncate" style={{ color: "rgba(255,248,240,0.92)" }}>{entry.name || "Guest"}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "rgba(255,200,150,0.50)" }}>
+                      {entry.party_size}p{entry.quoted_wait ? ` · ${entry.quoted_wait}m quoted` : ""}
+                    </p>
+                  </div>
+                  {entry.status === "ready" && <span className="text-xs font-bold ml-3 shrink-0" style={{ color: "#22c55e" }}>READY</span>}
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="flex flex-col gap-3">
+            <input
+              placeholder="Guest name (optional)"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+              style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
+            />
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold shrink-0" style={{ color: "rgba(255,200,150,0.55)" }}>Party</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPartySize(p => Math.max(1, p - 1))}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold"
+                  style={{ background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.70)" }}
+                >−</button>
+                <span className="w-6 text-center text-sm font-bold tabular-nums" style={{ color: "rgba(255,248,240,0.92)" }}>{partySize}</span>
+                <button
+                  onClick={() => setPartySize(p => p + 1)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold"
+                  style={{ background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.70)" }}
+                >+</button>
+              </div>
+            </div>
+            <input
+              placeholder="Phone (optional)"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              type="tel"
+              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+              style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
+            />
+            <button
+              onClick={() => onAddNew(name.trim(), partySize, phone.trim())}
+              className="w-full rounded-2xl py-4 text-sm font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125 mt-1"
+              style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}
+            >
+              Seat at Table {tableNumber}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Toast renderer ─────────────────────────────────────────────────────────────
 
 function Toasts({ items }: { items: ToastItem[] }) {
@@ -2437,15 +2574,9 @@ export default function DemoHostDashboard() {
       const occupant = data.occupant as LocalOccupant
       if (sourceTable === targetTable) return
 
-      // Fetch fresh table list to get accurate IDs
-      let tableList = tables
-      try {
-        const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-        if (r.ok) tableList = normalizeTables(await r.json())
-      } catch {}
-
-      const sourceApiTable = tableList.find(t => t.table_number === sourceTable)
-      const targetApiTable = tableList.find(t => t.table_number === targetTable)
+      // Use in-memory tables (already normalized) — no network round-trip before UI update
+      const sourceApiTable = tables.find(t => t.table_number === sourceTable)
+      const targetApiTable = tables.find(t => t.table_number === targetTable)
 
       if (!sourceApiTable || !targetApiTable) {
         showToast("Could not resolve table IDs — please try again.", "err")
@@ -2454,7 +2585,7 @@ export default function DemoHostDashboard() {
 
       const displaced = localOccupants.get(targetTable)
 
-      // Optimistic update immediately
+      // Optimistic update first — UI is instant
       recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
       if (displaced) recentlySeateddRef.current.set(sourceTable, Date.now() + 5000)
       setLocalOccupants(prev => {
@@ -2465,29 +2596,28 @@ export default function DemoHostDashboard() {
         return next
       })
 
-      // Persist to backend
-      try {
-        // Occupy the target table with this guest
-        await fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
-        })
-        if (displaced) {
-          // Swap: put displaced guest at source table
-          await fetch(`${API}/tables/${sourceApiTable.id}/occupy`, {
+      // Fire backend calls in background — UI already updated
+      ;(async () => {
+        try {
+          await fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: displaced.name, party_size: displaced.party_size, entry_id: displaced.entry_id }),
+            body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
           })
-        } else {
-          // No swap: clear the source table
-          await fetch(`${API}/tables/${sourceApiTable.id}/clear`, { method: "POST" })
+          if (displaced) {
+            await fetch(`${API}/tables/${sourceApiTable.id}/occupy`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: displaced.name, party_size: displaced.party_size, entry_id: displaced.entry_id }),
+            })
+          } else {
+            await fetch(`${API}/tables/${sourceApiTable.id}/clear`, { method: "POST" })
+          }
+        } catch {
+          showToast("Move saved locally — sync may differ.", "warn")
         }
-      } catch {
-        showToast("Move saved locally — sync may differ.", "warn")
-      }
-      refreshAll()
+        refreshAll()
+      })()
       return
     }
 
@@ -2495,16 +2625,8 @@ export default function DemoHostDashboard() {
     if (!entry) return
     if (localOccupants.has(targetTable)) return
 
-    // Always fetch fresh tables so we get the correct tableId for the drop target.
-    // Without this, a stale/empty tables array causes fallback to generic /seat
-    // which auto-assigns the smallest available table (usually table 1).
-    let tableList = tables
-    try {
-      const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-      if (r.ok) tableList = normalizeTables(await r.json())
-    } catch {}
-
-    const apiTable = tableList.find(t => t.table_number === targetTable)
+    // Use in-memory normalized tables — they're kept fresh by 2s polling
+    const apiTable = tables.find(t => t.table_number === targetTable)
     if (!apiTable) {
       showToast(`Table ${targetTable} not found — please try again.`, "err")
       return
@@ -3174,43 +3296,38 @@ export default function DemoHostDashboard() {
           </div>
         )}
 
-        {/* ── Seat from table click (pick guest from waitlist) ──────── */}
+        {/* ── Seat from table click ──────────────────────────────── */}
         {tableSeatPicker && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setTableSeatPicker(null)} />
-            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-6" style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}>
-              <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-xs font-black tracking-[0.2em] uppercase mb-0.5" style={{ color: "rgba(255,240,220,0.88)" }}>Table {tableSeatPicker.tableNumber}</p>
-                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.40)" }}>Select a guest to seat</p>
-                </div>
-                <button onClick={() => setTableSeatPicker(null)} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              {[...readyList, ...waitingList].length === 0 ? (
-                <p className="text-sm py-6 text-center" style={{ color: "rgba(255,200,150,0.40)" }}>No guests waiting</p>
-              ) : (
-                <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
-                  {[...readyList, ...waitingList].map(entry => (
-                    <button
-                      key={entry.id}
-                      onClick={() => { setTableSeatPicker(null); confirmSeat(entry, tableSeatPicker.tableNumber, tableSeatPicker.tableId) }}
-                      className="flex items-center justify-between rounded-xl px-4 py-3 text-left transition-all hover:brightness-125 active:scale-[0.98]"
-                      style={{ background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)", border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.12)"}` }}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold truncate" style={{ color: "rgba(255,248,240,0.92)" }}>{entry.name || "Guest"}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "rgba(255,200,150,0.50)" }}>{entry.party_size}p{entry.quoted_wait ? ` · ${entry.quoted_wait}m quoted` : ""}</p>
-                      </div>
-                      {entry.status === "ready" && <span className="text-xs font-bold ml-3 shrink-0" style={{ color: "#22c55e" }}>READY</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <TableClickModal
+            tableNumber={tableSeatPicker.tableNumber}
+            tableId={tableSeatPicker.tableId}
+            waitingGuests={[...readyList, ...waitingList]}
+            onSeatExisting={(entry) => { setTableSeatPicker(null); confirmSeat(entry, tableSeatPicker.tableNumber, tableSeatPicker.tableId) }}
+            onAddNew={async (name, partySize, phone) => {
+              // Capture before nulling state
+              const tNum = tableSeatPicker.tableNumber
+              const tId  = tableSeatPicker.tableId
+              setTableSeatPicker(null)
+              try {
+                const r = await fetch(`${API}/queue/join`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: name || null, party_size: partySize, phone: phone || null, preference: "asap", source: "host", restaurant_id: DEMO_RESTAURANT_ID }),
+                })
+                if (!r.ok) throw new Error()
+                const data = await r.json()
+                const entryId = data.entry?.id ?? data.id ?? ""
+                if (entryId && tId) {
+                  await fetch(`${API}/queue/${entryId}/seat-to-table/${tId}`, { method: "POST" })
+                  recentlySeateddRef.current.set(tNum, Date.now() + 5000)
+                  setLocalOccupants(prev => new Map(prev).set(tNum, { name: name || "Guest", party_size: partySize, entry_id: entryId }))
+                }
+                showToast(`${name || "Guest"} seated at Table ${tNum}`)
+              } catch { showToast("Could not add guest", "err") }
+              refreshAll()
+            }}
+            onClose={() => setTableSeatPicker(null)}
+          />
         )}
 
         {/* Queue seat picker */}
