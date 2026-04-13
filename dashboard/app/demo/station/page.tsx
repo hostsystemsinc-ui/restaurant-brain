@@ -868,7 +868,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, reservation, now,
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onTableClick, reservation, now,
 }: {
   pos: FloorPos
   table?: Table
@@ -877,6 +877,7 @@ function DroppableFloorTable({
   isDraggingOccupant?: boolean
   isSelectMode?: boolean
   onSeatFromSelect?: () => void
+  onTableClick?: () => void
   reservation?: ReservedTable   // pre-assigned to upcoming reservation → yellow
   now?: Date
 }) {
@@ -979,7 +980,7 @@ function DroppableFloorTable({
         justifyContent: "center",
         gap: 2,
         overflow: "hidden",
-        cursor: hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : isOccupied && onClear ? "pointer" : canReceiveDrop ? "copy" : "default",
+        cursor: hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : isOccupied && onClear ? "pointer" : avail && !isResLocked && onTableClick ? "pointer" : canReceiveDrop ? "copy" : "default",
         opacity: isDragging ? 0.4 : 1,
       }}
       onClick={
@@ -987,6 +988,8 @@ function DroppableFloorTable({
           ? onSeatFromSelect
           : isOccupied && onClear && !hasLocalOccupant
           ? onClear
+          : avail && !isResLocked && onTableClick
+          ? onTableClick
           : undefined
       }
     >
@@ -1146,7 +1149,7 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, reservedTables, now,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onTableClick, reservedTables, now,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -1154,6 +1157,7 @@ function FloorMap({
   isDraggingOccupant: boolean
   selectedEntry?: QueueEntry | null
   onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
+  onTableClick?: (tableId: string | undefined, tableNumber: number) => void
   reservedTables?: Map<number, ReservedTable>
   now?: Date
 }) {
@@ -1260,6 +1264,7 @@ function FloorMap({
                 isDraggingOccupant={isDraggingOccupant}
                 isSelectMode={!!selectedEntry}
                 onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
+                onTableClick={onTableClick ? () => onTableClick(table?.id, pos.number) : undefined}
                 now={now}
               />
             )
@@ -2025,6 +2030,7 @@ export default function DemoHostDashboard() {
   const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [tableSeatPicker, setTableSeatPicker] = useState<{ tableId: string | undefined; tableNumber: number } | null>(null)
   const [sidebarW, setSidebarW]           = useState(300)
   const [zoom,     setZoom]               = useState(() => { try { return parseFloat(localStorage.getItem("host_zoom") || "1") } catch { return 1 } })
   useEffect(() => { try { localStorage.setItem("host_zoom", String(zoom)) } catch {} }, [zoom])
@@ -2159,16 +2165,16 @@ export default function DemoHostDashboard() {
     try {
       const r = await fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (!r.ok) return
-      const data: Record<string, { name: string; party_size: number; entry_id: string }> = await r.json()
+      const data: Record<string, { name: string; party_size: number; entry_id?: string }> = await r.json()
       // Full replace from backend — authoritative source for cross-view sync.
       // Preserves tables seated from THIS view during a brief grace period (5s) to avoid
       // the race where the interval fires before the seat-to-table DB write is visible.
       setLocalOccupants(prev => {
         const now2 = Date.now()
-        const next = new Map<number, { name: string; party_size: number }>()
+        const next = new Map<number, LocalOccupant>()
         // Add everything from backend
         for (const [numStr, occ] of Object.entries(data)) {
-          next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size })
+          next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id })
         }
         // Keep any recently-seated local entry that backend hasn't picked up yet
         for (const [tNum, expiry] of recentlySeateddRef.current) {
@@ -2253,12 +2259,12 @@ export default function DemoHostDashboard() {
     fetchTables()
     fetch(`${API}/tables/occupants?restaurant_id=${DEMO_RESTAURANT_ID}`)
       .then(r => r.ok ? r.json() : {})
-      .then((data: Record<string, { name: string; party_size: number }>) => {
+      .then((data: Record<string, { name: string; party_size: number; entry_id?: string }>) => {
         setLocalOccupants(prev => {
           const now2 = Date.now()
-          const next = new Map<number, { name: string; party_size: number }>()
+          const next = new Map<number, LocalOccupant>()
           for (const [numStr, occ] of Object.entries(data)) {
-            next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size })
+            next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id })
           }
           for (const [tNum, expiry] of recentlySeateddRef.current) {
             if (expiry > now2 && prev.has(tNum) && !next.has(tNum)) {
@@ -2352,7 +2358,7 @@ export default function DemoHostDashboard() {
     showToast(`${res.guest_name} checked in at Table ${tableNumber}`)
   }, [fetchTables])
 
-  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
+  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string) => {
     recentlySeateddRef.current.delete(tableNumber) // allow immediate eviction
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     // Resolve tableId if not passed — look it up from current tables state,
@@ -2371,8 +2377,12 @@ export default function DemoHostDashboard() {
     if (resolvedTableId) {
       try { await fetch(`${API}/tables/${resolvedTableId}/clear`, { method: "POST" }) } catch {}
     }
-    fetchTables()
-  }, [fetchTables, tables])
+    // Restore the linked queue entry to waiting so they reappear in the queue
+    if (entryId) {
+      try { await fetch(`${API}/queue/${entryId}/restore`, { method: "POST" }) } catch {}
+    }
+    refreshAll()
+  }, [refreshAll, tables])
 
   // Returns the pre-assigned table number for a given reservation, if any
   const tableForRes = useCallback((resId: string): number | undefined => {
@@ -3023,6 +3033,14 @@ export default function DemoHostDashboard() {
                 confirmSeat(selectedEntry, tableNumber, tableId)
                 setSelectedEntry(null)
               }}
+              onTableClick={(tableId, tableNumber) => {
+                const isOccupied = localOccupants.has(tableNumber) || tables.find(t => t.table_number === tableNumber)?.status === "occupied"
+                if (!isOccupied) {
+                  setTableSeatPicker({ tableId, tableNumber })
+                  fetchTables()
+                  syncOccupants()
+                }
+              }}
             />
           </div>
 
@@ -3124,15 +3142,16 @@ export default function DemoHostDashboard() {
               <p className="text-base font-bold mb-2" style={{ color: "rgba(255,248,240,0.92)" }}>Clear Table?</p>
               <p className="text-sm mb-8" style={{ color: "rgba(255,200,150,0.55)" }}>
                 Remove <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
-                ({clearConfirm.occupant.party_size}p) from the floor map?
+                ({clearConfirm.occupant.party_size}p) from the floor?
+                {clearConfirm.occupant.entry_id && <span style={{ display: "block", marginTop: 6, color: "rgba(34,197,94,0.65)" }}>They will be returned to the waitlist.</span>}
               </p>
               <div className="flex flex-col gap-3">
                 <button
-                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber); setClearConfirm(null) }}
+                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id); setClearConfirm(null) }}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
                   style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.32)", fontSize: 16, padding: "20px 0" }}
                 >
-                  Yes, Clear Table
+                  {clearConfirm.occupant.entry_id ? "Clear & Return to Waitlist" : "Yes, Clear Table"}
                 </button>
                 <button
                   onClick={() => setClearConfirm(null)}
@@ -3142,6 +3161,45 @@ export default function DemoHostDashboard() {
                   Keep
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Seat from table click (pick guest from waitlist) ──────── */}
+        {tableSeatPicker && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setTableSeatPicker(null)} />
+            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-6" style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}>
+              <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs font-black tracking-[0.2em] uppercase mb-0.5" style={{ color: "rgba(255,240,220,0.88)" }}>Table {tableSeatPicker.tableNumber}</p>
+                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.40)" }}>Select a guest to seat</p>
+                </div>
+                <button onClick={() => setTableSeatPicker(null)} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {[...readyList, ...waitingList].length === 0 ? (
+                <p className="text-sm py-6 text-center" style={{ color: "rgba(255,200,150,0.40)" }}>No guests waiting</p>
+              ) : (
+                <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+                  {[...readyList, ...waitingList].map(entry => (
+                    <button
+                      key={entry.id}
+                      onClick={() => { setTableSeatPicker(null); confirmSeat(entry, tableSeatPicker.tableNumber, tableSeatPicker.tableId) }}
+                      className="flex items-center justify-between rounded-xl px-4 py-3 text-left transition-all hover:brightness-125 active:scale-[0.98]"
+                      style={{ background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)", border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.12)"}` }}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold truncate" style={{ color: "rgba(255,248,240,0.92)" }}>{entry.name || "Guest"}</p>
+                        <p className="text-xs mt-0.5" style={{ color: "rgba(255,200,150,0.50)" }}>{entry.party_size}p{entry.quoted_wait ? ` · ${entry.quoted_wait}m quoted` : ""}</p>
+                      </div>
+                      {entry.status === "ready" && <span className="text-xs font-bold ml-3 shrink-0" style={{ color: "#22c55e" }}>READY</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

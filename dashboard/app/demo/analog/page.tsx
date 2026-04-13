@@ -521,7 +521,9 @@ export default function AnalogPage() {
     const row = rows.find(r => r.localId === localId)
     if (!row) return
     if (action === "seat") {
-      if (tableAssignment && row.queueEntryId) { setTablePickFor(localId); fetchTables(); return }
+      // Show table picker when tableAssignment is on — works with or without queueEntryId
+      // (guests without a queueEntryId won't hit the backend table assignment but still seat locally)
+      if (tableAssignment) { setTablePickFor(localId); fetchTables(); return }
       if (row.queueEntryId) try { await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" }) } catch {}
       const seatedMs = Date.now()
       patchRow(localId, { status: "seated", seatedMs })
@@ -540,21 +542,22 @@ export default function AnalogPage() {
   const seatToTable = useCallback(async (localId: string, tableNum: number) => {
     setTablePickFor(null)
     const row = rows.find(r => r.localId === localId)
-    if (!row?.queueEntryId) return
-    // Always fetch fresh tables so we never miss a tableId and fall back to generic /seat
+    if (!row) return
+    // Always fetch fresh tables so we never miss a tableId
     let tableList = tables
     try {
       const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
       if (tr.ok) tableList = await tr.json()
     } catch {}
     const apiTable = tableList.find(t => t.table_number === tableNum)
-    try {
-      if (apiTable) {
-        await fetch(`${API}/queue/${row.queueEntryId}/seat-to-table/${apiTable.id}`, { method: "POST" })
-      } else {
-        await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
-      }
-    } catch {}
+    if (row.queueEntryId) {
+      try {
+        const r = apiTable
+          ? await fetch(`${API}/queue/${row.queueEntryId}/seat-to-table/${apiTable.id}`, { method: "POST" })
+          : await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
+        if (!r.ok) { showToast("Could not seat guest — try again"); return }
+      } catch { showToast("Could not seat guest — try again"); return }
+    }
     // Optimistically mark the table occupied in local state so the picker updates immediately
     setTableOccupants(prev => ({ ...prev, [String(tableNum)]: { name: row.name || "Guest", party_size: row.partySize } }))
     setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "occupied" } : t))
@@ -563,7 +566,6 @@ export default function AnalogPage() {
     addToSharedHistory(row, seatedMs)
     addToGuestLog({ id: row.queueEntryId || row.localId, name: row.name || "Guest", party_size: row.partySize, source: row.source || "analog", phone: row.phone || null, notes: row.notes || null, quoted_wait: row.quotedWait, actual_wait_min: row.addedMs ? Math.round((seatedMs - row.addedMs) / 60_000) : null, joined_ms: row.addedMs ?? seatedMs, resolved_ms: seatedMs, status: "seated" })
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
-    // Then refresh from backend to confirm the authoritative state
     fetchTables()
   }, [rows, tables, patchRow, showToast, fetchTables])
 
