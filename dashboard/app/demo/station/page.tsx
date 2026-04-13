@@ -38,6 +38,19 @@ const API                = "/api/brain"
 const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
 const NFC_JOIN_URL       = "https://hostplatform.net/demo/join"
 
+// The backend returns table_number as a string and may have duplicate rows per table
+// (tables were seeded multiple times). Normalize: coerce to number, then deduplicate
+// keeping the occupied row when there are multiples so /clear calls hit the right ID.
+function normalizeTables(raw: Table[]): Table[] {
+  const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
+  const byNumber = new Map<number, Table>()
+  for (const t of coerced) {
+    const existing = byNumber.get(t.table_number)
+    if (!existing || t.status === "occupied") byNumber.set(t.table_number, t)
+  }
+  return Array.from(byNumber.values())
+}
+
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 function formatPhone(raw: string): string {
@@ -2146,7 +2159,7 @@ export default function DemoHostDashboard() {
   const fetchTables   = useCallback(async () => {
     try {
       const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-      if (r.ok) setTables(await r.json())
+      if (r.ok) setTables(normalizeTables(await r.json()))
     } catch {}
   }, [])
   const fetchQueue    = useCallback(async () => {
@@ -2288,8 +2301,7 @@ export default function DemoHostDashboard() {
       try {
         const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
         if (r.ok) {
-          const fresh: { id: string; table_number: number; status: string }[] = await r.json()
-          resolvedTableId = fresh.find(t => t.table_number === tableNumber)?.id
+          resolvedTableId = normalizeTables(await r.json()).find(t => t.table_number === tableNumber)?.id
         }
       } catch {}
     }
@@ -2369,8 +2381,7 @@ export default function DemoHostDashboard() {
       try {
         const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
         if (r.ok) {
-          const fresh: { id: string; table_number: number }[] = await r.json()
-          resolvedTableId = fresh.find(t => t.table_number === tableNumber)?.id
+          resolvedTableId = normalizeTables(await r.json()).find(t => t.table_number === tableNumber)?.id
         }
       } catch {}
     }
@@ -2430,7 +2441,7 @@ export default function DemoHostDashboard() {
       let tableList = tables
       try {
         const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-        if (r.ok) tableList = await r.json()
+        if (r.ok) tableList = normalizeTables(await r.json())
       } catch {}
 
       const sourceApiTable = tableList.find(t => t.table_number === sourceTable)
@@ -2488,12 +2499,10 @@ export default function DemoHostDashboard() {
     // Without this, a stale/empty tables array causes fallback to generic /seat
     // which auto-assigns the smallest available table (usually table 1).
     let tableList = tables
-    if (!tableList.find(t => t.table_number === targetTable)) {
-      try {
-        const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-        if (r.ok) tableList = await r.json()
-      } catch {}
-    }
+    try {
+      const r = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (r.ok) tableList = normalizeTables(await r.json())
+    } catch {}
 
     const apiTable = tableList.find(t => t.table_number === targetTable)
     if (!apiTable) {

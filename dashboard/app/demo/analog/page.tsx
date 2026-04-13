@@ -544,10 +544,20 @@ export default function AnalogPage() {
     const row = rows.find(r => r.localId === localId)
     if (!row) return
     // Always fetch fresh tables so we never miss a tableId
-    let tableList = tables
+    // Normalize: table_number comes back as string from API, deduplicate per number
+    let tableList: Table[] = tables
     try {
       const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-      if (tr.ok) tableList = await tr.json()
+      if (tr.ok) {
+        const raw: Table[] = await tr.json()
+        const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
+        const byNumber = new Map<number, Table>()
+        for (const t of coerced) {
+          const ex = byNumber.get(t.table_number)
+          if (!ex || t.status === "occupied") byNumber.set(t.table_number, t)
+        }
+        tableList = Array.from(byNumber.values())
+      }
     } catch {}
     const apiTable = tableList.find(t => t.table_number === tableNum)
     if (row.queueEntryId) {
@@ -1009,7 +1019,7 @@ export default function AnalogPage() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
               {TABLE_NUMBERS.map(n => {
-                const occupied = tables.find(t => t.table_number === n)?.status === "occupied" || !!tableOccupants[String(n)]
+                const occupied = tables.find(t => Number(t.table_number) === n)?.status === "occupied" || !!tableOccupants[String(n)]
                 return (
                   <button key={n} onPointerDown={() => !occupied && seatToTable(tablePickFor!, n)} disabled={occupied} style={{ height: 60, borderRadius: 14, border: `2px solid ${occupied ? "rgba(239,68,68,0.35)" : "rgba(34,197,94,0.40)"}`, background: occupied ? "rgba(239,68,68,0.07)" : "rgba(34,197,94,0.07)", color: occupied ? "#dc2626" : "#16a34a", fontSize: 20, fontWeight: 800, cursor: occupied ? "default" : "pointer", touchAction: "manipulation" }}>
                     {n}
