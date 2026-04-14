@@ -338,14 +338,14 @@ function WaitTimeModal({
       <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[480px] rounded-t-3xl sm:rounded-3xl p-8"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.14)", zIndex: 1 }}
       >
-        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
+        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(var(--accent),0.18)" }} />
 
-        <p className="text-xs font-black tracking-[0.22em] uppercase mb-1" style={{ color: "rgba(255,200,150,0.45)" }}>
+        <p className="text-xs font-black tracking-[0.22em] uppercase mb-1" style={{ color: "rgba(var(--warm),0.45)" }}>
           Estimated Wait
         </p>
-        <p className="text-sm mb-7" style={{ color: "rgba(255,200,150,0.28)" }}>
+        <p className="text-sm mb-7" style={{ color: "rgba(var(--warm),0.28)" }}>
           The guest will see this count down live on their phone.
         </p>
 
@@ -354,18 +354,18 @@ function WaitTimeModal({
           <button
             onClick={() => setMinutes(m => Math.max(1, m - 1))}
             className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125"
-            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}
+            style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}
           >−</button>
           <div className="text-center">
-            <span className="text-7xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>
+            <span className="text-7xl font-extralight tabular-nums leading-none" style={{ color: "rgba(var(--cream),0.95)" }}>
               {minutes}
             </span>
-            <span className="block text-sm mt-1" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
+            <span className="block text-sm mt-1" style={{ color: "rgba(var(--warm),0.40)" }}>min</span>
           </div>
           <button
             onClick={() => setMinutes(m => Math.min(120, m + 1))}
             className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125"
-            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}
+            style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}
           >+</button>
         </div>
 
@@ -378,20 +378,20 @@ function WaitTimeModal({
               className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95"
               style={{
                 height: 76,
-                background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)",
-                border: `1.5px solid ${minutes === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.11)"}`,
-                boxShadow: minutes === p ? "0 0 0 3px rgba(255,185,100,0.10)" : "none",
+                background: minutes === p ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.05)",
+                border: `1.5px solid ${minutes === p ? "rgba(var(--accent),0.55)" : "rgba(var(--accent),0.11)"}`,
+                boxShadow: minutes === p ? "0 0 0 3px rgba(var(--accent),0.10)" : "none",
               }}
             >
               <span style={{
                 fontSize: 30, fontWeight: 700, lineHeight: 1,
-                color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)",
+                color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)",
               }}>
                 {p}
               </span>
               <span style={{
                 fontSize: 11, fontWeight: 700, letterSpacing: "0.1em",
-                color: minutes === p ? "rgba(255,200,150,0.60)" : "rgba(255,185,100,0.30)",
+                color: minutes === p ? "rgba(var(--warm),0.60)" : "rgba(var(--accent),0.30)",
                 marginTop: 4,
               }}>
                 MIN
@@ -411,7 +411,7 @@ function WaitTimeModal({
         <button
           onClick={onClose}
           className="w-full mt-3 py-3 text-sm transition-all"
-          style={{ color: "rgba(255,200,150,0.28)", background: "none", border: "none", cursor: "pointer" }}
+          style={{ color: "rgba(var(--warm),0.28)", background: "none", border: "none", cursor: "pointer" }}
         >
           Skip for now
         </button>
@@ -455,7 +455,7 @@ function NfcWaitPanel({
     <div style={{
       position: "fixed", top: 48, left: 0, bottom: 0,
       width: sidebarW, zIndex: 46,
-      background: "#0C0907",
+      background: "var(--page-bg)",
       borderTop: "1px solid rgba(99,179,237,0.30)",
       borderRight: "1px solid rgba(99,179,237,0.18)",
       display: "flex", flexDirection: "column",
@@ -466,10 +466,10 @@ function NfcWaitPanel({
         <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(99,179,237,0.65)", marginBottom: 4 }}>
           Quote Wait Time
         </p>
-        <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,248,240,0.95)", margin: 0 }}>
-          {entryName || "Guest"} <span style={{ fontSize: 13, fontWeight: 400, color: "rgba(255,200,150,0.50)" }}>· {partySize}p</span>
+        <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(var(--cream),0.95)", margin: 0 }}>
+          {entryName || "Guest"} <span style={{ fontSize: 13, fontWeight: 400, color: "rgba(var(--warm),0.50)" }}>· {partySize}p</span>
         </p>
-        <p style={{ fontSize: 11, color: "rgba(255,200,150,0.32)", marginTop: 4, marginBottom: 0 }}>
+        <p style={{ fontSize: 11, color: "rgba(var(--warm),0.32)", marginTop: 4, marginBottom: 0 }}>
           The guest will see this count down on their phone.
         </p>
       </div>
@@ -501,17 +501,17 @@ function NfcWaitPanel({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
           <button
             onClick={() => setMinutes(m => Math.max(1, m - 1))}
-            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
+            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
           >−</button>
           <div style={{ textAlign: "center" }}>
-            <span style={{ fontSize: 60, fontWeight: 200, lineHeight: 1, color: "rgba(255,248,240,0.95)", fontVariantNumeric: "tabular-nums" }}>
+            <span style={{ fontSize: 60, fontWeight: 200, lineHeight: 1, color: "rgba(var(--cream),0.95)", fontVariantNumeric: "tabular-nums" }}>
               {minutes}
             </span>
-            <span style={{ display: "block", fontSize: 11, marginTop: 2, color: "rgba(255,200,150,0.40)" }}>min</span>
+            <span style={{ display: "block", fontSize: 11, marginTop: 2, color: "rgba(var(--warm),0.40)" }}>min</span>
           </div>
           <button
             onClick={() => setMinutes(m => Math.min(120, m + 1))}
-            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
+            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
           >+</button>
         </div>
 
@@ -523,15 +523,15 @@ function NfcWaitPanel({
               onClick={() => setMinutes(p)}
               style={{
                 height: 64, borderRadius: 14, cursor: "pointer",
-                background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)",
-                border: `1.5px solid ${minutes === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.11)"}`,
+                background: minutes === p ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.05)",
+                border: `1.5px solid ${minutes === p ? "rgba(var(--accent),0.55)" : "rgba(var(--accent),0.11)"}`,
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
               }}
             >
-              <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>
+              <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)" }}>
                 {p}
               </span>
-              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", color: minutes === p ? "rgba(255,200,150,0.60)" : "rgba(255,185,100,0.30)" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", color: minutes === p ? "rgba(var(--warm),0.60)" : "rgba(var(--accent),0.30)" }}>
                 MIN
               </span>
             </button>
@@ -616,9 +616,9 @@ function GuestEditModal({
     <div style={{
       position: "fixed", top: 48, left: 0, bottom: 0,
       width: sidebarW, zIndex: 48,
-      background: "#100C09",
+      background: "var(--card-bg)",
       borderTop: "1px solid rgba(251,191,36,0.28)",
-      borderRight: "1px solid rgba(255,185,100,0.14)",
+      borderRight: "1px solid rgba(var(--accent),0.14)",
       display: "flex", flexDirection: "column",
       overflowY: "hidden",
     }}>
@@ -627,59 +627,59 @@ function GuestEditModal({
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(255,200,150,0.40)" }}>Edit Guest</p>
-            <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(var(--warm),0.40)" }}>Edit Guest</p>
+            <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(var(--cream),0.95)" }}>{entry.name || "Guest"}</p>
           </div>
-          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125" style={{ color: "rgba(255,200,150,0.50)", border: "1px solid rgba(255,185,100,0.20)", background: "rgba(255,185,100,0.06)" }}>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125" style={{ color: "rgba(var(--warm),0.50)", border: "1px solid rgba(var(--accent),0.20)", background: "rgba(var(--accent),0.06)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
 
           {/* ── Set estimate ── */}
-          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Set Wait Time</p>
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(var(--warm),0.45)" }}>Set Wait Time</p>
           <div className="flex items-center justify-between mb-4 px-2">
-            <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
+            <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}>−</button>
             <div className="text-center">
-              <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
-              <span className="text-sm ml-2" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
+              <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(var(--cream),0.95)" }}>{minutes}</span>
+              <span className="text-sm ml-2" style={{ color: "rgba(var(--warm),0.40)" }}>min</span>
             </div>
-            <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
+            <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}>+</button>
           </div>
           {/* Presets */}
           <div className="grid grid-cols-6 gap-2 mb-5">
             {PRESETS.map(p => (
-              <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)", border: `1px solid ${minutes === p ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}` }}>
-                <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
-                <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "rgba(255,200,150,0.55)" : "rgba(255,185,100,0.28)", marginTop: 2 }}>min</span>
+              <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.05)", border: `1px solid ${minutes === p ? "rgba(var(--accent),0.50)" : "rgba(var(--accent),0.10)"}` }}>
+                <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)" }}>{p}</span>
+                <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "rgba(var(--warm),0.55)" : "rgba(var(--accent),0.28)", marginTop: 2 }}>min</span>
               </button>
             ))}
           </div>
 
           {/* ── Party size ── */}
-          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
-          <div className="flex items-center rounded-xl mb-4" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", padding: "0 12px", height: 56 }}>
-            <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>−</button>
-            <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
-            <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>+</button>
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(var(--warm),0.45)" }}>Party Size</p>
+          <div className="flex items-center rounded-xl mb-4" style={{ background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", padding: "0 12px", height: 56 }}>
+            <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(var(--warm),0.7)" }}>−</button>
+            <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "rgba(var(--cream),0.95)" }}>{partySize}</span>
+            <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(var(--warm),0.7)" }}>+</button>
           </div>
 
           {/* ── Phone ── */}
-          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(var(--warm),0.45)" }}>Phone <span style={{ color: "rgba(var(--warm),0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
           <input
             type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))}
             placeholder="(555) 000-0000"
             className="w-full rounded-xl outline-none mb-4"
-            style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
+            style={{ background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
           />
 
           {/* ── Notes ── */}
-          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Notes <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(var(--warm),0.45)" }}>Notes <span style={{ color: "rgba(var(--warm),0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
           <input
             type="text" value={notes} onChange={e => setNotes(e.target.value)}
             placeholder="Allergies, preferences, special occasion…"
             className="w-full rounded-xl outline-none mb-5"
-            style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
+            style={{ background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
           />
 
           {/* ── Save ── */}
@@ -776,8 +776,8 @@ function DraggableQueueCard({
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
         touchAction: "none",
-        background: isSelected ? "rgba(255,220,100,0.09)" : isReady ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
-        border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.16)"}`,
+        background: isSelected ? "rgba(255,220,100,0.09)" : isReady ? "rgba(34,197,94,0.10)" : "rgba(var(--accent),0.06)",
+        border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "rgba(var(--accent),0.16)"}`,
         boxShadow: isSelected ? "0 0 0 2px rgba(255,220,100,0.18), inset 0 0 10px rgba(255,220,100,0.05)" : undefined,
         borderRadius: 12,
         cursor: isDragging ? "grabbing" : "grab",
@@ -789,12 +789,12 @@ function DraggableQueueCard({
     >
       {/* ── Row 1: grip + position + name ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(255,200,150,0.45)" }} />
-        <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "rgba(255,185,100,0.12)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
+        <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(var(--warm),0.45)" }} />
+        <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "rgba(var(--accent),0.12)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
           {entry.position ?? "—"}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(255,248,240,0.97)", wordBreak: "break-word" }}>
+          <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(var(--cream),0.97)", wordBreak: "break-word" }}>
             {entry.name || "Guest"}
           </span>
           {isReady && (
@@ -804,17 +804,17 @@ function DraggableQueueCard({
       </div>
 
       {/* ── Row 2: meta info ── */}
-      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,200,150,0.65)" }}>
+      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(var(--warm),0.65)" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Users className="w-2.5 h-2.5" />{entry.party_size}p
         </span>
-        <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
+        <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
         <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }} title="Time since arrival">
           <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
         </span>
         {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
           <>
-            <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
+            <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
             <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
               {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
             </span>
@@ -823,10 +823,10 @@ function DraggableQueueCard({
             <button
               onPointerDown={e => { e.stopPropagation() }}
               onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
-              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "rgba(255,185,100,0.08)", border: `1px solid ${showBar ? barColor : "rgba(255,185,100,0.20)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
+              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "rgba(var(--accent),0.08)", border: `1px solid ${showBar ? barColor : "rgba(var(--accent),0.20)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
               title={showBar ? "Hide timer bar" : "Show timer bar"}
             >
-              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(255,185,100,0.35)" }} />
+              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(var(--accent),0.35)" }} />
             </button>
           </>
         )}
@@ -834,7 +834,7 @@ function DraggableQueueCard({
       {/* ── Progress bar (shown when toggled) ── */}
       {showBar && quotedTotal > 0 && !isReady && (
         <div onPointerDown={e => e.stopPropagation()} style={{ paddingLeft: 38, paddingRight: 4 }}>
-          <div style={{ height: 4, borderRadius: 2, background: "rgba(255,185,100,0.10)", overflow: "hidden", position: "relative" }}>
+          <div style={{ height: 4, borderRadius: 2, background: "rgba(var(--accent),0.10)", overflow: "hidden", position: "relative" }}>
             <div style={{
               position: "absolute", left: 0, top: 0, bottom: 0,
               width: `${(progress * 100).toFixed(1)}%`,
@@ -843,9 +843,9 @@ function DraggableQueueCard({
               transition: "width 1s linear, background 0.3s",
             }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "rgba(255,185,100,0.40)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "rgba(var(--accent),0.40)" }}>
             <span>0</span>
-            <span style={{ color: isOverdue ? "#ef4444" : "rgba(255,185,100,0.40)" }}>
+            <span style={{ color: isOverdue ? "#ef4444" : "rgba(var(--accent),0.40)" }}>
               {isOverdue ? `${Math.abs(Math.ceil(secsLeft / 60))}m over` : `${displayWait}m left`}
             </span>
             <span>{quotedTotal}m</span>
@@ -854,7 +854,7 @@ function DraggableQueueCard({
       )}
       {/* ── Row 2b: notes preview ── */}
       {entry.notes && (
-        <div style={{ paddingLeft: 38, fontSize: 11, color: "rgba(255,200,150,0.50)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ paddingLeft: 38, fontSize: 11, color: "rgba(var(--warm),0.50)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {entry.notes}
         </div>
       )}
@@ -869,7 +869,7 @@ function DraggableQueueCard({
           <div style={{ display: "flex", gap: 5, width: "100%" }}>
             <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
               className="h-11 rounded-xl text-xs font-semibold transition-all active:scale-95"
-              style={{ flex: 1, minWidth: 0, background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
+              style={{ flex: 1, minWidth: 0, background: "rgba(var(--accent),0.08)", color: "rgba(var(--warm),0.60)", border: "1px solid rgba(var(--accent),0.15)" }}>
               Cancel
             </button>
             <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
@@ -924,7 +924,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
     <div
       style={{
         background: "rgba(10,6,3,0.96)",
-        border: "1px solid rgba(255,185,100,0.22)",
+        border: "1px solid rgba(var(--accent),0.22)",
         borderRadius: 10,
         padding: "9px 13px",
         boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
@@ -932,10 +932,10 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
         minWidth: 130,
       }}
     >
-      <div style={{ fontWeight: 700, fontSize: 13, color: "rgba(255,248,240,0.92)" }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: "rgba(var(--cream),0.92)" }}>
         {entry.name || "Guest"}
       </div>
-      <div style={{ fontSize: 11, color: "rgba(255,200,150,0.4)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
+      <div style={{ fontSize: 11, color: "rgba(var(--warm),0.4)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
         <Users style={{ width: 10, height: 10 }} />
         {entry.party_size} guests
       </div>
@@ -1180,7 +1180,7 @@ function DroppableFloorTable({
         </>
       ) : occupant ? (
         <>
-          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,200,150,0.75)", letterSpacing: "0.1em" }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(var(--warm),0.75)", letterSpacing: "0.1em" }}>
             T{pos.number}
           </span>
           <span style={{
@@ -1193,7 +1193,7 @@ function DroppableFloorTable({
           }}>
             {occupant.name}
           </span>
-          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.70)" }}>
+          <span style={{ fontSize: 9, color: "rgba(var(--warm),0.70)" }}>
             {occupant.party_size}p
           </span>
         </>
@@ -1209,7 +1209,7 @@ function DroppableFloorTable({
           <span style={{
             fontSize: pos.shape === "rect" ? 17 : 14,
             fontWeight: 800,
-            color: table ? "#22c55e" : "rgba(255,200,150,0.55)",
+            color: table ? "#22c55e" : "rgba(var(--warm),0.55)",
           }}>
             {pos.number}
           </span>
@@ -1244,7 +1244,7 @@ function FloorMap({
   return (
     <div
       className="flex-1 relative overflow-hidden"
-      style={{ background: "#0a0704" }}
+      style={{ background: "var(--page-deep)" }}
     >
       <span style={{
         position: "absolute",
@@ -1253,7 +1253,7 @@ function FloorMap({
         fontSize: 9,
         fontWeight: 800,
         letterSpacing: "0.2em",
-        color: "rgba(255,200,150,0.45)",
+        color: "rgba(var(--warm),0.45)",
         textTransform: "uppercase",
         zIndex: 1,
         pointerEvents: "none",
@@ -1281,8 +1281,8 @@ function FloorMap({
             top: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(255,185,100,0.03)",
-            borderLeft: "1px solid rgba(255,185,100,0.16)",
+            background: "rgba(var(--accent),0.03)",
+            borderLeft: "1px solid rgba(var(--accent),0.16)",
             borderRadius: "0 8px 8px 0",
           }} />
 
@@ -1294,7 +1294,7 @@ function FloorMap({
             fontSize: 8,
             fontWeight: 800,
             letterSpacing: "0.22em",
-            color: "rgba(255,200,150,0.55)",
+            color: "rgba(var(--warm),0.55)",
             textTransform: "uppercase",
             pointerEvents: "none",
           }}>
@@ -1307,7 +1307,7 @@ function FloorMap({
             fontSize: 8,
             fontWeight: 800,
             letterSpacing: "0.2em",
-            color: "rgba(255,200,150,0.45)",
+            color: "rgba(var(--warm),0.45)",
             textTransform: "uppercase",
             pointerEvents: "none",
           }}>
@@ -1321,7 +1321,7 @@ function FloorMap({
             bottom: `${(8 / CANVAS_H * 100).toFixed(2)}%`,
             fontSize: 8,
             letterSpacing: "0.08em",
-            color: "rgba(255,185,100,0.35)",
+            color: "rgba(var(--accent),0.35)",
             pointerEvents: "none",
           }}>
             Powered by <strong>HOST</strong>
@@ -1357,7 +1357,7 @@ function FloorMap({
         left: "50%",
         transform: "translateX(-50%)",
         fontSize: 10,
-        color: "rgba(255,200,150,0.45)",
+        color: "rgba(var(--warm),0.45)",
         letterSpacing: "0.1em",
         whiteSpace: "nowrap",
         pointerEvents: "none",
@@ -1389,19 +1389,19 @@ function SeatTablePicker({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-6"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.09)", zIndex: 1 }}
       >
-        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(var(--accent),0.12)" }} />
 
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
             {mode === "reserve" ? "Reserve Table" : "Seat Guest"}
           </span>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(var(--warm),0.25)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-xs mb-6" style={{ color: "rgba(255,200,150,0.3)" }}>
+        <p className="text-xs mb-6" style={{ color: "rgba(var(--warm),0.3)" }}>
           {guest.name || "Guest"} · {guest.party_size}p —{" "}
           {mode === "reserve" ? "choose a table to hold" : "choose a table"}
         </p>
@@ -1482,7 +1482,7 @@ function SeatTablePicker({
         <button
           onClick={onClose}
           className="w-full mt-5 py-3 rounded-xl text-xs font-bold tracking-[0.1em] uppercase"
-          style={{ background: "rgba(255,185,100,0.05)", color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.07)" }}
+          style={{ background: "rgba(var(--accent),0.05)", color: "rgba(var(--warm),0.35)", border: "1px solid rgba(var(--accent),0.07)" }}
         >
           Cancel
         </button>
@@ -1574,20 +1574,20 @@ function AddGuestDrawer({
         bottom: bottomOffset,
         width: sidebarW,
         zIndex: 45,
-        background: "#0C0907",
-        borderTop: "1px solid rgba(255,185,100,0.22)",
-        borderRight: "1px solid rgba(255,185,100,0.18)",
+        background: "var(--page-bg)",
+        borderTop: "1px solid rgba(var(--accent),0.22)",
+        borderRight: "1px solid rgba(var(--accent),0.18)",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
       }}
     >
       {/* ── Header ── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,185,100,0.12)", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid rgba(var(--accent),0.12)", flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,240,220,0.88)" }}>
           Add Guest
         </span>
-        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid rgba(255,185,100,0.14)", cursor: "pointer", color: "rgba(255,200,150,0.45)" }}>
+        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid rgba(var(--accent),0.14)", cursor: "pointer", color: "rgba(var(--warm),0.45)" }}>
           <X style={{ width: 14, height: 14 }} />
         </button>
       </div>
@@ -1596,55 +1596,55 @@ function AddGuestDrawer({
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 0" }}>
 
         {/* Party Size */}
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 8 }}>Party Size</p>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 8 }}>Party Size</p>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
           <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
-            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>−</button>
-          <span style={{ fontSize: 62, fontWeight: 200, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.20)", color: "rgba(var(--warm),0.7)", cursor: "pointer" }}>−</button>
+          <span style={{ fontSize: 62, fontWeight: 200, color: "rgba(var(--cream),0.95)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
             {partySize}
           </span>
           <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
-            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>+</button>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.20)", color: "rgba(var(--warm),0.7)", cursor: "pointer" }}>+</button>
         </div>
 
         {/* Name */}
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>Name</p>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 6 }}>Name</p>
         <input
           type="text" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
-          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 12, outline: "none", boxSizing: "border-box" }}
+          style={{ width: "100%", background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", borderRadius: 12, color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 12, outline: "none", boxSizing: "border-box" }}
         />
 
         {/* Phone */}
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>
-          Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 6 }}>
+          Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(var(--warm),0.28)" }}>— opt.</span>
         </p>
         <input
           type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
-          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+          style={{ width: "100%", background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", borderRadius: 12, color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
         />
 
         {/* Notes */}
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>
-          Notes <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 6 }}>
+          Notes <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(var(--warm),0.28)" }}>— opt.</span>
         </p>
         <input
           type="text" value={notes} onChange={e => setNotes(e.target.value)}
           placeholder="Allergies, preferences, occasion…"
-          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+          style={{ width: "100%", background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", borderRadius: 12, color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
         />
 
         {/* ── Quote Wait Time ── */}
-        <div style={{ borderTop: "1px solid rgba(255,185,100,0.12)", paddingTop: 12, marginBottom: 4 }}>
+        <div style={{ borderTop: "1px solid rgba(var(--accent),0.12)", paddingTop: 12, marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", margin: 0 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", margin: 0 }}>
               Quote Wait
             </p>
             {waitMins !== null && (
               <button
                 onClick={() => setWaitMins(null)}
-                style={{ fontSize: 9, color: "rgba(255,200,150,0.30)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                style={{ fontSize: 9, color: "rgba(var(--warm),0.30)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
               >
                 skip →
               </button>
@@ -1680,12 +1680,12 @@ function AddGuestDrawer({
               <button key={p} onClick={() => setWaitMins(p)}
                 style={{
                   height: 34, borderRadius: 8, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                  background: waitMins === p ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.05)",
-                  border: `1px solid ${waitMins === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.12)"}`,
+                  background: waitMins === p ? "rgba(var(--accent),0.18)" : "rgba(var(--accent),0.05)",
+                  border: `1px solid ${waitMins === p ? "rgba(var(--accent),0.55)" : "rgba(var(--accent),0.12)"}`,
                   cursor: "pointer", transition: "all 0.1s",
                 }}
               >
-                <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1, color: waitMins === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1, color: waitMins === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)" }}>{p}</span>
               </button>
             ))}
           </div>
@@ -1693,23 +1693,23 @@ function AddGuestDrawer({
           {/* Fine-tune stepper */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
             <button onClick={() => setWaitMins(m => Math.max(1, (m ?? 15) - 1))}
-              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
-            <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.25)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--warm),0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
+            <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "rgba(var(--cream),0.95)" : "rgba(var(--warm),0.25)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
               {waitMins ?? "—"}
             </span>
             <button onClick={() => setWaitMins(m => Math.min(120, (m ?? 14) + 1))}
-              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--warm),0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
           </div>
         </div>
       </div>
 
       {/* ── Footer: error + submit ── */}
-      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(255,185,100,0.10)", flexShrink: 0 }}>
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(var(--accent),0.10)", flexShrink: 0 }}>
         {error && <p style={{ fontSize: 11, color: "rgba(248,113,113,0.90)", textAlign: "center", marginBottom: 8 }}>{error}</p>}
         <button onClick={submit} disabled={loading}
           style={{
             width: "100%", height: 48, borderRadius: 14, border: "none", cursor: loading ? "default" : "pointer",
-            background: loading ? "rgba(255,185,100,0.08)" : "#22c55e",
+            background: loading ? "rgba(var(--accent),0.08)" : "#22c55e",
             color: "white", fontSize: 13, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase",
             opacity: loading ? 0.5 : 1, transition: "opacity 0.12s",
           }}
@@ -1743,16 +1743,16 @@ function TableClickModal({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-6"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.14)", zIndex: 1 }}
       >
-        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(var(--accent),0.12)" }} />
 
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <p className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
             Table {tableNumber}
           </p>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(var(--warm),0.25)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1765,9 +1765,9 @@ function TableClickModal({
             style={{
               padding: "14px 0",
               fontSize: 14,
-              background: mode === "pick" ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.04)",
-              border: `1px solid ${mode === "pick" ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}`,
-              color: mode === "pick" ? "rgba(255,220,160,0.97)" : "rgba(255,200,150,0.35)",
+              background: mode === "pick" ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.04)",
+              border: `1px solid ${mode === "pick" ? "rgba(var(--accent),0.50)" : "rgba(var(--accent),0.10)"}`,
+              color: mode === "pick" ? "rgba(255,220,160,0.97)" : "rgba(var(--warm),0.35)",
             }}
           >
             Waiting Guest {waitingGuests.length > 0 && `(${waitingGuests.length})`}
@@ -1789,7 +1789,7 @@ function TableClickModal({
 
         {mode === "pick" ? (
           waitingGuests.length === 0 ? (
-            <p className="text-sm py-8 text-center" style={{ color: "rgba(255,200,150,0.40)" }}>
+            <p className="text-sm py-8 text-center" style={{ color: "rgba(var(--warm),0.40)" }}>
               No guests waiting — add a new walk-in instead
             </p>
           ) : (
@@ -1801,19 +1801,19 @@ function TableClickModal({
                   className="flex items-center justify-between rounded-2xl text-left transition-all hover:brightness-125 active:scale-[0.98]"
                   style={{
                     padding: "16px 18px",
-                    background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.07)",
-                    border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.35)" : "rgba(255,185,100,0.16)"}`,
+                    background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(var(--accent),0.07)",
+                    border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.35)" : "rgba(var(--accent),0.16)"}`,
                   }}
                 >
                   <div className="min-w-0">
-                    <p className="font-bold truncate" style={{ fontSize: 16, color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
-                    <p className="mt-1" style={{ fontSize: 13, color: "rgba(255,200,150,0.55)" }}>
+                    <p className="font-bold truncate" style={{ fontSize: 16, color: "rgba(var(--cream),0.95)" }}>{entry.name || "Guest"}</p>
+                    <p className="mt-1" style={{ fontSize: 13, color: "rgba(var(--warm),0.55)" }}>
                       {entry.party_size}p{entry.quoted_wait ? ` · ${entry.quoted_wait}m quoted` : ""}
                     </p>
                   </div>
                   {entry.status === "ready"
                     ? <span className="text-xs font-black ml-3 shrink-0 px-2 py-1 rounded-lg" style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e" }}>READY</span>
-                    : <span style={{ fontSize: 20, color: "rgba(255,185,100,0.30)", marginLeft: 12 }}>›</span>
+                    : <span style={{ fontSize: 20, color: "rgba(var(--accent),0.30)", marginLeft: 12 }}>›</span>
                   }
                 </button>
               ))}
@@ -1826,21 +1826,21 @@ function TableClickModal({
               value={name}
               onChange={e => setName(e.target.value)}
               className="w-full rounded-2xl outline-none"
-              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
+              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--cream),0.92)" }}
             />
-            <div className="flex items-center gap-3 rounded-2xl px-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", padding: "10px 16px" }}>
-              <span className="text-sm font-bold shrink-0" style={{ color: "rgba(255,200,150,0.65)" }}>Party size</span>
+            <div className="flex items-center gap-3 rounded-2xl px-4" style={{ background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.16)", padding: "10px 16px" }}>
+              <span className="text-sm font-bold shrink-0" style={{ color: "rgba(var(--warm),0.65)" }}>Party size</span>
               <div className="flex items-center gap-3 ml-auto">
                 <button
                   onClick={() => setPartySize(p => Math.max(1, p - 1))}
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
-                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.80)" }}
+                  style={{ background: "rgba(var(--accent),0.10)", border: "1px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.80)" }}
                 >−</button>
-                <span className="w-8 text-center font-bold tabular-nums" style={{ fontSize: 18, color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
+                <span className="w-8 text-center font-bold tabular-nums" style={{ fontSize: 18, color: "rgba(var(--cream),0.95)" }}>{partySize}</span>
                 <button
                   onClick={() => setPartySize(p => p + 1)}
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
-                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.80)" }}
+                  style={{ background: "rgba(var(--accent),0.10)", border: "1px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.80)" }}
                 >+</button>
               </div>
             </div>
@@ -1850,7 +1850,7 @@ function TableClickModal({
               onChange={e => setPhone(e.target.value)}
               type="tel"
               className="w-full rounded-2xl outline-none"
-              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
+              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--cream),0.92)" }}
             />
             <button
               onClick={() => onAddNew(name.trim(), partySize, phone.trim())}
@@ -1960,7 +1960,7 @@ function HistoryDrawer({ onClose, onRestored }: { onClose: () => void; onRestore
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[400px] h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-2xl flex flex-col overflow-hidden"
-        style={{ background: "#0D0D0D", border: "1px solid rgba(255,255,255,0.07)", zIndex: 1 }}
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.10)", zIndex: 1 }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -2257,6 +2257,8 @@ export default function DemoHostDashboard() {
   const [sidebarW, setSidebarW]           = useState(300)
   const [zoom,     setZoom]               = useState(() => { try { return parseFloat(localStorage.getItem("host_zoom") || "1") } catch { return 1 } })
   useEffect(() => { try { localStorage.setItem("host_zoom", String(zoom)) } catch {} }, [zoom])
+  const [theme,    setTheme]              = useState<"dark"|"light">(() => { try { return (localStorage.getItem("host_theme") as "dark"|"light") || "dark" } catch { return "dark" } })
+  useEffect(() => { try { localStorage.setItem("host_theme", theme) } catch {} }, [theme])
   const [linkCopied, setLinkCopied]       = useState(false)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [toasts, setToasts]               = useState<ToastItem[]>([])
@@ -2796,8 +2798,14 @@ export default function DemoHostDashboard() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
+      {/* Theme CSS variables — drives light/dark without touching every inline style */}
+      <style>{`
+        [data-host-theme="dark"]  { --accent:255,185,100; --warm:255,200,150; --cream:255,248,240; --page-bg:#0C0907; --card-bg:#100C09; --page-deep:#0a0704; --header-bg:rgba(7,4,2,0.98); --header-border:rgba(var(--accent),0.18); --divider:rgba(var(--accent),0.16); }
+        [data-host-theme="light"] { --accent:160,90,0;   --warm:110,60,5;    --cream:18,10,3;     --page-bg:#F5F2EE; --card-bg:#FFFFFF;   --page-deep:#EDE9E3; --header-bg:rgba(252,249,245,0.98); --header-border:rgba(160,90,0,0.18); --divider:rgba(160,90,0,0.14); }
+      `}</style>
+
       {/* Outer clip wrapper — always exactly viewport size */}
-      <div style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "#0C0907" }}>
+      <div data-host-theme={theme} style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--page-bg)" }}>
       {/* Inner scaled container — transform:scale keeps getBoundingClientRect in viewport coords,
           fixing @dnd-kit collision detection accuracy regardless of zoom level */}
       <div
@@ -2805,7 +2813,7 @@ export default function DemoHostDashboard() {
         style={{
           width:           `${(1 / zoom * 100).toFixed(6)}vw`,
           height:          `${(1 / zoom * 100).toFixed(6)}dvh`,
-          background:      "#0C0907",
+          background:      "var(--page-bg)",
           transform:       `scale(${zoom})`,
           transformOrigin: "top left",
           overflow:        "hidden",
@@ -2815,32 +2823,32 @@ export default function DemoHostDashboard() {
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header
           className="flex items-center justify-between px-5 h-12 shrink-0"
-          style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.18)", backdropFilter: "blur(20px)" }}
+          style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
             {/* Back arrow → Analog + Demo Restaurant wordmark */}
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Link href="/demo/analog" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,200,150,0.65)", textDecoration: "none", flexShrink: 0, transition: "background 0.15s" }} title="Switch to Analog">
+              <Link href="/demo/analog" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--warm),0.65)", textDecoration: "none", flexShrink: 0, transition: "background 0.15s" }} title="Switch to Analog">
                 <ChevronLeft style={{ width: 16, height: 16 }} />
               </Link>
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(255,248,240,0.95)" }}>Demo Restaurant</span>
-                <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(255,200,150,0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
+                <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(var(--cream),0.95)" }}>Demo Restaurant</span>
+                <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(var(--warm),0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
               </div>
             </div>
 
-            <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
+            <div className="w-px h-5 shrink-0" style={{ background: "rgba(var(--accent),0.20)" }} />
 
             {/* Stats */}
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.16)" }}>
                 <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
-                <span className="text-xs" style={{ color: "rgba(255,185,100,0.50)" }}>/{FLOOR_PLAN.length}</span>
-                <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,200,150,0.60)" }}>free</span>
+                <span className="text-xs" style={{ color: "rgba(var(--accent),0.50)" }}>/{FLOOR_PLAN.length}</span>
+                <span className="text-[10px] ml-0.5" style={{ color: "rgba(var(--warm),0.60)" }}>free</span>
               </div>
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
-                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(255,200,150,0.60)" }}>{waitingList.length}</span>
-                <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.60)" }}>waiting</span>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.16)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(var(--warm),0.60)" }}>{waitingList.length}</span>
+                <span className="text-[10px]" style={{ color: "rgba(var(--warm),0.60)" }}>waiting</span>
               </div>
               {readyList.length > 0 && (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)" }}>
@@ -2855,7 +2863,7 @@ export default function DemoHostDashboard() {
             {/* Live clock */}
             <span
               className="hidden sm:block text-[11px] tabular-nums font-medium px-2"
-              style={{ color: "rgba(255,200,150,0.65)", letterSpacing: "0.04em" }}
+              style={{ color: "rgba(var(--warm),0.65)", letterSpacing: "0.04em" }}
             >
               {clockStr}
             </span>
@@ -2865,7 +2873,7 @@ export default function DemoHostDashboard() {
               onClick={copyNfcLink}
               className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors"
               style={{
-                color: linkCopied ? "#22c55e" : "rgba(255,200,150,0.65)",
+                color: linkCopied ? "#22c55e" : "rgba(var(--warm),0.65)",
                 background: linkCopied ? "rgba(34,197,94,0.1)" : "transparent",
                 border: linkCopied ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent",
               }}
@@ -2877,37 +2885,47 @@ export default function DemoHostDashboard() {
               }
             </button>
 
-            <Link href="/demo/history" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+            <Link href="/demo/history" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
               <BarChart2 className="w-3 h-3" /> History
             </Link>
 
-            <Link href="/demo/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+            <Link href="/demo/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>
 
             {/* Zoom controls */}
-            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,185,100,0.14)", background: "rgba(255,185,100,0.04)" }}>
+            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
               <button
                 onClick={() => setZoom(z => Math.max(0.7, Math.round((z - 0.1) * 10) / 10))}
                 className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
-                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}
                 title="Zoom out"
               >−</button>
-              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "rgba(255,200,150,0.45)", minWidth: 28, textAlign: "center" }}>
+              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "rgba(var(--warm),0.45)", minWidth: 28, textAlign: "center" }}>
                 {Math.round(zoom * 100)}%
               </span>
               <button
                 onClick={() => setZoom(z => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))}
                 className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
-                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}
                 title="Zoom in"
               >+</button>
             </div>
 
+            {/* Light / Dark toggle */}
+            <button
+              onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+              className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors hover:bg-white/8"
+              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? "☀︎" : "◗"} {theme === "dark" ? "Light" : "Dark"}
+            </button>
+
             <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
               {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             </div>
-            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.55)" }}>
+            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.55)" }}>
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -2922,7 +2940,7 @@ export default function DemoHostDashboard() {
             style={{
               width: sidebarW,
               position: "relative",
-              background: "#0C0907",
+              background: "var(--page-bg)",
             }}
           >
             {/* Drag-to-resize handle */}
@@ -2932,7 +2950,7 @@ export default function DemoHostDashboard() {
                 position: "absolute", right: 0, top: 0, bottom: 0, width: 6,
                 cursor: "col-resize", zIndex: 20,
                 background: "transparent",
-                borderRight: "1px solid rgba(255,185,100,0.16)",
+                borderRight: "1px solid rgba(var(--accent),0.16)",
               }}
               title="Drag to resize"
             >
@@ -2942,7 +2960,7 @@ export default function DemoHostDashboard() {
                 display: "flex", flexDirection: "column", gap: 3,
               }}>
                 {[0,1,2].map(i => (
-                  <div key={i} style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(255,185,100,0.28)" }} />
+                  <div key={i} style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(var(--accent),0.28)" }} />
                 ))}
               </div>
             </div>
@@ -2952,7 +2970,7 @@ export default function DemoHostDashboard() {
               <div
                 style={{
                   padding: "8px 12px 8px",
-                  borderBottom: "1px solid rgba(255,185,100,0.16)",
+                  borderBottom: "1px solid rgba(var(--accent),0.16)",
                   flexShrink: 0,
                 }}
               >
@@ -3002,7 +3020,7 @@ export default function DemoHostDashboard() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{
                             fontSize: 12, fontWeight: 600,
-                            color: "rgba(255,248,240,0.97)",
+                            color: "rgba(var(--cream),0.97)",
                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                             marginBottom: 2,
                           }}>
@@ -3010,7 +3028,7 @@ export default function DemoHostDashboard() {
                           </div>
                           <div style={{
                             fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap",
-                            color: "rgba(255,200,150,0.70)",
+                            color: "rgba(var(--warm),0.70)",
                           }}>
                             <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
                             <span>·</span>
@@ -3127,7 +3145,7 @@ export default function DemoHostDashboard() {
 
             {/* Divider */}
             {readyList.length > 0 && waitingList.length > 0 && (
-              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.14)" }} />
+              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(var(--accent),0.14)" }} />
             )}
 
             {/* Needs Quote section — guests who joined without a quoted time */}
@@ -3187,19 +3205,19 @@ export default function DemoHostDashboard() {
               {quotedWaiting.length > 0 && (
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
-                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(var(--warm),0.65)" }}>
                     Waiting · {quotedWaiting.length}
                   </span>
                 </div>
               )}
               {isInitialLoad ? (
                 <div className="flex items-center justify-center py-16">
-                  <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,185,100,0.18)", borderTopColor: "rgba(255,185,100,0.65)" }} />
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(var(--accent),0.18)", borderTopColor: "rgba(var(--accent),0.65)" }} />
                 </div>
               ) : queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
-                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
-                  <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(var(--accent),0.14)", borderRadius: 12 }}>
+                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(var(--accent),0.30)" }} />
+                  <p className="text-[11px] font-medium" style={{ color: "rgba(var(--warm),0.50)" }}>Queue is clear</p>
                 </div>
               ) : quotedWaiting.length > 0 ? (
                 <div className="flex flex-col gap-1.5 pb-24 pr-1">
@@ -3255,7 +3273,7 @@ export default function DemoHostDashboard() {
 
           {/* ── Mobile: no floor map ─────────────────── */}
           <div className="flex-1 lg:hidden overflow-y-auto p-4 flex flex-col gap-4">
-            <p className="text-xs text-center py-8" style={{ color: "rgba(255,200,150,0.50)" }}>
+            <p className="text-xs text-center py-8" style={{ color: "rgba(var(--warm),0.50)" }}>
               Floor map available on larger screens
             </p>
           </div>
@@ -3346,12 +3364,12 @@ export default function DemoHostDashboard() {
         {clearConfirm && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setClearConfirm(null)} />
-            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "#100C09", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
-              <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
-              <p className="text-base font-bold mb-1" style={{ color: "rgba(255,248,240,0.92)" }}>Table {clearConfirm.tableNumber}</p>
-              <p className="text-sm mb-8" style={{ color: "rgba(255,200,150,0.55)" }}>
+            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
+              <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(var(--accent),0.18)" }} />
+              <p className="text-base font-bold mb-1" style={{ color: "rgba(var(--cream),0.92)" }}>Table {clearConfirm.tableNumber}</p>
+              <p className="text-sm mb-8" style={{ color: "rgba(var(--warm),0.55)" }}>
                 What would you like to do with{" "}
-                <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
+                <strong style={{ color: "rgba(var(--cream),0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
                 ({clearConfirm.occupant.party_size}p)?
               </p>
               <div className="flex flex-col gap-3">
@@ -3374,7 +3392,7 @@ export default function DemoHostDashboard() {
                 <button
                   onClick={() => setClearConfirm(null)}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                  style={{ background: "rgba(255,185,100,0.06)", color: "rgba(255,200,150,0.65)", border: "1px solid rgba(255,185,100,0.12)", fontSize: 15, padding: "18px 0" }}
+                  style={{ background: "rgba(var(--accent),0.06)", color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.12)", fontSize: 15, padding: "18px 0" }}
                 >
                   Keep Seated
                 </button>
@@ -3463,9 +3481,9 @@ export default function DemoHostDashboard() {
             <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
             <div
               className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-7"
-              style={{ background: "#100C09", border: "1px solid rgba(249,115,22,0.35)", zIndex: 1 }}
+              style={{ background: "var(--card-bg)", border: "1px solid rgba(249,115,22,0.35)", zIndex: 1 }}
             >
-              <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.18)" }} />
+              <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(var(--accent),0.18)" }} />
 
               <div className="flex items-start gap-3 mb-5">
                 <div
@@ -3476,7 +3494,7 @@ export default function DemoHostDashboard() {
                 </div>
                 <div>
                   <p className="font-bold text-sm mb-1" style={{ color: "rgba(255,240,220,0.97)" }}>Table Reserved</p>
-                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.55)", lineHeight: 1.5 }}>
+                  <p className="text-xs" style={{ color: "rgba(var(--warm),0.55)", lineHeight: 1.5 }}>
                     Table {resSeatWarning.tableNumber} is held for{" "}
                     <strong style={{ color: "rgba(255,240,220,0.88)" }}>{resSeatWarning.resInfo.guestName}</strong>{" "}
                     at <strong style={{ color: "rgba(249,115,22,0.95)" }}>{fmt12Res(resSeatWarning.resInfo.time)}</strong>.
@@ -3485,7 +3503,7 @@ export default function DemoHostDashboard() {
               </div>
 
               <div className="mb-5 p-3 rounded-xl" style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.18)" }}>
-                <p className="text-xs" style={{ color: "rgba(255,200,150,0.60)", lineHeight: 1.5 }}>
+                <p className="text-xs" style={{ color: "rgba(var(--warm),0.60)", lineHeight: 1.5 }}>
                   Seating{" "}
                   <strong style={{ color: "rgba(255,240,220,0.88)" }}>{resSeatWarning.entry.name || "this guest"}</strong>{" "}
                   ({resSeatWarning.entry.party_size}p) here may conflict with the upcoming reservation.
@@ -3518,7 +3536,7 @@ export default function DemoHostDashboard() {
                 <button
                   onClick={() => setResSeatWarning(null)}
                   className="w-full py-3 text-xs transition-all"
-                  style={{ color: "rgba(255,200,150,0.28)", background: "none", border: "none", cursor: "pointer" }}
+                  style={{ color: "rgba(var(--warm),0.28)", background: "none", border: "none", cursor: "pointer" }}
                 >
                   Cancel
                 </button>
