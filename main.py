@@ -383,7 +383,7 @@ def test_sms_full(phone: str = "+18312470552"):
     phone_e164 = _e164(phone)
     if not phone_e164:
         return {"ok": False, "error": f"Could not normalize phone: {phone}"}
-    ok, err = _send_sms(phone_e164, "HOST test: Your table is ready! Track your status: https://hostplatform.net/demo/join Reply STOP to opt out.")
+    ok, err = _send_sms(phone_e164, "HOST test: Your table is ready! Head to the host stand.")
     return {"ok": ok, "error": err, "to": phone_e164, "textbelt_key_set": bool(TEXTBELT_KEY and TEXTBELT_KEY != "textbelt")}
 
 @app.get("/restaurant")
