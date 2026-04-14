@@ -544,34 +544,6 @@ export default function AnalogPage() {
     }
   }, [rows, tableAssignment, patchRow, showToast, fetchTables])
 
-  // Clear an occupied table then seat the pending guest there
-  const clearAndSeatGuest = useCallback(async (localId: string, tableNum: number) => {
-    setClearAndSeat(null)
-    setTablePickFor(null)
-    let tableList: Table[] = tables
-    try {
-      const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
-      if (tr.ok) {
-        const raw: Table[] = await tr.json()
-        const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
-        const byNumber = new Map<number, Table>()
-        for (const t of coerced) {
-          const ex = byNumber.get(t.table_number)
-          if (!ex || t.status === "occupied") byNumber.set(t.table_number, t)
-        }
-        tableList = Array.from(byNumber.values())
-      }
-    } catch {}
-    const apiTable = tableList.find(t => t.table_number === tableNum)
-    if (!apiTable) { showToast("Table not found"); return }
-    // Clear occupant first (restores linked guest to queue if any)
-    try { await fetch(`${API}/tables/${apiTable.id}/clear`, { method: "POST" }) } catch {}
-    setTableOccupants(prev => { const n = { ...prev }; delete n[String(tableNum)]; return n })
-    setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "available" } : t))
-    // Now seat the pending guest
-    await seatToTable(localId, tableNum)
-  }, [tables, seatToTable, showToast])
-
   // Move an already-seated guest from one table to another (long-press flow)
   const moveTableGuest = useCallback(async (fromNum: number, toNum: number) => {
     setMovingFrom(null)
@@ -657,6 +629,32 @@ export default function AnalogPage() {
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
     fetchTables()
   }, [rows, tables, patchRow, showToast, fetchTables])
+
+  // Clear an occupied table then seat the pending guest there (declared after seatToTable)
+  const clearAndSeatGuest = useCallback(async (localId: string, tableNum: number) => {
+    setClearAndSeat(null)
+    setTablePickFor(null)
+    let tableList: Table[] = tables
+    try {
+      const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (tr.ok) {
+        const raw: Table[] = await tr.json()
+        const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
+        const byNumber = new Map<number, Table>()
+        for (const t of coerced) {
+          const ex = byNumber.get(t.table_number)
+          if (!ex || t.status === "occupied") byNumber.set(t.table_number, t)
+        }
+        tableList = Array.from(byNumber.values())
+      }
+    } catch {}
+    const apiTable = tableList.find(t => t.table_number === tableNum)
+    if (!apiTable) { showToast("Table not found"); return }
+    try { await fetch(`${API}/tables/${apiTable.id}/clear`, { method: "POST" }) } catch {}
+    setTableOccupants(prev => { const n = { ...prev }; delete n[String(tableNum)]; return n })
+    setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "available" } : t))
+    await seatToTable(localId, tableNum)
+  }, [tables, seatToTable, showToast])
 
   // ── Pen helpers ───────────────────────────────────────────────────────────────
   // Apple Pencil: clear text fields so Scribble writes fresh

@@ -213,6 +213,7 @@ interface QueueEntry {
   quoted_wait: number | null
   wait_estimate?: number
   remaining_wait?: number
+  wait_set_at?: string | null
   arrival_time: string
   position?: number
   paused?: boolean
@@ -717,20 +718,40 @@ function DraggableQueueCard({
     setRemoving(false)
   }
 
-  // Per-card live countdown.
-  // remaining_wait = server-computed "minutes truly left" (quoted_wait minus elapsed time since
-  // updated_at). Falls back to wait_estimate when no quoted_wait has been set.
-  const [displayWait, setDisplayWait] = useState(entry.remaining_wait ?? entry.wait_estimate ?? 0)
-  const quotedTotal = entry.quoted_wait ?? entry.wait_estimate ?? 0
+  // Per-card live countdown — driven by wait_set_at + quoted_wait for sub-minute accuracy,
+  // falls back to remaining_wait / wait_estimate when those are absent.
+  // secsLeft: seconds remaining (negative = overdue). Matches analog's deadlineMs logic.
+  const computeSecsLeft = useCallback(() => {
+    if (entry.paused) {
+      // paused: use remaining_wait as frozen minutes
+      return (entry.remaining_wait ?? 0) * 60
+    }
+    if (entry.wait_set_at && entry.quoted_wait != null) {
+      const deadlineMs = new Date(entry.wait_set_at).getTime() + entry.quoted_wait * 60_000
+      return Math.round((deadlineMs - Date.now()) / 1000)
+    }
+    return (entry.remaining_wait ?? entry.wait_estimate ?? 0) * 60
+  }, [entry.paused, entry.wait_set_at, entry.quoted_wait, entry.remaining_wait, entry.wait_estimate])
+
+  const [secsLeft, setSecsLeft] = useState(computeSecsLeft)
+  const [showBar,  setShowBar]  = useState(false)
+
+  useEffect(() => { setSecsLeft(computeSecsLeft()) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entry.wait_set_at, entry.quoted_wait, entry.remaining_wait, entry.wait_estimate, entry.paused])
+
   useEffect(() => {
-    setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
-  }, [entry.remaining_wait, entry.wait_estimate])
-  useEffect(() => {
-    const target = entry.remaining_wait ?? entry.wait_estimate
-    if (!target || entry.paused) return
-    const t = setInterval(() => setDisplayWait(p => Math.max(0, p - 1)), 60_000)
+    if (entry.paused) return
+    const t = setInterval(() => setSecsLeft(computeSecsLeft()), 1000)
     return () => clearInterval(t)
-  }, [entry.remaining_wait, entry.wait_estimate, entry.paused])
+  }, [computeSecsLeft, entry.paused])
+
+  const displayWait = Math.ceil(secsLeft / 60)
+  const quotedTotal = entry.quoted_wait ?? entry.wait_estimate ?? 0
+  // Progress 0→1 from start to deadline; clamp 0–1
+  const progress = quotedTotal > 0 ? Math.max(0, Math.min(1, 1 - secsLeft / (quotedTotal * 60))) : 0
+  const isOverdue = secsLeft <= 0 && quotedTotal > 0
+  const barColor  = isOverdue ? "#ef4444" : secsLeft < 120 ? "#f97316" : "#22c55e"
 
   return (
     <div
@@ -781,12 +802,43 @@ function DraggableQueueCard({
         {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
           <>
             <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
-            <span style={{ fontWeight: 700, color: displayWait <= 0 ? "#22c55e" : displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
-              {displayWait <= 0 ? "ready" : `~${displayWait}m left`}
+            <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
+              {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
             </span>
+            {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
+            {/* Progress bar toggle */}
+            <button
+              onPointerDown={e => { e.stopPropagation() }}
+              onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
+              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "rgba(255,185,100,0.08)", border: `1px solid ${showBar ? barColor : "rgba(255,185,100,0.20)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
+              title={showBar ? "Hide timer bar" : "Show timer bar"}
+            >
+              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(255,185,100,0.35)" }} />
+            </button>
           </>
         )}
       </div>
+      {/* ── Progress bar (shown when toggled) ── */}
+      {showBar && quotedTotal > 0 && !isReady && (
+        <div onPointerDown={e => e.stopPropagation()} style={{ paddingLeft: 38, paddingRight: 4 }}>
+          <div style={{ height: 4, borderRadius: 2, background: "rgba(255,185,100,0.10)", overflow: "hidden", position: "relative" }}>
+            <div style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: `${(progress * 100).toFixed(1)}%`,
+              background: barColor,
+              borderRadius: 2,
+              transition: "width 1s linear, background 0.3s",
+            }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "rgba(255,185,100,0.40)" }}>
+            <span>0</span>
+            <span style={{ color: isOverdue ? "#ef4444" : "rgba(255,185,100,0.40)" }}>
+              {isOverdue ? `${Math.abs(Math.ceil(secsLeft / 60))}m over` : `${displayWait}m left`}
+            </span>
+            <span>{quotedTotal}m</span>
+          </div>
+        </div>
+      )}
       {/* ── Row 2b: notes preview ── */}
       {entry.notes && (
         <div style={{ paddingLeft: 38, fontSize: 11, color: "rgba(255,200,150,0.50)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
