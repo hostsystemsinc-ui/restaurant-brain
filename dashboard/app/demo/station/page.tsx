@@ -3369,7 +3369,7 @@ export default function DemoHostDashboard() {
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
                   style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.28)", fontSize: 16, padding: "20px 0" }}
                 >
-                  Cancel / Remove
+                  Clear Table
                 </button>
                 <button
                   onClick={() => setClearConfirm(null)}
