@@ -1761,22 +1761,26 @@ function TableClickModal({
         <div className="flex gap-2 mb-5">
           <button
             onClick={() => setMode("pick")}
-            className="flex-1 rounded-xl py-2.5 text-xs font-bold transition-all"
+            className="flex-1 rounded-2xl font-bold transition-all active:scale-[0.98]"
             style={{
-              background: mode === "pick" ? "rgba(255,185,100,0.14)" : "rgba(255,185,100,0.04)",
-              border: `1px solid ${mode === "pick" ? "rgba(255,185,100,0.45)" : "rgba(255,185,100,0.10)"}`,
-              color: mode === "pick" ? "rgba(255,220,160,0.95)" : "rgba(255,200,150,0.35)",
+              padding: "14px 0",
+              fontSize: 14,
+              background: mode === "pick" ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.04)",
+              border: `1px solid ${mode === "pick" ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}`,
+              color: mode === "pick" ? "rgba(255,220,160,0.97)" : "rgba(255,200,150,0.35)",
             }}
           >
             Waiting Guest {waitingGuests.length > 0 && `(${waitingGuests.length})`}
           </button>
           <button
             onClick={() => setMode("add")}
-            className="flex-1 rounded-xl py-2.5 text-xs font-bold transition-all"
+            className="flex-1 rounded-2xl font-bold transition-all active:scale-[0.98]"
             style={{
-              background: mode === "add" ? "rgba(34,197,94,0.14)" : "rgba(34,197,94,0.04)",
-              border: `1px solid ${mode === "add" ? "rgba(34,197,94,0.45)" : "rgba(34,197,94,0.10)"}`,
-              color: mode === "add" ? "rgba(100,240,160,0.95)" : "rgba(100,200,130,0.35)",
+              padding: "14px 0",
+              fontSize: 14,
+              background: mode === "add" ? "rgba(34,197,94,0.16)" : "rgba(34,197,94,0.04)",
+              border: `1px solid ${mode === "add" ? "rgba(34,197,94,0.50)" : "rgba(34,197,94,0.10)"}`,
+              color: mode === "add" ? "rgba(100,240,160,0.97)" : "rgba(100,200,130,0.35)",
             }}
           >
             New Walk-in
@@ -1785,28 +1789,32 @@ function TableClickModal({
 
         {mode === "pick" ? (
           waitingGuests.length === 0 ? (
-            <p className="text-sm py-6 text-center" style={{ color: "rgba(255,200,150,0.40)" }}>
+            <p className="text-sm py-8 text-center" style={{ color: "rgba(255,200,150,0.40)" }}>
               No guests waiting — add a new walk-in instead
             </p>
           ) : (
-            <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+            <div className="flex flex-col gap-2.5 max-h-72 overflow-y-auto">
               {waitingGuests.map(entry => (
                 <button
                   key={entry.id}
                   onClick={() => onSeatExisting(entry)}
-                  className="flex items-center justify-between rounded-xl px-4 py-3 text-left transition-all hover:brightness-125 active:scale-[0.98]"
+                  className="flex items-center justify-between rounded-2xl text-left transition-all hover:brightness-125 active:scale-[0.98]"
                   style={{
-                    background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
-                    border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.12)"}`,
+                    padding: "16px 18px",
+                    background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.07)",
+                    border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.35)" : "rgba(255,185,100,0.16)"}`,
                   }}
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-bold truncate" style={{ color: "rgba(255,248,240,0.92)" }}>{entry.name || "Guest"}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "rgba(255,200,150,0.50)" }}>
+                    <p className="font-bold truncate" style={{ fontSize: 16, color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
+                    <p className="mt-1" style={{ fontSize: 13, color: "rgba(255,200,150,0.55)" }}>
                       {entry.party_size}p{entry.quoted_wait ? ` · ${entry.quoted_wait}m quoted` : ""}
                     </p>
                   </div>
-                  {entry.status === "ready" && <span className="text-xs font-bold ml-3 shrink-0" style={{ color: "#22c55e" }}>READY</span>}
+                  {entry.status === "ready"
+                    ? <span className="text-xs font-black ml-3 shrink-0 px-2 py-1 rounded-lg" style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e" }}>READY</span>
+                    : <span style={{ fontSize: 20, color: "rgba(255,185,100,0.30)", marginLeft: 12 }}>›</span>
+                  }
                 </button>
               ))}
             </div>
@@ -1817,22 +1825,22 @@ function TableClickModal({
               placeholder="Guest name (optional)"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
+              className="w-full rounded-2xl outline-none"
+              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
             />
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold shrink-0" style={{ color: "rgba(255,200,150,0.55)" }}>Party</span>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 rounded-2xl px-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", padding: "10px 16px" }}>
+              <span className="text-sm font-bold shrink-0" style={{ color: "rgba(255,200,150,0.65)" }}>Party size</span>
+              <div className="flex items-center gap-3 ml-auto">
                 <button
                   onClick={() => setPartySize(p => Math.max(1, p - 1))}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold"
-                  style={{ background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.70)" }}
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
+                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.80)" }}
                 >−</button>
-                <span className="w-6 text-center text-sm font-bold tabular-nums" style={{ color: "rgba(255,248,240,0.92)" }}>{partySize}</span>
+                <span className="w-8 text-center font-bold tabular-nums" style={{ fontSize: 18, color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
                 <button
                   onClick={() => setPartySize(p => p + 1)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base font-bold"
-                  style={{ background: "rgba(255,185,100,0.08)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.70)" }}
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
+                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.80)" }}
                 >+</button>
               </div>
             </div>
@@ -1841,13 +1849,13 @@ function TableClickModal({
               value={phone}
               onChange={e => setPhone(e.target.value)}
               type="tel"
-              className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-              style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
+              className="w-full rounded-2xl outline-none"
+              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }}
             />
             <button
               onClick={() => onAddNew(name.trim(), partySize, phone.trim())}
-              className="w-full rounded-2xl py-4 text-sm font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125 mt-1"
-              style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}
+              className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125 mt-1"
+              style={{ fontSize: 17, padding: "22px 0", background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}
             >
               Seat at Table {tableNumber}
             </button>
@@ -2572,7 +2580,9 @@ export default function DemoHostDashboard() {
     showToast(`${res.guest_name} checked in at Table ${tableNumber}`)
   }, [fetchTables])
 
-  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string) => {
+  // mode: "restore" → clear table + return guest to waitlist
+  //       "cancel"  → clear table + mark guest as removed (gone)
+  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string, mode: "restore" | "cancel" = "restore") => {
     recentlySeateddRef.current.delete(tableNumber) // allow immediate eviction
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     // Resolve tableId if not passed — look it up from current tables state,
@@ -2590,9 +2600,12 @@ export default function DemoHostDashboard() {
     if (resolvedTableId) {
       try { await fetch(`${API}/tables/${resolvedTableId}/clear`, { method: "POST" }) } catch {}
     }
-    // Restore the linked queue entry to waiting so they reappear in the queue
     if (entryId) {
-      try { await fetch(`${API}/queue/${entryId}/restore`, { method: "POST" }) } catch {}
+      if (mode === "restore") {
+        try { await fetch(`${API}/queue/${entryId}/restore`, { method: "POST" }) } catch {}
+      } else {
+        try { await fetch(`${API}/queue/${entryId}/remove`, { method: "POST" }) } catch {}
+      }
     }
     refreshAll()
   }, [refreshAll, tables])
@@ -3335,26 +3348,35 @@ export default function DemoHostDashboard() {
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setClearConfirm(null)} />
             <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "#100C09", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
               <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
-              <p className="text-base font-bold mb-2" style={{ color: "rgba(255,248,240,0.92)" }}>Clear Table?</p>
+              <p className="text-base font-bold mb-1" style={{ color: "rgba(255,248,240,0.92)" }}>Table {clearConfirm.tableNumber}</p>
               <p className="text-sm mb-8" style={{ color: "rgba(255,200,150,0.55)" }}>
-                Remove <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
-                ({clearConfirm.occupant.party_size}p) from the floor?
-                {clearConfirm.occupant.entry_id && <span style={{ display: "block", marginTop: 6, color: "rgba(34,197,94,0.65)" }}>They will be returned to the waitlist.</span>}
+                What would you like to do with{" "}
+                <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
+                ({clearConfirm.occupant.party_size}p)?
               </p>
               <div className="flex flex-col gap-3">
+                {clearConfirm.occupant.entry_id && (
+                  <button
+                    onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "restore"); setClearConfirm(null) }}
+                    className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                    style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.35)", fontSize: 16, padding: "20px 0" }}
+                  >
+                    Return to Waitlist
+                  </button>
+                )}
                 <button
-                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id); setClearConfirm(null) }}
+                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "cancel"); setClearConfirm(null) }}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                  style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.32)", fontSize: 16, padding: "20px 0" }}
+                  style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.28)", fontSize: 16, padding: "20px 0" }}
                 >
-                  {clearConfirm.occupant.entry_id ? "Clear & Return to Waitlist" : "Yes, Clear Table"}
+                  Cancel / Remove
                 </button>
                 <button
                   onClick={() => setClearConfirm(null)}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
                   style={{ background: "rgba(255,185,100,0.06)", color: "rgba(255,200,150,0.65)", border: "1px solid rgba(255,185,100,0.12)", fontSize: 15, padding: "18px 0" }}
                 >
-                  Keep
+                  Keep Seated
                 </button>
               </div>
             </div>
