@@ -20,6 +20,11 @@ function getBusinessDate(): string {
 }
 const TABLE_NUMBERS      = Array.from({ length: 16 }, (_, i) => i + 1)
 
+// Picker state — declared outside component so React useState generic is unambiguous
+type TablePickerMode =
+  | { mode: "seat"; localId: string }
+  | { mode: "move"; from: number | null }
+
 // Parse a backend timestamp as UTC milliseconds.
 // SQLite stores datetimes without timezone suffix (e.g. "2025-04-14 16:00:00").
 // Without 'Z', browsers parse them as LOCAL time → deadline appears hours in the future.
@@ -269,9 +274,6 @@ export default function AnalogPage() {
     return true
   })
   // Single unified table picker state replaces tablePickFor + movingFrom + clearAndSeat
-  type TablePickerMode =
-    | { mode: "seat"; localId: string }             // seating a queue guest
-    | { mode: "move"; from: number | null }          // moving floor-to-floor (from=null → pick source)
   const [tablePicker,     setTablePicker]    = useState<TablePickerMode | null>(null)
   // Inline confirmation when tapping occupied in seat mode (replaces separate clearAndSeat overlay)
   const [seatConfirm,     setSeatConfirm]    = useState<{ tableNum: number; occupantName: string } | null>(null)
@@ -568,8 +570,8 @@ export default function AnalogPage() {
 
   // Move an already-seated guest from one table to another (long-press flow)
   const moveTableGuest = useCallback(async (fromNum: number, toNum: number) => {
-    // Reset source selection but keep picker open in move mode
-    setTablePicker({ mode: "move", from: null })
+    // Always stay in move mode — reset source so user can do another move
+    setTablePicker(prev => prev?.mode === "move" ? { mode: "move", from: null } : prev)
     if (fromNum === toNum) return
     let tableList: Table[] = tables
     try {
@@ -679,6 +681,33 @@ export default function AnalogPage() {
     setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "available" } : t))
     await seatToTable(localId, tableNum)
   }, [tables, seatToTable, showToast])
+
+  // Clear an occupied table without seating anyone — keeps picker open
+  const clearTableOnly = useCallback(async (tableNum: number) => {
+    setSeatConfirm(null)
+    let tableList: Table[] = tables
+    try {
+      const tr = await fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`)
+      if (tr.ok) {
+        const raw: Table[] = await tr.json()
+        const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
+        const byNumber = new Map<number, Table>()
+        for (const t of coerced) {
+          const ex = byNumber.get(t.table_number)
+          if (!ex || t.status === "occupied") byNumber.set(t.table_number, t)
+        }
+        tableList = Array.from(byNumber.values())
+      }
+    } catch {}
+    const apiTable = tableList.find(t => t.table_number === tableNum)
+    if (!apiTable) { showToast("Table not found"); return }
+    // Optimistic update
+    setTableOccupants(prev => { const n = { ...prev }; delete n[String(tableNum)]; return n })
+    setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "available" } : t))
+    try { await fetch(`${API}/tables/${apiTable.id}/clear`, { method: "POST" }) } catch {}
+    showToast(`Table ${tableNum} cleared`)
+    fetchTables()
+  }, [tables, showToast, fetchTables])
 
   // ── Pen helpers ───────────────────────────────────────────────────────────────
   // Apple Pencil: clear text fields so Scribble writes fresh
@@ -1149,28 +1178,44 @@ export default function AnalogPage() {
 
                 {/* Context hint */}
                 <p style={{ fontSize: 12, color: "rgba(0,0,0,0.38)", margin: "0 0 14px" }}>
-                  {isMove && moveFrom === null && "Tap an occupied table to pick up that guest"}
-                  {isMove && moveFrom !== null && `Moving Table ${moveFrom} → tap any table to drop`}
-                  {isSeat && !seatConfirm && "Tap an open table to seat · Tap occupied to swap"}
+                  {isMove && moveFrom === null && "Tap an occupied table for options"}
+                  {isMove && moveFrom !== null && `Moving Table ${moveFrom} → tap destination`}
+                  {isSeat && !seatConfirm && "Tap open table to seat · Tap occupied for options"}
                 </p>
               </div>
 
-              {/* Inline swap confirmation (seat mode, occupied tapped) */}
-              {seatConfirm && isSeat && (
+              {/* Inline occupied-table actions — shown in both seat and move modes */}
+              {seatConfirm && (
                 <div style={{ margin: "0 20px 14px", padding: "16px", borderRadius: 16, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.20)", flexShrink: 0 }}>
                   <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#111" }}>
-                    Table {seatConfirm.tableNum} has <span style={{ color: "#dc2626" }}>{seatConfirm.occupantName}</span>
+                    Table {seatConfirm.tableNum} · <span style={{ color: "#dc2626" }}>{seatConfirm.occupantName}</span>
                   </p>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {isSeat && (
+                      <button
+                        onPointerDown={() => clearAndSeatGuest(seatLocalId!, seatConfirm.tableNum)}
+                        style={{ height: 52, borderRadius: 14, border: "none", background: "rgba(34,197,94,0.88)", color: "white", fontWeight: 800, fontSize: 15, cursor: "pointer", touchAction: "manipulation" }}
+                      >
+                        Clear &amp; Seat Here
+                      </button>
+                    )}
+                    {isMove && moveFrom === null && (
+                      <button
+                        onPointerDown={() => { setSeatConfirm(null); setTablePicker({ mode: "move", from: seatConfirm.tableNum }) }}
+                        style={{ height: 52, borderRadius: 14, border: "1px solid rgba(99,102,241,0.40)", background: "rgba(99,102,241,0.10)", color: "#4f46e5", fontWeight: 800, fontSize: 15, cursor: "pointer", touchAction: "manipulation" }}
+                      >
+                        Move to Another Table →
+                      </button>
+                    )}
                     <button
-                      onPointerDown={() => clearAndSeatGuest(seatLocalId!, seatConfirm.tableNum)}
-                      style={{ flex: 1, height: 52, borderRadius: 14, border: "none", background: "rgba(34,197,94,0.88)", color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer", touchAction: "manipulation" }}
+                      onPointerDown={() => clearTableOnly(seatConfirm.tableNum)}
+                      style={{ height: 52, borderRadius: 14, border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.10)", color: "#dc2626", fontWeight: 800, fontSize: 15, cursor: "pointer", touchAction: "manipulation" }}
                     >
-                      Clear &amp; Seat Here
+                      Clear Table
                     </button>
                     <button
                       onPointerDown={() => setSeatConfirm(null)}
-                      style={{ height: 52, padding: "0 18px", borderRadius: 14, border: "1px solid rgba(0,0,0,0.10)", background: "rgba(0,0,0,0.03)", color: "rgba(0,0,0,0.40)", fontWeight: 700, fontSize: 13, cursor: "pointer", touchAction: "manipulation" }}
+                      style={{ height: 44, borderRadius: 14, border: "1px solid rgba(0,0,0,0.10)", background: "rgba(0,0,0,0.03)", color: "rgba(0,0,0,0.40)", fontWeight: 700, fontSize: 13, cursor: "pointer", touchAction: "manipulation" }}
                     >
                       Back
                     </button>
@@ -1199,10 +1244,10 @@ export default function AnalogPage() {
                         onPointerDown={() => {
                           if (isMove) {
                             if (moveFrom === null) {
-                              // First tap: pick source (only occupied tables)
-                              if (occupied) setTablePicker({ mode: "move", from: n })
+                              // First tap in move mode: pick source OR clear it
+                              if (occupied) setSeatConfirm({ tableNum: n, occupantName: occupantName || `Table ${n} guest` })
                             } else {
-                              // Second tap: move to destination (any table)
+                              // Second tap: drop guest at this table
                               moveTableGuest(moveFrom, n)
                             }
                           } else {
