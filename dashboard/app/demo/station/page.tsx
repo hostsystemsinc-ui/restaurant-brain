@@ -38,6 +38,19 @@ const API                = "/api/brain"
 const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
 const NFC_JOIN_URL       = "https://hostplatform.net/demo/join"
 
+// Parse a backend timestamp as UTC milliseconds.
+// SQLite stores datetimes without timezone suffix (e.g. "2025-04-14 16:00:00").
+// Without 'Z', browsers parse them as LOCAL time → deadline appears hours in the future.
+// This helper forces UTC interpretation.
+function parseUTCMs(ts: string | null | undefined): number | null {
+  if (!ts) return null
+  const s = (ts.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(ts))
+    ? ts
+    : ts.replace(" ", "T") + "Z"
+  const ms = new Date(s).getTime()
+  return isNaN(ms) ? null : ms
+}
+
 // The backend returns table_number as a string and may have duplicate rows per table
 // (tables were seeded multiple times). Normalize: coerce to number, then deduplicate
 // keeping the occupied row when there are multiples so /clear calls hit the right ID.
@@ -257,7 +270,7 @@ async function fetchT(url: string, opts: RequestInit = {}, ms = 10_000): Promise
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function timeWaiting(iso: string): string {
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  const diff = Math.floor((Date.now() - (parseUTCMs(iso) ?? Date.now())) / 1000)
   if (diff < 60) return `${diff}s`
   if (diff < 3600) return `${Math.floor(diff / 60)}m`
   return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
@@ -593,7 +606,7 @@ function GuestEditModal({
       setRemoving(false)
       return   // Don't close modal on error
     }
-    addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: new Date(entry.arrival_time).getTime(), resolved_ms: Date.now(), status: "removed" })
+    addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(entry.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" })
     setRemoving(false)
     onRemoved()
     onClose()
@@ -727,7 +740,7 @@ function DraggableQueueCard({
       return (entry.remaining_wait ?? 0) * 60
     }
     if (entry.wait_set_at && entry.quoted_wait != null) {
-      const deadlineMs = new Date(entry.wait_set_at).getTime() + entry.quoted_wait * 60_000
+      const deadlineMs = (parseUTCMs(entry.wait_set_at) ?? 0) + entry.quoted_wait * 60_000
       return Math.round((deadlineMs - Date.now()) / 1000)
     }
     return (entry.remaining_wait ?? entry.wait_estimate ?? 0) * 60
@@ -2445,7 +2458,7 @@ export default function DemoHostDashboard() {
       const r = await fetchT(`${API}/queue/${id}/remove`, { method: "POST" })
       if (!r.ok) throw new Error()
       if (entry) {
-        addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: new Date(entry.arrival_time).getTime(), resolved_ms: Date.now(), status: "removed" })
+        addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(entry.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" })
       }
       refreshAll()
     } catch {
@@ -2513,7 +2526,7 @@ export default function DemoHostDashboard() {
     setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     // Record seating history for suggestions + guest log
     {
-      const arrivalMs  = new Date(entry.arrival_time).getTime()
+      const arrivalMs  = (parseUTCMs(entry.arrival_time) ?? Date.now())
       const resolvedMs = Date.now()
       const actualWait = Math.round((resolvedMs - arrivalMs) / 60_000)
       const now        = new Date()
@@ -2692,7 +2705,7 @@ export default function DemoHostDashboard() {
     }
 
     const resolvedMs = Date.now()
-    const arrivalMs  = new Date(entry.arrival_time).getTime()
+    const arrivalMs  = (parseUTCMs(entry.arrival_time) ?? Date.now())
     const actualWait = Math.round((resolvedMs - arrivalMs) / 60_000)
 
     // Optimistic update — show table as occupied immediately

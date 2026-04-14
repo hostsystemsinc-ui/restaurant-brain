@@ -20,6 +20,18 @@ function getBusinessDate(): string {
 }
 const TABLE_NUMBERS      = Array.from({ length: 16 }, (_, i) => i + 1)
 
+// Parse a backend timestamp as UTC milliseconds.
+// SQLite stores datetimes without timezone suffix (e.g. "2025-04-14 16:00:00").
+// Without 'Z', browsers parse them as LOCAL time → deadline appears hours in the future.
+function parseUTCMs(ts: string | null | undefined): number | null {
+  if (!ts) return null
+  const s = (ts.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(ts))
+    ? ts
+    : ts.replace(" ", "T") + "Z"
+  const ms = new Date(s).getTime()
+  return isNaN(ms) ? null : ms
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface QueueEntry {
@@ -378,15 +390,15 @@ export default function AnalogPage() {
               patch = { ...patch, status: "ready" }
             else if (entry.status === "waiting" && (ex.status === "seated" || ex.status === "removed")) {
               // Restored from another view — bring back to active queue
-              const arrMs = new Date(entry.arrival_time).getTime()
-              const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : arrMs
+              const arrMs = (parseUTCMs(entry.arrival_time) ?? Date.now())
+              const base = entry.wait_set_at ? (parseUTCMs(entry.wait_set_at) ?? Date.now()) : arrMs
               patch = { ...patch, status: "waiting", seatedMs: null, removedByGuest: undefined, quotedWait: entry.quoted_wait, addedMs: arrMs, deadlineMs: entry.quoted_wait ? base + entry.quoted_wait * 60_000 : null }
             }
             // Sync quoted_wait when HOST standard changes it — but not while user is tapping ±
             if (entry.quoted_wait !== null && entry.quoted_wait !== ex.quotedWait && !patch.quotedWait) {
               const isAdjusting = (adjustingUntilRef.current[ex.localId] ?? 0) > Date.now()
               if (!isAdjusting) {
-                const base = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : Date.now()
+                const base = entry.wait_set_at ? (parseUTCMs(entry.wait_set_at) ?? Date.now()) : Date.now()
                 patch = { ...patch, quotedWait: entry.quoted_wait, status: (ex.status === "filling" ? "waiting" : ex.status) as AnalogRow["status"], addedMs: ex.addedMs ?? base, deadlineMs: base + entry.quoted_wait * 60_000 }
               }
             }
@@ -408,9 +420,9 @@ export default function AnalogPage() {
           }
           knownIdsRef.current.add(entry.id)
           const isQuoted = !!entry.quoted_wait
-          const arrivalMs = new Date(entry.arrival_time).getTime()
+          const arrivalMs = (parseUTCMs(entry.arrival_time) ?? Date.now())
           // Use wait_set_at as deadline base when available (matches station's computation)
-          const waitSetBase = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : arrivalMs
+          const waitSetBase = entry.wait_set_at ? (parseUTCMs(entry.wait_set_at) ?? Date.now()) : arrivalMs
           const newRow: AnalogRow = makeRow({
             queueEntryId: entry.id, name: entry.name || "", phone: entry.phone || "",
             partySize: entry.party_size, quotedWait: entry.quoted_wait,
@@ -862,9 +874,9 @@ export default function AnalogPage() {
                         if (!res.ok) { showToast("Could not restore"); return }
                         const data = await res.json()
                         const entry = data.entry
-                        const arrMs = entry ? new Date(entry.arrival_time).getTime() : row.addedMs
+                        const arrMs = entry ? (parseUTCMs(entry.arrival_time) ?? Date.now()) : row.addedMs
                         const qw = entry?.quoted_wait ?? row.quotedWait
-                        const base = entry?.wait_set_at ? new Date(entry.wait_set_at).getTime() : (arrMs ?? Date.now())
+                        const base = entry?.wait_set_at ? (parseUTCMs(entry.wait_set_at) ?? Date.now()) : (arrMs ?? Date.now())
                         patchRow(row.localId, { status: "waiting", seatedMs: null, removedByGuest: undefined, quotedWait: qw, addedMs: arrMs, deadlineMs: qw ? base + qw * 60_000 : null, isPaused: false, pausedSecsLeft: 0 })
                         showToast(`${row.name || "Guest"} restored to waitlist`)
                       } catch { showToast("Could not restore") }
