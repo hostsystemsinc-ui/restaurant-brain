@@ -409,13 +409,15 @@ export default function AnalogPage() {
           knownIdsRef.current.add(entry.id)
           const isQuoted = !!entry.quoted_wait
           const arrivalMs = new Date(entry.arrival_time).getTime()
+          // Use wait_set_at as deadline base when available (matches station's computation)
+          const waitSetBase = entry.wait_set_at ? new Date(entry.wait_set_at).getTime() : arrivalMs
           const newRow: AnalogRow = makeRow({
             queueEntryId: entry.id, name: entry.name || "", phone: entry.phone || "",
             partySize: entry.party_size, quotedWait: entry.quoted_wait,
             status: isQuoted ? "waiting" : "filling",
             source: entry.source === "nfc" ? "nfc" : entry.source === "host" ? "host" : "web",
             addedMs: isQuoted ? arrivalMs : null,
-            deadlineMs: isQuoted ? arrivalMs + (entry.quoted_wait! * 60_000) : null,
+            deadlineMs: isQuoted ? waitSetBase + (entry.quoted_wait! * 60_000) : null,
           })
           const blankIdx = updated.findLastIndex(r => !r.name && !r.phone && r.quotedWait === null && r.status === "filling" && !r.queueEntryId)
           updated = blankIdx >= 0 ? [...updated.slice(0, blankIdx), newRow, ...updated.slice(blankIdx)] : [...updated, newRow]
@@ -445,7 +447,8 @@ export default function AnalogPage() {
     if (!row.queueEntryId && !row.name.trim() && !row.phone.trim()) return
     const now = Date.now()
     // Optimistic UI — timer starts immediately without waiting on network
-    patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: (row.addedMs ?? now) + minutes * 60_000 })
+    // Use `now` as deadline base — backend sets wait_set_at=now on PATCH, so station computes the same deadline
+    patchRow(localId, { quotedWait: minutes, status: "waiting", addedMs: row.addedMs ?? now, deadlineMs: now + minutes * 60_000 })
     if (row.queueEntryId) {
       // Already in queue — PATCH wait; backend fires SMS on first quote
       fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minutes}`, { method: "PATCH" })
@@ -493,8 +496,14 @@ export default function AnalogPage() {
     adjustTimerDebounce.current[localId] = setTimeout(() => {
       delete adjustTimerDebounce.current[localId]
       const row = rowsRef.current.find(r => r.localId === localId)
-      if (row?.queueEntryId && row.quotedWait) {
-        fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${row.quotedWait}`, { method: "PATCH" }).catch(() => {})
+      if (row?.queueEntryId) {
+        // Send remaining seconds as new quoted_wait so backend resets wait_set_at=now with
+        // exactly the time the user sees — station then computes now+minsToSend*60s which matches.
+        const secsRemaining = row.isPaused
+          ? (row.pausedSecsLeft ?? 0)
+          : Math.max(0, ((row.deadlineMs ?? Date.now()) - Date.now()) / 1000)
+        const minsToSend = Math.max(1, Math.round(secsRemaining / 60))
+        fetch(`${API}/queue/${row.queueEntryId}/wait?minutes=${minsToSend}`, { method: "PATCH" }).catch(() => {})
       }
     }, 600)
   }, [])
