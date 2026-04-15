@@ -1216,6 +1216,189 @@ function DemoModal({ onClose }: { onClose: () => void }) {
   )
 }
 
+/* ─── YouTube modal overlay ─────────────────────────────────── */
+function VideoModal({ onClose }: { onClose: () => void }) {
+  // Close on Escape
+  useEffect(() => {
+    const fn = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    window.addEventListener("keydown", fn)
+    return () => window.removeEventListener("keydown", fn)
+  }, [onClose])
+
+  // Prevent body scroll
+  useEffect(() => {
+    document.body.style.overflow = "hidden"
+    return () => { document.body.style.overflow = "" }
+  }, [])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.88)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        animation: "videoOverlayIn 0.22s ease both",
+      }}
+    >
+      <style>{`
+        @keyframes videoOverlayIn { from{opacity:0} to{opacity:1} }
+        @keyframes videoFrameIn { from{opacity:0;transform:scale(0.94)} to{opacity:1;transform:scale(1)} }
+      `}</style>
+
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        style={{
+          position: "absolute", top: 24, right: 28,
+          width: 44, height: 44, borderRadius: "50%",
+          background: "rgba(255,255,255,0.10)",
+          border: "1px solid rgba(255,255,255,0.16)",
+          color: "#fff", cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 22, lineHeight: 1, zIndex: 10,
+          transition: "background 0.15s",
+        }}
+        onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.18)")}
+        onMouseLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,0.10)")}
+        aria-label="Close video"
+      >×</button>
+
+      {/* iframe container */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: "min(90vw, 1100px)",
+          aspectRatio: "16/9",
+          borderRadius: 16,
+          overflow: "hidden",
+          boxShadow: "0 40px 120px rgba(0,0,0,0.9)",
+          animation: "videoFrameIn 0.28s cubic-bezier(0.22,1,0.36,1) 0.05s both",
+        }}
+      >
+        <iframe
+          src="https://www.youtube.com/embed/hc1cCq2qW34?autoplay=1&rel=0&modestbranding=1"
+          allow="autoplay; fullscreen; picture-in-picture"
+          allowFullScreen
+          style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+          title="HOST demo video"
+        />
+      </div>
+    </div>
+  )
+}
+
+/* ─── Hero devices with centered play badge ─────────────────── */
+function HeroDevicesWithPlay({ heroDevicesRef }: { heroDevicesRef: React.RefObject<HTMLDivElement | null> }) {
+  const [hovering,   setHovering]   = useState(false)
+  const [videoOpen,  setVideoOpen]  = useState(false)
+
+  return (
+    <>
+      <style>{`
+        @keyframes playPulse {
+          0%   { transform: scale(1);   opacity: 0.55; }
+          60%  { transform: scale(1.55); opacity: 0; }
+          100% { transform: scale(1.55); opacity: 0; }
+        }
+      `}</style>
+
+      <div
+        ref={node => {
+          if (heroDevicesRef && typeof heroDevicesRef === "object")
+            (heroDevicesRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+        }}
+        style={{
+          position: "relative", zIndex: 2,
+          display: "flex", justifyContent: "center", alignItems: "flex-end",
+          gap: 0, paddingBottom: 0,
+          willChange: "transform, opacity",
+        }}
+      >
+        {/* iPad */}
+        <div className="ipad-hero-hide" style={{ animation: "deviceRise 0.9s cubic-bezier(0.22,1,0.36,1) 0.4s both", flexShrink: 0, marginRight: -80, zIndex: 2 }}>
+          <div style={{ transform: "perspective(1800px) rotateX(5deg) rotateY(8deg)", transformOrigin: "bottom center", filter: "drop-shadow(-24px 48px 80px rgba(0,0,0,0.95))", willChange: "transform" }}>
+            <IPadMockup />
+          </div>
+        </div>
+
+        {/* iPhone */}
+        <div style={{ animation: "deviceRise 0.9s cubic-bezier(0.22,1,0.36,1) 0.55s both", flexShrink: 0, zIndex: 3 }}>
+          <div style={{ transform: "perspective(1200px) rotateX(3deg) rotateY(-6deg)", transformOrigin: "bottom center", filter: "drop-shadow(24px 48px 80px rgba(0,0,0,0.95))", willChange: "transform" }}>
+            <div style={{ position: "relative" }}>
+              <div style={{ position: "absolute", left: 7, top: 7, width: 286, height: 636, overflow: "hidden", borderRadius: 32, background: "#000" }}>
+                <div style={{ width: 182, height: 405, transform: "scale(1.572)", transformOrigin: "top left" }}>
+                  <WaitScreen position={3} wait={45} progress={20} />
+                </div>
+              </div>
+              <img src="/iphone-frame.png" alt="iPhone" style={{ width: 300, height: "auto", display: "block", position: "relative", zIndex: 2, pointerEvents: "none" }} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Centered "Watch Demo" pill — always visible, no gimmicks ── */}
+        <button
+          onClick={() => setVideoOpen(true)}
+          onMouseEnter={() => setHovering(true)}
+          onMouseLeave={() => setHovering(false)}
+          aria-label="Watch demo video"
+          style={{
+            position: "absolute",
+            bottom: 52,
+            left: "50%",
+            transform: hovering ? "translateX(-50%) scale(1.06)" : "translateX(-50%) scale(1)",
+            zIndex: 20,
+            display: "flex", alignItems: "center", gap: 16,
+            padding: "18px 36px 18px 22px",
+            borderRadius: 100,
+            background: "rgba(255,255,255,0.10)",
+            border: "1px solid rgba(255,255,255,0.22)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            boxShadow: hovering
+              ? "0 0 0 4px rgba(34,197,94,0.18), 0 16px 48px rgba(0,0,0,0.55)"
+              : "0 8px 32px rgba(0,0,0,0.45)",
+            cursor: "pointer",
+            transition: "transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease, background 0.15s ease",
+          }}
+        >
+          {/* Play circle with pulse ring */}
+          <div style={{ position: "relative", width: 50, height: 50, flexShrink: 0 }}>
+            {/* Pulse ring */}
+            <div style={{
+              position: "absolute", inset: 0,
+              borderRadius: "50%",
+              border: "2px solid rgba(34,197,94,0.7)",
+              animation: "playPulse 2.2s ease-out infinite",
+            }} />
+            {/* Solid circle */}
+            <div style={{
+              position: "absolute", inset: 0,
+              borderRadius: "50%",
+              background: "#22c55e",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <polygon points="7,4 21,12 7,20" fill="#000" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Text */}
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>Watch Demo</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginTop: 2 }}>2 min overview</div>
+          </div>
+        </button>
+      </div>
+
+      {videoOpen && <VideoModal onClose={() => setVideoOpen(false)} />}
+    </>
+  )
+}
+
 /* ─── Page ─────────────────────────────────────────────────── */
 export default function MarketingPage() {
   const [showDemo, setShowDemo] = useState(false)
@@ -1391,32 +1574,8 @@ export default function MarketingPage() {
           </div>
         </div>
 
-        {/* ── Device mockups ── */}
-        <div ref={heroDevicesRef} style={{ position: "relative", zIndex: 2, display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 0, paddingBottom: 0, willChange: "transform, opacity" }}>
-
-          {/* iPad — host view */}
-          <div className="ipad-hero-hide" style={{ animation: "deviceRise 0.9s cubic-bezier(0.22,1,0.36,1) 0.4s both", flexShrink: 0, marginRight: -80, zIndex: 2 }}>
-            <div style={{ transform: "perspective(1800px) rotateX(5deg) rotateY(8deg)", transformOrigin: "bottom center", filter: "drop-shadow(-24px 48px 80px rgba(0,0,0,0.95))", willChange: "transform" }}>
-              <IPadMockup />
-            </div>
-          </div>
-
-          {/* iPhone — guest view */}
-          <div style={{ animation: "deviceRise 0.9s cubic-bezier(0.22,1,0.36,1) 0.55s both", flexShrink: 0, zIndex: 3 }}>
-            <div style={{ transform: "perspective(1200px) rotateX(3deg) rotateY(-6deg)", transformOrigin: "bottom center", filter: "drop-shadow(24px 48px 80px rgba(0,0,0,0.95))", willChange: "transform" }}>
-              <div style={{ position: "relative" }}>
-                {/* Screen content behind frame — sized for 300px wide frame */}
-                <div style={{ position: "absolute", left: 7, top: 7, width: 286, height: 636, overflow: "hidden", borderRadius: 32, background: "#000" }}>
-                  <div style={{ width: 182, height: 405, transform: "scale(1.572)", transformOrigin: "top left" }}>
-                    <WaitScreen position={3} wait={45} progress={20} />
-                  </div>
-                </div>
-                {/* High-quality iPhone frame overlay */}
-                <img src="/iphone-frame.png" alt="iPhone" style={{ width: 300, height: "auto", display: "block", position: "relative", zIndex: 2, pointerEvents: "none" }} />
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* ── Device mockups + floating play button ── */}
+        <HeroDevicesWithPlay heroDevicesRef={heroDevicesRef} />
 
         {/* Scroll indicator */}
         <div style={{ position: "absolute", bottom: 28, left: "50%", zIndex: 10, animation: "scrollBounce 2s ease-in-out infinite" }}>
