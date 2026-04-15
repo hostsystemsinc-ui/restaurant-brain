@@ -494,9 +494,9 @@ function MiniPhone({ confirmed }: { confirmed: boolean }) {
           opacity: confirmed ? 1 : 0,
         }}>
           <div style={{ width: 182, transformOrigin: "top left", transform: `scale(${SCALE})` }}>
-            {/* Powered by HOST — centered, bold, small */}
+            {/* HOST wordmark — small centered */}
             <div style={{ display: "flex", justifyContent: "center", padding: "4px 12px 0" }}>
-              <span style={{ fontSize: 6, letterSpacing: "0.28em", color: "rgba(255,255,255,0.28)", textTransform: "uppercase" }}>Powered by <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.5)" }}>HOST</span></span>
+              <span style={{ fontSize: 6, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
             </div>
             {/* Restaurant logo + name — BIG */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "7px 16px 5px" }}>
@@ -780,9 +780,9 @@ function JoinScreen() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000" }}>
       {/* Dynamic island spacer */}
       <div style={{ height: 26, flexShrink: 0 }} />
-      {/* Powered by HOST — centered, bold, small */}
+      {/* HOST wordmark — small centered */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "4px 12px 0", flexShrink: 0 }}>
-        <span style={{ fontSize: 6.5, letterSpacing: "0.32em", color: "rgba(255,255,255,0.28)", textTransform: "uppercase" }}>Powered by <span style={{ fontWeight: 900, color: "rgba(255,255,255,0.5)" }}>HOST</span></span>
+        <span style={{ fontSize: 6.5, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
       </div>
 
       {/* Restaurant identity — BIG, center stage */}
@@ -848,9 +848,18 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
       <div style={{ padding: "4px 16px 0", flexShrink: 0, textAlign: "center" }}>
         <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
       </div>
-      {/* Restaurant name */}
-      <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.35)", letterSpacing: "0.06em", paddingTop: 1, flexShrink: 0 }}>
-        Sal&apos;s Bar &amp; Grill
+      {/* Restaurant logo + name */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "6px 16px 0", flexShrink: 0 }}>
+        <div style={{ position: "relative", width: 38, height: 38, marginBottom: 5 }}>
+          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
+          <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif", letterSpacing: "0.04em" }}>S</span>
+            <span style={{ fontSize: 3, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+          </div>
+        </div>
+        <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.35)", letterSpacing: "0.06em" }}>
+          Sal&apos;s Bar &amp; Grill
+        </div>
       </div>
 
       {/* Main content */}
