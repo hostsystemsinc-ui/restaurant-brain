@@ -1160,7 +1160,7 @@ async def create_demo_submission(request: Request):
 
 @app.get("/demo-submissions")
 def get_demo_submissions(secret: Optional[str] = None):
-    if secret != "hostowner2025":
+    if not secret or secret != os.environ.get("OWNER_PASS", ""):
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not _demo_submissions:
         _load_demo_subs()

@@ -2,11 +2,15 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
 /**
- * Multi-tenant routing middleware
+ * Multi-tenant routing + authentication middleware
  *
- * Any first path segment that isn't a reserved route is treated as a
- * client slug and rewritten to the matching internal page:
+ * Auth protection:
+ *   /owner/*           → requires httpOnly cookie  host_owner_session=1
+ *   /station/*         → requires httpOnly cookie  host_client_session (any value)
+ *   /admin/*           → requires httpOnly cookie  host_client_session (any value)
+ *   /demo/station/*    → requires httpOnly cookie  host_client_session=demo
  *
+ * Multi-tenant rewrite (after auth check):
  *   /walters303              → /admin
  *   /walters303/station      → /station
  *   /walters303/wait/:id     → /wait/:id
@@ -37,22 +41,56 @@ export function middleware(request: NextRequest) {
   // Root — serve portal page as-is
   if (segments.length === 0) return NextResponse.next()
 
-  // Static file (has a file extension, e.g. /walters-logo.png, /manifest.json) — pass through
+  // Static file (has a file extension) — pass through
   if (/\.[a-zA-Z0-9]+$/.test(segments[0])) return NextResponse.next()
 
-  // Reserved path — pass through unchanged
-  if (RESERVED.has(segments[0])) return NextResponse.next()
+  // Determine the effective destination path
+  // (for multi-tenant routes, first segment is the slug)
+  let destPath = pathname
+  const isMultiTenant = !RESERVED.has(segments[0])
+  if (isMultiTenant) {
+    const rest = segments.slice(1)
+    destPath = rest.length > 0 ? "/" + rest.join("/") : "/admin"
+  }
 
-  // Everything else: treat first segment as a client slug
-  // /walters303           → /admin
-  // /walters303/station   → /station
-  // /walters303/wait/xyz  → /wait/xyz
-  const rest = segments.slice(1)
-  const destination = rest.length > 0 ? "/" + rest.join("/") : "/admin"
+  const destSegments = destPath.split("/").filter(Boolean)
+  const destRoot = destSegments[0] ?? ""
 
-  const url = request.nextUrl.clone()
-  url.pathname = destination
-  return NextResponse.rewrite(url)
+  // ── Auth gates ────────────────────────────────────────────────────────────────
+
+  // /owner → owner must be logged in
+  if (destRoot === "owner") {
+    const cookie = request.cookies.get("host_owner_session")
+    if (!cookie || cookie.value !== "1") {
+      return NextResponse.redirect(new URL("/login/owner", request.url))
+    }
+  }
+
+  // /station or /admin → any authenticated client
+  if (destRoot === "station" || destRoot === "admin") {
+    const cookie = request.cookies.get("host_client_session")
+    if (!cookie || !cookie.value) {
+      return NextResponse.redirect(new URL("/login/client", request.url))
+    }
+  }
+
+  // /demo/station and /demo/reservations → must be logged in as demo account
+  const DEMO_PROTECTED = ["station", "reservations"]
+  if (destRoot === "demo" && DEMO_PROTECTED.includes(destSegments[1])) {
+    const cookie = request.cookies.get("host_client_session")
+    if (!cookie || cookie.value !== "demo") {
+      return NextResponse.redirect(new URL("/login/client", request.url))
+    }
+  }
+
+  // ── Multi-tenant rewrite ──────────────────────────────────────────────────────
+  if (isMultiTenant) {
+    const url = request.nextUrl.clone()
+    url.pathname = destPath
+    return NextResponse.rewrite(url)
+  }
+
+  return NextResponse.next()
 }
 
 export const config = {

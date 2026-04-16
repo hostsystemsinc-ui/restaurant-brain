@@ -11,14 +11,28 @@ export default function OwnerConsoleLogin() {
   const [error, setError]         = useState("")
   const router = useRouter()
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (password === "hostowner2025") {
-      setLoading(true)
-      sessionStorage.setItem("host_owner_authed", "1")
-      router.push("/owner")
-    } else {
-      setError("Incorrect password.")
+    setLoading(true)
+    setError("")
+    try {
+      const res = await fetch("/api/owner/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      })
+      if (res.ok) {
+        // Store token for API calls — never store plain passwords in source code
+        sessionStorage.setItem("host_owner_authed", "1")
+        sessionStorage.setItem("host_owner_token", password)
+        router.push("/owner")
+      } else {
+        setError("Incorrect password.")
+      }
+    } catch {
+      setError("Network error. Please try again.")
+    } finally {
+      setLoading(false)
     }
   }
 

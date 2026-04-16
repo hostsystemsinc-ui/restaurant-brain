@@ -11,17 +11,26 @@ export default function ClientPortalLogin() {
   const [loading, setLoading]   = useState(false)
   const router = useRouter()
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (username === "demo" && password === "demo") {
-      setLoading(true)
-      sessionStorage.setItem("host_demo_authed", "1")
-      router.push("/demo/station")
-    } else if (username === "walters" && password === "walters303") {
-      setLoading(true)
-      router.push("/station")
-    } else {
-      setError("Incorrect username or password.")
+    setLoading(true)
+    setError("")
+    try {
+      const res = await fetch("/api/client/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      })
+      if (res.ok) {
+        const { redirect } = await res.json()
+        router.push(redirect)
+      } else {
+        setError("Incorrect username or password.")
+      }
+    } catch {
+      setError("Network error. Please try again.")
+    } finally {
+      setLoading(false)
     }
   }
 

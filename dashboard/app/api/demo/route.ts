@@ -23,12 +23,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-owner-secret")
-  if (secret !== "hostowner2025") {
+  const secret   = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-owner-secret")
+  const expected = process.env.OWNER_PASS
+  if (!expected || secret !== expected) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   try {
-    const r = await fetch(`${RAILWAY_API}/demo-submissions?secret=${secret}`, {
+    const r = await fetch(`${RAILWAY_API}/demo-submissions?secret=${encodeURIComponent(secret)}`, {
       cache: "no-store",
     })
     if (!r.ok) return NextResponse.json([])

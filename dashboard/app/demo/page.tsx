@@ -5,14 +5,9 @@ import { useRouter } from "next/navigation"
 export default function DemoRoot() {
   const router = useRouter()
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const authed = sessionStorage.getItem("host_demo_authed")
-      if (!authed) {
-        router.replace("/login")
-      } else {
-        router.replace("/demo/station")
-      }
-    }
+    fetch("/api/client/auth")
+      .then(r => r.ok ? router.replace("/demo/station") : router.replace("/login/client"))
+      .catch(() => router.replace("/login/client"))
   }, [router])
   return null
 }

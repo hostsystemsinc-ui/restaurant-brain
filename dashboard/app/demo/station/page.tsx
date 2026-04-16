@@ -2275,13 +2275,11 @@ export default function DemoHostDashboard() {
   const resizeStartX    = useRef(0)
   const resizeStartW    = useRef(0)
 
-  // Auth gate
+  // Auth gate — relies on httpOnly cookie set at login; middleware also enforces this
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const ok = sessionStorage.getItem("host_demo_authed") === "1"
-      if (!ok) { router.replace("/login"); return }
-      setAuthed(true)
-    }
+    fetch("/api/client/auth")
+      .then(r => { if (r.ok) setAuthed(true); else router.replace("/login/client") })
+      .catch(() => router.replace("/login/client"))
   }, [router])
 
   // Wire module-level toast dispatcher to component state

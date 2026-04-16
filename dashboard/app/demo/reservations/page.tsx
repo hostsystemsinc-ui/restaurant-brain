@@ -828,13 +828,11 @@ export default function DemoReservationsPage() {
     } catch { return new Map() }
   })
 
-  // Auth gate
+  // Auth gate — relies on httpOnly cookie set at login; middleware also enforces this
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const ok = sessionStorage.getItem("host_demo_authed") === "1"
-      if (!ok) { router.replace("/login"); return }
-      setAuthed(true)
-    }
+    fetch("/api/client/auth")
+      .then(r => { if (r.ok) setAuthed(true); else router.replace("/login/client") })
+      .catch(() => router.replace("/login/client"))
   }, [router])
 
   // Live clock — tick every 30s for urgency badge updates
