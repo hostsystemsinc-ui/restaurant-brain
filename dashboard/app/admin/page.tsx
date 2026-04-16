@@ -331,9 +331,9 @@ function OverviewPage({
   const cancelDrag = () => {
     setDragSource(null); setDragTarget(null); cancelLongPress()
   }
-  const joinUrl = typeof window !== "undefined"
-    ? `${window.location.origin}/join?r=272a8876-e4e6-4867-831d-0525db80a8db`
-    : "https://hostplatform.net/walters303/join"
+  const joinUrl = restaurantJoinUrl || (typeof window !== "undefined"
+    ? `${window.location.origin}/join`
+    : "https://hostplatform.net/join")
 
   const copy = () => {
     navigator.clipboard.writeText(joinUrl)
@@ -350,7 +350,7 @@ function OverviewPage({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: 0 }}>Overview</h1>
-          <p style={{ fontSize: 13, color: C.muted, margin: "4px 0 0" }}>Walter's303 · Denver, CO · Live</p>
+          <p style={{ fontSize: 13, color: C.muted, margin: "4px 0 0" }}>{restaurantName || "Loading…"} · {restaurantCity} · Live</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: online ? C.green : C.red, display: "flex", alignItems: "center", gap: 4 }}>
@@ -2352,7 +2352,7 @@ function TermsPage() {
         background: "#F0FDF4", border: "1px solid #BBF7D0",
       }}>
         <p style={{ fontSize: 12, color: "#166534", margin: 0, lineHeight: 1.6 }}>
-          <strong>Note to Walter's303:</strong> These Terms govern your subscription to HOST and your
+          <strong>Note to the Restaurant Operator:</strong> These Terms govern your subscription to HOST and your
           obligations as a restaurant operator using the platform. We recommend reviewing them with
           qualified legal counsel to ensure they meet your specific operational and jurisdictional
           requirements.
@@ -2378,7 +2378,7 @@ const NAV: { label: string; page: Page; Icon: React.ElementType }[] = [
   { label: "Terms",     page: "terms",     Icon: ScrollText       },
 ]
 
-function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => void }) {
+function Sidebar({ active, onSelect, restaurantName, restaurantCity }: { active: Page; onSelect: (p: Page) => void; restaurantName: string; restaurantCity: string }) {
   return (
     <div style={{
       width: 220, flexShrink: 0,
@@ -2391,8 +2391,8 @@ function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => vo
         <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", color: C.muted, textTransform: "uppercase", marginBottom: 4 }}>
           Powered by HOST
         </div>
-        <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>Walter's303</div>
-        <div style={{ fontSize: 11, color: C.muted }}>Denver, CO · Admin</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>{restaurantName || "Loading…"}</div>
+        <div style={{ fontSize: 11, color: C.muted }}>{restaurantCity || ""} · Admin</div>
       </div>
 
       {/* Nav items */}
@@ -2452,6 +2452,10 @@ function Sidebar({ active, onSelect }: { active: Page; onSelect: (p: Page) => vo
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
+  const [restaurantId,   setRestaurantId]   = useState<string>("")
+  const [restaurantName, setRestaurantName] = useState<string>("")
+  const [restaurantCity, setRestaurantCity] = useState<string>("")
+  const [restaurantJoinUrl, setRestaurantJoinUrl] = useState<string>("")
   const [page,     setPage]     = useState<Page>("overview")
   const [tables,   setTables]   = useState<Table[]>([])
   const [queue,    setQueue]    = useState<QueueEntry[]>([])
@@ -2464,6 +2468,20 @@ export default function AdminPage() {
       return s ? new Map(JSON.parse(s) as [number, LocalOcc][]) : new Map()
     } catch { return new Map() }
   })
+
+  // Fetch restaurant config on mount
+  useEffect(() => {
+    fetch("/api/client/me")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return
+        if (d.rid)     setRestaurantId(d.rid)
+        if (d.name)    setRestaurantName(d.name)
+        if (d.city)    setRestaurantCity(d.city)
+        if (d.joinUrl) setRestaurantJoinUrl(d.joinUrl)
+      })
+      .catch(() => {})
+  }, [])
 
   // Sync localOccupants from host view via storage events (cross-tab)
   useEffect(() => {
@@ -2492,17 +2510,19 @@ export default function AdminPage() {
 
   const fetchAll = useCallback(async () => {
     try {
+      const rid = restaurantId
+      const qs = rid ? `?restaurant_id=${rid}` : ""
       const [tRes, qRes, iRes] = await Promise.all([
-        fetch(`${API}/tables`),
-        fetch(`${API}/queue`),
-        fetch(`${API}/insights`),
+        fetch(`${API}/tables${qs}`),
+        fetch(`${API}/queue${qs}`),
+        fetch(`${API}/insights${qs}`),
       ])
       if (tRes.ok) setTables(await tRes.json())
       if (qRes.ok) setQueue(await qRes.json())
       if (iRes.ok) setInsights(await iRes.json())
       setOnline(true); setLastSync(new Date())
     } catch { setOnline(false) }
-  }, [])
+  }, [restaurantId])
 
   useEffect(() => {
     fetchAll()
@@ -2516,7 +2536,7 @@ export default function AdminPage() {
       fontFamily: "var(--font-geist), system-ui, -apple-system, sans-serif",
       color: C.text,
     }}>
-      <Sidebar active={page} onSelect={setPage} />
+      <Sidebar active={page} onSelect={setPage} restaurantName={restaurantName} restaurantCity={restaurantCity} />
       <main style={{
         flex: 1,
         overflowY: page === "schedule" ? "hidden" : "auto",

@@ -937,7 +937,7 @@ function SeatTablePicker({
 
 // ── Add Guest Drawer ───────────────────────────────────────────────────────────
 
-function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number) => void }) {
+function AddGuestDrawer({ onClose, onAdded, restaurantId }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number) => void; restaurantId: string }) {
   const [name, setName]           = useState("")
   const [partySize, setPartySize] = useState(2)
   const [phone, setPhone]         = useState("")
@@ -956,7 +956,7 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (e
           phone: phone.trim() || null,
           preference: "asap",
           source: "host",
-          restaurant_id: "272a8876-e4e6-4867-831d-0525db80a8db",
+          restaurant_id: restaurantId,
         }),
       })
       if (!r.ok) throw new Error()
@@ -1026,6 +1026,7 @@ function AddGuestDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (e
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function HostDashboard() {
+  const [restaurantId, setRestaurantId]   = useState<string>("")
   const [tables, setTables]               = useState<Table[]>([])
   const [queue, setQueue]                 = useState<QueueEntry[]>([])
   const [online, setOnline]               = useState(true)
@@ -1097,11 +1098,20 @@ export default function HostDashboard() {
   const failCountRef = useRef(0)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Fetch restaurant config on mount
+  useEffect(() => {
+    fetch("/api/client/me")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.rid) setRestaurantId(d.rid) })
+      .catch(() => {})
+  }, [])
+
   const refreshAll = useCallback(async () => {
     if (fetchingRef.current) return
     fetchingRef.current = true
     try {
-      const r = await fetch(`${API}/state`)
+      const rid = restaurantId
+      const r = await fetch(`${API}/state${rid ? `?restaurant_id=${rid}` : ""}`)
       if (r.ok) {
         const d = await r.json()
         setQueue(d.queue ?? [])
@@ -1120,12 +1130,12 @@ export default function HostDashboard() {
     } finally {
       fetchingRef.current = false
     }
-  }, [])
+  }, [restaurantId])
 
   // Fetch today's confirmed reservations
   const fetchReservations = useCallback(async () => {
     try {
-      const r = await fetch(`${API}/reservations`)
+      const r = await fetch(`${API}/reservations${restaurantId ? `?restaurant_id=${restaurantId}` : ""}`)
       if (r.ok) {
         const all: Reservation[] = await r.json()
         const todayStr = toLocalDateStr(new Date())
@@ -1612,6 +1622,7 @@ export default function HostDashboard() {
           <AddGuestDrawer
             onClose={() => setShowAdd(false)}
             onAdded={(id, mins) => { setShowAdd(false); setWaitModal({ id, defaultMinutes: mins }); refreshAll() }}
+            restaurantId={restaurantId}
           />
         )}
 
