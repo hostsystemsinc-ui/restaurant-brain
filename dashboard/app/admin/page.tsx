@@ -304,11 +304,13 @@ const TD_STYLE: React.CSSProperties = {
 
 function OverviewPage({
   tables, queue, insights, online, lastSync, onRefresh, localOccupants, onMoveGuest,
+  restaurantName, restaurantCity, restaurantJoinUrl,
 }: {
   tables: Table[]; queue: QueueEntry[]; insights: Insights | null
   online: boolean; lastSync: Date; onRefresh: () => void
   localOccupants: Map<number, LocalOcc>
   onMoveGuest: (from: number, to: number) => void
+  restaurantName: string; restaurantCity: string; restaurantJoinUrl: string
 }) {
   const [copied,     setCopied]     = useState(false)
   const [dragSource, setDragSource] = useState<number | null>(null)
@@ -2549,6 +2551,7 @@ export default function AdminPage() {
             tables={tables} queue={queue} insights={insights}
             online={online} lastSync={lastSync} onRefresh={fetchAll}
             localOccupants={localOccupants} onMoveGuest={moveGuest}
+            restaurantName={restaurantName} restaurantCity={restaurantCity} restaurantJoinUrl={restaurantJoinUrl}
           />
         )}
         {page === "analytics" && <AnalyticsPage />}
