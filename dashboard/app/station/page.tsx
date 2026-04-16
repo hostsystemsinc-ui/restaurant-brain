@@ -430,11 +430,11 @@ function DraggableQueueCard({
         <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
         </span>
-        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && displayWait > 0 && (
+        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
           <>
             <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
-            <span style={{ fontWeight: 700, color: displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
-              ~{displayWait}m
+            <span style={{ fontWeight: 700, color: displayWait === 0 ? "#ef4444" : displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
+              {displayWait === 0 ? "0:00" : `~${displayWait}m`}
             </span>
           </>
         )}

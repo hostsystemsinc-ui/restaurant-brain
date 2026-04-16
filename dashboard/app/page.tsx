@@ -301,37 +301,43 @@ function IPadMockup() {
             <div style={{ flex: 1, display: "flex", flexDirection: "column", background: "#0a0c0e" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 26px 8px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                 <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.18)" }}>FLOOR PLAN</span>
-                <span style={{ fontSize: 14, color: "rgba(255,255,255,0.2)" }}>12 available · 4 occupied</span>
+                <span style={{ fontSize: 14, color: "rgba(255,255,255,0.2)" }}>16 available · 4 occupied</span>
               </div>
-              <div style={{ flex: 1, position: "relative", padding: "24px" }}>
+              <div style={{ flex: 1, position: "relative", padding: "20px 20px 20px 20px" }}>
                 {/* Section labels */}
-                <div style={{ position: "absolute", bottom: 56, left: 36, fontSize: 12, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.1)" }}>MAIN DINING</div>
-                <div style={{ position: "absolute", top: 20, right: 36, fontSize: 12, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.12)" }}>BAR</div>
+                <div style={{ position: "absolute", bottom: 50, left: 30, fontSize: 12, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.08)" }}>MAIN DINING</div>
+                <div style={{ position: "absolute", top: 18, right: 24, fontSize: 12, fontWeight: 700, letterSpacing: ".18em", textTransform: "uppercase", color: "rgba(255,255,255,0.1)" }}>BAR</div>
+                {/* Divider line between dining and bar */}
+                <div style={{ position: "absolute", top: 16, bottom: 50, left: "65%", width: 1, background: "rgba(255,255,255,0.05)" }} />
 
-                {/* Tables — col 1 round */}
-                {tbl(1, 8,   28,  48, 48, true,  false)}
-                {tbl(2, 8,   88,  48, 48, true,  false)}
-                {tbl(3, 8,   148, 48, 48, true,  false)}
-                {/* col 2 */}
-                {tbl(4, 70,  22,  60, 44, false, false)}
-                {tbl(5, 70,  80,  60, 44, false, false)}
-                {tbl(6, 70,  138, 60, 44, false, false)}
-                {/* col 3 */}
-                {tbl(7, 144, 18,  88, 50, false, false)}
-                {tbl(8, 144, 82,  88, 58, false, false)}
-                {tbl(9, 144, 154, 88, 50, false, false)}
-                {/* col 4 — T10 occupied by Adam */}
-                {tbl(10, 246, 18,  82, 52, false, true, "Adam 4p")}
-                {tbl(11, 246, 84,  60, 42, false, false)}
-                {tbl(12, 246, 140, 60, 42, false, false)}
-                {/* Bar stools */}
-                {tbl(13, 334, 22,  34, 34, true, false)}
-                {tbl(14, 334, 66,  34, 34, true, false)}
-                {tbl(15, 334, 110, 34, 34, true, false)}
-                {tbl(16, 334, 154, 34, 34, true, false)}
+                {/* Row 1 — round 2-tops + rect 4-tops (all y=8, h=56) */}
+                {tbl(1,  8,   8,  56, 56, true,  false)}
+                {tbl(2,  74,  8,  56, 56, true,  false)}
+                {tbl(3,  140, 8,  76, 56, false, true,  "Adam 4p")}
+                {tbl(4,  226, 8,  60, 56, false, false)}
+                {/* Row 2 — rect 4-tops (all y=74, h=60) */}
+                {tbl(5,  8,   74, 82, 60, false, false)}
+                {tbl(6,  100, 74, 82, 60, false, true,  "Kim 2p")}
+                {tbl(7,  192, 74, 82, 60, false, false)}
+                {/* Row 3 — wide 6-top booths (all y=144, h=72) */}
+                {tbl(8,  8,   144, 128, 72, false, true,  "Lee 6p")}
+                {tbl(9,  146, 144, 128, 72, false, false)}
+                {/* Row 4 — rect 4-tops (all y=226, h=60) */}
+                {tbl(10, 8,   226, 82, 60, false, false)}
+                {tbl(11, 100, 226, 82, 60, false, true,  "Davis 2p")}
+                {tbl(12, 192, 226, 82, 60, false, false)}
+                {/* Bar stools — two columns */}
+                {tbl(13, 315, 8,  48, 48, true, false)}
+                {tbl(14, 315, 66, 48, 48, true, false)}
+                {tbl(15, 315, 124,48, 48, true, false)}
+                {tbl(16, 315, 182,48, 48, true, false)}
+                {tbl(17, 373, 8,  48, 48, true, false)}
+                {tbl(18, 373, 66, 48, 48, true, false)}
+                {tbl(19, 373, 124,48, 48, true, false)}
+                {tbl(20, 373, 182,48, 48, true, false)}
 
                 {/* Add guest FAB */}
-                <div style={{ position: "absolute", bottom: 20, right: 20, background: "#22c55e", color: "#000", borderRadius: 99, padding: "10px 26px", fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 18px rgba(34,197,94,0.4)", letterSpacing: "0.04em" }}>
+                <div style={{ position: "absolute", bottom: 18, right: 18, background: "#22c55e", color: "#000", borderRadius: 99, padding: "10px 26px", fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 18px rgba(34,197,94,0.4)", letterSpacing: "0.04em" }}>
                   <span style={{ fontSize: 22, lineHeight: 1 }}>+</span> ADD GUEST
                 </div>
               </div>

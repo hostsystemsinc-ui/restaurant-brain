@@ -57,6 +57,24 @@ def _save_demo_sub_to_db(sub: dict):
 # Load existing submissions in the background so startup is never blocked
 threading.Thread(target=_load_demo_subs, daemon=True).start()
 
+def _seed_wait_set_at():
+    """Repopulate _wait_set_at from DB on startup so remaining_wait stays accurate after restarts."""
+    try:
+        res = supabase.table("queue_entries") \
+            .select("id, quoted_wait_set_at") \
+            .in_("status", ["waiting", "ready"]) \
+            .not_.is_("quoted_wait_set_at", "null") \
+            .execute()
+        for row in (res.data or []):
+            if row.get("quoted_wait_set_at"):
+                _wait_set_at[row["id"]] = row["quoted_wait_set_at"]
+        if res.data:
+            print(f"[startup] Seeded _wait_set_at for {len(res.data)} active queue entries")
+    except Exception as e:
+        print(f"[startup] _seed_wait_set_at failed (column may not exist yet): {e}")
+
+threading.Thread(target=_seed_wait_set_at, daemon=True).start()
+
 def _ensure_demo_tables():
     """Guarantee the demo restaurant + its 16 tables exist in the DB.
     Idempotent — inserts only the table numbers that are missing.
@@ -270,14 +288,48 @@ def _wait_estimate(parties_ahead: int, party_size: int = 2, rid: Optional[str] =
     tables = supabase.table("tables").select("status,capacity").eq("restaurant_id", _rid(rid)).execute().data
     return _wait_estimate_with(parties_ahead, party_size, tables)
 
+def _set_quoted_wait(entry_id: str, minutes: int, now: str) -> None:
+    """
+    Write quoted_wait (and quoted_wait_set_at if the column exists) to the DB.
+    Falls back to writing only quoted_wait when the migration hasn't run yet,
+    so the app never crashes due to a missing column.
+    """
+    try:
+        supabase.table("queue_entries").update({
+            "quoted_wait": minutes,
+            "quoted_wait_set_at": now,
+        }).eq("id", entry_id).execute()
+    except Exception:
+        # Column doesn't exist yet — write without it (migration pending)
+        supabase.table("queue_entries").update({
+            "quoted_wait": minutes,
+        }).eq("id", entry_id).execute()
+
 def _remaining_wait(entry: dict) -> int:
     """
-    Return the quoted wait set by the host, or fall back to position-based estimate.
-    Elapsed time countdown is handled client-side (localStorage keyed by entry+quoted_wait).
+    Return quoted_wait minus elapsed time since it was set, clamped to 0.
+    Falls back to position-based estimate if no quoted_wait has been set.
+
+    The set-time is read from:
+      1. entry["quoted_wait_set_at"]  — DB column (survives server restarts)
+      2. _wait_set_at[entry_id]        — in-memory fallback (lost on restart)
+    If neither is available the raw quoted_wait is returned unchanged (safe default).
     """
     qw = entry.get("quoted_wait")
     if qw is None:
         return entry.get("wait_estimate") or 0
+
+    # Prefer DB-persisted timestamp so accuracy survives server restarts
+    set_at_str = entry.get("quoted_wait_set_at") or _wait_set_at.get(entry.get("id"))
+    if set_at_str:
+        try:
+            set_dt = datetime.fromisoformat(set_at_str.replace("Z", ""))
+            elapsed_minutes = (datetime.utcnow() - set_dt).total_seconds() / 60
+            return max(0, int(qw - elapsed_minutes))
+        except Exception:
+            pass
+
+    # Fallback: no timestamp available — return raw quoted_wait
     return qw
 
 def _ai_insights(tables: list, queue: list) -> Optional[str]:
@@ -540,7 +592,8 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         queue    = _active_queue(rid)
         ahead    = len(queue)
         wait_est = _wait_estimate_with(ahead, req.party_size, tables)
-        entry    = supabase.table("queue_entries").insert({
+        join_time = _now()
+        base_insert = {
             "restaurant_id": rid,
             "name":          req.name or "Guest",
             "party_size":    req.party_size,
@@ -548,9 +601,18 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
             "source":        req.source or "nfc",
             "status":        "waiting",
             "quoted_wait":   req.quoted_wait,  # host may supply on join (e.g. analog); null = unquoted
-            "arrival_time":  _now(),
+            "arrival_time":  join_time,
             "notes":         req.notes or None,
-        }).execute()
+        }
+        # Include quoted_wait_set_at only when a wait is being set (column may not exist pre-migration)
+        if req.quoted_wait is not None:
+            base_insert["quoted_wait_set_at"] = join_time
+        try:
+            entry = supabase.table("queue_entries").insert(base_insert).execute()
+        except Exception:
+            # quoted_wait_set_at column missing — retry without it
+            base_insert.pop("quoted_wait_set_at", None)
+            entry = supabase.table("queue_entries").insert(base_insert).execute()
         try:
             supabase.table("wait_quotes").insert({
                 "restaurant_id": rid,
@@ -757,7 +819,7 @@ def update_wait(entry_id: str, minutes: int):
     was_unquoted = entry.get("quoted_wait") is None
     now = _now()
     _wait_set_at[entry_id] = now
-    supabase.table("queue_entries").update({"quoted_wait": minutes}).eq("id", entry_id).execute()
+    _set_quoted_wait(entry_id, minutes, now)
     # Fire link SMS synchronously for host-added guests receiving their first quote
     sms_sent = False
     sms_error = ""
@@ -783,9 +845,11 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
     update: dict = {}
+    qw_now: Optional[str] = None
     if req.quoted_wait is not None:
-        update["quoted_wait"] = req.quoted_wait
-        _wait_set_at[entry_id] = _now()
+        qw_now = _now()
+        _wait_set_at[entry_id] = qw_now
+        # quoted_wait + quoted_wait_set_at handled below via _set_quoted_wait
     if req.party_size is not None:
         update["party_size"] = req.party_size
     if req.phone is not None:
@@ -794,9 +858,12 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
         update["notes"] = req.notes or None
     if req.paused is not None:
         update["paused"] = req.paused
-    if not update:
+    if not update and req.quoted_wait is None:
         return {"status": "nothing_to_update"}
-    supabase.table("queue_entries").update(update).eq("id", entry_id).execute()
+    if update:
+        supabase.table("queue_entries").update(update).eq("id", entry_id).execute()
+    if req.quoted_wait is not None and qw_now:
+        _set_quoted_wait(entry_id, req.quoted_wait, qw_now)
     return {"status": "updated"}
 
 @app.post("/seat-next")  # legacy
@@ -858,6 +925,17 @@ def log_throughput(req: ThroughputEventRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to log throughput event: {e}")
 
+# ── Required DB migration (run once in Supabase SQL editor) ──────────────────
+#
+#   ALTER TABLE queue_entries
+#     ADD COLUMN IF NOT EXISTS quoted_wait_set_at timestamptz;
+#
+#   -- Backfill: set existing entries that have a quoted_wait but no set-time to
+#   -- a timestamp far in the past so they immediately show 0 remaining.
+#   UPDATE queue_entries
+#     SET quoted_wait_set_at = '2000-01-01T00:00:00'
+#     WHERE quoted_wait IS NOT NULL AND quoted_wait_set_at IS NULL;
+#
 # ── Reservations ─────────────────────────────────────────────────────────────
 #
 # Required Supabase tables (run once in the Supabase SQL editor):
