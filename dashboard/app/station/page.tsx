@@ -1286,9 +1286,11 @@ export default function HostDashboard() {
     return () => clearInterval(t)
   }, [])
 
-  const fetchingRef  = useRef(false)
-  const failCountRef = useRef(0)
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchingRef     = useRef(false)
+  const failCountRef    = useRef(0)
+  const pollTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Tables whose clear API call is still in-flight. refreshAll must not revert these to "occupied".
+  const pendingClearsRef = useRef<Set<number>>(new Set())
 
   // Fetch restaurant config on mount
   useEffect(() => {
@@ -1307,7 +1309,17 @@ export default function HostDashboard() {
       if (r.ok) {
         const d = await r.json()
         setQueue(d.queue ?? [])
-        setTables(d.tables ?? [])
+        // If any table clears are still in-flight, don't let the server response
+        // revert them back to "occupied" — that's what causes a guest to appear on 2 tables.
+        setTables(prev => {
+          const serverTables: Table[] = d.tables ?? []
+          if (pendingClearsRef.current.size === 0) return serverTables
+          return serverTables.map(t =>
+            pendingClearsRef.current.has(t.table_number)
+              ? { ...t, status: "available" as const }
+              : t
+          )
+        })
         setAvgWait(d.avg_wait ?? 0)
         setOnline(true)
         setLastSync(new Date())
@@ -1457,7 +1469,11 @@ export default function HostDashboard() {
         return t
       }))
 
-      // 3. Fire API calls in parallel then sync
+      // 3. Register the source as pending-clear so refreshAll won't revert it
+      //    while the API call is in-flight (prevents guest appearing on 2 tables).
+      pendingClearsRef.current.add(sourceTable)
+
+      // 4. Fire API calls in parallel then sync
       const sourceApiTable = tables.find(t => t.table_number === sourceTable)
       const targetApiTable = tables.find(t => t.table_number === targetTable)
       const calls: Promise<unknown>[] = []
@@ -1467,7 +1483,14 @@ export default function HostDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
       }))
-      Promise.all(calls).then(() => refreshAll())
+      Promise.all(calls).then(() => {
+        pendingClearsRef.current.delete(sourceTable)
+        refreshAll()
+      }).catch(() => {
+        // Even on error, unblock the ref so future polls aren't permanently frozen
+        pendingClearsRef.current.delete(sourceTable)
+        refreshAll()
+      })
       return
     }
 
