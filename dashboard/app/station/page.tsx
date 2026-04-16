@@ -516,7 +516,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect,
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onAvailableTap,
 }: {
   pos: FloorPos
   table?: Table
@@ -525,6 +525,7 @@ function DroppableFloorTable({
   isDraggingOccupant?: boolean
   isSelectMode?: boolean
   onSeatFromSelect?: () => void
+  onAvailableTap?: () => void
 }) {
   const isOccupied = !!occupant || (!!table && table.status !== "available")
   const hasLocalOccupant = !!occupant
@@ -603,7 +604,7 @@ function DroppableFloorTable({
         justifyContent: "center",
         gap: 2,
         overflow: "hidden",
-        cursor: hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : isOccupied && onClear ? "pointer" : canReceiveDrop ? "copy" : "default",
+        cursor: hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : isOccupied && onClear ? "pointer" : onAvailableTap && !isOccupied && !hasLocalOccupant ? "pointer" : canReceiveDrop ? "copy" : "default",
         opacity: isDragging ? 0.4 : 1,
       }}
       onClick={
@@ -611,6 +612,8 @@ function DroppableFloorTable({
           ? onSeatFromSelect
           : isOccupied && onClear && !hasLocalOccupant
           ? onClear
+          : !isOccupied && !hasLocalOccupant && !isSelectMode && onAvailableTap
+          ? onAvailableTap
           : undefined
       }
     >
@@ -710,7 +713,7 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onAvailableTap,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -718,6 +721,7 @@ function FloorMap({
   isDraggingOccupant: boolean
   selectedEntry?: QueueEntry | null
   onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
+  onAvailableTap?: (tableNumber: number, tableId: string | undefined, capacity: number | undefined) => void
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -821,6 +825,7 @@ function FloorMap({
                 isDraggingOccupant={isDraggingOccupant}
                 isSelectMode={!!selectedEntry}
                 onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
+                onAvailableTap={!occupant && (!table || table.status === "available") ? () => onAvailableTap?.(pos.number, table?.id, table?.capacity) : undefined}
               />
             )
           })}
@@ -935,6 +940,192 @@ function SeatTablePicker({
   )
 }
 
+// ── Table Guest Picker ─────────────────────────────────────────────────────────
+// Shown when staff taps an available table with no guest pre-selected
+
+function TableGuestPicker({
+  tableNumber,
+  tableId,
+  capacity,
+  queue,
+  restaurantId,
+  onClose,
+  onSeated,
+}: {
+  tableNumber: number
+  tableId: string | undefined
+  capacity: number | undefined
+  queue: QueueEntry[]
+  restaurantId: string
+  onClose: () => void
+  onSeated: (tableNumber: number, occupant: LocalOccupant) => void
+}) {
+  const waitingGuests = queue.filter(q => q.status === "waiting" || q.status === "ready")
+  const [showWalkIn, setShowWalkIn] = useState(false)
+  const [walkInName, setWalkInName] = useState("")
+  const [walkInSize, setWalkInSize] = useState(2)
+  const [submitting, setSubmitting] = useState(false)
+
+  const seatGuest = async (entry: QueueEntry) => {
+    if (tableId) {
+      await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
+    } else {
+      await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
+    }
+    onSeated(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size })
+    onClose()
+  }
+
+  const submitWalkIn = async () => {
+    setSubmitting(true)
+    try {
+      const r = await fetch(`${API}/queue/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: walkInName.trim() || null, party_size: walkInSize, source: "host", restaurant_id: restaurantId }),
+      })
+      const data = await r.json()
+      const entryId = data.entry?.id
+      if (entryId) {
+        if (tableId) {
+          await fetch(`${API}/queue/${entryId}/seat-to-table/${tableId}`, { method: "POST" })
+        } else {
+          await fetch(`${API}/queue/${entryId}/seat`, { method: "POST" })
+        }
+        onSeated(tableNumber, { name: walkInName.trim() || "Guest", party_size: walkInSize })
+        onClose()
+      }
+    } catch {}
+    setSubmitting(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[440px] rounded-t-3xl sm:rounded-2xl"
+        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1, maxHeight: "90dvh", overflowY: "auto" }}
+      >
+        <div className="p-6 pb-2">
+          <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.18)" }} />
+
+          {/* Header */}
+          <div className="flex items-start justify-between mb-1">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-black tracking-[0.08em]" style={{ color: "rgba(251,191,36,0.97)" }}>
+                  TABLE {tableNumber}
+                </span>
+                {capacity && (
+                  <span
+                    className="text-xs font-black px-2 py-0.5 rounded-full"
+                    style={{ background: "rgba(251,191,36,0.12)", color: "rgba(251,191,36,0.72)", border: "1px solid rgba(251,191,36,0.22)" }}
+                  >
+                    {capacity}p
+                  </span>
+                )}
+              </div>
+              <p className="text-xs mt-1" style={{ color: "rgba(255,200,150,0.40)" }}>Select a guest to seat</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg mt-0.5"
+              style={{ color: "rgba(255,200,150,0.30)", border: "1px solid rgba(255,185,100,0.12)" }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Guest list */}
+        <div className="px-3 pb-2">
+          {waitingGuests.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm" style={{ color: "rgba(255,200,150,0.35)" }}>No guests waiting</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {waitingGuests.map(entry => {
+                const displayWait = entry.remaining_wait ?? entry.wait_estimate ?? entry.quoted_wait ?? null
+                return (
+                  <button
+                    key={entry.id}
+                    onClick={() => seatGuest(entry)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl text-left transition-all active:scale-[0.98] hover:brightness-125"
+                    style={{ background: "rgba(34,197,94,0.07)", border: "1px solid rgba(34,197,94,0.18)" }}
+                  >
+                    <span className="font-bold text-sm" style={{ color: "rgba(255,248,240,0.95)" }}>
+                      {entry.name || "Guest"}
+                    </span>
+                    <span className="text-xs" style={{ color: "rgba(255,200,150,0.50)" }}>
+                      {entry.party_size}p
+                      {displayWait != null && (
+                        <> · {displayWait}m quoted</>
+                      )}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Separator */}
+        <div className="mx-4 my-3" style={{ borderTop: "1px solid rgba(255,185,100,0.10)" }} />
+
+        {/* Walk-in section */}
+        <div className="px-3 pb-5">
+          {!showWalkIn ? (
+            <button
+              onClick={() => setShowWalkIn(true)}
+              className="w-full py-3 rounded-xl text-sm font-bold tracking-[0.08em] transition-all active:scale-[0.98] hover:brightness-125"
+              style={{ background: "rgba(251,191,36,0.07)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.18)" }}
+            >
+              Walk-in / not on waitlist
+            </button>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-black tracking-[0.15em] uppercase" style={{ color: "rgba(251,191,36,0.65)" }}>Walk-in</p>
+              <input
+                type="text"
+                value={walkInName}
+                onChange={e => setWalkInName(e.target.value)}
+                placeholder="Guest"
+                className="w-full rounded-xl outline-none"
+                style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "13px 16px" }}
+              />
+              <div className="flex items-center justify-between px-2">
+                <span className="text-xs" style={{ color: "rgba(255,200,150,0.50)" }}>Party size</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setWalkInSize(s => Math.max(1, s - 1))}
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-xl font-light transition-all active:scale-95"
+                    style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.70)", background: "rgba(255,185,100,0.06)" }}
+                  >−</button>
+                  <span className="text-xl font-bold tabular-nums w-6 text-center" style={{ color: "rgba(255,248,240,0.92)" }}>{walkInSize}</span>
+                  <button
+                    onClick={() => setWalkInSize(s => Math.min(20, s + 1))}
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-xl font-light transition-all active:scale-95"
+                    style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.70)", background: "rgba(255,185,100,0.06)" }}
+                  >+</button>
+                </div>
+              </div>
+              <button
+                onClick={submitWalkIn}
+                disabled={submitting}
+                className="w-full py-3.5 rounded-xl text-sm font-black tracking-[0.1em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
+                style={{ background: "#22c55e", color: "white" }}
+              >
+                {submitting ? "Seating…" : "Seat Now"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Add Guest Drawer ───────────────────────────────────────────────────────────
 
 function AddGuestDrawer({ onClose, onAdded, restaurantId }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number) => void; restaurantId: string }) {
@@ -1042,6 +1233,7 @@ export default function HostDashboard() {
   const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [tableTapModal, setTableTapModal] = useState<{ tableNumber: number; tableId: string | undefined; capacity: number | undefined } | null>(null)
   const [sidebarW, setSidebarW]           = useState(300)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
@@ -1247,6 +1439,8 @@ export default function HostDashboard() {
       const sourceTable = data.tableNumber as number
       const occupant = data.occupant as LocalOccupant
       if (sourceTable === targetTable) return
+
+      // 1. Optimistic UI — instant visual
       setLocalOccupants(prev => {
         const next = new Map(prev)
         next.delete(sourceTable)
@@ -1255,6 +1449,25 @@ export default function HostDashboard() {
         next.set(targetTable, occupant)
         return next
       })
+
+      // 2. Also optimistically update tables state so old table goes green immediately
+      setTables(prev => prev.map(t => {
+        if (t.table_number === sourceTable) return { ...t, status: "available" as const }
+        if (t.table_number === targetTable) return { ...t, status: "occupied" as const }
+        return t
+      }))
+
+      // 3. Fire API calls in parallel then sync
+      const sourceApiTable = tables.find(t => t.table_number === sourceTable)
+      const targetApiTable = tables.find(t => t.table_number === targetTable)
+      const calls: Promise<unknown>[] = []
+      if (sourceApiTable) calls.push(fetch(`${API}/tables/${sourceApiTable.id}/clear`, { method: "POST" }))
+      if (targetApiTable) calls.push(fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
+      }))
+      Promise.all(calls).then(() => refreshAll())
       return
     }
 
@@ -1598,6 +1811,10 @@ export default function HostDashboard() {
                 confirmSeat(selectedEntry, tableNumber, tableId)
                 setSelectedEntry(null)
               }}
+              onAvailableTap={(tableNumber, tableId, capacity) => {
+                if (selectedEntry) return
+                setTableTapModal({ tableNumber, tableId, capacity })
+              }}
             />
           </div>
 
@@ -1722,6 +1939,23 @@ export default function HostDashboard() {
             localOccupants={localOccupants}
             onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
             onClose={() => setResPicker(null)}
+          />
+        )}
+
+        {/* Table-tap guest picker */}
+        {tableTapModal && (
+          <TableGuestPicker
+            tableNumber={tableTapModal.tableNumber}
+            tableId={tableTapModal.tableId}
+            capacity={tableTapModal.capacity}
+            queue={queue}
+            restaurantId={restaurantId}
+            onClose={() => setTableTapModal(null)}
+            onSeated={(tableNumber, occupant) => {
+              setLocalOccupants(prev => new Map(prev).set(tableNumber, occupant))
+              setTableTapModal(null)
+              refreshAll()
+            }}
           />
         )}
       </div>
