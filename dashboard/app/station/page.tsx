@@ -516,7 +516,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onAvailableTap,
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onAvailableTap, forceAvailable,
 }: {
   pos: FloorPos
   table?: Table
@@ -526,8 +526,11 @@ function DroppableFloorTable({
   isSelectMode?: boolean
   onSeatFromSelect?: () => void
   onAvailableTap?: () => void
+  forceAvailable?: boolean
 }) {
-  const isOccupied = !!occupant || (!!table && table.status !== "available")
+  // forceAvailable overrides table.status so a just-cleared table goes green instantly,
+  // without waiting for the server to confirm and refreshAll to propagate.
+  const isOccupied = !forceAvailable && (!!occupant || (!!table && table.status !== "available"))
   const hasLocalOccupant = !!occupant
   // When dragging an occupant, allow dropping on any table without a local occupant
   const canReceiveDrop = isDraggingOccupant ? !hasLocalOccupant : !isOccupied
@@ -713,7 +716,7 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onAvailableTap,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onAvailableTap, locallyAvailableTables,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -722,6 +725,7 @@ function FloorMap({
   selectedEntry?: QueueEntry | null
   onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
   onAvailableTap?: (tableNumber: number, tableId: string | undefined, capacity: number | undefined) => void
+  locallyAvailableTables?: Set<number>
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -825,7 +829,8 @@ function FloorMap({
                 isDraggingOccupant={isDraggingOccupant}
                 isSelectMode={!!selectedEntry}
                 onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
-                onAvailableTap={!occupant && (!table || table.status === "available") ? () => onAvailableTap?.(pos.number, table?.id, table?.capacity) : undefined}
+                forceAvailable={locallyAvailableTables?.has(pos.number)}
+                onAvailableTap={!occupant && (!table || table.status === "available" || locallyAvailableTables?.has(pos.number)) ? () => onAvailableTap?.(pos.number, table?.id, table?.capacity) : undefined}
               />
             )
           })}
@@ -1291,6 +1296,8 @@ export default function HostDashboard() {
   const pollTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Tables whose clear API call is still in-flight. refreshAll must not revert these to "occupied".
   const pendingClearsRef = useRef<Set<number>>(new Set())
+  // React state mirror of pendingClearsRef — drives instant green on DroppableFloorTable via forceAvailable.
+  const [locallyAvailableTables, setLocallyAvailableTables] = useState<Set<number>>(new Set())
 
   // Fetch restaurant config on mount
   useEffect(() => {
@@ -1452,7 +1459,11 @@ export default function HostDashboard() {
       const occupant = data.occupant as LocalOccupant
       if (sourceTable === targetTable) return
 
-      // 1. Optimistic UI — instant visual
+      // 1. Instant optimistic UI.
+      //    - Remove occupant from source, add to target in localOccupants.
+      //    - Add source to locallyAvailableTables so DroppableFloorTable renders it
+      //      green immediately via forceAvailable, bypassing table.status entirely.
+      //      This is the guaranteed-instant path — React state, same render cycle.
       setLocalOccupants(prev => {
         const next = new Map(prev)
         next.delete(sourceTable)
@@ -1461,19 +1472,12 @@ export default function HostDashboard() {
         next.set(targetTable, occupant)
         return next
       })
+      setLocallyAvailableTables(prev => new Set(prev).add(sourceTable))
 
-      // 2. Also optimistically update tables state so old table goes green immediately
-      setTables(prev => prev.map(t => {
-        if (t.table_number === sourceTable) return { ...t, status: "available" as const }
-        if (t.table_number === targetTable) return { ...t, status: "occupied" as const }
-        return t
-      }))
-
-      // 3. Register the source as pending-clear so refreshAll won't revert it
-      //    while the API call is in-flight (prevents guest appearing on 2 tables).
+      // 2. Also register in ref so refreshAll won't revert table.status while in-flight.
       pendingClearsRef.current.add(sourceTable)
 
-      // 4. Fire API calls in parallel then sync
+      // 3. Fire API calls in parallel then sync.
       const sourceApiTable = tables.find(t => t.table_number === sourceTable)
       const targetApiTable = tables.find(t => t.table_number === targetTable)
       const calls: Promise<unknown>[] = []
@@ -1483,14 +1487,12 @@ export default function HostDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
       }))
-      Promise.all(calls).then(() => {
+      const finalize = () => {
         pendingClearsRef.current.delete(sourceTable)
+        setLocallyAvailableTables(prev => { const s = new Set(prev); s.delete(sourceTable); return s })
         refreshAll()
-      }).catch(() => {
-        // Even on error, unblock the ref so future polls aren't permanently frozen
-        pendingClearsRef.current.delete(sourceTable)
-        refreshAll()
-      })
+      }
+      Promise.all(calls).then(finalize).catch(finalize)
       return
     }
 
@@ -1838,6 +1840,7 @@ export default function HostDashboard() {
                 if (selectedEntry) return
                 setTableTapModal({ tableNumber, tableId, capacity })
               }}
+              locallyAvailableTables={locallyAvailableTables}
             />
           </div>
 
