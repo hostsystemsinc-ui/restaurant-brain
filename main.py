@@ -7,7 +7,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from supabase import create_client
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -32,9 +32,11 @@ _wait_set_at: dict = {}
 # In-memory: tracks which guest is at which table (keyed by "rid:table_number").
 # Populated by seat-to-table, cleared by table clear.
 _table_occupants: dict = {}   # { "rid:table_number": { "name": str, "party_size": int, "entry_id": str } }
+_occupants_lock   = threading.Lock()   # Protects concurrent read/write of _table_occupants
 
 # ── Demo submissions (persisted in memory + Supabase) ────────────────────────
 _demo_submissions: list = []
+_submissions_lock = threading.Lock()   # Protects concurrent access to _demo_submissions
 
 def _load_demo_subs():
     global _demo_submissions
@@ -96,15 +98,15 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://hostplatform.net", "http://localhost:3000"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Owner-Secret"],
 )
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
 class JoinQueueRequest(BaseModel):
     name:          Optional[str] = None
-    party_size:    int
+    party_size:    int = Field(ge=1, le=20)
     phone:         Optional[str] = None
     notes:         Optional[str] = None
     preference:    Optional[str] = "asap"  # asap | 15min | 30min | HH:MM
@@ -127,7 +129,7 @@ class ThroughputEventRequest(BaseModel):
 
 class ReservationRequest(BaseModel):
     guest_name:    str
-    party_size:    int           = 2
+    party_size:    int           = Field(ge=1, le=20, default=2)
     date:          str           # YYYY-MM-DD
     time:          str           # HH:MM (24-hour)
     phone:         Optional[str] = None
@@ -136,9 +138,23 @@ class ReservationRequest(BaseModel):
     source:        Optional[str] = "host"
     restaurant_id: Optional[str] = None   # override env RESTAURANT_ID
 
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        if not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+            raise ValueError("date must be YYYY-MM-DD")
+        return v
+
+    @field_validator("time")
+    @classmethod
+    def validate_time(cls, v: str) -> str:
+        if not re.match(r"^\d{2}:\d{2}$", v):
+            raise ValueError("time must be HH:MM")
+        return v
+
 class QueueUpdateRequest(BaseModel):
-    quoted_wait: Optional[int]  = None
-    party_size:  Optional[int]  = None
+    quoted_wait: Optional[int]  = Field(None, ge=1, le=180)
+    party_size:  Optional[int]  = Field(None, ge=1, le=20)
     phone:       Optional[str]  = None
     notes:       Optional[str]  = None
     paused:      Optional[bool] = None
@@ -319,7 +335,9 @@ def debug_twilio():
         return {"configured": True, "auth_ok": False, "error": str(e)}
 
 @app.post("/debug/twilio/verify-start")
-def twilio_verify_start(phone: str = "+18312470552"):
+def twilio_verify_start(phone: str = "+18312470552", secret: Optional[str] = None):
+    if not secret or secret != os.environ.get("OWNER_PASS", ""):
+        raise HTTPException(status_code=403, detail="Forbidden")
     """Initiate Twilio verification for a phone (required on trial accounts).
     Twilio will call the number; answer and enter the validation_code shown here."""
     if not (TWILIO_SID and TWILIO_TOKEN):
@@ -344,8 +362,10 @@ def twilio_verify_start(phone: str = "+18312470552"):
         return {"ok": False, "error": str(e)}
 
 @app.post("/debug/twilio/test-sms")
-def test_sms(phone: str = "+18312470552"):
+def test_sms(phone: str = "+18312470552", secret: Optional[str] = None):
     """Attempt to send a real test SMS and return the result or exact error."""
+    if not secret or secret != os.environ.get("OWNER_PASS", ""):
+        raise HTTPException(status_code=403, detail="Forbidden")
     if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM):
         return {"ok": False, "error": "Twilio not fully configured", "sid_set": bool(TWILIO_SID), "token_set": bool(TWILIO_TOKEN), "from_set": bool(TWILIO_FROM)}
     phone_e164 = _e164(phone)
@@ -378,8 +398,10 @@ def sms_quota():
         return {"quota_remaining": None, "key_configured": True, "error": str(e)}
 
 @app.post("/debug/sms/test")
-def test_sms_full(phone: str = "+18312470552"):
+def test_sms_full(phone: str = "+18312470552", secret: Optional[str] = None):
     """Test the full _send_sms pipeline (Textbelt → Twilio) and return the result."""
+    if not secret or secret != os.environ.get("OWNER_PASS", ""):
+        raise HTTPException(status_code=403, detail="Forbidden")
     phone_e164 = _e164(phone)
     if not phone_e164:
         return {"ok": False, "error": f"Could not normalize phone: {phone}"}
@@ -422,11 +444,12 @@ def occupy_table(table_id: str, body: Optional[OccupyRequest] = None):
         rid = t.get("restaurant_id") or RESTAURANT_ID
         tnum = t.get("table_number")
         if tnum is not None:
-            _table_occupants[f"{rid}:{tnum}"] = {
-                "name": (body.name if body and body.name else None) or "Guest",
-                "party_size": (body.party_size if body and body.party_size else None) or 2,
-                "entry_id": (body.entry_id if body else None),
-            }
+            with _occupants_lock:
+                _table_occupants[f"{rid}:{tnum}"] = {
+                    "name": (body.name if body and body.name else None) or "Guest",
+                    "party_size": (body.party_size if body and body.party_size else None) or 2,
+                    "entry_id": (body.entry_id if body else None),
+                }
     return {"status": "occupied"}
 
 @app.post("/tables/{table_id}/clear")
@@ -437,7 +460,8 @@ def clear_table(table_id: str):
     if tbl_res.data:
         t = tbl_res.data[0]
         rid = t.get("restaurant_id") or RESTAURANT_ID
-        _table_occupants.pop(f"{rid}:{t['table_number']}", None)
+        with _occupants_lock:
+            _table_occupants.pop(f"{rid}:{t['table_number']}", None)
     return {"status": "cleared"}
 
 @app.post("/clear-table/{table_id}")  # legacy
@@ -450,7 +474,8 @@ def get_table_occupants(restaurant_id: Optional[str] = None):
     rid = _rid(restaurant_id)
     prefix = f"{rid}:"
     # Start from in-memory (has name/party_size already set)
-    result: dict = {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
+    with _occupants_lock:
+        result: dict = {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
     # Fill any gaps from DB: find tables with status="occupied" not already in result
     try:
         occ_tables = supabase.table("tables").select("table_number").eq("restaurant_id", rid).eq("status", "occupied").execute().data or []
@@ -458,7 +483,8 @@ def get_table_occupants(restaurant_id: Optional[str] = None):
             tnum = str(t["table_number"])
             if tnum not in result:
                 result[tnum] = {"name": "Guest", "party_size": 2, "entry_id": None}
-                _table_occupants[f"{rid}:{t['table_number']}"] = result[tnum]
+                with _occupants_lock:
+                    _table_occupants[f"{rid}:{t['table_number']}"] = result[tnum]
     except Exception:
         pass
     return result
@@ -583,6 +609,8 @@ def seat_entry(entry_id: str):
     if not party_res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
     party = party_res.data[0]
+    if party.get("status") not in ("waiting", "ready"):
+        raise HTTPException(status_code=409, detail=f"Entry is already {party.get('status', 'unknown')}")
     # Use the entry's own restaurant_id so demo and real restaurants are kept separate
     entry_rid = party.get("restaurant_id") or RESTAURANT_ID
 
@@ -605,11 +633,12 @@ def seat_entry(entry_id: str):
         # Track occupant in memory for cross-view sync (same as seat-to-table)
         tnum = table.get("table_number")
         if tnum is not None:
-            _table_occupants[f"{entry_rid}:{tnum}"] = {
-                "name": party.get("name") or "Guest",
-                "party_size": party.get("party_size", 2),
-                "entry_id": entry_id,
-            }
+            with _occupants_lock:
+                _table_occupants[f"{entry_rid}:{tnum}"] = {
+                    "name": party.get("name") or "Guest",
+                    "party_size": party.get("party_size", 2),
+                    "entry_id": entry_id,
+                }
         try:
             supabase.table("seating_events").insert({
                 "restaurant_id": entry_rid, "table_id": table["id"],
@@ -633,10 +662,12 @@ def seat_to_table(entry_id: str, table_id: str):
         tbl_res = supabase.table("tables").select("table_number").eq("id", table_id).execute()
         if tbl_res.data:
             tnum = tbl_res.data[0]["table_number"]
-            _table_occupants[f"{rid}:{tnum}"] = {"name": e.get("name") or "Guest", "party_size": e.get("party_size", 2), "entry_id": entry_id}
+            with _occupants_lock:
+                _table_occupants[f"{rid}:{tnum}"] = {"name": e.get("name") or "Guest", "party_size": e.get("party_size", 2), "entry_id": entry_id}
     try:
+        rid_for_event = (entry_res.data[0].get("restaurant_id") if entry_res.data else None) or RESTAURANT_ID
         supabase.table("seating_events").insert({
-            "restaurant_id": RESTAURANT_ID, "table_id": table_id,
+            "restaurant_id": rid_for_event, "table_id": table_id,
             "queue_entry_id": entry_id, "action": "seated",
         }).execute()
     except Exception:
@@ -644,10 +675,10 @@ def seat_to_table(entry_id: str, table_id: str):
     return {"status": "seated", "table_id": table_id}
 
 def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
-    wait_url = f"https://hostplatform.net/wait/{entry_id}"
+    # wait_url included once Textbelt URL sending is approved; currently omitted to ensure delivery
     ok, err = _send_sms(
         to_phone=phone,
-        body=f"Your table at {rest_name} is ready! Please go to the host stand. Reply STOP to opt out.",
+        body=f"Your table at {rest_name} is ready! Please head to the host stand. Reply STOP to opt out.",
     )
     print(f"[notify] sms_sent={ok} sms_error={err!r}")
 
@@ -717,6 +748,8 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
 @app.patch("/queue/{entry_id}/wait")
 def update_wait(entry_id: str, minutes: int):
     """Update the quoted wait time. Fires link SMS for host-added guests on first quote."""
+    if minutes < 1 or minutes > 180:
+        raise HTTPException(status_code=400, detail="Wait time must be between 1 and 180 minutes")
     res = supabase.table("queue_entries").select("id, quoted_wait, phone, source, restaurant_id").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -803,18 +836,27 @@ def get_insights(restaurant_id: Optional[str] = None):
 
 @app.post("/events/camera")
 def log_camera(req: CameraEventRequest):
-    supabase.table("camera_events").insert({"restaurant_id": RESTAURANT_ID, "zone": req.zone, "people_count": req.people_count}).execute()
-    return {"status": "logged"}
+    try:
+        supabase.table("camera_events").insert({"restaurant_id": RESTAURANT_ID, "zone": req.zone, "people_count": req.people_count}).execute()
+        return {"status": "logged"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to log camera event: {e}")
 
 @app.post("/events/delivery")
 def log_delivery(req: DeliveryEventRequest):
-    supabase.table("delivery_events").insert({"restaurant_id": RESTAURANT_ID, "provider": req.provider, "active_orders": req.active_orders}).execute()
-    return {"status": "logged"}
+    try:
+        supabase.table("delivery_events").insert({"restaurant_id": RESTAURANT_ID, "provider": req.provider, "active_orders": req.active_orders}).execute()
+        return {"status": "logged"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to log delivery event: {e}")
 
 @app.post("/events/throughput")
 def log_throughput(req: ThroughputEventRequest):
-    supabase.table("throughput_events").insert({"restaurant_id": RESTAURANT_ID, "metric": req.metric, "value": req.value, "metadata": req.metadata}).execute()
-    return {"status": "logged"}
+    try:
+        supabase.table("throughput_events").insert({"restaurant_id": RESTAURANT_ID, "metric": req.metric, "value": req.value, "metadata": req.metadata}).execute()
+        return {"status": "logged"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to log throughput event: {e}")
 
 # ── Reservations ─────────────────────────────────────────────────────────────
 #

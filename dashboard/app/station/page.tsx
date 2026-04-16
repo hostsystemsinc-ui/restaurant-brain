@@ -1171,9 +1171,9 @@ export default function HostDashboard() {
     return () => clearInterval(t)
   }, [fetchReservations])
 
-  const seat   = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }); refreshAll() }, [refreshAll])
-  const notify = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }); refreshAll() }, [refreshAll])
-  const remove = useCallback(async (id: string) => { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }); refreshAll() }, [refreshAll])
+  const seat   = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
+  const notify = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
+  const remove = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
 
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
