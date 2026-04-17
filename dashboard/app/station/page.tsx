@@ -1268,22 +1268,32 @@ export default function HostDashboard() {
     document.addEventListener("pointerup", handleResizePointerUp)
   }, [sidebarW, handleResizePointerMove, handleResizePointerUp])
   const [now, setNow]                     = useState(() => new Date())
-  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
-    try {
-      const s = localStorage.getItem("host_occupants")
-      return s ? new Map(JSON.parse(s) as [number, LocalOccupant][]) : new Map()
-    } catch { return new Map() }
-  })
+  // localOccupants is intentionally not pre-loaded here — we don't know which restaurant
+  // we belong to yet. It gets loaded in the effect below once restaurantId is known.
+  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(new Map())
+  const localOccupantsLoadedRef = useRef(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 5 } }),
   )
 
-  // Persist floor map occupancy to localStorage
+  // Load occupants from the restaurant-scoped key once restaurantId is known.
+  // This prevents one client's floor map state from bleeding into another.
   useEffect(() => {
-    try { localStorage.setItem("host_occupants", JSON.stringify([...localOccupants])) } catch {}
-  }, [localOccupants])
+    if (!restaurantId || localOccupantsLoadedRef.current) return
+    localOccupantsLoadedRef.current = true
+    try {
+      const s = localStorage.getItem(`host_occupants_${restaurantId}`)
+      if (s) setLocalOccupants(new Map(JSON.parse(s) as [number, LocalOccupant][]))
+    } catch {}
+  }, [restaurantId])
+
+  // Persist floor map occupancy to a restaurant-scoped localStorage key
+  useEffect(() => {
+    if (!restaurantId) return
+    try { localStorage.setItem(`host_occupants_${restaurantId}`, JSON.stringify([...localOccupants])) } catch {}
+  }, [localOccupants, restaurantId])
 
   // Live clock — ticks every 30s for urgency updates
   useEffect(() => {
@@ -1318,14 +1328,26 @@ export default function HostDashboard() {
         setQueue(d.queue ?? [])
         // If any table clears are still in-flight, don't let the server response
         // revert them back to "occupied" — that's what causes a guest to appear on 2 tables.
+        const serverTables: Table[] = d.tables ?? []
         setTables(prev => {
-          const serverTables: Table[] = d.tables ?? []
           if (pendingClearsRef.current.size === 0) return serverTables
           return serverTables.map(t =>
             pendingClearsRef.current.has(t.table_number)
               ? { ...t, status: "available" as const }
               : t
           )
+        })
+        // Remove tables from locallyAvailableTables only once the server confirms they are
+        // available. This prevents a flash of "occupied" between finalize() removing forceAvailable
+        // and the refreshAll response arriving.
+        setLocallyAvailableTables(prev => {
+          if (prev.size === 0) return prev
+          const next = new Set(prev)
+          next.forEach(tableNumber => {
+            const srv = serverTables.find(t => t.table_number === tableNumber)
+            if (srv?.status === "available") next.delete(tableNumber)
+          })
+          return next.size === prev.size ? prev : next
         })
         setAvgWait(d.avg_wait ?? 0)
         setOnline(true)
@@ -1421,11 +1443,15 @@ export default function HostDashboard() {
   }, [refreshAll])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
+    // Optimistic: remove occupant name and force-green the table immediately, no waiting for server.
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+    setLocallyAvailableTables(prev => new Set(prev).add(tableNumber))
+    pendingClearsRef.current.add(tableNumber)
     if (tableId) {
       try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
-      refreshAll()
     }
+    pendingClearsRef.current.delete(tableNumber)
+    refreshAll()  // refreshAll will remove tableNumber from locallyAvailableTables once server confirms available
   }, [refreshAll])
 
   // ── DnD handlers ──────────────────────────────────────────────────────
@@ -1489,7 +1515,9 @@ export default function HostDashboard() {
       }))
       const finalize = () => {
         pendingClearsRef.current.delete(sourceTable)
-        setLocallyAvailableTables(prev => { const s = new Set(prev); s.delete(sourceTable); return s })
+        // Don't touch locallyAvailableTables here — refreshAll will remove sourceTable from it
+        // atomically with setTables once the server confirms status === "available".
+        // Removing it here before the server response causes a red flash.
         refreshAll()
       }
       Promise.all(calls).then(finalize).catch(finalize)
