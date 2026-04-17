@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
+import { flushSync } from "react-dom"
 import Link from "next/link"
 import {
   Users, Clock, CheckCircle2, BellRing,
@@ -600,7 +601,8 @@ function DroppableFloorTable({
           : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
           : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
           : "none",
-        transition: "border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease",
+        // No transition — background/border must snap instantly when a guest is moved or cleared.
+        transition: "none",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -1443,9 +1445,13 @@ export default function HostDashboard() {
   }, [refreshAll])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
-    // Optimistic: remove occupant name and force-green the table immediately, no waiting for server.
-    setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
-    setLocallyAvailableTables(prev => new Set(prev).add(tableNumber))
+    // flushSync forces the optimistic render to commit NOW, before the network call starts —
+    // the table is painted green in the same tick as the click.
+    flushSync(() => {
+      setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+      setLocallyAvailableTables(prev => new Set(prev).add(tableNumber))
+      setTables(prev => prev.map(t => t.table_number === tableNumber ? { ...t, status: "available" as const } : t))
+    })
     pendingClearsRef.current.add(tableNumber)
     if (tableId) {
       try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
@@ -1490,15 +1496,26 @@ export default function HostDashboard() {
       //    - Add source to locallyAvailableTables so DroppableFloorTable renders it
       //      green immediately via forceAvailable, bypassing table.status entirely.
       //      This is the guaranteed-instant path — React state, same render cycle.
-      setLocalOccupants(prev => {
-        const next = new Map(prev)
-        next.delete(sourceTable)
-        const displaced = prev.get(targetTable)
-        if (displaced) next.set(sourceTable, displaced)
-        next.set(targetTable, occupant)
-        return next
+      // flushSync forces React to paint the optimistic state synchronously, before this handler
+      // returns. Without it, React can batch the render to the next frame, which on a slow iPad
+      // feels like lag. Combined with the tables/locallyAvailableTables updates below, the source
+      // table turns green in the same tick the drag ends.
+      flushSync(() => {
+        setLocalOccupants(prev => {
+          const next = new Map(prev)
+          next.delete(sourceTable)
+          const displaced = prev.get(targetTable)
+          if (displaced) next.set(sourceTable, displaced)
+          next.set(targetTable, occupant)
+          return next
+        })
+        setLocallyAvailableTables(prev => new Set(prev).add(sourceTable))
+        setTables(prev => prev.map(t =>
+          t.table_number === sourceTable ? { ...t, status: "available" as const } :
+          t.table_number === targetTable ? { ...t, status: "occupied" as const } :
+          t
+        ))
       })
-      setLocallyAvailableTables(prev => new Set(prev).add(sourceTable))
 
       // 2. Also register in ref so refreshAll won't revert table.status while in-flight.
       pendingClearsRef.current.add(sourceTable)
