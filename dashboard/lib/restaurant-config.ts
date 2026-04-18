@@ -9,6 +9,7 @@ export interface RestaurantConfig {
   rid:       string    // Supabase restaurant UUID (primary, or "" for multi-restaurant owners)
   slug:      string    // URL slug, e.g. "walters303"
   joinUrl:   string    // Public guest join URL
+  logoUrl?:  string    // Logo image URL shown in the station header
   ownerRids?: string[] // Multi-restaurant owner: array of all managed restaurant UUIDs
 }
 
@@ -19,6 +20,7 @@ export const RESTAURANT_CONFIG: Record<string, RestaurantConfig> = {
     rid:     "272a8876-e4e6-4867-831d-0525db80a8db",
     slug:    "walters303",
     joinUrl: "https://hostplatform.net/walters303/join",
+    logoUrl: "/walters-logo.png",
   },
   demo: {
     name:    "Demo Restaurant",
@@ -35,6 +37,7 @@ export const RESTAURANT_CONFIG: Record<string, RestaurantConfig> = {
     rid:     "0001cafe-0001-4000-8000-000000000001",
     slug:    "walnut-original",
     joinUrl: "https://hostplatform.net/walnut/original/join",
+    logoUrl: "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682acb/media/images/28198New_Walnut_Logo.png",
   },
   southside: {
     name:    "The Southside Walnut Cafe",
@@ -42,6 +45,7 @@ export const RESTAURANT_CONFIG: Record<string, RestaurantConfig> = {
     rid:     "0002cafe-0001-4000-8000-000000000002",
     slug:    "walnut-southside",
     joinUrl: "https://hostplatform.net/walnut/southside/join",
+    logoUrl: "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682acb/media/images/28198New_Walnut_Logo.png",
   },
   // Ariel's owner account — manages both Walnut Cafe locations
   walnut: {

@@ -1224,7 +1224,9 @@ function AddGuestDrawer({ onClose, onAdded, restaurantId }: { onClose: () => voi
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function HostDashboard() {
-  const [restaurantId, setRestaurantId]   = useState<string>("")
+  const [restaurantId,   setRestaurantId]   = useState<string>("")
+  const [restaurantName, setRestaurantName] = useState<string>("")
+  const [restaurantLogo, setRestaurantLogo] = useState<string>("")
   const [tables, setTables]               = useState<Table[]>([])
   const [queue, setQueue]                 = useState<QueueEntry[]>([])
   const [online, setOnline]               = useState(true)
@@ -1315,7 +1317,12 @@ export default function HostDashboard() {
   useEffect(() => {
     fetch("/api/client/me")
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.rid) setRestaurantId(d.rid) })
+      .then(d => {
+        if (!d) return
+        if (d.rid)     setRestaurantId(d.rid)
+        if (d.name)    setRestaurantName(d.name)
+        if (d.logoUrl) setRestaurantLogo(d.logoUrl)
+      })
       .catch(() => {})
   }, [])
 
@@ -1600,13 +1607,19 @@ export default function HostDashboard() {
           style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.18)", backdropFilter: "blur(20px)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
-            {/* Walter's 303 logo */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/walters-logo.png"
-              alt="Walter's 303"
-              style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }}
-            />
+            {/* Restaurant logo / name */}
+            {restaurantLogo
+              ? (/* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={restaurantLogo}
+                  alt={restaurantName}
+                  style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }}
+                />)
+              : (
+                <span style={{ fontSize: 15, fontWeight: 800, color: "rgba(255,200,150,0.9)", letterSpacing: "0.04em", flexShrink: 0 }}>
+                  {restaurantName}
+                </span>)
+            }
 
             <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
 
@@ -1641,7 +1654,7 @@ export default function HostDashboard() {
             <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>
-            <Link href="/walters303" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+            <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <LayoutDashboard className="w-3 h-3" /> Admin
             </Link>
             <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
