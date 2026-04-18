@@ -9,6 +9,19 @@ const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
 const DEMO_NAME          = "Demo Restaurant"
 const TOTAL_TABLES       = 16
 
+interface GuestConfig {
+  bgColor: string; accentColor: string; buttonTextColor: string
+  restaurantName: string; tagline: string
+  waitMessages: string[]; seatedMessage: string
+  finalButtons: Array<{ id: string; label: string; url: string; color: string }>
+}
+const DEFAULT_CONFIG: GuestConfig = {
+  bgColor: "#000000", accentColor: "#22c55e", buttonTextColor: "#ffffff",
+  restaurantName: DEMO_NAME, tagline: "",
+  waitMessages: [], seatedMessage: "Enjoy your meal!",
+  finalButtons: [],
+}
+
 interface LiveInfo {
   available: number
   waitMin:   number | null
@@ -73,6 +86,14 @@ export default function DemoJoinPage() {
   const [live,        setLive]        = useState<LiveInfo | null>(null)
   const [joined,      setJoined]      = useState(false)
   const [menuOpen,    setMenuOpen]    = useState(false)
+  const [cfg,         setCfg]         = useState<GuestConfig>(DEFAULT_CONFIG)
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("host_guest_config_demo")
+      if (raw) setCfg({ ...DEFAULT_CONFIG, ...JSON.parse(raw) })
+    } catch { /* ignore */ }
+  }, [])
 
   const fetchLive = useCallback(async () => {
     try {
@@ -158,7 +179,7 @@ export default function DemoJoinPage() {
 
   return (
     <div style={{
-      height: "100dvh", background: "#000", color: "#fff",
+      height: "100dvh", background: cfg.bgColor, color: "#fff",
       fontFamily: "inherit", display: "flex", flexDirection: "column",
       overflow: "hidden",
     }}>
@@ -208,7 +229,7 @@ export default function DemoJoinPage() {
           background: "rgba(255,255,255,0.04)",
         }}>
           <div style={{ fontSize: ".85rem", fontWeight: 800, letterSpacing: "0.14em", color: "rgba(255,255,255,0.85)" }}>
-            {DEMO_NAME.toUpperCase()}
+            {(cfg.restaurantName || DEMO_NAME).toUpperCase()}
           </div>
         </div>
         {live !== null && (live.ahead > 0 || live.waitMin) && (
@@ -305,7 +326,7 @@ export default function DemoJoinPage() {
 
       {/* ── Success overlay ── */}
       {joined && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#000", animation: "overlayIn 0.28s cubic-bezier(0.4,0,0.2,1) both" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: cfg.bgColor, animation: "overlayIn 0.28s cubic-bezier(0.4,0,0.2,1) both" }}>
           <p style={{ fontSize: 10, letterSpacing: "0.55em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 14, animation: "subtleUp 0.45s 0.18s ease-out both" }}>
             You&apos;re in the queue
           </p>
@@ -319,13 +340,13 @@ export default function DemoJoinPage() {
       )}
 
       {/* ── Menu Drawer ── */}
-      {menuOpen && <JoinMenuDrawer onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <JoinMenuDrawer onClose={() => setMenuOpen(false)} restaurantName={cfg.restaurantName || DEMO_NAME} />}
     </div>
   )
 }
 
 // ── Menu Drawer ────────────────────────────────────────────────────────────
-function JoinMenuDrawer({ onClose }: { onClose: () => void }) {
+function JoinMenuDrawer({ onClose, restaurantName }: { onClose: () => void; restaurantName: string }) {
   return (
     <>
       {/* Backdrop */}
@@ -369,7 +390,7 @@ function JoinMenuDrawer({ onClose }: { onClose: () => void }) {
         }}>
           <div>
             <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>
-              Demo Restaurant
+              {restaurantName}
             </p>
             <p style={{ fontSize: 22, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>Menu</p>
           </div>

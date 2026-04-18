@@ -23,6 +23,7 @@ const RESERVED = new Set([
   "owner",
   "login",
   "demo",
+  "walnut",   // Walnut Cafe join pages + owner dashboard
   "api",
   "admin",
   "station",
@@ -79,6 +80,14 @@ export function middleware(request: NextRequest) {
   if (destRoot === "demo" && DEMO_PROTECTED.includes(destSegments[1])) {
     const cookie = request.cookies.get("host_client_session")
     if (!cookie || cookie.value !== "demo") {
+      return NextResponse.redirect(new URL("/login/client", request.url))
+    }
+  }
+
+  // /walnut/dashboard → must be logged in as walnut owner account
+  if (destRoot === "walnut" && destSegments[1] === "dashboard") {
+    const cookie = request.cookies.get("host_client_session")
+    if (!cookie || cookie.value !== "walnut") {
       return NextResponse.redirect(new URL("/login/client", request.url))
     }
   }

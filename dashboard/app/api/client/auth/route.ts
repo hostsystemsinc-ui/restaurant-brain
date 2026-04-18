@@ -3,8 +3,11 @@ import { cookies } from "next/headers"
 
 // Known accounts: maps username → { envKey, redirect }
 const ACCOUNTS: Record<string, { envKey: string; redirect: string }> = {
-  walters: { envKey: "CLIENT_PASS_WALTERS", redirect: "/station" },
-  demo:    { envKey: "CLIENT_PASS_DEMO",    redirect: "/demo/station" },
+  walters:   { envKey: "CLIENT_PASS_WALTERS",   redirect: "/station" },
+  demo:      { envKey: "CLIENT_PASS_DEMO",       redirect: "/demo/station" },
+  original:  { envKey: "CLIENT_PASS_ORIGINAL",   redirect: "/station" },
+  southside: { envKey: "CLIENT_PASS_SOUTHSIDE",  redirect: "/station" },
+  walnut:    { envKey: "CLIENT_PASS_WALNUT",     redirect: "/walnut/dashboard" },
 }
 
 const COOKIE_NAME = "host_client_session"

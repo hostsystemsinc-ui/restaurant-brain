@@ -78,6 +78,21 @@ const MENU_SECTIONS = [
   },
 ]
 
+// Guest config — set by owner dashboard customizer, stored in localStorage
+interface GuestConfig {
+  bgColor: string; accentColor: string; buttonTextColor: string
+  restaurantName: string; tagline: string
+  waitMessages: string[]; seatedMessage: string
+  finalButtons: Array<{ id: string; label: string; url: string; color: string }>
+}
+const DEFAULT_CONFIG: GuestConfig = {
+  bgColor: "#000000", accentColor: "#22c55e", buttonTextColor: "#ffffff",
+  restaurantName: "Demo Restaurant", tagline: "Powered by HOST",
+  waitMessages: ["Your spot is saved — feel free to step out.", "We'll let you know the moment your table is ready.", "Sit tight, we're moving quickly.", "Your table is being prepared.", "You can leave and come back — we've got your spot."],
+  seatedMessage: "Thanks for dining with us! We hope to see you again soon.",
+  finalButtons: [],
+}
+
 export default function WaitPage() {
   const { id } = useParams<{ id: string }>()
   const [entry,       setEntry]       = useState<Entry | null>(null)
@@ -90,6 +105,14 @@ export default function WaitPage() {
   const [elapsedSec,  setElapsedSec]  = useState(0)
   const [progress,    setProgress]    = useState(4)
   const progressKeyRef = useRef<string | null>(null)
+  // Read owner-configured guest page theme from localStorage
+  const [cfg, setCfg] = useState<GuestConfig>(DEFAULT_CONFIG)
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("host_guest_config_demo")
+      if (s) setCfg(JSON.parse(s))
+    } catch {}
+  }, [])
 
   const fetchingRef = useRef(false)
 
@@ -234,7 +257,7 @@ export default function WaitPage() {
   if (error) {
     return (
       <div style={{
-        height: "100dvh", background: "#000", color: "#fff",
+        height: "100dvh", background: cfg.bgColor, color: "#fff",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         padding: "40px 32px", textAlign: "center",
@@ -266,7 +289,7 @@ export default function WaitPage() {
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (!entry) {
-    return <div style={{ height: "100dvh", background: "#000" }} />
+    return <div style={{ height: "100dvh", background: cfg.bgColor }} />
   }
 
   const { status, name, party_size, parties_ahead, quoted_wait } = entry
@@ -278,7 +301,7 @@ export default function WaitPage() {
   if (isRemoved) {
     return (
       <div style={{
-        height: "100dvh", background: "#000", color: "#fff",
+        height: "100dvh", background: cfg.bgColor, color: "#fff",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         padding: "40px 32px", textAlign: "center",
@@ -305,10 +328,10 @@ export default function WaitPage() {
   if (isSeated) {
     return (
       <div style={{
-        height: "100dvh", background: "#000", color: "#fff",
+        height: "100dvh", background: cfg.bgColor, color: "#fff",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
-        padding: "0 40px", textAlign: "center",
+        padding: "0 32px", textAlign: "center",
       }}>
         <style>{`
           @keyframes fadeUp {
@@ -326,13 +349,27 @@ export default function WaitPage() {
           Powered by <strong style={{ fontWeight: 800, color: "rgba(255,255,255,0.45)" }}>HOST</strong>
         </p>
 
-        <p style={{
-          fontSize: 26, fontWeight: 800, letterSpacing: "-0.01em",
-          color: "rgba(255,255,255,0.92)", margin: 0,
-          animation: "fadeUp 0.6s 0.15s ease-out both",
-        }}>
-          Enjoy your time.
-        </p>
+        <div style={{ animation: "fadeUp 0.6s 0.08s ease-out both", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, width: "100%", maxWidth: 320 }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: `${cfg.accentColor}22`, border: `2px solid ${cfg.accentColor}88`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={cfg.accentColor} strokeWidth="2" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <p style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.01em", color: "rgba(255,255,255,0.95)", margin: 0 }}>
+            Enjoy your time.
+          </p>
+          <p style={{ fontSize: 14, color: "rgba(255,255,255,0.50)", margin: "4px 0 20px", lineHeight: 1.5 }}>
+            {cfg.seatedMessage}
+          </p>
+          {cfg.finalButtons.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+              {cfg.finalButtons.map(btn => btn.url ? (
+                <a key={btn.id} href={btn.url} target="_blank" rel="noopener noreferrer"
+                  style={{ display: "block", width: "100%", padding: "15px 0", borderRadius: 14, textAlign: "center", fontWeight: 700, fontSize: 15, color: cfg.buttonTextColor, background: btn.color, textDecoration: "none", boxSizing: "border-box" }}>
+                  {btn.label}
+                </a>
+              ) : null)}
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -341,7 +378,7 @@ export default function WaitPage() {
   if (isReady) {
     return (
       <div style={{
-        height: "100dvh", background: "#000", color: "#fff",
+        height: "100dvh", background: cfg.bgColor, color: "#fff",
         display: "flex", flexDirection: "column",
         overflow: "hidden",
       }}>
@@ -377,13 +414,13 @@ export default function WaitPage() {
           padding: "0 28px", textAlign: "center", gap: 0,
         }}>
 
-          {/* Green pulsing circle */}
+          {/* Pulsing circle — uses configured accent color */}
           <div style={{
             width: 88, height: 88, borderRadius: "50%",
-            background: "rgba(34,197,94,0.12)",
-            border: "2px solid rgba(34,197,94,0.45)",
+            background: `${cfg.accentColor}20`,
+            border: `2px solid ${cfg.accentColor}70`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#22c55e",
+            color: cfg.accentColor,
             marginBottom: 28,
             animation: "pulseGreen 2s ease-in-out infinite",
           }}>
@@ -392,14 +429,10 @@ export default function WaitPage() {
             </svg>
           </div>
 
-          {/* Headline */}
-          <h1 style={{
-            fontSize: 28, fontWeight: 700, color: "#fff",
-            margin: "0 0 8px", letterSpacing: "-0.01em",
-          }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: "#fff", margin: "0 0 8px", letterSpacing: "-0.01em" }}>
             Your table is ready!
           </h1>
-          <p style={{ fontSize: 15, color: "#22c55e", fontWeight: 600, margin: "0 0 28px" }}>
+          <p style={{ fontSize: 15, color: cfg.accentColor, fontWeight: 600, margin: "0 0 28px" }}>
             Head to the host stand
           </p>
 
@@ -441,7 +474,7 @@ export default function WaitPage() {
 
   return (
     <div style={{
-      height: "100dvh", background: "#000", color: "#fff",
+      height: "100dvh", background: cfg.bgColor, color: "#fff",
       display: "flex", flexDirection: "column",
       overflow: "hidden",
     }}>
@@ -499,7 +532,7 @@ export default function WaitPage() {
           }}>
             <div style={{
               width: `${progress}%`, height: "100%", borderRadius: 99,
-              background: "linear-gradient(90deg, #22c55e, #86efac)",
+              background: `linear-gradient(90deg, ${cfg.accentColor}, ${cfg.accentColor}99)`,
               transition: "width 1s linear",
             }} />
           </div>
