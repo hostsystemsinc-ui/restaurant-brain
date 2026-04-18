@@ -110,6 +110,47 @@ def _ensure_demo_tables():
 
 threading.Thread(target=_ensure_demo_tables, daemon=True).start()
 
+WALNUT_RESTAURANTS = [
+    {
+        "id":   "0001cafe-0001-4000-8000-000000000001",
+        "name": "The Original Walnut Cafe",
+        "slug": "walnut-original",
+    },
+    {
+        "id":   "0002cafe-0001-4000-8000-000000000002",
+        "name": "The Southside Walnut Cafe",
+        "slug": "walnut-southside",
+    },
+]
+
+def _ensure_walnut_restaurants():
+    """Guarantee both Walnut Cafe restaurants + their 16 tables exist in the DB.
+    Idempotent — only inserts rows that are missing."""
+    # Same layout as demo: 16 tables matching the HOST floor plan
+    capacities = [2, 2, 2, 4, 4, 4, 6, 6, 6, 4, 4, 4, 1, 1, 1, 1]
+    for rest in WALNUT_RESTAURANTS:
+        rid = rest["id"]
+        try:
+            if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
+                supabase.table("restaurants").insert({
+                    "id": rid, "name": rest["name"], "slug": rest["slug"]
+                }).execute()
+                print(f"[startup] Created restaurant: {rest['name']}")
+            existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
+            existing_nums = {row["table_number"] for row in existing}
+            missing = [
+                {"restaurant_id": rid, "table_number": i + 1, "capacity": c, "status": "available"}
+                for i, c in enumerate(capacities)
+                if (i + 1) not in existing_nums
+            ]
+            if missing:
+                supabase.table("tables").insert(missing).execute()
+                print(f"[startup] Inserted {len(missing)} tables for {rest['name']}: {[m['table_number'] for m in missing]}")
+        except Exception as e:
+            print(f"[startup] _ensure_walnut_restaurants failed for {rest['name']}: {e}")
+
+threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
+
 app = FastAPI(title="Restaurant Brain API")
 
 app.add_middleware(
