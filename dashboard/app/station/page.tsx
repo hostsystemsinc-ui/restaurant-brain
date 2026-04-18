@@ -1221,6 +1221,12 @@ function AddGuestDrawer({ onClose, onAdded, restaurantId }: { onClose: () => voi
   )
 }
 
+// ── Header logo — extracted so eslint-disable works reliably ──────────────────
+function HeaderLogo({ src, name }: { src: string; name: string }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={name} style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }} />
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 export default function HostDashboard() {
@@ -1609,16 +1615,8 @@ export default function HostDashboard() {
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
             {/* Restaurant logo / name */}
             {restaurantLogo
-              ? (/* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={restaurantLogo}
-                  alt={restaurantName}
-                  style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }}
-                />)
-              : (
-                <span style={{ fontSize: 15, fontWeight: 800, color: "rgba(255,200,150,0.9)", letterSpacing: "0.04em", flexShrink: 0 }}>
-                  {restaurantName}
-                </span>)
+              ? <HeaderLogo src={restaurantLogo} name={restaurantName} />
+              : <span style={{ fontSize: 15, fontWeight: 800, color: "rgba(255,200,150,0.9)", letterSpacing: "0.04em", flexShrink: 0 }}>{restaurantName}</span>
             }
 
             <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
