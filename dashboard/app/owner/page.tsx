@@ -116,9 +116,14 @@ interface GuestConfig {
 }
 
 // ── Restaurants ────────────────────────────────────────────────────────────────
+const WALNUT_ORIGINAL_RID  = "0001cafe-0001-4000-8000-000000000001"
+const WALNUT_SOUTHSIDE_RID = "0002cafe-0001-4000-8000-000000000002"
+
 const RESTS = [
-  { id: "walters", name: "Walter's 303",   city: "Denver, CO", rid: null,     dashUrl: "/station",      joinUrl: "https://hostplatform.net/join",      analogUrl: "/analog",      label: "Active" },
-  { id: "demo",    name: "Demo Restaurant", city: "Denver, CO", rid: DEMO_RID, dashUrl: "/demo/station", joinUrl: "https://hostplatform.net/demo/join", analogUrl: "/demo/analog", label: "Demo"   },
+  { id: "walters",   name: "Walter's 303",             city: "Denver, CO",  rid: null,                  dashUrl: "/station",      joinUrl: "https://hostplatform.net/join",                    analogUrl: "/analog",       label: "Active" },
+  { id: "demo",      name: "Demo Restaurant",           city: "Denver, CO",  rid: DEMO_RID,              dashUrl: "/demo/station", joinUrl: "https://hostplatform.net/demo/join",               analogUrl: "/demo/analog",  label: "Demo"   },
+  { id: "original",  name: "The Original Walnut Cafe",  city: "Boulder, CO", rid: WALNUT_ORIGINAL_RID,   dashUrl: "/station",      joinUrl: "https://hostplatform.net/walnut/original/join",    analogUrl: "#",             label: "Active" },
+  { id: "southside", name: "The Southside Walnut Cafe", city: "Boulder, CO", rid: WALNUT_SOUTHSIDE_RID,  dashUrl: "/station",      joinUrl: "https://hostplatform.net/walnut/southside/join",   analogUrl: "#",             label: "Active" },
 ]
 
 // ── Default guest config ───────────────────────────────────────────────────────
@@ -291,8 +296,10 @@ export default function OwnerPage() {
 
   // Per-restaurant live data
   const [liveData, setLiveData] = useState<Record<string, RestLive>>({
-    walters: { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
-    demo:    { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
+    walters:   { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
+    demo:      { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
+    original:  { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
+    southside: { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
   })
 
   // Demo requests

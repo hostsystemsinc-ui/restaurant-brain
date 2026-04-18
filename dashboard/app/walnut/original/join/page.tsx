@@ -8,7 +8,7 @@ import { WALNUT_MENU } from "@/lib/walnut-menu"
 const API             = "https://restaurant-brain-production.up.railway.app"
 const RESTAURANT_ID   = "0001cafe-0001-4000-8000-000000000001"
 const RESTAURANT_NAME = "The Original Walnut Cafe"
-const TOTAL_TABLES    = 17 // 16 + bar
+const TOTAL_TABLES    = 16
 
 const BG     = "#EDE8DF"
 const DARK   = "#2C2416"
