@@ -2464,12 +2464,8 @@ export default function AdminPage() {
   const [insights, setInsights] = useState<Insights | null>(null)
   const [online,   setOnline]   = useState(true)
   const [lastSync, setLastSync] = useState(new Date())
-  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOcc>>(() => {
-    try {
-      const s = typeof window !== "undefined" ? localStorage.getItem("host_occupants") : null
-      return s ? new Map(JSON.parse(s) as [number, LocalOcc][]) : new Map()
-    } catch { return new Map() }
-  })
+  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOcc>>(new Map())
+  const localOccupantsLoadedRef = useRef(false)
 
   // Fetch restaurant config on mount
   useEffect(() => {
@@ -2485,18 +2481,30 @@ export default function AdminPage() {
       .catch(() => {})
   }, [])
 
-  // Sync localOccupants from host view via storage events (cross-tab)
+  // Load occupants from the restaurant-scoped key once restaurantId is known
   useEffect(() => {
+    if (!restaurantId || localOccupantsLoadedRef.current) return
+    localOccupantsLoadedRef.current = true
+    try {
+      const s = localStorage.getItem(`host_occupants_${restaurantId}`)
+      if (s) setLocalOccupants(new Map(JSON.parse(s) as [number, LocalOcc][]))
+    } catch {}
+  }, [restaurantId])
+
+  // Sync localOccupants from station view via cross-tab storage events
+  useEffect(() => {
+    if (!restaurantId) return
+    const key = `host_occupants_${restaurantId}`
     const onStorage = (e: StorageEvent) => {
-      if (e.key === "host_occupants" && e.newValue) {
+      if (e.key === key && e.newValue) {
         try { setLocalOccupants(new Map(JSON.parse(e.newValue) as [number, LocalOcc][])) } catch {}
-      } else if (e.key === "host_occupants" && !e.newValue) {
+      } else if (e.key === key && !e.newValue) {
         setLocalOccupants(new Map())
       }
     }
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
-  }, [])
+  }, [restaurantId])
 
   const moveGuest = useCallback((from: number, to: number) => {
     setLocalOccupants(prev => {
@@ -2505,10 +2513,10 @@ export default function AdminPage() {
       if (!occ) return prev
       next.delete(from)
       next.set(to, occ)
-      try { localStorage.setItem("host_occupants", JSON.stringify([...next])) } catch {}
+      try { localStorage.setItem(`host_occupants_${restaurantId}`, JSON.stringify([...next])) } catch {}
       return next
     })
-  }, [])
+  }, [restaurantId])
 
   const fetchAll = useCallback(async () => {
     try {
