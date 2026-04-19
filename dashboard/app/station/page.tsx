@@ -1253,6 +1253,11 @@ export default function HostDashboard() {
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartW = useRef(0)
+  // Auto-prompt: tracks which entry IDs we've seen so we detect truly-new joiners
+  // null = initial load not yet completed (don't prompt on first fetch)
+  const seenEntryIdsRef = useRef<Set<string> | null>(null)
+  // Mirror of waitModal in a ref so the auto-prompt effect can read it without being in deps
+  const waitModalRef = useRef<{ id: string; defaultMinutes: number } | null>(null)
 
   const handleResizePointerMove = useCallback((e: PointerEvent) => {
     if (!isResizing.current) return
@@ -1418,6 +1423,36 @@ export default function HostDashboard() {
     const t = setInterval(fetchReservations, 30_000)
     return () => clearInterval(t)
   }, [fetchReservations])
+
+  // Keep waitModalRef in sync with waitModal state (lets auto-prompt read it without being in deps)
+  useEffect(() => { waitModalRef.current = waitModal }, [waitModal])
+
+  // Auto-prompt for quoted wait when a new guest joins (NFC or otherwise).
+  // On the first fetch we just record existing IDs so we don't prompt for pre-existing entries.
+  useEffect(() => {
+    if (queue.length === 0 && seenEntryIdsRef.current === null) return
+
+    // First successful load — populate seen set, don't prompt
+    if (seenEntryIdsRef.current === null) {
+      seenEntryIdsRef.current = new Set(queue.map(e => e.id))
+      return
+    }
+
+    // Find a new waiting entry that hasn't been quoted yet
+    const newEntry = queue.find(e =>
+      e.status === "waiting" &&
+      e.quoted_wait == null &&
+      !seenEntryIdsRef.current!.has(e.id)
+    )
+
+    // Mark all current entries as seen
+    queue.forEach(e => seenEntryIdsRef.current!.add(e.id))
+
+    // Open wait modal if a new unquoted entry arrived and no modal is already open
+    if (newEntry && !waitModalRef.current) {
+      setWaitModal({ id: newEntry.id, defaultMinutes: 15 })
+    }
+  }, [queue])
 
   const seat   = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
   const notify = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }) } catch {} refreshAll() }, [refreshAll])

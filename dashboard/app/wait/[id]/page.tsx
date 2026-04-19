@@ -3,14 +3,20 @@
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import { X, UtensilsCrossed, Users, Clock } from "lucide-react"
+import { WALNUT_MENU } from "@/lib/walnut-menu"
 
 const API = "https://restaurant-brain-production.up.railway.app"
+
+const WALTERS_RID          = "272a8876-e4e6-4867-831d-0525db80a8db"
+const WALNUT_ORIGINAL_RID  = "0001cafe-0001-4000-8000-000000000001"
+const WALNUT_SOUTHSIDE_RID = "0002cafe-0001-4000-8000-000000000002"
 
 interface Entry {
   id: string
   name: string
   party_size: number
   status: "waiting" | "ready" | "seated" | "removed"
+  restaurant_id?: string
   position?: number
   parties_ahead?: number
   wait_estimate?: number
@@ -30,8 +36,8 @@ const WAITING_MESSAGES = [
   "You can leave and come back — we've got your spot.",
 ]
 
-// ── Menu data ────────────────────────────────────────────────────────────────
-const MENU_SECTIONS = [
+// ── Demo/Walters menu data ────────────────────────────────────────────────────
+const DEMO_MENU_SECTIONS = [
   {
     title: "Starters",
     items: [
@@ -78,19 +84,59 @@ const MENU_SECTIONS = [
   },
 ]
 
-// Guest config — set by owner dashboard customizer, stored in localStorage
+// ── Guest config ─────────────────────────────────────────────────────────────
 interface GuestConfig {
   bgColor: string; accentColor: string; buttonTextColor: string
-  restaurantName: string; tagline: string
+  restaurantName: string; tagline: string; cardBg: string
   waitMessages: string[]; seatedMessage: string
   finalButtons: Array<{ id: string; label: string; url: string; color: string }>
 }
+
 const DEFAULT_CONFIG: GuestConfig = {
   bgColor: "#000000", accentColor: "#22c55e", buttonTextColor: "#ffffff",
-  restaurantName: "Demo Restaurant", tagline: "Powered by HOST",
+  restaurantName: "Demo Restaurant", tagline: "Powered by HOST", cardBg: "#141414",
   waitMessages: ["Your spot is saved — feel free to step out.", "We'll let you know the moment your table is ready.", "Sit tight, we're moving quickly.", "Your table is being prepared.", "You can leave and come back — we've got your spot."],
   seatedMessage: "Thanks for dining with us! We hope to see you again soon.",
   finalButtons: [],
+}
+
+const WALTERS_CONFIG: GuestConfig = {
+  bgColor: "#000000", accentColor: "#22c55e", buttonTextColor: "#ffffff",
+  restaurantName: "Walter's 303", tagline: "Denver, CO", cardBg: "#141414",
+  waitMessages: DEFAULT_CONFIG.waitMessages,
+  seatedMessage: "Thanks for dining at Walter's 303! We hope to see you again soon.",
+  finalButtons: [],
+}
+
+const WALNUT_BASE: GuestConfig = {
+  bgColor: "#16110A", accentColor: "#C89060", buttonTextColor: "#ffffff",
+  restaurantName: "The Walnut Cafe", tagline: "Boulder, CO", cardBg: "rgba(255,255,255,0.05)",
+  waitMessages: [
+    "Your spot is saved — feel free to explore the neighborhood.",
+    "We'll let you know the moment your table is ready.",
+    "Sit tight, we're moving quickly.",
+    "Your table is being prepared.",
+    "You can step out — we've got your spot.",
+  ],
+  seatedMessage: "Thanks for dining with us at the Walnut Cafe! We hope to see you again soon.",
+  finalButtons: [],
+}
+
+function configForRid(rid?: string): GuestConfig | null {
+  if (rid === WALNUT_ORIGINAL_RID)  return { ...WALNUT_BASE, restaurantName: "The Original Walnut Cafe" }
+  if (rid === WALNUT_SOUTHSIDE_RID) return { ...WALNUT_BASE, restaurantName: "The Southside Walnut Cafe" }
+  if (rid === WALTERS_RID)          return WALTERS_CONFIG
+  return null  // null → keep localStorage config (demo)
+}
+
+function joinUrlForRid(rid?: string): string {
+  if (rid === WALNUT_ORIGINAL_RID)  return "/walnut/original/join"
+  if (rid === WALNUT_SOUTHSIDE_RID) return "/walnut/southside/join"
+  return "/demo/join"
+}
+
+function isWalnutRid(rid?: string): boolean {
+  return rid === WALNUT_ORIGINAL_RID || rid === WALNUT_SOUTHSIDE_RID
 }
 
 export default function WaitPage() {
@@ -104,15 +150,25 @@ export default function WaitPage() {
   const [displayWait, setDisplayWait] = useState(0)
   const [elapsedSec,  setElapsedSec]  = useState(0)
   const [progress,    setProgress]    = useState(4)
+  const [joinUrl,     setJoinUrl]     = useState("/demo/join")
   const progressKeyRef = useRef<string | null>(null)
-  // Read owner-configured guest page theme from localStorage
   const [cfg, setCfg] = useState<GuestConfig>(DEFAULT_CONFIG)
+
+  // Load demo localStorage config on mount (used only if entry is demo restaurant)
   useEffect(() => {
     try {
       const s = localStorage.getItem("host_guest_config_demo")
-      if (s) setCfg(JSON.parse(s))
+      if (s) setCfg({ ...DEFAULT_CONFIG, ...JSON.parse(s) })
     } catch {}
   }, [])
+
+  // Override config once entry.restaurant_id is known
+  useEffect(() => {
+    if (!entry?.restaurant_id) return
+    const staticCfg = configForRid(entry.restaurant_id)
+    if (staticCfg) setCfg(staticCfg)
+    setJoinUrl(joinUrlForRid(entry.restaurant_id))
+  }, [entry?.restaurant_id])
 
   const fetchingRef = useRef(false)
 
@@ -147,11 +203,10 @@ export default function WaitPage() {
     return () => document.removeEventListener("visibilitychange", onVis)
   }, [fetchEntry])
 
-  // Sync displayWait + elapsedSec when quoted_wait, wait_set_at, or paused changes
+  // Sync displayWait + elapsedSec when quoted_wait / wait_set_at / paused changes
   useEffect(() => {
     if (!entry) return
     if (entry.quoted_wait != null && entry.quoted_wait > 0) {
-      // Paused: freeze elapsed at 0 so displayWait = remaining exactly
       if (entry.paused) {
         setElapsedSec(0)
         setDisplayWait(entry.quoted_wait)
@@ -177,7 +232,7 @@ export default function WaitPage() {
   // Per-second tick — stops when paused
   useEffect(() => {
     if (entry?.status !== "waiting") return
-    if (entry?.paused) return   // freeze when paused
+    if (entry?.paused) return
     const qw = entry.quoted_wait
     if (!qw) return
     const lsKey = entry.wait_set_at
@@ -213,7 +268,7 @@ export default function WaitPage() {
     })
   }, [elapsedSec, entry?.status, entry?.quoted_wait, entry?.id])
 
-  // Clear stored entry when guest is seated or removed (so join page doesn't redirect back)
+  // Clear stored entry when guest is seated or removed
   useEffect(() => {
     if (entry?.status === "seated" || entry?.status === "removed") {
       sessionStorage.removeItem("host_wait_id")
@@ -273,7 +328,7 @@ export default function WaitPage() {
           This waitlist entry may have expired.
         </p>
         <a
-          href="/demo/join"
+          href={joinUrl}
           style={{
             padding: "14px 32px", borderRadius: 14,
             background: "white", color: "black",
@@ -317,12 +372,11 @@ export default function WaitPage() {
           Thanks for visiting.
         </p>
         <p style={{ fontSize: 14, color: "rgba(255,255,255,0.38)", margin: 0, letterSpacing: "0.05em" }}>
-          Demo Restaurant
+          {cfg.restaurantName}
         </p>
       </div>
     )
   }
-
 
   // ── Seated state ───────────────────────────────────────────────────────────
   if (isSeated) {
@@ -383,9 +437,9 @@ export default function WaitPage() {
         overflow: "hidden",
       }}>
         <style>{`
-          @keyframes pulseGreen {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.35); }
-            50%       { box-shadow: 0 0 0 22px rgba(34,197,94,0); }
+          @keyframes pulseAccent {
+            0%, 100% { box-shadow: 0 0 0 0 ${cfg.accentColor}55; }
+            50%       { box-shadow: 0 0 0 22px ${cfg.accentColor}00; }
           }
           @keyframes sheetUp {
             from { transform: translateY(100%); }
@@ -403,7 +457,7 @@ export default function WaitPage() {
 
         {/* Restaurant header */}
         <div style={{ padding: "52px 28px 4px", flexShrink: 0, textAlign: "center" }}>
-          <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", margin: "0 0 3px" }}>Demo Restaurant</p>
+          <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", margin: "0 0 3px" }}>{cfg.restaurantName}</p>
           <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(255,255,255,0.15)", margin: 0 }}>Powered by HOST</p>
         </div>
 
@@ -414,7 +468,7 @@ export default function WaitPage() {
           padding: "0 28px", textAlign: "center", gap: 0,
         }}>
 
-          {/* Pulsing circle — uses configured accent color */}
+          {/* Pulsing circle */}
           <div style={{
             width: 88, height: 88, borderRadius: "50%",
             background: `${cfg.accentColor}20`,
@@ -422,7 +476,7 @@ export default function WaitPage() {
             display: "flex", alignItems: "center", justifyContent: "center",
             color: cfg.accentColor,
             marginBottom: 28,
-            animation: "pulseGreen 2s ease-in-out infinite",
+            animation: "pulseAccent 2s ease-in-out infinite",
           }}>
             <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12"/>
@@ -435,8 +489,6 @@ export default function WaitPage() {
           <p style={{ fontSize: 15, color: cfg.accentColor, fontWeight: 600, margin: "0 0 28px" }}>
             Head to the host stand
           </p>
-
-
         </div>
 
         {/* Footer */}
@@ -461,8 +513,7 @@ export default function WaitPage() {
           </p>
         </div>
 
-        {/* Menu Drawer */}
-        {menuOpen && <MenuDrawer onClose={() => setMenuOpen(false)} />}
+        {menuOpen && <MenuDrawer onClose={() => setMenuOpen(false)} restaurantId={entry.restaurant_id} restaurantName={cfg.restaurantName} />}
       </div>
     )
   }
@@ -501,7 +552,7 @@ export default function WaitPage() {
 
       {/* Restaurant header */}
       <div style={{ padding: "52px 28px 4px", flexShrink: 0, textAlign: "center" }}>
-        <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", margin: "0 0 3px" }}>Demo Restaurant</p>
+        <p style={{ fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", margin: "0 0 3px" }}>{cfg.restaurantName}</p>
         <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(255,255,255,0.15)", margin: 0 }}>Powered by HOST</p>
       </div>
 
@@ -524,7 +575,7 @@ export default function WaitPage() {
           </p>
         </div>
 
-        {/* Orange progress bar */}
+        {/* Progress bar */}
         <div>
           <div style={{
             width: "100%", height: 8, borderRadius: 99,
@@ -548,7 +599,7 @@ export default function WaitPage() {
         {/* Stat cards */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div style={{
-            background: "#141414", border: "1px solid rgba(255,255,255,0.08)",
+            background: cfg.cardBg, border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 14, padding: "14px 16px",
           }}>
             <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Party</p>
@@ -558,11 +609,11 @@ export default function WaitPage() {
             </div>
           </div>
           <div style={{
-            background: "#141414", border: "1px solid rgba(255,255,255,0.08)",
+            background: cfg.cardBg, border: "1px solid rgba(255,255,255,0.08)",
             borderRadius: 14, padding: "14px 16px",
           }}>
             <p style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>Est. Wait</p>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: "#22c55e" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, fontSize: 18, color: cfg.accentColor }}>
               <Clock size={14} style={{ opacity: 0.8 }} />
               {quoted_wait && displayWait > 0 ? `~${displayWait}m` : "—"}
             </div>
@@ -571,7 +622,7 @@ export default function WaitPage() {
 
         {/* Rotating message card */}
         <div style={{
-          background: "#141414", border: "1px solid rgba(255,255,255,0.06)",
+          background: cfg.cardBg, border: "1px solid rgba(255,255,255,0.06)",
           borderRadius: 14, padding: "14px 18px",
         }}>
           <p
@@ -691,17 +742,23 @@ export default function WaitPage() {
         </>
       )}
 
-      {/* Menu Drawer */}
-      {menuOpen && <MenuDrawer onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <MenuDrawer onClose={() => setMenuOpen(false)} restaurantId={entry.restaurant_id} restaurantName={cfg.restaurantName} />}
     </div>
   )
 }
 
-// ── Menu Drawer (shared across waiting + ready states) ─────────────────────
-function MenuDrawer({ onClose }: { onClose: () => void }) {
+// ── Menu Drawer router ─────────────────────────────────────────────────────
+function MenuDrawer({ onClose, restaurantId, restaurantName }: { onClose: () => void; restaurantId?: string; restaurantName: string }) {
+  if (isWalnutRid(restaurantId)) {
+    return <WalnutMenuDrawer onClose={onClose} restaurantName={restaurantName} />
+  }
+  return <DemoMenuDrawer onClose={onClose} restaurantName={restaurantName} />
+}
+
+// ── Demo Menu Drawer ────────────────────────────────────────────────────────
+function DemoMenuDrawer({ onClose, restaurantName }: { onClose: () => void; restaurantName: string }) {
   return (
     <>
-      {/* Backdrop */}
       <div
         onClick={onClose}
         style={{
@@ -712,66 +769,40 @@ function MenuDrawer({ onClose }: { onClose: () => void }) {
           animation: "backdropIn 0.3s ease-out both",
         }}
       />
-
-      {/* Sheet */}
-      <div
-        style={{
-          position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
-          height: "88dvh",
-          background: "#0D0D0D",
-          borderRadius: "22px 22px 0 0",
-          border: "1px solid rgba(255,255,255,0.09)",
-          borderBottom: "none",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          animation: "sheetUp 0.42s cubic-bezier(0.32, 0.72, 0, 1) both",
-        }}
-      >
-        {/* Drag handle */}
+      <div style={{
+        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
+        height: "88dvh",
+        background: "#0D0D0D",
+        borderRadius: "22px 22px 0 0",
+        border: "1px solid rgba(255,255,255,0.09)",
+        borderBottom: "none",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        animation: "sheetUp 0.42s cubic-bezier(0.32, 0.72, 0, 1) both",
+      }}>
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 4, flexShrink: 0 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
         </div>
-
-        {/* Sheet header */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: "14px 24px 16px",
-          borderBottom: "1px solid rgba(255,255,255,0.07)",
-          flexShrink: 0,
+          borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0,
         }}>
           <div>
             <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>
-              Demo Restaurant
+              {restaurantName}
             </p>
             <p style={{ fontSize: 22, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>Menu</p>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              width: 36, height: 36, borderRadius: "50%",
-              background: "rgba(255,255,255,0.07)",
-              border: "none", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "rgba(255,255,255,0.6)",
-            }}
-          >
+          <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.6)" }}>
             <X size={16} />
           </button>
         </div>
-
-        {/* Scrollable menu */}
         <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as never, padding: "8px 0 40px" }}>
-          {MENU_SECTIONS.map((section, si) => (
+          {DEMO_MENU_SECTIONS.map((section, si) => (
             <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.4s ${si * 0.06}s ease-out both` }}>
-              <p style={{
-                fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase",
-                color: "rgba(255,255,255,0.35)", fontWeight: 700,
-                marginBottom: 14,
-              }}>
+              <p style={{ fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginBottom: 14 }}>
                 {section.title}
               </p>
-
               {section.items.map((item, ii) => (
                 <div key={item.name}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
@@ -779,22 +810,121 @@ function MenuDrawer({ onClose }: { onClose: () => void }) {
                       <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 3 }}>{item.name}</p>
                       <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.desc}</p>
                     </div>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>
-                      {item.price}
-                    </p>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>{item.price}</p>
                   </div>
-                  {ii < section.items.length - 1 && (
-                    <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />
-                  )}
+                  {ii < section.items.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />}
                 </div>
               ))}
-
-              {si < MENU_SECTIONS.length - 1 && (
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />
-              )}
+              {si < DEMO_MENU_SECTIONS.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />}
             </div>
           ))}
+          <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.15)", padding: "28px 24px 0", letterSpacing: "0.1em" }}>
+            Ask your server about daily specials &amp; dietary options
+          </p>
+        </div>
+      </div>
+    </>
+  )
+}
 
+// ── Walnut Menu Drawer (tabbed: Breakfast / Lunch / Drinks / Kids) ──────────
+function WalnutMenuDrawer({ onClose, restaurantName }: { onClose: () => void; restaurantName: string }) {
+  const [activeTab, setActiveTab] = useState(0)
+  const ACCENT = "#C89060"
+
+  const category = WALNUT_MENU[activeTab]
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 40,
+          background: "rgba(0,0,0,0.65)",
+          backdropFilter: "blur(4px)",
+          WebkitBackdropFilter: "blur(4px)",
+          animation: "backdropIn 0.3s ease-out both",
+        }}
+      />
+      <div style={{
+        position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50,
+        height: "92dvh",
+        background: "#1A1208",
+        borderRadius: "22px 22px 0 0",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderBottom: "none",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        animation: "sheetUp 0.42s cubic-bezier(0.32, 0.72, 0, 1) both",
+      }}>
+        {/* Drag handle */}
+        <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 4, flexShrink: 0 }}>
+          <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.10)" }} />
+        </div>
+
+        {/* Header */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "10px 24px 0", flexShrink: 0,
+        }}>
+          <div>
+            <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 3 }}>
+              {restaurantName}
+            </p>
+            <p style={{ fontSize: 22, fontWeight: 700, color: "white", letterSpacing: "0.01em" }}>Menu</p>
+          </div>
+          <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.06)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.6)" }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Tab bar */}
+        <div style={{
+          display: "flex", padding: "14px 20px 0", gap: 2, flexShrink: 0,
+          borderBottom: "1px solid rgba(255,255,255,0.07)",
+        }}>
+          {WALNUT_MENU.map((cat, i) => (
+            <button
+              key={cat.label}
+              onClick={() => setActiveTab(i)}
+              style={{
+                padding: "8px 14px",
+                fontSize: 13, fontWeight: activeTab === i ? 700 : 500,
+                color: activeTab === i ? ACCENT : "rgba(255,255,255,0.38)",
+                background: "transparent", border: "none",
+                borderBottom: `2px solid ${activeTab === i ? ACCENT : "transparent"}`,
+                cursor: "pointer",
+                transition: "all 0.18s",
+                letterSpacing: "0.02em",
+                marginBottom: -1,
+              }}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as never, padding: "8px 0 40px" }}>
+          {category.sections.map((section, si) => (
+            <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.3s ${si * 0.04}s ease-out both` }}>
+              <p style={{ fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase", color: `${ACCENT}99`, fontWeight: 700, marginBottom: 14 }}>
+                {section.title}
+              </p>
+              {section.items.map((item, ii) => (
+                <div key={item.name}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: 3 }}>{item.name}</p>
+                      {item.desc && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.33)", lineHeight: 1.5 }}>{item.desc}</p>}
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 600, color: ACCENT, whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>{item.price}</p>
+                  </div>
+                  {ii < section.items.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />}
+                </div>
+              ))}
+              {si < category.sections.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: 8 }} />}
+            </div>
+          ))}
           <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.15)", padding: "28px 24px 0", letterSpacing: "0.1em" }}>
             Ask your server about daily specials &amp; dietary options
           </p>
