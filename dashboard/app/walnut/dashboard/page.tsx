@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
-import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, LogOut } from "lucide-react"
+import Link from "next/link"
+import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, Delete } from "lucide-react"
 
 const API = "https://restaurant-brain-production.up.railway.app"
+const LOGO = "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682acb/media/images/28198New_Walnut_Logo.png"
 
 const RESTAURANTS = [
   {
@@ -14,6 +15,8 @@ const RESTAURANTS = [
     rid:     "0001cafe-0001-4000-8000-000000000001",
     joinUrl: "https://hostplatform.net/walnut/original/join",
     color:   "#7C5B3A",
+    accent:  "rgba(124,91,58,0.15)",
+    accentBorder: "rgba(124,91,58,0.40)",
   },
   {
     key:     "southside",
@@ -22,6 +25,8 @@ const RESTAURANTS = [
     rid:     "0002cafe-0001-4000-8000-000000000002",
     joinUrl: "https://hostplatform.net/walnut/southside/join",
     color:   "#3A6B5B",
+    accent:  "rgba(58,107,91,0.15)",
+    accentBorder: "rgba(58,107,91,0.40)",
   },
 ] as const
 
@@ -57,6 +62,8 @@ interface RestaurantData {
   lastSync: Date
 }
 
+// ── Color system ───────────────────────────────────────────────────────────────
+
 const C = {
   bg:       "#F8FAFC",
   surface:  "#FFFFFF",
@@ -71,6 +78,8 @@ const C = {
   red:      "#DC2626",
   redBg:    "#FEF2F2",
 }
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 function TableGrid({ tables }: { tables: Table[] }) {
   const sorted = [...tables].sort((a, b) => a.table_number - b.table_number)
@@ -143,28 +152,165 @@ function QueueList({ queue }: { queue: QueueEntry[] }) {
   )
 }
 
+// ── PIN entry screen ───────────────────────────────────────────────────────────
+
+function PinScreen({ onSuccess }: { onSuccess: () => void }) {
+  const [digits, setDigits]   = useState<string[]>([])
+  const [error,  setError]    = useState("")
+  const [loading, setLoading] = useState(false)
+  const [shake,  setShake]    = useState(false)
+
+  const addDigit = useCallback((d: string) => {
+    if (loading) return
+    setError("")
+    setDigits(prev => {
+      if (prev.length >= 4) return prev
+      const next = [...prev, d]
+      if (next.length === 4) {
+        // Auto-submit
+        verifyPin(next.join(""))
+      }
+      return next
+    })
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const backspace = useCallback(() => {
+    if (loading) return
+    setError("")
+    setDigits(prev => prev.slice(0, -1))
+  }, [loading])
+
+  const verifyPin = useCallback(async (pin: string) => {
+    setLoading(true)
+    try {
+      const r = await fetch("/api/walnut/verify-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+      })
+      const d = await r.json()
+      if (d.ok) {
+        onSuccess()
+      } else {
+        setShake(true)
+        setTimeout(() => setShake(false), 600)
+        setError("Incorrect PIN")
+        setDigits([])
+      }
+    } catch {
+      setError("Connection error — try again")
+      setDigits([])
+    } finally {
+      setLoading(false)
+    }
+  }, [onSuccess])
+
+  // Keyboard support
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key >= "0" && e.key <= "9") addDigit(e.key)
+      else if (e.key === "Backspace") backspace()
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [addDigit, backspace])
+
+  const PAD = [
+    ["1","2","3"],
+    ["4","5","6"],
+    ["7","8","9"],
+    ["","0","⌫"],
+  ]
+
+  return (
+    <div style={{
+      minHeight: "100dvh", background: C.bg, display: "flex", alignItems: "center",
+      justifyContent: "center", fontFamily: "var(--font-geist), system-ui, -apple-system, sans-serif",
+    }}>
+      <div style={{
+        width: "100%", maxWidth: 340, padding: "40px 32px",
+        background: C.surface, borderRadius: 24, boxShadow: "0 8px 40px rgba(0,0,0,0.08)",
+        border: `1px solid ${C.border}`,
+        transform: shake ? "translateX(-4px)" : "none",
+        transition: "transform 0.06s",
+      }}>
+        {/* Logo */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 28 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={LOGO} alt="Walnut Cafe" style={{ height: 44, objectFit: "contain", marginBottom: 12 }} />
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted }}>
+            Admin Dashboard
+          </p>
+          <p style={{ fontSize: 13, color: C.text2, marginTop: 4 }}>Enter your 4-digit PIN</p>
+        </div>
+
+        {/* PIN dots */}
+        <div style={{ display: "flex", gap: 14, justifyContent: "center", marginBottom: 28 }}>
+          {[0,1,2,3].map(i => (
+            <div key={i} style={{
+              width: 18, height: 18, borderRadius: "50%",
+              background: digits.length > i ? C.text : "transparent",
+              border: `2px solid ${error ? C.red : digits.length > i ? C.text : C.border}`,
+              transition: "background 0.1s, border-color 0.2s",
+            }} />
+          ))}
+        </div>
+
+        {/* Error */}
+        {error && (
+          <p style={{ textAlign: "center", fontSize: 12, color: C.red, fontWeight: 600, marginBottom: 16, marginTop: -12 }}>
+            {error}
+          </p>
+        )}
+
+        {/* Numpad */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+          {PAD.flat().map((d, i) => (
+            <button
+              key={i}
+              onClick={() => d === "⌫" ? backspace() : d ? addDigit(d) : undefined}
+              disabled={loading || (!d && d !== "0")}
+              style={{
+                height: 64, borderRadius: 14, fontSize: d === "⌫" ? 20 : 24, fontWeight: 600,
+                background: d === "⌫" ? "rgba(220,38,38,0.05)" : d ? C.bg : "transparent",
+                border: d === "⌫" ? `1px solid rgba(220,38,38,0.15)` : d ? `1px solid ${C.border}` : "none",
+                color: d === "⌫" ? C.red : d ? C.text : "transparent",
+                cursor: d ? "pointer" : "default",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background 0.1s",
+                opacity: loading ? 0.5 : 1,
+              }}
+            >
+              {d === "⌫" ? <Delete size={18} /> : d}
+            </button>
+          ))}
+        </div>
+
+        {loading && (
+          <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 16 }}>Verifying…</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Main Dashboard ─────────────────────────────────────────────────────────────
+
 export default function WalnutDashboard() {
-  const router = useRouter()
+  const [pinOk,     setPinOk]     = useState<boolean | null>(null) // null = checking
   const [activeTab, setActiveTab] = useState<0 | 1>(0)
   const [data, setData] = useState<[RestaurantData, RestaurantData]>([
     { tables: [], queue: [], insights: null, online: true, lastSync: new Date() },
     { tables: [], queue: [], insights: null, online: true, lastSync: new Date() },
   ])
-  const [authChecked, setAuthChecked] = useState(false)
 
-  // Auth check
+  // Check PIN cookie on mount
   useEffect(() => {
-    fetch("/api/client/auth")
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (!d || d.account !== "walnut") {
-          router.replace("/login/client")
-        } else {
-          setAuthChecked(true)
-        }
-      })
-      .catch(() => router.replace("/login/client"))
-  }, [router])
+    fetch("/api/walnut/check-pin")
+      .then(r => r.ok ? r.json() : { ok: false })
+      .then(d => setPinOk(!!d.ok))
+      .catch(() => setPinOk(false))
+  }, [])
 
   const fetchAll = useCallback(async () => {
     const results = await Promise.allSettled(
@@ -196,18 +342,14 @@ export default function WalnutDashboard() {
   }, [])
 
   useEffect(() => {
-    if (!authChecked) return
+    if (!pinOk) return
     fetchAll()
     const t = setInterval(fetchAll, 10_000)
     return () => clearInterval(t)
-  }, [authChecked, fetchAll])
+  }, [pinOk, fetchAll])
 
-  const logout = async () => {
-    await fetch("/api/client/auth", { method: "DELETE" })
-    router.push("/login/client")
-  }
-
-  if (!authChecked) {
+  // ── Loading / PIN gate ─────────────────────────────────────────────────────
+  if (pinOk === null) {
     return (
       <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ fontSize: 13, color: C.muted }}>Loading…</div>
@@ -215,6 +357,11 @@ export default function WalnutDashboard() {
     )
   }
 
+  if (!pinOk) {
+    return <PinScreen onSuccess={() => setPinOk(true)} />
+  }
+
+  // ── Dashboard ──────────────────────────────────────────────────────────────
   const restaurant = RESTAURANTS[activeTab]
   const d          = data[activeTab]
   const available  = d.insights?.tables_available ?? d.tables.filter(t => t.status === "available").length
@@ -236,31 +383,25 @@ export default function WalnutDashboard() {
         justifyContent: "space-between", height: 60,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: "1.4rem", fontWeight: 900, letterSpacing: ".06em", color: C.text }}>HOST</span>
-          <span style={{ fontSize: 11, color: C.muted, letterSpacing: ".08em", textTransform: "uppercase" }}>
-            Owner Dashboard
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682acb/media/images/28198New_Walnut_Logo.png"
-              alt="Walnut Cafe" style={{ height: 32, objectFit: "contain" }}
-            />
-            <div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>The Walnut Cafe</p>
-              <p style={{ fontSize: 10, color: C.muted }}>Boulder, CO</p>
-            </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={LOGO} alt="Walnut Cafe" style={{ height: 32, objectFit: "contain" }} />
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>The Walnut Cafe</p>
+            <p style={{ fontSize: 10, color: C.muted }}>Admin Dashboard</p>
           </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Link href="/walnut/logins"
+            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none", background: "transparent" }}>
+            Logins
+          </Link>
+          <Link href="/walnut/station"
+            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none", background: "transparent" }}>
+            Station →
+          </Link>
           <button onClick={fetchAll}
             style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>
             <RefreshCw size={14} />
-          </button>
-          <button onClick={logout}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 12px", border: `1px solid ${C.border}`, borderRadius: 8, background: "transparent", cursor: "pointer", fontSize: 12, fontWeight: 600, color: C.text2 }}>
-            <LogOut size={13} />
-            Log out
           </button>
         </div>
       </div>
@@ -345,9 +486,9 @@ export default function WalnutDashboard() {
         {/* Stat pills */}
         <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
           {[
-            { label: "Available",   value: available, icon: CheckCircle2, color: C.green,  bg: C.greenBg,  border: "#BBF7D0" },
-            { label: "Occupied",    value: occupied,  icon: Users,        color: C.red,    bg: "#FEF2F2",  border: "#FECACA" },
-            { label: "Waiting",     value: waiting,   icon: Clock,        color: C.orange, bg: C.orangeBg, border: "#FDE68A" },
+            { label: "Available", value: available, icon: CheckCircle2, color: C.green,  bg: C.greenBg,  border: "#BBF7D0" },
+            { label: "Occupied",  value: occupied,  icon: Users,        color: C.red,    bg: "#FEF2F2",  border: "#FECACA" },
+            { label: "Waiting",   value: waiting,   icon: Clock,        color: C.orange, bg: C.orangeBg, border: "#FDE68A" },
           ].map(({ label, value, icon: Icon, color, bg, border }) => (
             <div key={label} style={{
               display: "flex", alignItems: "center", gap: 8,
@@ -401,17 +542,35 @@ export default function WalnutDashboard() {
           </div>
         </div>
 
-        {/* Footer links */}
-        <div style={{ marginTop: 20, display: "flex", gap: 10 }}>
-          <a href={restaurant.joinUrl} target="_blank" rel="noreferrer"
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              padding: "9px 16px", borderRadius: 10, background: C.surface,
-              border: `1px solid ${C.border}`, textDecoration: "none",
-              fontSize: 12, fontWeight: 600, color: C.text2,
-            }}>
-            Guest Join Page ↗
-          </a>
+        {/* NFC Join Links */}
+        <div style={{ marginTop: 20 }}>
+          <h3 style={{ fontSize: 12, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
+            Guest Join Links
+          </h3>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {RESTAURANTS.map(r => (
+              <div key={r.key} style={{
+                background: C.surface, border: `1px solid ${C.border}`,
+                borderRadius: 12, padding: "14px 18px",
+                flex: 1, minWidth: 200,
+              }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: r.color, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+                  {r.short}
+                </p>
+                <p style={{ fontSize: 12, color: C.text2, marginBottom: 8, wordBreak: "break-all" }}>{r.joinUrl}</p>
+                <a href={r.joinUrl} target="_blank" rel="noreferrer"
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    fontSize: 11, fontWeight: 600, color: r.color,
+                    padding: "6px 12px", borderRadius: 8,
+                    background: r.accent, border: `1px solid ${r.accentBorder}`,
+                    textDecoration: "none",
+                  }}>
+                  Open ↗
+                </a>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

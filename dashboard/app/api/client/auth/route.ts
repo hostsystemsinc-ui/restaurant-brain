@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { getCredentialOverride } from "@/lib/walnut-settings"
 
 // Known accounts: maps username → { envKey, redirect }
 const ACCOUNTS: Record<string, { envKey: string; redirect: string }> = {
@@ -34,7 +35,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
     }
 
-    const expected = process.env[account.envKey]
+    // Check for runtime credential override (set via /api/walnut/set-password)
+    // before falling back to the environment variable.
+    const override  = getCredentialOverride(key)
+    const expected  = override ?? process.env[account.envKey]
     if (!expected || password !== expected) {
       await new Promise(r => setTimeout(r, 400))
       return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })

@@ -1668,6 +1668,12 @@ export default function HostDashboard() {
               ? <HeaderLogo src={restaurantLogo} name={restaurantName} />
               : <span style={{ fontSize: 15, fontWeight: 800, color: "rgba(255,200,150,0.9)", letterSpacing: "0.04em", flexShrink: 0 }}>{restaurantName}</span>
             }
+            {/* Location label for Walnut restaurants (Original / Southside) */}
+            {(restaurantName.includes("Original") || restaurantName.includes("Southside")) && (
+              <span className="hidden sm:block text-[10px] font-black tracking-[0.14em] px-2 py-0.5 rounded-md shrink-0" style={{ background: "rgba(200,144,96,0.12)", color: "rgba(255,200,150,0.75)", border: "1px solid rgba(200,144,96,0.25)", textTransform: "uppercase" }}>
+                {restaurantName.includes("Original") ? "Original" : "Southside"}
+              </span>
+            )}
 
             <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
 
@@ -1702,9 +1708,22 @@ export default function HostDashboard() {
             <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
               <CalendarDays className="w-3 h-3" /> Reservations
             </Link>
-            <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
-              <LayoutDashboard className="w-3 h-3" /> Admin
-            </Link>
+            {/* Analog view — only for Walnut restaurants */}
+            {(restaurantName.includes("Original") || restaurantName.includes("Southside")) && (
+              <Link href="/analog" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+                <Activity className="w-3 h-3" /> Analog
+              </Link>
+            )}
+            {/* Admin link — Walnut goes to unified dashboard, others go to /admin */}
+            {(restaurantName.includes("Original") || restaurantName.includes("Southside")) ? (
+              <Link href="/walnut/dashboard" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+                <LayoutDashboard className="w-3 h-3" /> Admin
+              </Link>
+            ) : (
+              <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+                <LayoutDashboard className="w-3 h-3" /> Admin
+              </Link>
+            )}
             <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
               {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             </div>

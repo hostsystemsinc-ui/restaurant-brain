@@ -5,10 +5,14 @@ import type { NextRequest } from "next/server"
  * Multi-tenant routing + authentication middleware
  *
  * Auth protection:
- *   /owner/*           → requires httpOnly cookie  host_owner_session=1
- *   /station/*         → requires httpOnly cookie  host_client_session (any value)
- *   /admin/*           → requires httpOnly cookie  host_client_session (any value)
- *   /demo/station/*    → requires httpOnly cookie  host_client_session=demo
+ *   /owner/*              → requires httpOnly cookie  host_owner_session=1
+ *   /station/*            → requires httpOnly cookie  host_client_session (any value)
+ *   /admin/*              → requires httpOnly cookie  host_client_session (any value)
+ *   /analog/*             → requires httpOnly cookie  host_client_session (any value)
+ *   /demo/station/*       → requires httpOnly cookie  host_client_session=demo
+ *   /walnut/station/*     → requires httpOnly cookie  host_client_session=walnut
+ *   /walnut/dashboard/*   → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
+ *   /walnut/logins/*      → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
  *
  * Multi-tenant rewrite (after auth check):
  *   /walters303              → /admin
@@ -26,6 +30,7 @@ const RESERVED = new Set([
   "walnut",   // Walnut Cafe join pages + owner dashboard
   "api",
   "admin",
+  "analog",
   "station",
   "wait",
   "join",
@@ -84,10 +89,27 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // /walnut/dashboard → must be logged in as walnut owner account
-  if (destRoot === "walnut" && destSegments[1] === "dashboard") {
+  // /walnut/station → requires walnut owner account
+  if (destRoot === "walnut" && destSegments[1] === "station") {
     const cookie = request.cookies.get("host_client_session")
     if (!cookie || cookie.value !== "walnut") {
+      return NextResponse.redirect(new URL("/login/client", request.url))
+    }
+  }
+
+  // /walnut/dashboard and /walnut/logins → any authenticated client (PIN gate in the page)
+  const WALNUT_CLIENT_ROUTES = ["dashboard", "logins"]
+  if (destRoot === "walnut" && WALNUT_CLIENT_ROUTES.includes(destSegments[1])) {
+    const cookie = request.cookies.get("host_client_session")
+    if (!cookie || !cookie.value) {
+      return NextResponse.redirect(new URL("/login/client", request.url))
+    }
+  }
+
+  // /analog → any authenticated client (restaurant detected from session in page)
+  if (destRoot === "analog") {
+    const cookie = request.cookies.get("host_client_session")
+    if (!cookie || !cookie.value) {
       return NextResponse.redirect(new URL("/login/client", request.url))
     }
   }
