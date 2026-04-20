@@ -75,8 +75,10 @@ interface QueueEntry {
   quoted_wait: number | null
   wait_estimate?: number
   remaining_wait?: number
+  wait_set_at?: string | null
   arrival_time: string
   position?: number
+  paused?: boolean
   phone: string | null
   notes: string | null
 }
@@ -94,6 +96,17 @@ interface Reservation {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+
+// Parse a backend timestamp as UTC milliseconds.
+// SQLite stores datetimes without timezone suffix; without 'Z' browsers parse as local time.
+function parseUTCMs(ts: string | null | undefined): number | null {
+  if (!ts) return null
+  const s = (ts.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(ts))
+    ? ts
+    : ts.replace(" ", "T") + "Z"
+  const ms = new Date(s).getTime()
+  return isNaN(ms) ? null : ms
+}
 
 function timeWaiting(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -358,6 +371,7 @@ function DraggableQueueCard({
   const isReady = entry.status === "ready"
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [removing,      setRemoving]      = useState(false)
+  const [showBar,       setShowBar]       = useState(false)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: entry.id,
     data: { entry },
@@ -370,20 +384,31 @@ function DraggableQueueCard({
     onRemoved?.()
   }
 
-  // Per-card live countdown.
-  // remaining_wait = server-computed "minutes truly left" (quoted_wait minus elapsed time since
-  // updated_at). Falls back to wait_estimate when no quoted_wait has been set.
-  // We use it as ground truth on every poll; a 60-second client tick provides visual smoothness.
-  const [displayWait, setDisplayWait] = useState(entry.remaining_wait ?? entry.wait_estimate ?? 0)
+  // Per-card live countdown — driven by wait_set_at + quoted_wait for sub-minute accuracy
+  const computeSecsLeft = useCallback(() => {
+    if (entry.paused) return (entry.remaining_wait ?? 0) * 60
+    if (entry.wait_set_at && entry.quoted_wait != null) {
+      const deadlineMs = (parseUTCMs(entry.wait_set_at) ?? 0) + entry.quoted_wait * 60_000
+      return Math.round((deadlineMs - Date.now()) / 1000)
+    }
+    return (entry.remaining_wait ?? entry.wait_estimate ?? 0) * 60
+  }, [entry.paused, entry.wait_set_at, entry.quoted_wait, entry.remaining_wait, entry.wait_estimate])
+
+  const [secsLeft, setSecsLeft] = useState(computeSecsLeft)
+  useEffect(() => { setSecsLeft(computeSecsLeft()) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entry.wait_set_at, entry.quoted_wait, entry.remaining_wait, entry.wait_estimate, entry.paused])
   useEffect(() => {
-    setDisplayWait(entry.remaining_wait ?? entry.wait_estimate ?? 0)
-  }, [entry.remaining_wait, entry.wait_estimate])
-  useEffect(() => {
-    const target = entry.remaining_wait ?? entry.wait_estimate
-    if (!target) return
-    const t = setInterval(() => setDisplayWait(p => Math.max(0, p - 1)), 60_000)
+    if (entry.paused) return
+    const t = setInterval(() => setSecsLeft(computeSecsLeft()), 1000)
     return () => clearInterval(t)
-  }, [entry.remaining_wait, entry.wait_estimate])
+  }, [computeSecsLeft, entry.paused])
+
+  const displayWait   = Math.ceil(secsLeft / 60)
+  const quotedTotal   = entry.quoted_wait ?? entry.wait_estimate ?? 0
+  const progress      = quotedTotal > 0 ? Math.max(0, Math.min(1, 1 - secsLeft / (quotedTotal * 60))) : 0
+  const isOverdue     = secsLeft <= 0 && quotedTotal > 0
+  const barColor      = isOverdue ? "#ef4444" : secsLeft < 120 ? "#f97316" : "#22c55e"
 
   return (
     <div
@@ -428,18 +453,49 @@ function DraggableQueueCard({
           <Users className="w-2.5 h-2.5" />{entry.party_size}p
         </span>
         <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+        <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
         </span>
         {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
           <>
             <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
-            <span style={{ fontWeight: 700, color: displayWait === 0 ? "#ef4444" : displayWait <= 5 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
-              {displayWait === 0 ? "0:00" : `~${displayWait}m`}
+            <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
+              {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
             </span>
+            {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
+            {/* Progress bar toggle */}
+            <button
+              onPointerDown={e => { e.stopPropagation() }}
+              onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
+              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "rgba(255,185,100,0.08)", border: `1px solid ${showBar ? barColor : "rgba(255,185,100,0.20)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
+              title={showBar ? "Hide timer bar" : "Show timer bar"}
+            >
+              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(255,185,100,0.35)" }} />
+            </button>
           </>
         )}
       </div>
+      {/* ── Progress bar (shown when toggled) ── */}
+      {showBar && quotedTotal > 0 && !isReady && (
+        <div onPointerDown={e => e.stopPropagation()} style={{ paddingLeft: 38, paddingRight: 4 }}>
+          <div style={{ height: 4, borderRadius: 2, background: "rgba(255,185,100,0.10)", overflow: "hidden", position: "relative" }}>
+            <div style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: `${(progress * 100).toFixed(1)}%`,
+              background: barColor,
+              borderRadius: 2,
+              transition: "width 1s linear, background 0.3s",
+            }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "rgba(255,185,100,0.40)" }}>
+            <span>0</span>
+            <span style={{ color: isOverdue ? "#ef4444" : "rgba(255,185,100,0.40)" }}>
+              {isOverdue ? `${Math.abs(Math.ceil(secsLeft / 60))}m over` : `${displayWait}m left`}
+            </span>
+            <span>{quotedTotal}m</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Row 3: action buttons or delete confirm ── */}
       {confirmDelete ? (
@@ -1448,10 +1504,9 @@ export default function HostDashboard() {
     // Mark all current entries as seen
     queue.forEach(e => seenEntryIdsRef.current!.add(e.id))
 
-    // Open wait modal if a new unquoted entry arrived and no modal is already open
-    if (newEntry && !waitModalRef.current) {
-      setWaitModal({ id: newEntry.id, defaultMinutes: 15 })
-    }
+    // New unquoted guests appear in the blue "Needs Quote" section at the top of the sidebar
+    // (non-blocking — host can quote when ready)
+    void newEntry
   }, [queue])
 
   const seat   = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
@@ -1609,8 +1664,10 @@ export default function HostDashboard() {
     return !!t && t.status !== "available"
   }).length
   const available   = FLOOR_PLAN.length - floorOccupied
-  const readyList   = queue.filter(q => q.status === "ready")
-  const waitingList = queue.filter(q => q.status === "waiting")
+  const readyList      = queue.filter(q => q.status === "ready")
+  const waitingList    = queue.filter(q => q.status === "waiting")
+  const needsQuoteList = waitingList.filter(q => q.quoted_wait == null)
+  const quotedWaiting  = waitingList.filter(q => q.quoted_wait != null)
 
   // Reservations to show in sidebar: window of 3hr future + 45min past, sorted by urgency
   const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
@@ -1861,27 +1918,81 @@ export default function HostDashboard() {
               <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.14)" }} />
             )}
 
-            {/* Waiting section */}
-            <div className="px-3 pt-2 flex-1 overflow-y-auto">
-              <div className="flex items-center gap-2 mb-2 px-1">
-                {waitingList.length > 0 && <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />}
-                <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
-                  {waitingList.length > 0 ? `Waiting · ${waitingList.length}` : "Queue"}
-                </span>
+            {/* Needs Quote section — guests who joined without a quoted time */}
+            {needsQuoteList.length > 0 && (
+              <div className="px-3 pt-2 pb-1 shrink-0">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#60a5fa" }} />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(99,179,237,0.90)" }}>
+                    Needs Quote · {needsQuoteList.length}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1.5 pr-1">
+                  {needsQuoteList.map(e => (
+                    <div
+                      key={e.id}
+                      style={{
+                        borderRadius: 12, padding: "10px 12px",
+                        background: "rgba(99,179,237,0.07)",
+                        border: "1px solid rgba(99,179,237,0.30)",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.name || "Guest"}
+                        </div>
+                        <div style={{ fontSize: 11, color: "rgba(147,207,255,0.65)", display: "flex", gap: 6, marginTop: 2 }}>
+                          <span>{e.party_size}p</span>
+                          <span style={{ opacity: 0.5 }}>·</span>
+                          <span>{timeWaiting(e.arrival_time)} waiting</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setEditModal({ entry: e, displayWait: 0 })}
+                        style={{
+                          flexShrink: 0, height: 30, padding: "0 12px",
+                          borderRadius: 8, fontSize: 11, fontWeight: 700,
+                          background: "rgba(99,179,237,0.16)",
+                          color: "rgba(147,207,255,0.95)",
+                          border: "1px solid rgba(99,179,237,0.40)",
+                          cursor: "pointer", letterSpacing: "0.04em",
+                        }}
+                      >
+                        Quote
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
+            )}
+            {needsQuoteList.length > 0 && quotedWaiting.length > 0 && (
+              <div className="mx-3 my-1.5 shrink-0" style={{ height: 1, background: "rgba(99,179,237,0.14)" }} />
+            )}
+
+            {/* Waiting section — only guests that have been quoted */}
+            <div className="px-3 pt-2 flex-1 overflow-y-auto">
+              {quotedWaiting.length > 0 && (
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
+                    Waiting · {quotedWaiting.length}
+                  </span>
+                </div>
+              )}
 
               {queue.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
                   <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
                   <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
                 </div>
-              ) : waitingList.length === 0 ? (
+              ) : quotedWaiting.length === 0 && needsQuoteList.length === 0 ? (
                 <div className="flex items-center justify-center py-8" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
                   <p className="text-xs" style={{ color: "rgba(255,200,150,0.50)" }}>No one else waiting</p>
                 </div>
-              ) : (
+              ) : quotedWaiting.length > 0 ? (
                 <div className="flex flex-col gap-1.5 pb-24">
-                  {waitingList.map(e => (
+                  {quotedWaiting.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
@@ -1890,7 +2001,7 @@ export default function HostDashboard() {
                       onRemoved={() => refreshAll()} />
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* Sidebar footer — system health */}
@@ -1955,7 +2066,7 @@ export default function HostDashboard() {
         {showAdd && (
           <AddGuestDrawer
             onClose={() => setShowAdd(false)}
-            onAdded={(id, mins) => { setShowAdd(false); setWaitModal({ id, defaultMinutes: mins }); refreshAll() }}
+            onAdded={(_id, _mins) => { setShowAdd(false); refreshAll() }}
             restaurantId={restaurantId}
           />
         )}
