@@ -197,36 +197,25 @@ function WaitTimeModal({
   )
 }
 
-// ── Guest Edit Modal ────────────────────────────────────────────────────────────
+// ── Guest Edit Modal (sidebar panel — floor map stays live) ───────────────────
 
 function GuestEditModal({
-  entry, displayWait, onClose, onSaved, onRemoved,
+  entry, displayWait, sidebarW, onClose, onSaved, onRemoved,
 }: {
   entry: QueueEntry
   displayWait: number
+  sidebarW: number
   onClose: () => void
   onSaved: () => void
   onRemoved: () => void
 }) {
-  // "Set new estimate" stepper — starts at the current remaining time so the host sees
-  // exactly how much is left and can tweak from there rather than from the original quote.
   const [minutes,   setMinutes]   = useState(displayWait || entry.quoted_wait || entry.wait_estimate || 15)
   const [partySize, setPartySize] = useState(entry.party_size)
   const [phone,     setPhone]     = useState(entry.phone ?? "")
+  const [notes,     setNotes]     = useState(entry.notes ?? "")
   const [saving,    setSaving]    = useState(false)
   const [removing,  setRemoving]  = useState(false)
-  const [paused,    setPaused]    = useState(false)
-  // Live countdown shown at the top of the modal so the host can see time ticking down
-  const [countdown, setCountdown] = useState(displayWait)
   const PRESETS = [5, 10, 15, 20, 30, 45]
-
-  // Tick the in-modal countdown every 60 s (mirrors real time unless paused)
-  useEffect(() => {
-    if (paused) return
-    if (!countdown) return
-    const t = setInterval(() => setCountdown(p => Math.max(0, p - 1)), 60_000)
-    return () => clearInterval(t)
-  }, [paused, countdown])
 
   const save = async () => {
     setSaving(true)
@@ -234,7 +223,7 @@ function GuestEditModal({
       await fetch(`${API}/queue/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quoted_wait: minutes, party_size: partySize, phone: phone.trim() || null }),
+        body: JSON.stringify({ quoted_wait: minutes, party_size: partySize, phone: phone.trim() || null, notes: notes.trim() || null }),
       })
     } catch {}
     setSaving(false)
@@ -250,105 +239,74 @@ function GuestEditModal({
     onClose()
   }
 
-  // Colour-code the remaining-time badge
-  const countdownColor = countdown <= 0 ? "#22c55e" : countdown <= 5 ? "#f97316" : "rgba(251,191,36,0.90)"
-
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full sm:w-[520px] rounded-t-3xl sm:rounded-3xl" style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1, maxHeight: "92dvh", overflowY: "auto" }}>
-        <div className="p-8 pb-6">
-          <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
+    <div style={{
+      position: "fixed", top: 48, left: 0, bottom: 0,
+      width: sidebarW, zIndex: 48,
+      background: "#0C0907",
+      borderTop: "1px solid rgba(251,191,36,0.28)",
+      borderRight: "1px solid rgba(255,185,100,0.14)",
+      display: "flex", flexDirection: "column",
+      overflowY: "hidden",
+    }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px 28px" }}>
 
-          {/* Header */}
-          <div className="flex items-start justify-between mb-5">
-            <div>
-              <p className="text-xs font-black tracking-[0.22em] uppercase mb-0.5" style={{ color: "rgba(255,200,150,0.45)" }}>Edit Guest</p>
-              <p className="text-xl font-semibold" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
-            </div>
-            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl" style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}>
-              <X className="w-4 h-4" />
-            </button>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(255,200,150,0.40)" }}>Edit Guest</p>
+            <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
           </div>
-
-          {/* ── Time remaining banner ── */}
-          {(entry.quoted_wait != null || entry.wait_estimate != null) && (
-            <div className="flex items-center justify-between rounded-2xl mb-6 px-5 py-4" style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.13)" }}>
-              <div>
-                <p className="text-[10px] font-black tracking-[0.2em] uppercase mb-0.5" style={{ color: "rgba(255,200,150,0.40)" }}>Time Remaining</p>
-                <p className="text-3xl font-bold tabular-nums leading-none" style={{ color: countdownColor }}>
-                  {countdown > 0 ? `${countdown} min` : "Ready to seat"}
-                </p>
-                {paused && (
-                  <p className="text-[10px] font-bold tracking-[0.15em] uppercase mt-1" style={{ color: "rgba(249,115,22,0.7)" }}>⏸ Paused</p>
-                )}
-              </div>
-              <button
-                onClick={() => setPaused(p => !p)}
-                className="flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-bold tracking-[0.1em] uppercase transition-all active:scale-95 hover:brightness-110"
-                style={{
-                  background: paused ? "rgba(34,197,94,0.12)" : "rgba(249,115,22,0.10)",
-                  color:      paused ? "#22c55e"              : "#f97316",
-                  border: `1px solid ${paused ? "rgba(34,197,94,0.25)" : "rgba(249,115,22,0.20)"}`,
-                }}
-              >
-                {paused ? "▶ Resume" : "⏸ Pause"}
-              </button>
-            </div>
-          )}
-
-          {/* ── Set new estimate ── */}
-          <p className="text-xs font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Set New Estimate</p>
-          <div className="flex items-center justify-between mb-4 px-2">
-            <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
-            <div className="text-center">
-              <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
-              <span className="block text-sm mt-1" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
-            </div>
-            <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
-          </div>
-          <div className="grid grid-cols-3 gap-2.5 mb-7">
-            {PRESETS.map(p => (
-              <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{ height: 72, background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)", border: `1.5px solid ${minutes === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.11)"}`, boxShadow: minutes === p ? "0 0 0 3px rgba(255,185,100,0.10)" : "none" }}>
-                <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", color: minutes === p ? "rgba(255,200,150,0.60)" : "rgba(255,185,100,0.30)", marginTop: 3 }}>MIN</span>
-              </button>
-            ))}
-          </div>
-
-          {/* ── Party Size ── */}
-          <p className="text-xs font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
-          <div className="flex items-center gap-5 mb-7 px-2">
-            <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
-            <span className="text-5xl font-extralight tabular-nums flex-1 text-center" style={{ color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
-            <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
-          </div>
-
-          {/* ── Phone ── */}
-          <p className="text-xs font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span></p>
-          <input
-            type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-            placeholder="(555) 000-0000"
-            className="w-full rounded-2xl outline-none mb-7"
-            style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 18, padding: "16px 20px" }}
-          />
-
-          {/* ── Save ── */}
-          <button onClick={save} disabled={saving} className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 16, padding: "20px 0" }}>
-            {saving ? "Saving…" : "Save Changes"}
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.50)", border: "1px solid rgba(255,185,100,0.20)", background: "rgba(255,185,100,0.06)" }}>
+            <X className="w-4 h-4" />
           </button>
+        </div>
 
-          {/* ── Remove ── */}
-          <div style={{ margin: "20px -32px -24px", padding: "20px 32px 28px", borderTop: "1px solid rgba(239,68,68,0.12)" }}>
-            <button
-              onClick={remove}
-              disabled={removing}
-              className="w-full rounded-2xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-              style={{ background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.22)", fontSize: 14, padding: "16px 0" }}
-            >
-              {removing ? "Removing…" : "Remove from Waitlist"}
-            </button>
+        {/* Wait time */}
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Set Wait Time</p>
+        <div className="flex items-center justify-between mb-4 px-2">
+          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
+          <div className="text-center">
+            <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
+            <span className="text-sm ml-2" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
           </div>
+          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
+        </div>
+        <div className="grid grid-cols-6 gap-2 mb-5">
+          {PRESETS.map(p => (
+            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)", border: `1px solid ${minutes === p ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}` }}>
+              <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
+              <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "rgba(255,200,150,0.55)" : "rgba(255,185,100,0.28)", marginTop: 2 }}>min</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Party size */}
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
+        <div className="flex items-center rounded-xl mb-4" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", padding: "0 12px", height: 56 }}>
+          <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>−</button>
+          <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
+          <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>+</button>
+        </div>
+
+        {/* Phone */}
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" className="w-full rounded-xl outline-none mb-4" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }} />
+
+        {/* Notes */}
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Notes <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Allergies, preferences, occasion…" className="w-full rounded-xl outline-none mb-5" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }} />
+
+        {/* Save */}
+        <button onClick={save} disabled={saving} className="w-full rounded-xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 15, padding: "18px 0" }}>
+          {saving ? "Saving…" : "Save Changes"}
+        </button>
+
+        {/* Remove */}
+        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(239,68,68,0.10)" }}>
+          <button onClick={remove} disabled={removing} className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.70)", border: "1px solid rgba(239,68,68,0.18)", fontSize: 14, padding: "18px 0" }}>
+            {removing ? "Removing…" : "Remove from Waitlist"}
+          </button>
         </div>
       </div>
     </div>
@@ -2083,6 +2041,7 @@ export default function HostDashboard() {
           <GuestEditModal
             entry={editModal.entry}
             displayWait={editModal.displayWait}
+            sidebarW={sidebarW}
             onClose={() => setEditModal(null)}
             onSaved={() => { setEditModal(null); refreshAll() }}
             onRemoved={() => { setEditModal(null); refreshAll() }}
