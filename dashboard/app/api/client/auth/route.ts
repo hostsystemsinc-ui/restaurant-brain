@@ -2,21 +2,21 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { getCredentialOverride } from "@/lib/walnut-settings"
 
-// Known accounts: maps username → { envKey, redirect }
-const ACCOUNTS: Record<string, { envKey: string; redirect: string }> = {
-  walters:   { envKey: "CLIENT_PASS_WALTERS",   redirect: "/station" },
-  demo:      { envKey: "CLIENT_PASS_DEMO",       redirect: "/demo/station" },
-  original:  { envKey: "CLIENT_PASS_ORIGINAL",   redirect: "/station" },
-  southside: { envKey: "CLIENT_PASS_SOUTHSIDE",  redirect: "/station" },
-  walnut:    { envKey: "CLIENT_PASS_WALNUT",     redirect: "/walnut/dashboard" },
+// Known accounts: maps username → { envKey, redirect, maxAge }
+const ACCOUNTS: Record<string, { envKey: string; redirect: string; maxAge: number }> = {
+  walters:   { envKey: "CLIENT_PASS_WALTERS",   redirect: "/station",          maxAge: 60 * 60 * 12          }, // 12h
+  demo:      { envKey: "CLIENT_PASS_DEMO",       redirect: "/demo/station",     maxAge: 60 * 60 * 12          }, // 12h
+  // Station accounts — 1-year maxAge so tablets never log out unexpectedly
+  original:  { envKey: "CLIENT_PASS_ORIGINAL",   redirect: "/station",          maxAge: 60 * 60 * 24 * 365    }, // 1 year
+  southside: { envKey: "CLIENT_PASS_SOUTHSIDE",  redirect: "/station",          maxAge: 60 * 60 * 24 * 365    }, // 1 year
+  walnut:    { envKey: "CLIENT_PASS_WALNUT",     redirect: "/walnut/dashboard", maxAge: 60 * 60 * 12          }, // 12h
 }
 
 const COOKIE_NAME = "host_client_session"
-const COOKIE_OPTS = {
+const COOKIE_BASE = {
   httpOnly: true,
   sameSite: "lax" as const,
-  path: "/",
-  maxAge: 60 * 60 * 12, // 12 hours
+  path:     "/",
 }
 
 // POST /api/client/auth — validates client credentials server-side, sets httpOnly session cookie
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     }
 
     const res = NextResponse.json({ redirect: account.redirect })
-    res.cookies.set(COOKIE_NAME, key, COOKIE_OPTS)
+    res.cookies.set(COOKIE_NAME, key, { ...COOKIE_BASE, maxAge: account.maxAge })
     return res
   } catch {
     return NextResponse.json({ error: "Bad request" }, { status: 400 })
@@ -63,6 +63,6 @@ export async function GET() {
 // DELETE /api/client/auth — clears the client session cookie (logout)
 export async function DELETE() {
   const res = NextResponse.json({ success: true })
-  res.cookies.set(COOKIE_NAME, "", { ...COOKIE_OPTS, maxAge: 0 })
+  res.cookies.set(COOKIE_NAME, "", { ...COOKIE_BASE, maxAge: 0 })
   return res
 }

@@ -10,7 +10,6 @@ import type { NextRequest } from "next/server"
  *   /admin/*              → requires httpOnly cookie  host_client_session (any value)
  *   /analog/*             → requires httpOnly cookie  host_client_session (any value)
  *   /demo/station/*       → requires httpOnly cookie  host_client_session=demo
- *   /walnut/station/*     → requires httpOnly cookie  host_client_session=walnut
  *   /walnut/dashboard/*   → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
  *   /walnut/logins/*      → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
  *
@@ -85,14 +84,6 @@ export function middleware(request: NextRequest) {
   if (destRoot === "demo" && DEMO_PROTECTED.includes(destSegments[1])) {
     const cookie = request.cookies.get("host_client_session")
     if (!cookie || cookie.value !== "demo") {
-      return NextResponse.redirect(new URL("/login/client", request.url))
-    }
-  }
-
-  // /walnut/station → requires walnut owner account
-  if (destRoot === "walnut" && destSegments[1] === "station") {
-    const cookie = request.cookies.get("host_client_session")
-    if (!cookie || cookie.value !== "walnut") {
       return NextResponse.redirect(new URL("/login/client", request.url))
     }
   }
