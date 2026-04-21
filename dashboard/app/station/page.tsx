@@ -83,7 +83,7 @@ interface QueueEntry {
   notes: string | null
 }
 
-interface LocalOccupant { name: string; party_size: number }
+interface LocalOccupant { name: string; party_size: number; entry_id?: string }
 
 interface Reservation {
   id:         string
@@ -996,7 +996,7 @@ function TableGuestPicker({
     } else {
       await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
     }
-    onSeated(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size })
+    onSeated(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id })
     onClose()
   }
 
@@ -1016,7 +1016,7 @@ function TableGuestPicker({
         } else {
           await fetch(`${API}/queue/${entryId}/seat`, { method: "POST" })
         }
-        onSeated(tableNumber, { name: name.trim() || "Guest", party_size: partySize })
+        onSeated(tableNumber, { name: name.trim() || "Guest", party_size: partySize, entry_id: entryId })
         onClose()
       }
     } catch {}
@@ -1329,6 +1329,10 @@ export default function HostDashboard() {
   const [restaurantId,   setRestaurantId]   = useState<string>("")
   const [restaurantName, setRestaurantName] = useState<string>("")
   const [restaurantLogo, setRestaurantLogo] = useState<string>("")
+  const [zoom, setZoom] = useState(() => { try { return parseFloat(localStorage.getItem("host_walnut_zoom") || "1") } catch { return 1 } })
+  useEffect(() => { try { localStorage.setItem("host_walnut_zoom", String(zoom)) } catch {} }, [zoom])
+  const [theme, setTheme] = useState<"dark" | "light">(() => { try { return (localStorage.getItem("host_walnut_theme") as "dark" | "light") || "dark" } catch { return "dark" } })
+  useEffect(() => { try { localStorage.setItem("host_walnut_theme", theme) } catch {} }, [theme])
   const [tables, setTables]               = useState<Table[]>([])
   const [queue, setQueue]                 = useState<QueueEntry[]>([])
   const [online, setOnline]               = useState(true)
@@ -1565,7 +1569,7 @@ export default function HostDashboard() {
     } else {
       await fetch(`${API}/queue/${entry.id}/seat`, { method: "POST" })
     }
-    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size }))
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
     refreshAll()
   }, [refreshAll])
 
@@ -1587,7 +1591,7 @@ export default function HostDashboard() {
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
   }, [refreshAll])
 
-  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number) => {
+  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string, mode: "restore" | "cancel" = "cancel") => {
     // flushSync forces the optimistic render to commit NOW, before the network call starts —
     // the table is painted green in the same tick as the click.
     flushSync(() => {
@@ -1598,6 +1602,13 @@ export default function HostDashboard() {
     pendingClearsRef.current.add(tableNumber)
     if (tableId) {
       try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
+    }
+    if (entryId) {
+      if (mode === "restore") {
+        try { await fetch(`${API}/queue/${entryId}/restore`, { method: "POST" }) } catch {}
+      } else {
+        try { await fetch(`${API}/queue/${entryId}/remove`, { method: "POST" }) } catch {}
+      }
     }
     pendingClearsRef.current.delete(tableNumber)
     refreshAll()  // refreshAll will remove tableNumber from locallyAvailableTables once server confirms available
@@ -1694,7 +1705,7 @@ export default function HostDashboard() {
     } else {
       seat(entry.id)
     }
-    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size }))
+    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
   }
 
   // Floor availability
@@ -1737,7 +1748,19 @@ export default function HostDashboard() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex flex-col w-full" style={{ height: "100dvh", overflow: "hidden", background: "#0C0907" }}>
+      <style>{`
+        [data-host-theme="dark"]  { --accent:255,185,100; --warm:255,200,150; --cream:255,248,240; --page-bg:#0C0907; --card-bg:#100C09; --page-deep:#0a0704; --header-bg:rgba(7,4,2,0.98); --header-border:rgba(var(--accent),0.18); --divider:rgba(var(--accent),0.16); }
+        [data-host-theme="light"] { --accent:160,90,0;   --warm:110,60,5;    --cream:18,10,3;     --page-bg:#F5F2EE; --card-bg:#FFFFFF;   --page-deep:#EDE9E3; --header-bg:rgba(252,249,245,0.98); --header-border:rgba(160,90,0,0.18); --divider:rgba(160,90,0,0.14); }
+      `}</style>
+      <div data-host-theme={theme} style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--page-bg)" }}>
+      <div className="flex flex-col" style={{
+        width: `${(1 / zoom * 100).toFixed(6)}vw`,
+        height: `${(1 / zoom * 100).toFixed(6)}dvh`,
+        background: "var(--page-bg)",
+        transform: `scale(${zoom})`,
+        transformOrigin: "top left",
+        overflow: "hidden",
+      }}>
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header
@@ -1796,6 +1819,27 @@ export default function HostDashboard() {
                 <Activity className="w-3 h-3" /> Analog
               </Link>
             )}
+            {/* Zoom controls */}
+            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,185,100,0.14)", background: "rgba(255,185,100,0.04)" }}>
+              <button onClick={() => setZoom(z => Math.max(0.7, Math.round((z - 0.1) * 10) / 10))}
+                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
+                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                title="Zoom out">−</button>
+              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "rgba(255,200,150,0.45)", minWidth: 28, textAlign: "center" }}>
+                {Math.round(zoom * 100)}%
+              </span>
+              <button onClick={() => setZoom(z => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))}
+                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
+                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                title="Zoom in">+</button>
+            </div>
+            {/* Light / Dark toggle */}
+            <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+              className="h-7 px-2 rounded-lg hidden sm:flex items-center gap-1 text-[11px] font-semibold transition-colors hover:bg-white/8"
+              style={{ color: "rgba(255,200,150,0.65)", border: "1px solid rgba(255,185,100,0.14)", background: "rgba(255,185,100,0.04)" }}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+              {theme === "dark" ? "☀︎" : "◗"} {theme === "dark" ? "Light" : "Dark"}
+            </button>
             {/* Admin link — Walnut goes to unified dashboard, others go to /admin */}
             {(restaurantName.includes("Original") || restaurantName.includes("Southside")) ? (
               <Link href="/walnut/dashboard" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
@@ -2087,8 +2131,12 @@ export default function HostDashboard() {
               localOccupants={localOccupants}
               onClear={(tableId, tableNumber) => {
                 const occupant = localOccupants.get(tableNumber)
-                if (occupant) setClearConfirm({ tableId, tableNumber, occupant })
-                else clearTable(tableId, tableNumber)
+                const dbOccupied = tables.find(t => t.table_number === tableNumber)?.status === "occupied"
+                if (occupant || dbOccupied) {
+                  setClearConfirm({ tableId, tableNumber, occupant: occupant ?? { name: "Guest", party_size: 2 } })
+                } else {
+                  clearTable(tableId, tableNumber)
+                }
               }}
               isDraggingOccupant={!!activeDragOccupant}
               selectedEntry={selectedEntry}
@@ -2184,25 +2232,32 @@ export default function HostDashboard() {
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setClearConfirm(null)} />
             <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "#100C09", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
               <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
-              <p className="text-base font-bold mb-2" style={{ color: "rgba(255,248,240,0.92)" }}>Clear Table?</p>
+              <p className="text-base font-bold mb-1" style={{ color: "rgba(255,248,240,0.92)" }}>Table {clearConfirm.tableNumber}</p>
               <p className="text-sm mb-8" style={{ color: "rgba(255,200,150,0.55)" }}>
-                Remove <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
-                ({clearConfirm.occupant.party_size}p) from the floor map?
+                What would you like to do with{" "}
+                <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
+                ({clearConfirm.occupant.party_size}p)?
               </p>
               <div className="flex flex-col gap-3">
+                {clearConfirm.occupant.entry_id && (
+                  <button
+                    onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "restore"); setClearConfirm(null) }}
+                    className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                    style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.35)", fontSize: 16, padding: "20px 0" }}>
+                    Return to Waitlist
+                  </button>
+                )}
                 <button
-                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber); setClearConfirm(null) }}
+                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "cancel"); setClearConfirm(null) }}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                  style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.32)", fontSize: 16, padding: "20px 0" }}
-                >
-                  Yes, Clear Table
+                  style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.28)", fontSize: 16, padding: "20px 0" }}>
+                  Clear Table
                 </button>
                 <button
                   onClick={() => setClearConfirm(null)}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                  style={{ background: "rgba(255,185,100,0.06)", color: "rgba(255,200,150,0.65)", border: "1px solid rgba(255,185,100,0.12)", fontSize: 15, padding: "18px 0" }}
-                >
-                  Keep
+                  style={{ background: "rgba(255,185,100,0.06)", color: "rgba(255,200,150,0.65)", border: "1px solid rgba(255,185,100,0.12)", fontSize: 15, padding: "18px 0" }}>
+                  Keep Seated
                 </button>
               </div>
             </div>
@@ -2268,6 +2323,7 @@ export default function HostDashboard() {
           </div>
         )}
       </DragOverlay>
+      </div>
     </DndContext>
   )
 }

@@ -2,7 +2,25 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, Delete, LogIn } from "lucide-react"
+import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, Delete, LogIn, X } from "lucide-react"
+
+// Business day starts at 3am
+function getBusinessDate(): string {
+  const now = new Date()
+  if (now.getHours() < 3) now.setDate(now.getDate() - 1)
+  return now.toLocaleDateString("en-CA")
+}
+
+interface HistoryEntry {
+  id: string
+  name: string
+  party_size: number
+  status: "seated" | "removed"
+  arrival_time: string
+  quoted_wait: number | null
+  phone: string | null
+  notes: string | null
+}
 
 const API  = "https://restaurant-brain-production.up.railway.app"
 const LOGO = "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682acb/media/images/28198New_Walnut_Logo.png"
@@ -88,12 +106,14 @@ interface Occupant {
 }
 
 interface RestaurantData {
-  tables:    Table[]
-  queue:     QueueEntry[]
-  occupants: Map<number, Occupant>  // table_number → occupant (from /tables/occupants)
-  avgWait:   number
-  online:    boolean
-  lastSync:  Date
+  tables:       Table[]
+  queue:        QueueEntry[]
+  occupants:    Map<number, Occupant>  // table_number → occupant (from /tables/occupants)
+  avgWait:      number
+  history:      HistoryEntry[]
+  dailyAvgWait: number | null
+  online:       boolean
+  lastSync:     Date
 }
 
 // ── Color system ───────────────────────────────────────────────────────────────
@@ -143,8 +163,8 @@ function FloorMap({ tables, occupants }: { tables: Table[]; occupants: Map<numbe
       {/* Tables */}
       {FLOOR_PLAN.map(pos => {
         const t       = byNumber.get(pos.number)
-        const isOcc   = t ? t.status !== "available" : false
-        const occ     = isOcc ? occupants.get(pos.number) : undefined
+        const isOcc   = occupants.has(pos.number) || (t ? t.status !== "available" : false)
+        const occ     = occupants.get(pos.number)
         const isUnknown = !t
         const radius  = pos.shape === "round" ? "50%" : "11%"
         // For tooltip: show name + party size if we have occupant info
@@ -178,7 +198,7 @@ function FloorMap({ tables, occupants }: { tables: Table[]; occupants: Map<numbe
               {pos.number}
             </span>
             {/* Party size badge on occupied tables */}
-            {isOcc && occ && (
+            {occ && (
               <span style={{ fontSize: "min(0.9cqi, 7px)", lineHeight: 1, opacity: 0.75, fontWeight: 700 }}>
                 {occ.party_size}p
               </span>
@@ -372,16 +392,185 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
   )
 }
 
+// ── History Drawer ─────────────────────────────────────────────────────────────
+
+function HistoryDrawer({
+  restaurantId, restaurantName, history, tables, onClose, onRestored,
+}: {
+  restaurantId: string
+  restaurantName: string
+  history: HistoryEntry[]
+  tables: Table[]
+  onClose: () => void
+  onRestored: () => void
+}) {
+  const [restoring, setRestoring] = useState<string | null>(null)
+  const [seatPicker, setSeatPicker] = useState<HistoryEntry | null>(null)
+  const [seating, setSeating] = useState<string | null>(null)
+
+  const fmtTime = (iso: string) => {
+    try { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) }
+    catch { return "—" }
+  }
+
+  const restore = async (e: HistoryEntry) => {
+    setRestoring(e.id)
+    try {
+      const r = await fetch(`${API}/queue/${e.id}/restore`, { method: "POST" })
+      if (r.ok) onRestored()
+    } catch {}
+    setRestoring(null)
+    onClose()
+  }
+
+  const seatAtTable = async (entry: HistoryEntry, tableId: string) => {
+    setSeating(entry.id)
+    try {
+      await fetch(`${API}/queue/${entry.id}/restore`, { method: "POST" })
+      await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
+      onRestored()
+    } catch {}
+    setSeating(null)
+    setSeatPicker(null)
+    onClose()
+  }
+
+  const seated  = history.filter(e => e.status === "seated")
+  const removed = history.filter(e => e.status === "removed")
+
+  const availableTables = tables.filter(t => t.status === "available")
+
+  // Suppress unused warning — restaurantId used conceptually for scoping
+  void restaurantId
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-end" style={{ fontFamily: "var(--font-geist), system-ui, sans-serif" }}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full sm:w-[420px] h-full sm:h-[90vh] sm:max-h-[90vh] sm:mr-4 sm:rounded-2xl flex flex-col overflow-hidden"
+        style={{ background: C.surface, border: `1px solid ${C.border}`, zIndex: 1 }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0" style={{ borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: C.muted, marginBottom: 2 }}>Today&apos;s History</p>
+            <p style={{ fontSize: 17, fontWeight: 800, color: C.text }}>{restaurantName}</p>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: `1px solid ${C.border}`, cursor: "pointer", color: C.muted }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Summary */}
+        <div className="px-5 py-3 shrink-0 flex gap-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+          {[
+            { label: "Seated Today", value: seated.length, color: C.green },
+            { label: "Removed Today", value: removed.length, color: C.red },
+          ].map(({ label, value, color }) => (
+            <div key={label} style={{ flex: 1, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px", textAlign: "center" }}>
+              <p style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1 }}>{value}</p>
+              <p style={{ fontSize: 10, fontWeight: 600, color: C.muted, marginTop: 2 }}>{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {history.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <Clock size={28} style={{ color: C.muted }} />
+              <p style={{ fontSize: 14, fontWeight: 600, color: C.text2 }}>No history yet today</p>
+              <p style={{ fontSize: 12, color: C.muted, maxWidth: 220, lineHeight: 1.6 }}>Seated and removed guests will appear here.</p>
+            </div>
+          ) : (
+            [
+              { key: "removed", label: "Removed", color: C.red,   items: removed },
+              { key: "seated",  label: "Seated",  color: C.green, items: seated  },
+            ].filter(s => s.items.length > 0).map(section => (
+              <div key={section.key} style={{ marginBottom: 24 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted }}>{section.label}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: section.color }}>{section.items.length}</span>
+                </div>
+                <div style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}` }}>
+                  {section.items.map((e, i) => (
+                    <div key={e.id} style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "12px 14px",
+                      background: i % 2 === 0 ? C.bg : C.surface,
+                      borderTop: i > 0 ? `1px solid ${C.border}` : "none",
+                    }}>
+                      <div style={{ width: 3, height: 40, borderRadius: 2, background: section.color, opacity: 0.6, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 2 }}>
+                          <span style={{ fontSize: 14, fontWeight: 600, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name || "Guest"}</span>
+                          <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{fmtTime(e.arrival_time)}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: C.text2, display: "flex", gap: 6 }}>
+                          <span>{e.party_size} {e.party_size === 1 ? "guest" : "guests"}</span>
+                          {e.quoted_wait != null && <><span style={{ opacity: 0.4 }}>·</span><span>{e.quoted_wait}m quoted</span></>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                        <button onClick={() => setSeatPicker(e)}
+                          style={{ height: 30, padding: "0 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: C.greenBg, color: C.green, border: `1px solid #BBF7D0`, cursor: "pointer" }}>
+                          Seat
+                        </button>
+                        <button onClick={() => restore(e)} disabled={restoring === e.id}
+                          style={{ height: 30, padding: "0 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: C.bg, color: C.text2, border: `1px solid ${C.border}`, cursor: "pointer", opacity: restoring === e.id ? 0.5 : 1 }}>
+                          {restoring === e.id ? "…" : "Waitlist"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Seat at table picker */}
+      {seatPicker && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSeatPicker(null)} />
+          <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-6"
+            style={{ background: C.surface, border: `1px solid ${C.border}`, zIndex: 1 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>Seat {seatPicker.name || "Guest"} ({seatPicker.party_size}p)</p>
+            <p style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>Choose an available table:</p>
+            {availableTables.length === 0 ? (
+              <p style={{ fontSize: 13, color: C.muted, textAlign: "center", padding: "24px 0" }}>No tables available right now</p>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
+                {availableTables.map(t => (
+                  <button key={t.id} onClick={() => seatAtTable(seatPicker, t.id)} disabled={seating === seatPicker.id}
+                    style={{ height: 56, borderRadius: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: C.greenBg, border: `1px solid #BBF7D0`, cursor: "pointer", opacity: seating === seatPicker.id ? 0.5 : 1 }}>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{t.table_number}</span>
+                    <span style={{ fontSize: 9, color: C.green, opacity: 0.7 }}>{t.capacity}p</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setSeatPicker(null)}
+              style={{ width: "100%", padding: "10px 0", borderRadius: 10, background: C.bg, border: `1px solid ${C.border}`, color: C.text2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 
 export default function WalnutDashboard() {
   // PIN is NEVER pre-checked from the cookie — always required on every page load
-  const [pinOk,    setPinOk]    = useState(false)
-  const [activeTab, setActiveTab] = useState<0 | 1>(0)
-  const [entering,  setEntering]  = useState<string | null>(null)
+  const [pinOk,       setPinOk]       = useState(false)
+  const [activeTab,   setActiveTab]   = useState<0 | 1>(0)
+  const [entering,    setEntering]    = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const [data, setData] = useState<[RestaurantData, RestaurantData]>([
-    { tables: [], queue: [], occupants: new Map(), avgWait: 0, online: true,  lastSync: new Date() },
-    { tables: [], queue: [], occupants: new Map(), avgWait: 0, online: true,  lastSync: new Date() },
+    { tables: [], queue: [], occupants: new Map(), avgWait: 0, history: [], dailyAvgWait: null, online: true,  lastSync: new Date() },
+    { tables: [], queue: [], occupants: new Map(), avgWait: 0, history: [], dailyAvgWait: null, online: true,  lastSync: new Date() },
   ])
 
   // Fetch using /state (same endpoint the station page uses) so table statuses are live.
@@ -414,25 +603,55 @@ export default function WalnutDashboard() {
           status:       t.status,
         }))
 
-        // Build occupant map: only include tables that are actually occupied
-        // per the deduped tables state (occupants endpoint can have stale entries)
-        const occupiedNums = new Set(tables.filter(t => t.status !== "available").map(t => t.table_number))
+        // Build occupant map: include ALL entries from the occupants endpoint —
+        // /tables/occupants is the true source of truth for which tables have guests.
         const occupants = new Map<number, Occupant>()
         if (occupantsRes.ok) {
           const raw = await occupantsRes.json() as Record<string, { name: string; party_size: number }>
           for (const [numStr, occ] of Object.entries(raw)) {
             const num = parseInt(numStr, 10)
-            if (occupiedNums.has(num)) {
-              occupants.set(num, { name: occ.name, party_size: occ.party_size })
-            }
+            occupants.set(num, { name: occ.name, party_size: occ.party_size })
           }
         }
 
+        // Fetch history for daily stats
+        let history: HistoryEntry[] = []
+        let dailyAvgWait: number | null = null
+        try {
+          const histRes = await fetch(`${API}/queue/history?restaurant_id=${r.rid}`)
+          if (histRes.ok) {
+            const allHistory: HistoryEntry[] = await histRes.json()
+            const bd = getBusinessDate()
+            // Filter to today's business day (entries after 3am today)
+            history = allHistory.filter(e => {
+              try {
+                const d = new Date(e.arrival_time)
+                const entryDate = d.toLocaleDateString("en-CA")
+                const entryHour = d.getHours()
+                // If arrival is before 3am, it belongs to previous business day
+                if (entryHour < 3) {
+                  const prev = new Date(d)
+                  prev.setDate(prev.getDate() - 1)
+                  return prev.toLocaleDateString("en-CA") === bd
+                }
+                return entryDate === bd
+              } catch { return false }
+            })
+            // Compute daily avg from today's seated guests' quoted_wait
+            const seatedWithWait = history.filter(e => e.status === "seated" && e.quoted_wait != null)
+            if (seatedWithWait.length > 0) {
+              dailyAvgWait = Math.round(seatedWithWait.reduce((a, e) => a + (e.quoted_wait ?? 0), 0) / seatedWithWait.length)
+            }
+          }
+        } catch {}
+
         return {
           tables,
-          queue:     (d.queue   ?? []) as QueueEntry[],
+          queue:        (d.queue   ?? []) as QueueEntry[],
           occupants,
-          avgWait:   (d.avg_wait ?? 0) as number,
+          avgWait:      (d.avg_wait ?? 0) as number,
+          history,
+          dailyAvgWait,
         }
       })
     )
@@ -442,7 +661,7 @@ export default function WalnutDashboard() {
         if (r.status === "fulfilled") {
           next[i] = { ...r.value, online: true, lastSync: new Date() }
         } else {
-          next[i] = { ...prev[i], online: false, occupants: prev[i].occupants }
+          next[i] = { ...prev[i], online: false, occupants: prev[i].occupants, history: prev[i].history, dailyAvgWait: prev[i].dailyAvgWait }
         }
       })
       return next
@@ -485,11 +704,15 @@ export default function WalnutDashboard() {
   // tables seeded for a restaurant, and we always know there are 16 tables.
   function stats(d: RestaurantData) {
     const total     = FLOOR_PLAN.length  // always 16
-    const occupied  = d.tables.filter(t => t.status !== "available").length
+    // Use occupants map as the source of truth (since we removed the occupiedNums filter).
+    // Fall back to table status count for tables that have no occupant entry.
+    const fromOccupants = d.occupants.size
+    const fromTables    = d.tables.filter(t => t.status !== "available").length
+    const occupied  = Math.max(fromOccupants, fromTables)
     const available = total - occupied
     const waiting   = d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
     const occupancy = Math.round(occupied / total * 100)
-    return { total, available, occupied, waiting, occupancy, avgWait: d.avgWait }
+    return { total, available, occupied, waiting, occupancy, avgWait: d.dailyAvgWait ?? d.avgWait }
   }
 
   const restaurant = RESTAURANTS[activeTab]
@@ -497,8 +720,13 @@ export default function WalnutDashboard() {
   const s          = stats(d)
 
   const activeQueue    = d.queue.filter(e => e.status === "waiting" || e.status === "ready")
-  const longestWait    = activeQueue.length > 0
-    ? Math.max(...activeQueue.map(e => Math.round((Date.now() - new Date(e.arrival_time).getTime()) / 60_000)))
+  const longestWait = activeQueue.length > 0
+    ? (() => {
+        const waits = activeQueue
+          .map(e => Math.round((Date.now() - new Date(e.arrival_time).getTime()) / 60_000))
+          .filter(m => m >= 0)
+        return waits.length > 0 ? Math.max(...waits) : null
+      })()
     : null
 
   return (
@@ -523,6 +751,10 @@ export default function WalnutDashboard() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setShowHistory(true)}
+            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer" }}>
+            History
+          </button>
           <Link href="/walnut/logins"
             style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
             Logins
@@ -684,6 +916,17 @@ export default function WalnutDashboard() {
           </div>
         </div>
       </div>
+
+      {showHistory && (
+        <HistoryDrawer
+          restaurantId={restaurant.rid}
+          restaurantName={restaurant.name}
+          history={d.history}
+          tables={d.tables}
+          onClose={() => setShowHistory(false)}
+          onRestored={() => { setShowHistory(false); fetchAll() }}
+        />
+      )}
     </div>
   )
 }
