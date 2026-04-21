@@ -2043,7 +2043,7 @@ export default function HostDashboard() {
         {showAdd && (
           <AddGuestDrawer
             onClose={() => setShowAdd(false)}
-            onAdded={(_id, _mins) => { setShowAdd(false); refreshAll() }}
+            onAdded={(id, mins) => { setShowAdd(false); if (id) setWaitModal({ id, defaultMinutes: mins }); refreshAll() }}
             restaurantId={restaurantId}
           />
         )}

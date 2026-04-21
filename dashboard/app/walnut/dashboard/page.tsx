@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, Delete, LogIn, TrendingUp } from "lucide-react"
+import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, Delete, LogIn } from "lucide-react"
 
 const API  = "https://restaurant-brain-production.up.railway.app"
 const LOGO = "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682acb/media/images/28198New_Walnut_Logo.png"
@@ -13,23 +13,18 @@ const CANVAS_W = 920
 const CANVAS_H = 500
 
 const FLOOR_PLAN = [
-  // Window 2-tops (far left, round)
   { number: 1,  shape: "round",  x: 28,  y: 32,  w: 72,  h: 72,  section: "main" },
   { number: 2,  shape: "round",  x: 28,  y: 148, w: 72,  h: 72,  section: "main" },
   { number: 3,  shape: "round",  x: 28,  y: 264, w: 72,  h: 72,  section: "main" },
-  // 4-tops (second column, square)
   { number: 4,  shape: "square", x: 148, y: 26,  w: 95,  h: 95,  section: "main" },
   { number: 5,  shape: "square", x: 148, y: 163, w: 95,  h: 95,  section: "main" },
   { number: 6,  shape: "square", x: 148, y: 298, w: 95,  h: 95,  section: "main" },
-  // Center feature tables (rect)
   { number: 7,  shape: "rect",   x: 293, y: 26,  w: 162, h: 112, section: "main" },
   { number: 8,  shape: "rect",   x: 293, y: 196, w: 162, h: 112, section: "main" },
   { number: 9,  shape: "rect",   x: 293, y: 366, w: 162, h: 98,  section: "main" },
-  // Right 4-tops
   { number: 10, shape: "square", x: 506, y: 26,  w: 95,  h: 95,  section: "main" },
   { number: 11, shape: "square", x: 506, y: 163, w: 95,  h: 95,  section: "main" },
   { number: 12, shape: "square", x: 506, y: 298, w: 95,  h: 95,  section: "main" },
-  // Bar stools (far right, behind divider)
   { number: 13, shape: "round",  x: 748, y: 36,  w: 60,  h: 60,  section: "bar" },
   { number: 14, shape: "round",  x: 748, y: 134, w: 60,  h: 60,  section: "bar" },
   { number: 15, shape: "round",  x: 748, y: 232, w: 60,  h: 60,  section: "bar" },
@@ -76,21 +71,12 @@ interface QueueEntry {
   party_size: number
   status: "waiting" | "ready" | "seated" | "removed"
   arrival_time: string
-  position?: number
-}
-
-interface Insights {
-  tables_total: number
-  tables_available: number
-  tables_occupied: number
-  parties_waiting: number
-  avg_wait_estimate: number
 }
 
 interface RestaurantData {
   tables:   Table[]
   queue:    QueueEntry[]
-  insights: Insights | null
+  avgWait:  number
   online:   boolean
   lastSync: Date
 }
@@ -110,14 +96,12 @@ const C = {
   orangeBg: "#FFFBEB",
   red:      "#DC2626",
   redBg:    "#FEF2F2",
-  blue:     "#2563EB",
-  blueBg:   "#EFF6FF",
 }
 
 // ── Floor map ─────────────────────────────────────────────────────────────────
 
 function FloorMap({ tables }: { tables: Table[] }) {
-  const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
+  const byNumber = new Map(tables.map(t => [t.table_number, t]))
 
   return (
     <div style={{
@@ -128,7 +112,7 @@ function FloorMap({ tables }: { tables: Table[] }) {
       borderRadius: 10,
       overflow: "hidden",
     }}>
-      {/* Bar section background */}
+      {/* Bar section */}
       <div style={{
         position: "absolute",
         left: `${(726 / CANVAS_W * 100).toFixed(2)}%`,
@@ -138,37 +122,18 @@ function FloorMap({ tables }: { tables: Table[] }) {
       }} />
 
       {/* Labels */}
-      <span style={{
-        position: "absolute",
-        left: `${(762 / CANVAS_W * 100).toFixed(2)}%`,
-        top: "4%",
-        fontSize: 7, fontWeight: 800,
-        letterSpacing: "0.2em",
-        color: "rgba(100,70,30,0.45)",
-        textTransform: "uppercase",
-        pointerEvents: "none",
-      }}>BAR</span>
-      <span style={{
-        position: "absolute",
-        left: "3%", bottom: "5%",
-        fontSize: 7, fontWeight: 800,
-        letterSpacing: "0.18em",
-        color: "rgba(80,60,40,0.38)",
-        textTransform: "uppercase",
-        pointerEvents: "none",
-      }}>Main Dining</span>
+      <span style={{ position: "absolute", left: `${(762 / CANVAS_W * 100).toFixed(2)}%`, top: "4%", fontSize: 7, fontWeight: 800, letterSpacing: "0.2em", color: "rgba(100,70,30,0.45)", textTransform: "uppercase", pointerEvents: "none" }}>BAR</span>
+      <span style={{ position: "absolute", left: "3%", bottom: "5%", fontSize: 7, fontWeight: 800, letterSpacing: "0.18em", color: "rgba(80,60,40,0.38)", textTransform: "uppercase", pointerEvents: "none" }}>Main Dining</span>
 
       {/* Tables */}
       {FLOOR_PLAN.map(pos => {
-        const table = tableByNumber.get(pos.number)
-        const isOcc = table ? table.status !== "available" : false
-        const isUnknown = !table
-        const radius = pos.shape === "round" ? "50%" : "11%"
-
+        const t = byNumber.get(pos.number)
+        const isOcc     = t ? t.status !== "available" : false
+        const isUnknown = !t
+        const radius    = pos.shape === "round" ? "50%" : "11%"
         return (
-          <div
-            key={pos.number}
-            title={`Table ${pos.number}${table ? ` — ${table.status}` : ""}`}
+          <div key={pos.number}
+            title={`Table ${pos.number}${t ? ` — ${t.status}` : ""}`}
             style={{
               position: "absolute",
               left:   `${(pos.x / CANVAS_W * 100).toFixed(3)}%`,
@@ -179,8 +144,7 @@ function FloorMap({ tables }: { tables: Table[] }) {
               background: isUnknown ? "#E2E8F0" : isOcc ? "#FEE2E2" : "#DCFCE7",
               border: `1.5px solid ${isUnknown ? "#CBD5E1" : isOcc ? "#FCA5A5" : "#86EFAC"}`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 800,
-              fontSize: "min(1.5cqi, 11px)",
+              fontWeight: 800, fontSize: "min(1.5cqi, 11px)",
               color: isUnknown ? "#94A3B8" : isOcc ? "#DC2626" : "#16A34A",
               transition: "background .3s, border-color .3s",
               userSelect: "none",
@@ -192,18 +156,16 @@ function FloorMap({ tables }: { tables: Table[] }) {
       })}
 
       {/* Legend */}
-      <div style={{
-        position: "absolute", right: "1%", bottom: "4%",
-        display: "flex", gap: 8, alignItems: "center",
-      }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#DCFCE7", border: "1px solid #86EFAC", display: "inline-block" }} />
-          <span style={{ fontSize: 6.5, color: "rgba(60,60,60,0.5)", fontWeight: 700 }}>Open</span>
-        </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: "#FEE2E2", border: "1px solid #FCA5A5", display: "inline-block" }} />
-          <span style={{ fontSize: 6.5, color: "rgba(60,60,60,0.5)", fontWeight: 700 }}>Seated</span>
-        </span>
+      <div style={{ position: "absolute", right: "1%", bottom: "4%", display: "flex", gap: 8, alignItems: "center" }}>
+        {[
+          { label: "Open",   bg: "#DCFCE7", border: "#86EFAC" },
+          { label: "Seated", bg: "#FEE2E2", border: "#FCA5A5" },
+        ].map(({ label, bg, border }) => (
+          <span key={label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: bg, border: `1px solid ${border}`, display: "inline-block" }} />
+            <span style={{ fontSize: 6.5, color: "rgba(60,60,60,0.5)", fontWeight: 700 }}>{label}</span>
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -219,8 +181,8 @@ function QueueList({ queue }: { queue: QueueEntry[] }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", maxHeight: 340 }}>
       {active.slice(0, 10).map((e, i) => {
-        const isReady  = e.status === "ready"
-        const minsAgo  = Math.round((Date.now() - new Date(e.arrival_time).getTime()) / 60_000)
+        const isReady = e.status === "ready"
+        const minsAgo = Math.round((Date.now() - new Date(e.arrival_time).getTime()) / 60_000)
         return (
           <div key={e.id} style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -233,19 +195,14 @@ function QueueList({ queue }: { queue: QueueEntry[] }) {
                 width: 22, height: 22, borderRadius: "50%",
                 background: isReady ? C.green : C.muted,
                 color: "#fff", fontSize: 10, fontWeight: 800,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
               }}>{i + 1}</span>
               <div>
-                <p style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{e.name}</p>
+                <p style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{e.name || "Guest"}</p>
                 <p style={{ fontSize: 11, color: C.muted }}>Party of {e.party_size} · {minsAgo}m ago</p>
               </div>
             </div>
-            {isReady && (
-              <span style={{ fontSize: 10, fontWeight: 800, color: C.green, letterSpacing: ".06em", textTransform: "uppercase" }}>
-                Ready
-              </span>
-            )}
+            {isReady && <span style={{ fontSize: 10, fontWeight: 800, color: C.green, letterSpacing: ".06em", textTransform: "uppercase" }}>Ready</span>}
           </div>
         )
       })}
@@ -359,8 +316,7 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
           {PAD.flat().map((d, i) => (
-            <button
-              key={i}
+            <button key={i}
               onClick={() => d === "⌫" ? backspace() : d ? addDigit(d) : undefined}
               disabled={loading || (!d && d !== "0")}
               style={{
@@ -370,8 +326,7 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
                 color: d === "⌫" ? C.red : d ? C.text : "transparent",
                 cursor: d ? "pointer" : "default",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "background 0.1s",
-                opacity: loading ? 0.5 : 1,
+                transition: "background 0.1s", opacity: loading ? 0.5 : 1,
               }}
             >
               {d === "⌫" ? <Delete size={18} /> : d}
@@ -379,9 +334,7 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
           ))}
         </div>
 
-        {loading && (
-          <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 16 }}>Verifying…</p>
-        )}
+        {loading && <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 16 }}>Verifying…</p>}
       </div>
     </div>
   )
@@ -390,42 +343,34 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 
 export default function WalnutDashboard() {
-  const [pinOk,     setPinOk]     = useState<boolean | null>(null)
+  // PIN is NEVER pre-checked from the cookie — always required on every page load
+  const [pinOk,    setPinOk]    = useState(false)
   const [activeTab, setActiveTab] = useState<0 | 1>(0)
   const [entering,  setEntering]  = useState<string | null>(null)
   const [data, setData] = useState<[RestaurantData, RestaurantData]>([
-    { tables: [], queue: [], insights: null, online: true,  lastSync: new Date() },
-    { tables: [], queue: [], insights: null, online: true,  lastSync: new Date() },
+    { tables: [], queue: [], avgWait: 0, online: true,  lastSync: new Date() },
+    { tables: [], queue: [], avgWait: 0, online: true,  lastSync: new Date() },
   ])
 
-  // Check PIN cookie on mount
-  useEffect(() => {
-    fetch("/api/walnut/check-pin")
-      .then(r => r.ok ? r.json() : { ok: false })
-      .then(d => setPinOk(!!d.ok))
-      .catch(() => setPinOk(false))
-  }, [])
-
+  // Fetch using /state (same endpoint the station page uses) so table statuses are live
   const fetchAll = useCallback(async () => {
     const results = await Promise.allSettled(
-      RESTAURANTS.map(async (r, i) => {
-        const [tRes, qRes, iRes] = await Promise.all([
-          fetch(`${API}/tables?restaurant_id=${r.rid}`),
-          fetch(`${API}/queue?restaurant_id=${r.rid}`),
-          fetch(`${API}/insights?restaurant_id=${r.rid}`),
-        ])
-        const tables   = tRes.ok ? await tRes.json() : []
-        const queue    = qRes.ok ? await qRes.json() : []
-        const insights = iRes.ok ? await iRes.json() : null
-        return { index: i, tables, queue, insights }
+      RESTAURANTS.map(async (r) => {
+        const res = await fetch(`${API}/state?restaurant_id=${r.rid}`)
+        if (!res.ok) throw new Error("offline")
+        const d = await res.json()
+        return {
+          tables:  (d.tables  ?? []) as Table[],
+          queue:   (d.queue   ?? []) as QueueEntry[],
+          avgWait: (d.avg_wait ?? 0) as number,
+        }
       })
     )
     setData(prev => {
       const next: [RestaurantData, RestaurantData] = [{ ...prev[0] }, { ...prev[1] }]
       results.forEach((r, i) => {
         if (r.status === "fulfilled") {
-          const { tables, queue, insights } = r.value
-          next[i] = { tables, queue, insights, online: true, lastSync: new Date() }
+          next[i] = { ...r.value, online: true, lastSync: new Date() }
         } else {
           next[i] = { ...prev[i], online: false }
         }
@@ -453,7 +398,7 @@ export default function WalnutDashboard() {
         const d = await r.json()
         window.location.href = d.redirect
       } else {
-        alert("Could not enter station — PIN may have expired")
+        alert("Could not enter station — please re-enter your PIN and try again")
       }
     } catch {
       alert("Connection error — try again")
@@ -462,32 +407,26 @@ export default function WalnutDashboard() {
     }
   }
 
-  // ── Loading / PIN gate ───────────────────────────────────────────────────────
-  if (pinOk === null) {
-    return (
-      <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ fontSize: 13, color: C.muted }}>Loading…</div>
-      </div>
-    )
-  }
+  // ── PIN gate (always shown on load) ─────────────────────────────────────────
   if (!pinOk) return <PinScreen onSuccess={() => setPinOk(true)} />
 
-  // ── Data for selected restaurant ─────────────────────────────────────────────
+  // ── Derived stats for both restaurants ───────────────────────────────────────
+  function stats(d: RestaurantData) {
+    const total     = d.tables.length
+    const available = d.tables.filter(t => t.status === "available").length
+    const occupied  = total - available
+    const waiting   = d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
+    const occupancy = total > 0 ? Math.round(occupied / total * 100) : 0
+    return { total, available, occupied, waiting, occupancy, avgWait: d.avgWait }
+  }
+
   const restaurant = RESTAURANTS[activeTab]
   const d          = data[activeTab]
-  const total      = d.insights?.tables_total      ?? d.tables.length
-  const available  = d.insights?.tables_available  ?? d.tables.filter(t => t.status === "available").length
-  const occupied   = d.insights?.tables_occupied   ?? d.tables.filter(t => t.status !== "available").length
-  const waiting    = d.insights?.parties_waiting   ?? d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
-  const waitMin    = d.insights?.avg_wait_estimate ?? null
-  const occupancy  = total > 0 ? Math.round(occupied / total * 100) : 0
+  const s          = stats(d)
 
-  const activeQueue = d.queue.filter(e => e.status === "waiting" || e.status === "ready")
-  const longestWait = activeQueue.length > 0
+  const activeQueue    = d.queue.filter(e => e.status === "waiting" || e.status === "ready")
+  const longestWait    = activeQueue.length > 0
     ? Math.max(...activeQueue.map(e => Math.round((Date.now() - new Date(e.arrival_time).getTime()) / 60_000)))
-    : null
-  const avgPartySize = activeQueue.length > 0
-    ? (activeQueue.reduce((s, e) => s + e.party_size, 0) / activeQueue.length).toFixed(1)
     : null
 
   return (
@@ -497,7 +436,7 @@ export default function WalnutDashboard() {
       color: C.text,
     }}>
 
-      {/* ── Top bar ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div style={{
         background: C.surface, borderBottom: `1px solid ${C.border}`,
         padding: "0 28px", display: "flex", alignItems: "center",
@@ -513,7 +452,7 @@ export default function WalnutDashboard() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Link href="/walnut/logins"
-            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none", background: "transparent" }}>
+            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
             Logins
           </Link>
           <button onClick={fetchAll}
@@ -523,15 +462,11 @@ export default function WalnutDashboard() {
         </div>
       </div>
 
-      {/* ── Summary cards (both restaurants) ─────────────────────────────────── */}
+      {/* ── Summary cards ───────────────────────────────────────────────────── */}
       <div style={{ padding: "24px 28px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {RESTAURANTS.map((r, i) => {
-          const rd  = data[i]
-          const avl = rd.insights?.tables_available ?? rd.tables.filter(t => t.status === "available").length
-          const occ = rd.insights?.tables_occupied  ?? rd.tables.filter(t => t.status !== "available").length
-          const wt  = rd.insights?.parties_waiting  ?? rd.queue.filter(e => e.status === "waiting" || e.status === "ready").length
-          const tot = rd.insights?.tables_total ?? rd.tables.length
-          const pct = tot > 0 ? Math.round(occ / tot * 100) : 0
+          const rd = data[i]
+          const rs = stats(rd)
           const isActive = activeTab === i
           return (
             <div key={r.key} style={{
@@ -541,43 +476,35 @@ export default function WalnutDashboard() {
               boxShadow: isActive ? `0 0 0 3px ${r.color}22` : "none",
               transition: "border-color .15s, box-shadow .15s",
             }}>
+              {/* Clickable area to switch tab */}
               <button onClick={() => setActiveTab(i as 0 | 1)}
                 style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
                   <div>
-                    <p style={{ fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: C.muted, marginBottom: 3 }}>
-                      {r.short}
-                    </p>
+                    <p style={{ fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: C.muted, marginBottom: 3 }}>{r.short}</p>
                     <p style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{r.name}</p>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    {rd.online
-                      ? <Wifi size={13} style={{ color: C.green }} />
-                      : <WifiOff size={13} style={{ color: C.red }} />
-                    }
+                    {rd.online ? <Wifi size={13} style={{ color: C.green }} /> : <WifiOff size={13} style={{ color: C.red }} />}
                     <span style={{ fontSize: 10, color: rd.online ? C.green : C.red, fontWeight: 600 }}>
                       {rd.online ? "Live" : "Offline"}
                     </span>
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-                  <div style={{ background: C.greenBg, borderRadius: 10, padding: "8px 10px", border: "1px solid #BBF7D0", textAlign: "center" }}>
-                    <p style={{ fontSize: 9, color: C.green, fontWeight: 700, marginBottom: 2, letterSpacing: ".04em" }}>OPEN</p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: C.green }}>{avl}</p>
-                  </div>
-                  <div style={{ background: "#FEF2F2", borderRadius: 10, padding: "8px 10px", border: "1px solid #FECACA", textAlign: "center" }}>
-                    <p style={{ fontSize: 9, color: C.red, fontWeight: 700, marginBottom: 2, letterSpacing: ".04em" }}>OCC.</p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: C.red }}>{occ}</p>
-                  </div>
-                  <div style={{ background: "#F8FAFC", borderRadius: 10, padding: "8px 10px", border: `1px solid ${C.border}`, textAlign: "center" }}>
-                    <p style={{ fontSize: 9, color: C.text2, fontWeight: 700, marginBottom: 2, letterSpacing: ".04em" }}>OCC%</p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: C.text }}>{pct}%</p>
-                  </div>
-                  <div style={{ background: C.orangeBg, borderRadius: 10, padding: "8px 10px", border: "1px solid #FDE68A", textAlign: "center" }}>
-                    <p style={{ fontSize: 9, color: C.orange, fontWeight: 700, marginBottom: 2, letterSpacing: ".04em" }}>WAIT</p>
-                    <p style={{ fontSize: 20, fontWeight: 800, color: C.orange }}>{wt}</p>
-                  </div>
+                {/* 4 stats */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 14 }}>
+                  {[
+                    { label: "Open",    value: rs.available, color: C.green,  bg: C.greenBg,  bdr: "#BBF7D0" },
+                    { label: "Seated",  value: rs.occupied,  color: C.red,    bg: "#FEF2F2",  bdr: "#FECACA" },
+                    { label: "Occ %",   value: `${rs.occupancy}%`, color: C.text2, bg: C.bg, bdr: C.border },
+                    { label: "Waiting", value: rs.waiting,   color: C.orange, bg: C.orangeBg, bdr: "#FDE68A" },
+                  ].map(({ label, value, color, bg, bdr }) => (
+                    <div key={label} style={{ background: bg, borderRadius: 10, padding: "8px 10px", border: `1px solid ${bdr}`, textAlign: "center" }}>
+                      <p style={{ fontSize: 9, color, fontWeight: 700, marginBottom: 2, letterSpacing: ".04em", textTransform: "uppercase" }}>{label}</p>
+                      <p style={{ fontSize: 20, fontWeight: 800, color }}>{value}</p>
+                    </div>
+                  ))}
                 </div>
               </button>
 
@@ -593,7 +520,7 @@ export default function WalnutDashboard() {
                   fontSize: 12, fontWeight: 700, cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                   opacity: entering === r.key ? 0.6 : 1,
-                  transition: "background .15s, border-color .15s, color .15s",
+                  transition: "background .15s, color .15s",
                 }}>
                 <LogIn size={13} />
                 {entering === r.key ? "Entering…" : `Enter ${r.short} Station`}
@@ -603,7 +530,7 @@ export default function WalnutDashboard() {
         })}
       </div>
 
-      {/* ── Detailed view for selected restaurant ────────────────────────────── */}
+      {/* ── Detail view ─────────────────────────────────────────────────────── */}
       <div style={{ padding: "20px 28px 40px" }}>
 
         {/* Section header */}
@@ -617,124 +544,48 @@ export default function WalnutDashboard() {
           </span>
         </div>
 
-        {/* Stats card */}
-        <div style={{
-          background: C.surface, border: `1px solid ${C.border}`,
-          borderRadius: 16, padding: "18px 22px", marginBottom: 16,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
-            <TrendingUp size={14} style={{ color: restaurant.color }} />
-            <h3 style={{ fontSize: 12, fontWeight: 800, color: C.text, letterSpacing: ".04em", textTransform: "uppercase" }}>
-              Stats
-            </h3>
-          </div>
-
-          {/* Occupancy bar */}
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.text2 }}>Occupancy</span>
-              <span style={{ fontSize: 22, fontWeight: 900, color: restaurant.color }}>{occupancy}%</span>
-            </div>
-            <div style={{ height: 8, borderRadius: 4, background: C.border, overflow: "hidden" }}>
-              <div style={{
-                height: "100%", borderRadius: 4,
-                width: `${occupancy}%`,
-                background: occupancy >= 80 ? C.red : occupancy >= 50 ? C.orange : C.green,
-                transition: "width .5s ease",
-              }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 10, color: C.muted }}>
-              <span>{occupied} seated of {total} tables</span>
-              <span>{available} available</span>
-            </div>
-          </div>
-
-          {/* Stat pills row */}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {[
-              {
-                label: "Waiting",
-                value: waiting > 0 ? `${waiting} ${waiting === 1 ? "party" : "parties"}` : "No queue",
-                icon: Users,
-                color: waiting > 0 ? C.orange : C.green,
-                bg: waiting > 0 ? C.orangeBg : C.greenBg,
-                border: waiting > 0 ? "#FDE68A" : "#BBF7D0",
-              },
-              ...(waitMin && waitMin > 0 ? [{
-                label: "Avg Wait",
-                value: `~${waitMin}m`,
-                icon: Clock,
-                color: C.orange,
-                bg: C.orangeBg,
-                border: "#FDE68A",
-              }] : []),
-              ...(longestWait !== null && longestWait > 0 ? [{
-                label: "Longest Wait",
-                value: `${longestWait}m`,
-                icon: Clock,
-                color: longestWait >= 30 ? C.red : C.orange,
-                bg: longestWait >= 30 ? "#FEF2F2" : C.orangeBg,
-                border: longestWait >= 30 ? "#FECACA" : "#FDE68A",
-              }] : []),
-              ...(avgPartySize !== null && waiting > 0 ? [{
-                label: "Avg Party",
-                value: `${avgPartySize} guests`,
-                icon: Users,
-                color: C.blue,
-                bg: C.blueBg,
-                border: "#BFDBFE",
-              }] : []),
-              ...(d.tables.length === 0 ? [{
-                label: "Status",
-                value: "No data",
-                icon: CheckCircle2,
-                color: C.muted,
-                bg: C.bg,
-                border: C.border,
-              }] : []),
-            ].map(({ label, value, icon: Icon, color, bg, border }) => (
-              <div key={label} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "8px 14px", borderRadius: 10, background: bg, border: `1px solid ${border}`,
-              }}>
-                <Icon size={14} style={{ color }} />
-                <span style={{ fontSize: 13, fontWeight: 700, color }}>{value}</span>
-                <span style={{ fontSize: 12, color, opacity: 0.7 }}>{label}</span>
+        {/* Stats row — simple, scannable numbers */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
+          {[
+            { icon: CheckCircle2, label: "Tables Open",  value: s.available, sub: `of ${s.total}`, color: C.green,  bg: C.greenBg,  bdr: "#BBF7D0" },
+            { icon: Users,        label: "Tables Seated", value: s.occupied, sub: `${s.occupancy}% full`, color: s.occupancy >= 80 ? C.red : s.occupancy >= 50 ? C.orange : C.text2, bg: s.occupancy >= 80 ? "#FEF2F2" : s.occupancy >= 50 ? C.orangeBg : C.bg, bdr: s.occupancy >= 80 ? "#FECACA" : s.occupancy >= 50 ? "#FDE68A" : C.border },
+            { icon: Clock,        label: "Parties Waiting", value: s.waiting, sub: s.waiting === 0 ? "no queue" : s.waiting === 1 ? "1 party" : `${s.waiting} parties`, color: s.waiting > 0 ? C.orange : C.green, bg: s.waiting > 0 ? C.orangeBg : C.greenBg, bdr: s.waiting > 0 ? "#FDE68A" : "#BBF7D0" },
+            { icon: Clock,        label: "Avg Wait",     value: s.avgWait > 0 ? `${Math.round(s.avgWait)}m` : "—", sub: "estimated", color: s.avgWait > 20 ? C.red : s.avgWait > 0 ? C.orange : C.muted, bg: C.bg, bdr: C.border },
+            { icon: Clock,        label: "Longest Wait", value: longestWait !== null && longestWait > 0 ? `${longestWait}m` : "—", sub: "in queue", color: longestWait !== null && longestWait >= 30 ? C.red : longestWait !== null && longestWait > 0 ? C.orange : C.muted, bg: C.bg, bdr: C.border },
+          ].map(({ icon: Icon, label, value, sub, color, bg, bdr }) => (
+            <div key={label} style={{
+              background: bg, border: `1px solid ${bdr}`, borderRadius: 14,
+              padding: "14px 16px", display: "flex", flexDirection: "column", gap: 4,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                <Icon size={12} style={{ color, flexShrink: 0 }} />
+                <span style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: ".06em" }}>{label}</span>
               </div>
-            ))}
-          </div>
+              <p style={{ fontSize: 28, fontWeight: 900, color, lineHeight: 1 }}>{value}</p>
+              <p style={{ fontSize: 11, color, opacity: 0.6 }}>{sub}</p>
+            </div>
+          ))}
         </div>
 
-        {/* Floor map + Queue grid */}
+        {/* Floor map + queue */}
         <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 16, marginBottom: 16 }}>
 
-          {/* Floor map */}
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <h3 style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Floor Map</h3>
-              <span style={{ fontSize: 11, color: C.muted }}>16 tables</span>
+              {d.tables.length === 0 && (
+                <span style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>loading…</span>
+              )}
             </div>
-            {d.tables.length > 0
-              ? <FloorMap tables={d.tables} />
-              : (
-                <div style={{ aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <p style={{ fontSize: 13, color: C.muted, fontStyle: "italic" }}>Loading table data…</p>
-                </div>
-              )
-            }
+            <FloorMap tables={d.tables} />
           </div>
 
-          {/* Queue */}
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px" }}>
             <h3 style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 14 }}>
               Waitlist
-              {waiting > 0 && (
-                <span style={{
-                  marginLeft: 8, fontSize: 11, fontWeight: 800,
-                  background: C.orange, color: "#fff",
-                  padding: "2px 7px", borderRadius: 20,
-                }}>
-                  {waiting}
+              {s.waiting > 0 && (
+                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: C.orange, color: "#fff", padding: "2px 7px", borderRadius: 20 }}>
+                  {s.waiting}
                 </span>
               )}
             </h3>
@@ -749,22 +600,11 @@ export default function WalnutDashboard() {
           </h3>
           <div style={{ display: "flex", gap: 10 }}>
             {RESTAURANTS.map(r => (
-              <div key={r.key} style={{
-                background: C.surface, border: `1px solid ${C.border}`,
-                borderRadius: 12, padding: "14px 18px", flex: 1,
-              }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: r.color, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
-                  {r.short}
-                </p>
+              <div key={r.key} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", flex: 1 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: r.color, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{r.short}</p>
                 <p style={{ fontSize: 11, color: C.text2, marginBottom: 8, wordBreak: "break-all" }}>{r.joinUrl}</p>
                 <a href={r.joinUrl} target="_blank" rel="noreferrer"
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    fontSize: 11, fontWeight: 600, color: r.color,
-                    padding: "6px 12px", borderRadius: 8,
-                    background: r.accent, border: `1px solid ${r.accentBorder}`,
-                    textDecoration: "none",
-                  }}>
+                  style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: r.color, padding: "6px 12px", borderRadius: 8, background: r.accent, border: `1px solid ${r.accentBorder}`, textDecoration: "none" }}>
                   Open ↗
                 </a>
               </div>
