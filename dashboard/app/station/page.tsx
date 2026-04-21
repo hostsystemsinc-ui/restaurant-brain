@@ -1148,13 +1148,35 @@ function TableGuestPicker({
 }
 
 // ── Add Guest Drawer ───────────────────────────────────────────────────────────
+// Left-side sidebar panel — covers the sidebar only, floor map stays live behind it.
+// Includes inline wait-time quoting so no second modal is needed.
 
-function AddGuestDrawer({ onClose, onAdded, restaurantId }: { onClose: () => void; onAdded: (entryId: string, defaultMinutes: number) => void; restaurantId: string }) {
-  const [name, setName]           = useState("")
+function AddGuestDrawer({
+  onClose, onAdded, restaurantId, sidebarW,
+}: {
+  onClose: () => void
+  onAdded: () => void
+  restaurantId: string
+  sidebarW: number
+}) {
+  const [name,      setName]      = useState("")
   const [partySize, setPartySize] = useState(2)
-  const [phone, setPhone]         = useState("")
-  const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState("")
+  const [phone,     setPhone]     = useState("")
+  const [waitMins,  setWaitMins]  = useState<number | null>(15)
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState("")
+  const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  // Track visual viewport so the panel rises with the keyboard on mobile
+  const [bottomOffset, setBottomOffset] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => setBottomOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop))
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update) }
+  }, [])
 
   const submit = async () => {
     setLoading(true); setError("")
@@ -1173,62 +1195,129 @@ function AddGuestDrawer({ onClose, onAdded, restaurantId }: { onClose: () => voi
       })
       if (!r.ok) throw new Error()
       const data = await r.json()
-      onAdded(data.entry?.id ?? "", data.wait_estimate ?? 15)
+      const entryId = data.entry?.id
+      // Apply quoted wait time inline — no separate WaitModal needed
+      if (waitMins && entryId) {
+        await fetch(`${API}/queue/${entryId}/wait?minutes=${waitMins}`, { method: "PATCH" }).catch(() => {})
+      }
+      onAdded()
     } catch {
-      setError("Could not add guest.")
+      setError("Could not add guest — try again")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
-      <div
-        className="relative w-full sm:w-[580px] rounded-t-3xl sm:rounded-3xl p-8"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.12)", zIndex: 1 }}
-      >
-        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-7" style={{ background: "rgba(255,185,100,0.18)" }} />
-        <div className="flex items-center justify-between mb-8">
-          <span className="text-base font-black tracking-[0.18em] uppercase" style={{ color: "rgba(255,240,220,0.92)" }}>
-            Add Guest
-          </span>
-          <button onClick={onClose} className="w-11 h-11 flex items-center justify-center rounded-xl transition-colors hover:bg-white/8" style={{ color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.12)" }}>
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <div style={{
+      position: "fixed",
+      top: 48,          // below the header bar
+      left: 0,
+      bottom: bottomOffset,
+      width: sidebarW,
+      zIndex: 45,
+      background: "#0C0907",
+      borderTop: "1px solid rgba(255,185,100,0.22)",
+      borderRight: "1px solid rgba(255,185,100,0.18)",
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,185,100,0.12)", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,240,220,0.88)" }}>
+          Add Guest
+        </span>
+        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid rgba(255,185,100,0.14)", cursor: "pointer", color: "rgba(255,200,150,0.45)" }}>
+          <X style={{ width: 14, height: 14 }} />
+        </button>
+      </div>
 
-        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-4" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
-        <div className="flex items-center justify-between mb-8 px-2">
+      {/* Scrollable form body */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 0" }}>
+
+        {/* Party Size */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 8 }}>Party Size</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
           <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
-            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl font-light transition-all active:scale-95 hover:brightness-125"
-            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
-          <span className="text-[88px] font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)", minWidth: 120, textAlign: "center" }}>{partySize}</span>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>−</button>
+          <span style={{ fontSize: 62, fontWeight: 200, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+            {partySize}
+          </span>
           <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
-            className="w-20 h-20 rounded-full flex items-center justify-center text-4xl font-light transition-all active:scale-95 hover:brightness-125"
-            style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>+</button>
         </div>
 
-        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Name</p>
-        <input type="text" value={name} onChange={e => setName(e.target.value)}
+        {/* Name */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>Name</p>
+        <input
+          type="text" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
-          className="w-full px-5 rounded-2xl outline-none mb-5"
-          style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 18, padding: "18px 20px" }} />
+          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 12, outline: "none", boxSizing: "border-box" }}
+        />
 
-        <p className="text-xs font-bold tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>
-          Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span>
+        {/* Phone */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>
+          Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
         </p>
-        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+        <input
+          type="tel" value={phone} onChange={e => setPhone(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
-          className="w-full rounded-2xl outline-none mb-7"
-          style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 18, padding: "18px 20px" }} />
+          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+        />
 
-        {error && <p className="text-sm text-red-400 mb-5 text-center font-medium">{error}</p>}
+        {/* Inline wait quote */}
+        <div style={{ borderTop: "1px solid rgba(255,185,100,0.12)", paddingTop: 12, marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", margin: 0 }}>
+              Quote Wait
+            </p>
+            {waitMins !== null && (
+              <button onClick={() => setWaitMins(null)} style={{ fontSize: 9, color: "rgba(255,200,150,0.30)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                skip →
+              </button>
+            )}
+          </div>
 
+          {/* Preset buttons */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, marginBottom: 10 }}>
+            {PRESETS.map(p => (
+              <button key={p} onClick={() => setWaitMins(p)}
+                style={{
+                  height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: waitMins === p ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.05)",
+                  border: `1px solid ${waitMins === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.12)"}`,
+                  cursor: "pointer", transition: "all 0.1s",
+                }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: waitMins === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Fine-tune stepper */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
+            <button onClick={() => setWaitMins(m => Math.max(1, (m ?? 15) - 1))}
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
+            <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.25)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+              {waitMins ?? "—"}
+            </span>
+            <button onClick={() => setWaitMins(m => Math.min(120, (m ?? 14) + 1))}
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(255,185,100,0.10)", flexShrink: 0 }}>
+        {error && <p style={{ fontSize: 11, color: "rgba(248,113,113,0.90)", textAlign: "center", marginBottom: 8 }}>{error}</p>}
         <button onClick={submit} disabled={loading}
-          className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
-          style={{ background: loading ? "rgba(255,185,100,0.08)" : "#22c55e", color: "white", fontSize: 16, padding: "22px 0" }}>
-          {loading ? "Adding…" : "Add to Queue"}
+          style={{
+            width: "100%", height: 48, borderRadius: 14, border: "none", cursor: loading ? "default" : "pointer",
+            background: loading ? "rgba(255,185,100,0.08)" : "#22c55e",
+            color: "white", fontSize: 13, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase",
+            opacity: loading ? 0.5 : 1, transition: "opacity 0.12s",
+          }}>
+          {loading ? "Adding…" : waitMins ? `Add · ${waitMins}m wait` : "Add to Queue"}
         </button>
       </div>
     </div>
@@ -2043,8 +2132,9 @@ export default function HostDashboard() {
         {showAdd && (
           <AddGuestDrawer
             onClose={() => setShowAdd(false)}
-            onAdded={(id, mins) => { setShowAdd(false); if (id) setWaitModal({ id, defaultMinutes: mins }); refreshAll() }}
+            onAdded={() => { setShowAdd(false); refreshAll() }}
             restaurantId={restaurantId}
+            sidebarW={sidebarW}
           />
         )}
 

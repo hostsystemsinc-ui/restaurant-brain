@@ -58,9 +58,18 @@ const RESTAURANTS = [
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+// The /state endpoint returns table_number as a string and includes updated_at
+interface RawTable {
+  id: string
+  table_number: string  // string from API, e.g. "4"
+  capacity: number
+  status: "available" | "occupied" | "reserved"
+  updated_at: string
+}
+
 interface Table {
   id: string
-  table_number: number
+  table_number: number  // parsed to int for FLOOR_PLAN lookup
   capacity: number
   status: "available" | "occupied" | "reserved"
 }
@@ -352,15 +361,35 @@ export default function WalnutDashboard() {
     { tables: [], queue: [], avgWait: 0, online: true,  lastSync: new Date() },
   ])
 
-  // Fetch using /state (same endpoint the station page uses) so table statuses are live
+  // Fetch using /state (same endpoint the station page uses) so table statuses are live.
+  // The API returns many duplicate records per table (historical status log), so we
+  // deduplicate by table_number keeping the most recently-updated record.
+  // table_number comes back as a string from the API, so we parse it to int.
   const fetchAll = useCallback(async () => {
     const results = await Promise.allSettled(
       RESTAURANTS.map(async (r) => {
         const res = await fetch(`${API}/state?restaurant_id=${r.rid}`)
         if (!res.ok) throw new Error("offline")
         const d = await res.json()
+
+        // Deduplicate: keep the most recently-updated record for each table_number
+        const latestByNum = new Map<string, RawTable>()
+        for (const t of (d.tables ?? []) as RawTable[]) {
+          const prev = latestByNum.get(t.table_number)
+          if (!prev || t.updated_at > prev.updated_at) {
+            latestByNum.set(t.table_number, t)
+          }
+        }
+        // Parse table_number to integer so FLOOR_PLAN lookups work
+        const tables: Table[] = Array.from(latestByNum.values()).map(t => ({
+          id:           t.id,
+          table_number: parseInt(t.table_number, 10),
+          capacity:     t.capacity,
+          status:       t.status,
+        }))
+
         return {
-          tables:  (d.tables  ?? []) as Table[],
+          tables,
           queue:   (d.queue   ?? []) as QueueEntry[],
           avgWait: (d.avg_wait ?? 0) as number,
         }
@@ -411,12 +440,14 @@ export default function WalnutDashboard() {
   if (!pinOk) return <PinScreen onSuccess={() => setPinOk(true)} />
 
   // ── Derived stats for both restaurants ───────────────────────────────────────
+  // Use FLOOR_PLAN.length (16) as the canonical total — the API may not have all
+  // tables seeded for a restaurant, and we always know there are 16 tables.
   function stats(d: RestaurantData) {
-    const total     = d.tables.length
-    const available = d.tables.filter(t => t.status === "available").length
-    const occupied  = total - available
+    const total     = FLOOR_PLAN.length  // always 16
+    const occupied  = d.tables.filter(t => t.status !== "available").length
+    const available = total - occupied
     const waiting   = d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
-    const occupancy = total > 0 ? Math.round(occupied / total * 100) : 0
+    const occupancy = Math.round(occupied / total * 100)
     return { total, available, occupied, waiting, occupancy, avgWait: d.avgWait }
   }
 
