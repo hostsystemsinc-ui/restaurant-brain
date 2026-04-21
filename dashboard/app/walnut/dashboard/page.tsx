@@ -82,12 +82,18 @@ interface QueueEntry {
   arrival_time: string
 }
 
+interface Occupant {
+  name:       string
+  party_size: number
+}
+
 interface RestaurantData {
-  tables:   Table[]
-  queue:    QueueEntry[]
-  avgWait:  number
-  online:   boolean
-  lastSync: Date
+  tables:    Table[]
+  queue:     QueueEntry[]
+  occupants: Map<number, Occupant>  // table_number → occupant (from /tables/occupants)
+  avgWait:   number
+  online:    boolean
+  lastSync:  Date
 }
 
 // ── Color system ───────────────────────────────────────────────────────────────
@@ -109,7 +115,7 @@ const C = {
 
 // ── Floor map ─────────────────────────────────────────────────────────────────
 
-function FloorMap({ tables }: { tables: Table[] }) {
+function FloorMap({ tables, occupants }: { tables: Table[]; occupants: Map<number, Occupant> }) {
   const byNumber = new Map(tables.map(t => [t.table_number, t]))
 
   return (
@@ -136,13 +142,19 @@ function FloorMap({ tables }: { tables: Table[] }) {
 
       {/* Tables */}
       {FLOOR_PLAN.map(pos => {
-        const t = byNumber.get(pos.number)
-        const isOcc     = t ? t.status !== "available" : false
+        const t       = byNumber.get(pos.number)
+        const isOcc   = t ? t.status !== "available" : false
+        const occ     = isOcc ? occupants.get(pos.number) : undefined
         const isUnknown = !t
-        const radius    = pos.shape === "round" ? "50%" : "11%"
+        const radius  = pos.shape === "round" ? "50%" : "11%"
+        // For tooltip: show name + party size if we have occupant info
+        const tooltip = occ
+          ? `Table ${pos.number} — ${occ.name !== "Guest" ? occ.name : "Occupied"} (${occ.party_size}p)`
+          : `Table ${pos.number}${t ? ` — ${t.status}` : ""}`
+
         return (
           <div key={pos.number}
-            title={`Table ${pos.number}${t ? ` — ${t.status}` : ""}`}
+            title={tooltip}
             style={{
               position: "absolute",
               left:   `${(pos.x / CANVAS_W * 100).toFixed(3)}%`,
@@ -152,14 +164,25 @@ function FloorMap({ tables }: { tables: Table[] }) {
               borderRadius: radius,
               background: isUnknown ? "#E2E8F0" : isOcc ? "#FEE2E2" : "#DCFCE7",
               border: `1.5px solid ${isUnknown ? "#CBD5E1" : isOcc ? "#FCA5A5" : "#86EFAC"}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontWeight: 800, fontSize: "min(1.5cqi, 11px)",
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              fontWeight: 800,
               color: isUnknown ? "#94A3B8" : isOcc ? "#DC2626" : "#16A34A",
               transition: "background .3s, border-color .3s",
               userSelect: "none",
+              overflow: "hidden",
+              gap: 1,
             }}
           >
-            {pos.number}
+            {/* Table number — slightly smaller when we also show party size */}
+            <span style={{ fontSize: "min(1.4cqi, 11px)", lineHeight: 1, fontWeight: 800 }}>
+              {pos.number}
+            </span>
+            {/* Party size badge on occupied tables */}
+            {isOcc && occ && (
+              <span style={{ fontSize: "min(0.9cqi, 7px)", lineHeight: 1, opacity: 0.75, fontWeight: 700 }}>
+                {occ.party_size}p
+              </span>
+            )}
           </div>
         )
       })}
@@ -357,8 +380,8 @@ export default function WalnutDashboard() {
   const [activeTab, setActiveTab] = useState<0 | 1>(0)
   const [entering,  setEntering]  = useState<string | null>(null)
   const [data, setData] = useState<[RestaurantData, RestaurantData]>([
-    { tables: [], queue: [], avgWait: 0, online: true,  lastSync: new Date() },
-    { tables: [], queue: [], avgWait: 0, online: true,  lastSync: new Date() },
+    { tables: [], queue: [], occupants: new Map(), avgWait: 0, online: true,  lastSync: new Date() },
+    { tables: [], queue: [], occupants: new Map(), avgWait: 0, online: true,  lastSync: new Date() },
   ])
 
   // Fetch using /state (same endpoint the station page uses) so table statuses are live.
@@ -368,9 +391,12 @@ export default function WalnutDashboard() {
   const fetchAll = useCallback(async () => {
     const results = await Promise.allSettled(
       RESTAURANTS.map(async (r) => {
-        const res = await fetch(`${API}/state?restaurant_id=${r.rid}`)
-        if (!res.ok) throw new Error("offline")
-        const d = await res.json()
+        const [stateRes, occupantsRes] = await Promise.all([
+          fetch(`${API}/state?restaurant_id=${r.rid}`),
+          fetch(`${API}/tables/occupants?restaurant_id=${r.rid}`),
+        ])
+        if (!stateRes.ok) throw new Error("offline")
+        const d = await stateRes.json()
 
         // Deduplicate: keep the most recently-updated record for each table_number
         const latestByNum = new Map<string, RawTable>()
@@ -388,10 +414,25 @@ export default function WalnutDashboard() {
           status:       t.status,
         }))
 
+        // Build occupant map: only include tables that are actually occupied
+        // per the deduped tables state (occupants endpoint can have stale entries)
+        const occupiedNums = new Set(tables.filter(t => t.status !== "available").map(t => t.table_number))
+        const occupants = new Map<number, Occupant>()
+        if (occupantsRes.ok) {
+          const raw = await occupantsRes.json() as Record<string, { name: string; party_size: number }>
+          for (const [numStr, occ] of Object.entries(raw)) {
+            const num = parseInt(numStr, 10)
+            if (occupiedNums.has(num)) {
+              occupants.set(num, { name: occ.name, party_size: occ.party_size })
+            }
+          }
+        }
+
         return {
           tables,
-          queue:   (d.queue   ?? []) as QueueEntry[],
-          avgWait: (d.avg_wait ?? 0) as number,
+          queue:     (d.queue   ?? []) as QueueEntry[],
+          occupants,
+          avgWait:   (d.avg_wait ?? 0) as number,
         }
       })
     )
@@ -401,7 +442,7 @@ export default function WalnutDashboard() {
         if (r.status === "fulfilled") {
           next[i] = { ...r.value, online: true, lastSync: new Date() }
         } else {
-          next[i] = { ...prev[i], online: false }
+          next[i] = { ...prev[i], online: false, occupants: prev[i].occupants }
         }
       })
       return next
@@ -608,7 +649,7 @@ export default function WalnutDashboard() {
                 <span style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>loading…</span>
               )}
             </div>
-            <FloorMap tables={d.tables} />
+            <FloorMap tables={d.tables} occupants={d.occupants} />
           </div>
 
           <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px" }}>
