@@ -1619,12 +1619,28 @@ export default function HostDashboard() {
 
   // fetchHistory is decoupled from the fetchingRef guard so it always runs after mutations,
   // even if a poll cycle is already in-flight when the user removes/seats a guest.
+  // Fetches ALL history (no date param — same as admin dashboard) then filters client-side
+  // so the server-side date handling doesn't silently drop entries.
   const fetchHistory = useCallback(() => {
     if (!restaurantId) return
-    const today = getBusinessDate()
-    fetch(`${API}/queue/history?restaurant_id=${restaurantId}&date=${today}`)
+    const bd = getBusinessDate()
+    fetch(`${API}/queue/history?restaurant_id=${restaurantId}`)
       .then(r => r.ok ? r.json() : [])
-      .then((data: unknown) => setHistory(Array.isArray(data) ? (data as HistoryEntry[]) : []))
+      .then((all: unknown) => {
+        if (!Array.isArray(all)) return
+        const today = (all as HistoryEntry[]).filter(e => {
+          try {
+            const d = new Date(e.arrival_time)
+            const hour = d.getHours()
+            if (hour < 3) {
+              const prev = new Date(d); prev.setDate(prev.getDate() - 1)
+              return prev.toLocaleDateString("en-CA") === bd
+            }
+            return d.toLocaleDateString("en-CA") === bd
+          } catch { return false }
+        })
+        setHistory(today)
+      })
       .catch(() => {})
   }, [restaurantId])
 
@@ -1855,7 +1871,8 @@ export default function HostDashboard() {
     if (localOccupants.has(targetTable)) return
     const apiTable = tables.find(t => t.table_number === targetTable)
     if (apiTable) {
-      fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" }).then(() => refreshAll())
+      fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
+        .then(() => { refreshAll(); setTimeout(fetchHistory, 600) })
     } else {
       seat(entry.id)
     }
@@ -2404,6 +2421,7 @@ export default function HostDashboard() {
               setLocalOccupants(prev => new Map(prev).set(tableNumber, occupant))
               setTableTapModal(null)
               refreshAll()
+              setTimeout(fetchHistory, 600)
             }}
           />
         )}

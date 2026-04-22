@@ -20,6 +20,7 @@ interface HistoryEntry {
   quoted_wait: number | null
   phone: string | null
   notes: string | null
+  updated_at?: string  // when status changed (seated/removed) — used for actual wait
 }
 
 const API  = "https://restaurant-brain-production.up.railway.app"
@@ -560,14 +561,145 @@ function HistoryDrawer({
   )
 }
 
+// ── Day History inline stat box ────────────────────────────────────────────────
+
+function DayHistory({ history, restaurantColor }: { history: HistoryEntry[]; restaurantColor: string }) {
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const fmtTime = (iso: string) => {
+    try { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) }
+    catch { return "—" }
+  }
+
+  const fmtWait = (entry: HistoryEntry): string => {
+    // Prefer actual elapsed time if we have updated_at (when they were seated/removed)
+    if (entry.updated_at) {
+      try {
+        const ms = new Date(entry.updated_at).getTime() - new Date(entry.arrival_time).getTime()
+        if (ms > 0) {
+          const mins = Math.round(ms / 60_000)
+          return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`
+        }
+      } catch {}
+    }
+    // Fall back to quoted wait
+    return entry.quoted_wait != null ? `${entry.quoted_wait}m quoted` : "—"
+  }
+
+  const copyPhone = async (phone: string, id: string) => {
+    try { await navigator.clipboard.writeText(phone); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000) } catch {}
+  }
+
+  // Sort newest first — use updated_at if available, else arrival_time
+  const sorted = [...history].sort((a, b) => {
+    const ta = new Date(a.updated_at ?? a.arrival_time).getTime()
+    const tb = new Date(b.updated_at ?? b.arrival_time).getTime()
+    return tb - ta
+  })
+
+  const seated  = history.filter(e => e.status === "seated").length
+  const removed = history.filter(e => e.status === "removed").length
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px", marginBottom: 16 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Today&apos;s Guest Log</h3>
+          <span style={{ fontSize: 11, color: C.green, fontWeight: 700, background: C.greenBg, padding: "2px 8px", borderRadius: 12, border: "1px solid #BBF7D0" }}>
+            {seated} seated
+          </span>
+          <span style={{ fontSize: 11, color: C.muted, fontWeight: 600, background: C.bg, padding: "2px 8px", borderRadius: 12, border: `1px solid ${C.border}` }}>
+            {removed} removed
+          </span>
+        </div>
+        <span style={{ fontSize: 11, color: C.muted }}>{history.length} total</span>
+      </div>
+
+      {sorted.length === 0 ? (
+        <p style={{ fontSize: 13, color: C.muted, fontStyle: "italic", textAlign: "center", padding: "24px 0" }}>
+          No guests yet today — history appears here as guests are seated or removed.
+        </p>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                {["Status", "Name", "Party", "Phone", "Added", "Quoted", "Waited"].map(h => (
+                  <th key={h} style={{
+                    padding: "6px 10px", textAlign: "left", fontSize: 10, fontWeight: 700,
+                    color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em",
+                    whiteSpace: "nowrap",
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((e, i) => {
+                const isSeated = e.status === "seated"
+                const rowBg = i % 2 === 0 ? C.bg : C.surface
+                return (
+                  <tr key={e.id} style={{ background: rowBg, borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
+                        padding: "2px 7px", borderRadius: 6,
+                        background: isSeated ? C.greenBg : "#FEF2F2",
+                        color: isSeated ? C.green : C.red,
+                        border: `1px solid ${isSeated ? "#BBF7D0" : "#FECACA"}`,
+                      }}>
+                        {isSeated ? "Seated" : "Removed"}
+                      </span>
+                    </td>
+                    <td style={{ padding: "9px 10px", fontWeight: 600, color: C.text, whiteSpace: "nowrap" }}>
+                      {e.name || "Guest"}
+                    </td>
+                    <td style={{ padding: "9px 10px", color: C.text2, textAlign: "center" }}>
+                      {e.party_size}
+                    </td>
+                    <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
+                      {e.phone ? (
+                        <button onClick={() => copyPhone(e.phone!, e.id)}
+                          style={{
+                            fontSize: 11, fontWeight: 500, padding: "3px 8px", borderRadius: 6,
+                            background: copiedId === e.id ? C.greenBg : "transparent",
+                            color: copiedId === e.id ? C.green : restaurantColor,
+                            border: `1px solid ${copiedId === e.id ? "#BBF7D0" : "transparent"}`,
+                            cursor: "pointer", fontFamily: "monospace",
+                          }}>
+                          {copiedId === e.id ? "✓ Copied" : e.phone}
+                        </button>
+                      ) : (
+                        <span style={{ color: C.muted, fontStyle: "italic" }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ padding: "9px 10px", color: C.text2, whiteSpace: "nowrap" }}>
+                      {fmtTime(e.arrival_time)}
+                    </td>
+                    <td style={{ padding: "9px 10px", color: C.text2, whiteSpace: "nowrap" }}>
+                      {e.quoted_wait != null ? `${e.quoted_wait}m` : <span style={{ color: C.muted }}>—</span>}
+                    </td>
+                    <td style={{ padding: "9px 10px", color: C.text2, whiteSpace: "nowrap", fontWeight: 500 }}>
+                      {fmtWait(e)}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main dashboard ─────────────────────────────────────────────────────────────
 
 export default function WalnutDashboard() {
   // PIN is NEVER pre-checked from the cookie — always required on every page load
-  const [pinOk,       setPinOk]       = useState(false)
-  const [activeTab,   setActiveTab]   = useState<0 | 1>(0)
-  const [entering,    setEntering]    = useState<string | null>(null)
-  const [showHistory, setShowHistory] = useState(false)
+  const [pinOk,     setPinOk]     = useState(false)
+  const [activeTab, setActiveTab] = useState<0 | 1>(0)
+  const [entering,  setEntering]  = useState<string | null>(null)
   const [data, setData] = useState<[RestaurantData, RestaurantData]>([
     { tables: [], queue: [], occupants: new Map(), avgWait: 0, history: [], dailyAvgWait: null, online: true,  lastSync: new Date() },
     { tables: [], queue: [], occupants: new Map(), avgWait: 0, history: [], dailyAvgWait: null, online: true,  lastSync: new Date() },
@@ -751,10 +883,6 @@ export default function WalnutDashboard() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={() => setShowHistory(true)}
-            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer" }}>
-            History
-          </button>
           <Link href="/walnut/logins"
             style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
             Logins
@@ -884,6 +1012,9 @@ export default function WalnutDashboard() {
           <QueueList queue={d.queue} />
         </div>
 
+        {/* Today's guest history */}
+        <DayHistory history={d.history} restaurantColor={restaurant.color} />
+
         {/* Guest join links */}
         <div>
           <h3 style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
@@ -904,16 +1035,6 @@ export default function WalnutDashboard() {
         </div>
       </div>
 
-      {showHistory && (
-        <HistoryDrawer
-          restaurantId={restaurant.rid}
-          restaurantName={restaurant.name}
-          history={d.history}
-          tables={d.tables}
-          onClose={() => setShowHistory(false)}
-          onRestored={() => { setShowHistory(false); fetchAll() }}
-        />
-      )}
     </div>
   )
 }
