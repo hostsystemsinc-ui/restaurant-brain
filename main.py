@@ -828,23 +828,19 @@ def restore_entry(entry_id: str):
 
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
-    """Returns seated and removed entries for the given date (default: today UTC)."""
+    """Returns seated and removed entries for the given restaurant.
+    Date filtering is intentionally done client-side to avoid timestamptz comparison issues."""
     rid = _rid(restaurant_id)
-    date_str = date or datetime.utcnow().strftime("%Y-%m-%d")
-    start = f"{date_str}T00:00:00"
-    end   = f"{date_str}T23:59:59.999"
     try:
         res = (
             supabase.table("queue_entries")
             .select("*")
             .eq("restaurant_id", rid)
             .in_("status", ["seated", "removed"])
-            .gte("arrival_time", start)
-            .lte("arrival_time", end)
             .order("arrival_time", desc=True)
             .execute()
         )
-        return res.data
+        return res.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
