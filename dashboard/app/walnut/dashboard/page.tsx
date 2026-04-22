@@ -755,33 +755,64 @@ export default function WalnutDashboard() {
         // Fetch history for daily stats
         let history: HistoryEntry[] = []
         let dailyAvgWait: number | null = null
+        const bd = getBusinessDate()
+        const filterToday = (entries: HistoryEntry[]) => entries.filter(e => {
+          try {
+            const d = new Date(e.arrival_time)
+            const entryHour = d.getHours()
+            if (entryHour < 3) {
+              const prev = new Date(d)
+              prev.setDate(prev.getDate() - 1)
+              return prev.toLocaleDateString("en-CA") === bd
+            }
+            return d.toLocaleDateString("en-CA") === bd
+          } catch { return false }
+        })
+
+        // Local history fallback: read what the station page persisted to localStorage.
+        // This works when both admin dashboard and station page run on the same device
+        // (e.g., same iPad). Gives non-empty history even when server endpoint is down.
+        let localHistory: HistoryEntry[] = []
+        try {
+          const stored = localStorage.getItem(`host_history_${r.rid}`)
+          if (stored) {
+            const parsed = JSON.parse(stored) as { bdate: string; entries: HistoryEntry[] }
+            if (parsed.bdate === bd && Array.isArray(parsed.entries)) {
+              localHistory = parsed.entries
+            }
+          }
+        } catch {}
+
         try {
           const histRes = await fetch(`${API}/queue/history?restaurant_id=${r.rid}`)
           if (histRes.ok) {
             const allHistory: HistoryEntry[] = await histRes.json()
-            const bd = getBusinessDate()
-            // Filter to today's business day (entries after 3am today)
-            history = allHistory.filter(e => {
-              try {
-                const d = new Date(e.arrival_time)
-                const entryDate = d.toLocaleDateString("en-CA")
-                const entryHour = d.getHours()
-                // If arrival is before 3am, it belongs to previous business day
-                if (entryHour < 3) {
-                  const prev = new Date(d)
-                  prev.setDate(prev.getDate() - 1)
-                  return prev.toLocaleDateString("en-CA") === bd
-                }
-                return entryDate === bd
-              } catch { return false }
-            })
-            // Compute daily avg from today's seated guests' quoted_wait
-            const seatedWithWait = history.filter(e => e.status === "seated" && e.quoted_wait != null)
-            if (seatedWithWait.length > 0) {
-              dailyAvgWait = Math.round(seatedWithWait.reduce((a, e) => a + (e.quoted_wait ?? 0), 0) / seatedWithWait.length)
+            const serverToday = filterToday(allHistory)
+            if (serverToday.length > 0) {
+              // Merge: server entries take priority, local-only entries fill gaps
+              const serverIds = new Set(serverToday.map(e => e.id))
+              const localOnly = localHistory.filter(e => !serverIds.has(e.id))
+              history = [...serverToday, ...localOnly].sort(
+                (a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime()
+              )
+            } else {
+              // Server returned no data for today — use local fallback
+              history = localHistory
             }
+          } else {
+            // Server error — use local fallback
+            history = localHistory
           }
-        } catch {}
+        } catch {
+          // Network error — use local fallback
+          history = localHistory
+        }
+
+        // Compute daily avg from today's seated guests' quoted_wait
+        const seatedWithWait = history.filter(e => e.status === "seated" && e.quoted_wait != null)
+        if (seatedWithWait.length > 0) {
+          dailyAvgWait = Math.round(seatedWithWait.reduce((a, e) => a + (e.quoted_wait ?? 0), 0) / seatedWithWait.length)
+        }
 
         return {
           tables,
