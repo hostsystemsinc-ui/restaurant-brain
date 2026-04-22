@@ -7,7 +7,7 @@ import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
   LayoutDashboard, GripVertical,
-  Pencil, Activity, Trash2,
+  Pencil, Activity, Trash2, History,
 } from "lucide-react"
 import {
   DndContext, DragOverlay,
@@ -85,6 +85,17 @@ interface QueueEntry {
 
 interface LocalOccupant { name: string; party_size: number; entry_id?: string }
 
+interface HistoryEntry {
+  id: string
+  name: string
+  party_size: number
+  status: "seated" | "removed"
+  arrival_time: string
+  quoted_wait: number | null
+  phone: string | null
+  notes: string | null
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 // Parse a backend timestamp as UTC milliseconds.
@@ -105,6 +116,11 @@ function timeWaiting(iso: string): string {
   return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
 }
 
+function getBusinessDate(): string {
+  const now = new Date()
+  if (now.getHours() < 3) now.setDate(now.getDate() - 1)
+  return now.toLocaleDateString("en-CA")
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   nfc: "NFC", host: "Host", phone: "Phone",
@@ -138,24 +154,24 @@ function WaitTimeModal({
       <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[480px] rounded-t-3xl sm:rounded-3xl p-8"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+        style={{ background: "var(--modal-bg)", border: "1px solid var(--bdr-1)", zIndex: 1 }}
       >
-        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
-        <p className="text-xs font-black tracking-[0.22em] uppercase mb-1" style={{ color: "rgba(255,200,150,0.45)" }}>Estimated Wait</p>
+        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "var(--bdr-3)" }} />
+        <p className="text-xs font-black tracking-[0.22em] uppercase mb-1" style={{ color: "var(--text-muted3)" }}>Estimated Wait</p>
         <p className="text-sm mb-7" style={{ color: "rgba(255,200,150,0.28)" }}>The guest will see this count down live on their phone.</p>
         <div className="flex items-center justify-between mb-6 px-2">
-          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
+          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>−</button>
           <div className="text-center">
             <span className="text-7xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
             <span className="block text-sm mt-1" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
           </div>
-          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
+          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>+</button>
         </div>
         <div className="grid grid-cols-3 gap-3 mb-8">
           {PRESETS.map(p => (
-            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{ height: 76, background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)", border: `1.5px solid ${minutes === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.11)"}`, boxShadow: minutes === p ? "0 0 0 3px rgba(255,185,100,0.10)" : "none" }}>
-              <span style={{ fontSize: 30, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: minutes === p ? "rgba(255,200,150,0.60)" : "rgba(255,185,100,0.30)", marginTop: 4 }}>MIN</span>
+            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{ height: 76, background: minutes === p ? "var(--bdr-2)" : "rgba(255,185,100,0.05)", border: `1.5px solid ${minutes === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.11)"}`, boxShadow: minutes === p ? "0 0 0 3px rgba(255,185,100,0.10)" : "none" }}>
+              <span style={{ fontSize: 30, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "var(--text-muted2)" }}>{p}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: minutes === p ? "var(--text-muted4)" : "rgba(255,185,100,0.30)", marginTop: 4 }}>MIN</span>
             </button>
           ))}
         </div>
@@ -212,9 +228,9 @@ function GuestEditModal({
     <div style={{
       position: "fixed", top: 48, left: 0, bottom: 0,
       width: sidebarW, zIndex: 48,
-      background: "#0C0907",
+      background: "var(--modal-bg2)",
       borderTop: "1px solid rgba(251,191,36,0.28)",
-      borderRight: "1px solid rgba(255,185,100,0.14)",
+      borderRight: "1px solid var(--bdr-1)",
       display: "flex", flexDirection: "column",
       overflowY: "hidden",
     }}>
@@ -226,45 +242,45 @@ function GuestEditModal({
             <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(255,200,150,0.40)" }}>Edit Guest</p>
             <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
           </div>
-          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.50)", border: "1px solid rgba(255,185,100,0.20)", background: "rgba(255,185,100,0.06)" }}>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95" style={{ color: "var(--text-muted2)", border: "1px solid var(--bdr-6)", background: "var(--surf-3)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Wait time */}
-        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(255,200,150,0.45)" }}>Set Wait Time</p>
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "var(--text-muted3)" }}>Set Wait Time</p>
         <div className="flex items-center justify-between mb-4 px-2">
-          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>−</button>
+          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>−</button>
           <div className="text-center">
             <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
             <span className="text-sm ml-2" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
           </div>
-          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "rgba(255,185,100,0.06)" }}>+</button>
+          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>+</button>
         </div>
         <div className="grid grid-cols-6 gap-2 mb-5">
           {PRESETS.map(p => (
-            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.05)", border: `1px solid ${minutes === p ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}` }}>
-              <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
-              <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "rgba(255,200,150,0.55)" : "rgba(255,185,100,0.28)", marginTop: 2 }}>min</span>
+            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "var(--bdr-2)" : "rgba(255,185,100,0.05)", border: `1px solid ${minutes === p ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}` }}>
+              <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "var(--text-muted2)" }}>{p}</span>
+              <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "var(--text-muted)" : "var(--text-dim3)", marginTop: 2 }}>min</span>
             </button>
           ))}
         </div>
 
         {/* Party size */}
-        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Party Size</p>
-        <div className="flex items-center rounded-xl mb-4" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", padding: "0 12px", height: 56 }}>
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Party Size</p>
+        <div className="flex items-center rounded-xl mb-4" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", padding: "0 12px", height: 56 }}>
           <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>−</button>
           <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
           <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>+</button>
         </div>
 
         {/* Phone */}
-        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
-        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" className="w-full rounded-xl outline-none mb-4" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }} />
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" className="w-full rounded-xl outline-none mb-4" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", color: "var(--text-hi)", fontSize: 15, padding: "15px 14px", height: 56 }} />
 
         {/* Notes */}
-        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(255,200,150,0.45)" }}>Notes <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
-        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Allergies, preferences, occasion…" className="w-full rounded-xl outline-none mb-5" style={{ background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "15px 14px", height: 56 }} />
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Notes <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+        <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Allergies, preferences, occasion…" className="w-full rounded-xl outline-none mb-5" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", color: "var(--text-hi)", fontSize: 15, padding: "15px 14px", height: 56 }} />
 
         {/* Save */}
         <button onClick={save} disabled={saving} className="w-full rounded-xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 15, padding: "18px 0" }}>
@@ -347,8 +363,8 @@ function DraggableQueueCard({
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
         touchAction: "none",
-        background: isSelected ? "rgba(255,220,100,0.09)" : isReady ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.06)",
-        border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "rgba(255,185,100,0.16)"}`,
+        background: isSelected ? "rgba(255,220,100,0.09)" : isReady ? "rgba(34,197,94,0.10)" : "var(--surf-3)",
+        border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "var(--bdr-2)"}`,
         boxShadow: isSelected ? "0 0 0 2px rgba(255,220,100,0.18), inset 0 0 10px rgba(255,220,100,0.05)" : undefined,
         borderRadius: 12,
         cursor: isDragging ? "grabbing" : "grab",
@@ -360,12 +376,12 @@ function DraggableQueueCard({
     >
       {/* ── Row 1: grip + position + name ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(255,200,150,0.45)" }} />
-        <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "rgba(255,185,100,0.12)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
+        <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted3)" }} />
+        <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "var(--surf-4)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
           {entry.position ?? "—"}
         </div>
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(255,248,240,0.97)", wordBreak: "break-word" }}>
+          <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "var(--text-hi2)", wordBreak: "break-word" }}>
             {entry.name || "Guest"}
           </span>
           {isReady && (
@@ -375,7 +391,7 @@ function DraggableQueueCard({
       </div>
 
       {/* ── Row 2: meta info ── */}
-      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(255,200,150,0.65)" }}>
+      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Users className="w-2.5 h-2.5" />{entry.party_size}p
         </span>
@@ -394,7 +410,7 @@ function DraggableQueueCard({
             <button
               onPointerDown={e => { e.stopPropagation() }}
               onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
-              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "rgba(255,185,100,0.08)", border: `1px solid ${showBar ? barColor : "rgba(255,185,100,0.20)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
+              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "var(--surf-5)", border: `1px solid ${showBar ? barColor : "var(--bdr-6)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
               title={showBar ? "Hide timer bar" : "Show timer bar"}
             >
               <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(255,185,100,0.35)" }} />
@@ -414,9 +430,9 @@ function DraggableQueueCard({
               transition: "width 1s linear, background 0.3s",
             }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "rgba(255,185,100,0.40)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "var(--text-dim2)" }}>
             <span>0</span>
-            <span style={{ color: isOverdue ? "#ef4444" : "rgba(255,185,100,0.40)" }}>
+            <span style={{ color: isOverdue ? "#ef4444" : "var(--text-dim2)" }}>
               {isOverdue ? `${Math.abs(Math.ceil(secsLeft / 60))}m over` : `${displayWait}m left`}
             </span>
             <span>{quotedTotal}m</span>
@@ -430,7 +446,7 @@ function DraggableQueueCard({
           <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1 }}>Remove {entry.name || "guest"}?</span>
           <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
             className="h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95"
-            style={{ background: "rgba(255,185,100,0.08)", color: "rgba(255,200,150,0.60)", border: "1px solid rgba(255,185,100,0.15)" }}>
+            style={{ background: "var(--surf-5)", color: "var(--text-muted4)", border: "1px solid rgba(255,185,100,0.15)" }}>
             Cancel
           </button>
           <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
@@ -486,7 +502,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
         minWidth: 130,
       }}
     >
-      <div style={{ fontWeight: 700, fontSize: 13, color: "rgba(255,248,240,0.92)" }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-hi)" }}>
         {entry.name || "Guest"}
       </div>
       <div style={{ fontSize: 11, color: "rgba(255,200,150,0.4)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
@@ -654,7 +670,7 @@ function DroppableFloorTable({
         </span>
       ) : occupant ? (
         <>
-          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,200,150,0.75)", letterSpacing: "0.1em" }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-warm)", letterSpacing: "0.1em" }}>
             T{pos.number}
           </span>
           <span style={{
@@ -683,7 +699,7 @@ function DroppableFloorTable({
           <span style={{
             fontSize: pos.shape === "rect" ? 17 : 14,
             fontWeight: 800,
-            color: table ? "#22c55e" : "rgba(255,200,150,0.55)",
+            color: table ? "#22c55e" : "var(--text-muted)",
           }}>
             {pos.number}
           </span>
@@ -726,7 +742,7 @@ function FloorMap({
         fontSize: 9,
         fontWeight: 800,
         letterSpacing: "0.2em",
-        color: "rgba(255,200,150,0.45)",
+        color: "var(--text-muted3)",
         textTransform: "uppercase",
         zIndex: 1,
         pointerEvents: "none",
@@ -755,7 +771,7 @@ function FloorMap({
             right: 0,
             bottom: 0,
             background: "rgba(255,185,100,0.03)",
-            borderLeft: "1px solid rgba(255,185,100,0.16)",
+            borderLeft: "1px solid var(--bdr-2)",
             borderRadius: "0 8px 8px 0",
           }} />
 
@@ -767,7 +783,7 @@ function FloorMap({
             fontSize: 8,
             fontWeight: 800,
             letterSpacing: "0.22em",
-            color: "rgba(255,200,150,0.55)",
+            color: "var(--text-muted)",
             textTransform: "uppercase",
             pointerEvents: "none",
           }}>
@@ -780,7 +796,7 @@ function FloorMap({
             fontSize: 8,
             fontWeight: 800,
             letterSpacing: "0.2em",
-            color: "rgba(255,200,150,0.45)",
+            color: "var(--text-muted3)",
             textTransform: "uppercase",
             pointerEvents: "none",
           }}>
@@ -829,7 +845,7 @@ function FloorMap({
         left: "50%",
         transform: "translateX(-50%)",
         fontSize: 10,
-        color: "rgba(255,200,150,0.45)",
+        color: "var(--text-muted3)",
         letterSpacing: "0.1em",
         whiteSpace: "nowrap",
         pointerEvents: "none",
@@ -867,9 +883,9 @@ function SeatTablePicker({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-6"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
+        style={{ background: "var(--modal-bg)", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
       >
-        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "var(--surf-4)" }} />
 
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
@@ -921,7 +937,7 @@ function SeatTablePicker({
         <button
           onClick={onClose}
           className="w-full mt-5 py-3 rounded-xl text-xs font-bold tracking-[0.1em] uppercase"
-          style={{ background: "rgba(255,185,100,0.05)", color: "rgba(255,200,150,0.35)", border: "1px solid rgba(255,185,100,0.07)" }}
+          style={{ background: "rgba(255,185,100,0.05)", color: "rgba(255,200,150,0.35)", border: "1px solid var(--surf-1)" }}
         >
           Cancel
         </button>
@@ -997,9 +1013,9 @@ function TableGuestPicker({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-6"
-        style={{ background: "#100C09", border: "1px solid rgba(255,185,100,0.14)", zIndex: 1 }}
+        style={{ background: "var(--modal-bg)", border: "1px solid var(--bdr-1)", zIndex: 1 }}
       >
-        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(255,185,100,0.12)" }} />
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "var(--surf-4)" }} />
 
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
@@ -1015,7 +1031,7 @@ function TableGuestPicker({
             )}
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg"
-            style={{ color: "rgba(255,200,150,0.25)", border: "1px solid rgba(255,185,100,0.12)" }}>
+            style={{ color: "rgba(255,200,150,0.25)", border: "1px solid var(--surf-4)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1026,7 +1042,7 @@ function TableGuestPicker({
             className="flex-1 rounded-2xl font-bold transition-all active:scale-[0.98]"
             style={{
               padding: "14px 0", fontSize: 14,
-              background: mode === "pick" ? "rgba(255,185,100,0.16)" : "rgba(255,185,100,0.04)",
+              background: mode === "pick" ? "var(--bdr-2)" : "var(--surf-2)",
               border: `1px solid ${mode === "pick" ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}`,
               color: mode === "pick" ? "rgba(255,220,160,0.97)" : "rgba(255,200,150,0.35)",
             }}>
@@ -1058,12 +1074,12 @@ function TableGuestPicker({
                     className="flex items-center justify-between rounded-2xl text-left transition-all hover:brightness-125 active:scale-[0.98]"
                     style={{
                       padding: "16px 18px",
-                      background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(255,185,100,0.07)",
-                      border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.35)" : "rgba(255,185,100,0.16)"}`,
+                      background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "var(--surf-1)",
+                      border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.35)" : "var(--bdr-2)"}`,
                     }}>
                     <div className="min-w-0">
                       <p className="font-bold truncate" style={{ fontSize: 16, color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
-                      <p className="mt-1" style={{ fontSize: 13, color: "rgba(255,200,150,0.55)" }}>
+                      <p className="mt-1" style={{ fontSize: 13, color: "var(--text-muted)" }}>
                         {entry.party_size}p{displayWait != null ? ` · ${displayWait}m quoted` : ""}
                       </p>
                     </div>
@@ -1080,23 +1096,23 @@ function TableGuestPicker({
           <div className="flex flex-col gap-3">
             <input placeholder="Guest name (optional)" value={name} onChange={e => setName(e.target.value)}
               className="w-full rounded-2xl outline-none"
-              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }} />
+              style={{ padding: "16px 18px", fontSize: 15, background: "var(--surf-3)", border: "1px solid var(--bdr-2)", color: "var(--text-hi)" }} />
             <div className="flex items-center gap-3 rounded-2xl"
-              style={{ background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", padding: "10px 16px" }}>
-              <span className="text-sm font-bold shrink-0" style={{ color: "rgba(255,200,150,0.65)" }}>Party size</span>
+              style={{ background: "var(--surf-3)", border: "1px solid var(--bdr-2)", padding: "10px 16px" }}>
+              <span className="text-sm font-bold shrink-0" style={{ color: "var(--text-warm2)" }}>Party size</span>
               <div className="flex items-center gap-3 ml-auto">
                 <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
-                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.80)" }}>−</button>
+                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "var(--text-warm3)" }}>−</button>
                 <span className="w-8 text-center font-bold tabular-nums" style={{ fontSize: 18, color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
                 <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
-                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.80)" }}>+</button>
+                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "var(--text-warm3)" }}>+</button>
               </div>
             </div>
             <input placeholder="Phone (optional)" value={phone} onChange={e => setPhone(e.target.value)} type="tel"
               className="w-full rounded-2xl outline-none"
-              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.16)", color: "rgba(255,248,240,0.92)" }} />
+              style={{ padding: "16px 18px", fontSize: 15, background: "var(--surf-3)", border: "1px solid var(--bdr-2)", color: "var(--text-hi)" }} />
             <button onClick={addWalkIn} disabled={submitting}
               className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125 mt-1 disabled:opacity-40"
               style={{ fontSize: 17, padding: "22px 0", background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}>
@@ -1178,19 +1194,19 @@ function AddGuestDrawer({
       bottom: bottomOffset,
       width: sidebarW,
       zIndex: 45,
-      background: "#0C0907",
+      background: "var(--modal-bg2)",
       borderTop: "1px solid rgba(255,185,100,0.22)",
-      borderRight: "1px solid rgba(255,185,100,0.18)",
+      borderRight: "1px solid var(--bdr-3)",
       display: "flex",
       flexDirection: "column",
       overflow: "hidden",
     }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid rgba(255,185,100,0.12)", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid var(--surf-4)", flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,240,220,0.88)" }}>
           Add Guest
         </span>
-        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid rgba(255,185,100,0.14)", cursor: "pointer", color: "rgba(255,200,150,0.45)" }}>
+        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid var(--bdr-1)", cursor: "pointer", color: "var(--text-muted3)" }}>
           <X style={{ width: 14, height: 14 }} />
         </button>
       </div>
@@ -1199,39 +1215,39 @@ function AddGuestDrawer({
       <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 0" }}>
 
         {/* Party Size */}
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 8 }}>Party Size</p>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-muted3)", marginBottom: 8 }}>Party Size</p>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
           <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
-            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>−</button>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "var(--surf-3)", border: "1.5px solid var(--bdr-6)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>−</button>
           <span style={{ fontSize: 62, fontWeight: 200, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
             {partySize}
           </span>
           <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
-            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.20)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>+</button>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "var(--surf-3)", border: "1.5px solid var(--bdr-6)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>+</button>
         </div>
 
         {/* Name */}
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>Name</p>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-muted3)", marginBottom: 6 }}>Name</p>
         <input
           type="text" value={name} onChange={e => setName(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
-          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 12, outline: "none", boxSizing: "border-box" }}
+          style={{ width: "100%", background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", borderRadius: 12, color: "var(--text-hi)", fontSize: 15, padding: "11px 13px", marginBottom: 12, outline: "none", boxSizing: "border-box" }}
         />
 
         {/* Phone */}
-        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", marginBottom: 6 }}>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-muted3)", marginBottom: 6 }}>
           Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
         </p>
         <input
           type="tel" value={phone} onChange={e => setPhone(e.target.value)}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
-          style={{ width: "100%", background: "rgba(255,185,100,0.06)", border: "1.5px solid rgba(255,185,100,0.14)", borderRadius: 12, color: "rgba(255,248,240,0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+          style={{ width: "100%", background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", borderRadius: 12, color: "var(--text-hi)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
         />
 
         {/* Inline wait quote */}
-        <div style={{ borderTop: "1px solid rgba(255,185,100,0.12)", paddingTop: 12, marginBottom: 4 }}>
+        <div style={{ borderTop: "1px solid var(--surf-4)", paddingTop: 12, marginBottom: 4 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,200,150,0.45)", margin: 0 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-muted3)", margin: 0 }}>
               Quote Wait
             </p>
             {waitMins !== null && (
@@ -1247,11 +1263,11 @@ function AddGuestDrawer({
               <button key={p} onClick={() => setWaitMins(p)}
                 style={{
                   height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: waitMins === p ? "rgba(255,185,100,0.18)" : "rgba(255,185,100,0.05)",
-                  border: `1px solid ${waitMins === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.12)"}`,
+                  background: waitMins === p ? "var(--bdr-3)" : "rgba(255,185,100,0.05)",
+                  border: `1px solid ${waitMins === p ? "rgba(255,185,100,0.55)" : "var(--surf-4)"}`,
                   cursor: "pointer", transition: "all 0.1s",
                 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: waitMins === p ? "rgba(255,230,190,0.97)" : "rgba(255,200,150,0.50)" }}>{p}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: waitMins === p ? "rgba(255,230,190,0.97)" : "var(--text-muted2)" }}>{p}</span>
               </button>
             ))}
           </div>
@@ -1259,12 +1275,12 @@ function AddGuestDrawer({
           {/* Fine-tune stepper */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
             <button onClick={() => setWaitMins(m => Math.max(1, (m ?? 15) - 1))}
-              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surf-3)", border: "1px solid var(--bdr-3)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
             <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.25)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
               {waitMins ?? "—"}
             </span>
             <button onClick={() => setWaitMins(m => Math.min(120, (m ?? 14) + 1))}
-              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,185,100,0.06)", border: "1px solid rgba(255,185,100,0.18)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surf-3)", border: "1px solid var(--bdr-3)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
           </div>
         </div>
       </div>
@@ -1275,7 +1291,7 @@ function AddGuestDrawer({
         <button onClick={submit} disabled={loading}
           style={{
             width: "100%", height: 48, borderRadius: 14, border: "none", cursor: loading ? "default" : "pointer",
-            background: loading ? "rgba(255,185,100,0.08)" : "#22c55e",
+            background: loading ? "var(--surf-5)" : "#22c55e",
             color: "white", fontSize: 13, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase",
             opacity: loading ? 0.5 : 1, transition: "opacity 0.12s",
           }}>
@@ -1290,6 +1306,201 @@ function AddGuestDrawer({
 function HeaderLogo({ src, name }: { src: string; name: string }) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={src} alt={name} style={{ height: 36, width: "auto", objectFit: "contain", flexShrink: 0 }} />
+}
+
+// ── Station History Drawer ─────────────────────────────────────────────────────
+
+function StationHistoryDrawer({
+  restaurantId, history, tables, localOccupants, onClose, onRestored,
+}: {
+  restaurantId: string
+  history: HistoryEntry[]
+  tables: Table[]
+  localOccupants: Map<number, LocalOccupant>
+  onClose: () => void
+  onRestored: () => void
+}) {
+  const [restoring, setRestoring] = useState<string | null>(null)
+  const [seatPicker, setSeatPicker] = useState<HistoryEntry | null>(null)
+  const [seating, setSeating] = useState<string | null>(null)
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null)
+
+  const fmtTime = (iso: string) => {
+    try { return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) } catch { return "—" }
+  }
+
+  const copyPhone = async (phone: string, id: string) => {
+    try { await navigator.clipboard.writeText(phone); setCopiedPhone(id); setTimeout(() => setCopiedPhone(null), 2000) } catch {}
+  }
+
+  const restore = async (e: HistoryEntry) => {
+    setRestoring(e.id)
+    try {
+      const r = await fetch(`${API}/queue/${e.id}/restore`, { method: "POST" })
+      if (r.ok) { onRestored(); onClose() }
+    } catch {}
+    setRestoring(null)
+  }
+
+  const seatAtTable = async (entry: HistoryEntry, tableId: string) => {
+    setSeating(entry.id)
+    try {
+      await fetch(`${API}/queue/${entry.id}/restore`, { method: "POST" })
+      await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
+      onRestored()
+    } catch {}
+    setSeating(null)
+    setSeatPicker(null)
+    onClose()
+  }
+
+  const seated  = history.filter(e => e.status === "seated")
+  const removed = history.filter(e => e.status === "removed")
+  const availableTables = tables.filter(t => !localOccupants.has(t.table_number) && t.status === "available")
+
+  // Suppress unused variable warning — restaurantId may be used in future
+  void restaurantId
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.60)", backdropFilter: "blur(6px)" }} onClick={onClose} />
+      <div style={{
+        position: "relative", width: "100%", maxWidth: 400, height: "100%",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        background: "var(--card-bg)", borderLeft: "1px solid var(--header-border)",
+        zIndex: 1,
+      }}>
+        {/* Header */}
+        <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid var(--divider)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--text-muted)" }}>Today&apos;s History</p>
+            <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surf-1)", border: "1px solid var(--bdr-1)", cursor: "pointer", color: "var(--text-muted)" }}>
+              <X style={{ width: 13, height: 13 }} />
+            </button>
+          </div>
+          <p style={{ fontSize: 16, fontWeight: 800, color: "var(--text-hi)" }}>{seated.length} seated · {removed.length} removed</p>
+        </div>
+
+        {/* Summary chips */}
+        <div style={{ display: "flex", gap: 8, padding: "10px 20px", borderBottom: "1px solid var(--divider)", flexShrink: 0 }}>
+          {[
+            { label: "Seated Today", value: seated.length, color: "#22c55e", bg: "rgba(34,197,94,0.10)", bdr: "rgba(34,197,94,0.30)" },
+            { label: "Removed Today", value: removed.length, color: "#ef4444", bg: "rgba(239,68,68,0.10)", bdr: "rgba(239,68,68,0.28)" },
+          ].map(({ label, value, color, bg, bdr }) => (
+            <div key={label} style={{ flex: 1, background: bg, border: `1px solid ${bdr}`, borderRadius: 10, padding: "8px 12px", textAlign: "center" }}>
+              <p style={{ fontSize: 22, fontWeight: 900, color, lineHeight: 1 }}>{value}</p>
+              <p style={{ fontSize: 10, fontWeight: 600, color, opacity: 0.75, marginTop: 3 }}>{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 20px" }}>
+          {history.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 0", gap: 8, textAlign: "center" }}>
+              <Clock style={{ width: 28, height: 28, color: "var(--text-dim)" }} />
+              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-warm)" }}>No history yet today</p>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 200, lineHeight: 1.6 }}>Seated and removed guests appear here throughout the day.</p>
+            </div>
+          ) : (
+            [
+              { key: "removed", label: "Removed", color: "#ef4444", borderColor: "rgba(239,68,68,0.55)", items: removed },
+              { key: "seated",  label: "Seated",  color: "#22c55e", borderColor: "rgba(34,197,94,0.55)",  items: seated  },
+            ].filter(s => s.items.length > 0).map(section => (
+              <div key={section.key} style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, padding: "0 2px" }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--text-muted)" }}>{section.label}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: section.color }}>{section.items.length}</span>
+                </div>
+                <div style={{ borderRadius: 12, overflow: "hidden", border: "1px solid var(--bdr-1)" }}>
+                  {section.items.map((e, i) => (
+                    <div key={e.id} style={{
+                      padding: "11px 14px",
+                      background: i % 2 === 0 ? "var(--surf-1)" : "var(--card-bg)",
+                      borderTop: i > 0 ? "1px solid var(--bdr-1)" : "none",
+                    }}>
+                      {/* Name + time row */}
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 3, height: 32, borderRadius: 2, background: section.color, opacity: 0.65, flexShrink: 0 }} />
+                          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-hi)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name || "Guest"}</span>
+                        </div>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0, marginLeft: 8 }}>{fmtTime(e.arrival_time)}</span>
+                      </div>
+                      {/* Party + wait */}
+                      <div style={{ fontSize: 11, color: "var(--text-warm)", display: "flex", gap: 6, marginLeft: 9, marginBottom: 8 }}>
+                        <span>{e.party_size} {e.party_size === 1 ? "guest" : "guests"}</span>
+                        {e.quoted_wait != null && <><span style={{ opacity: 0.4 }}>·</span><span>{e.quoted_wait}m quoted</span></>}
+                        {e.notes && <><span style={{ opacity: 0.4 }}>·</span><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{e.notes}</span></>}
+                      </div>
+                      {/* Phone + actions */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 9 }}>
+                        {e.phone ? (
+                          <button onClick={() => copyPhone(e.phone!, e.id)}
+                            style={{ flex: "0 0 auto", height: 28, padding: "0 10px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+                              background: copiedPhone === e.id ? "rgba(34,197,94,0.12)" : "var(--surf-4)",
+                              color: copiedPhone === e.id ? "#22c55e" : "var(--text-warm2)",
+                              border: `1px solid ${copiedPhone === e.id ? "rgba(34,197,94,0.35)" : "var(--bdr-5)"}`,
+                              cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                            {copiedPhone === e.id ? "✓ Copied" : e.phone}
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 11, color: "var(--text-dim)", fontStyle: "italic" }}>No phone</span>
+                        )}
+                        <div style={{ flex: 1 }} />
+                        <button onClick={() => setSeatPicker(e)}
+                          style={{ height: 28, padding: "0 10px", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                            background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.30)", cursor: "pointer" }}>
+                          Seat
+                        </button>
+                        <button onClick={() => restore(e)} disabled={restoring === e.id}
+                          style={{ height: 28, padding: "0 10px", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                            background: "var(--surf-1)", color: "var(--text-warm)", border: "1px solid var(--bdr-1)",
+                            cursor: "pointer", opacity: restoring === e.id ? 0.5 : 1 }}>
+                          {restoring === e.id ? "…" : "Waitlist"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Seat-at-table picker */}
+      {seatPicker && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "flex-end" }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)" }} onClick={() => setSeatPicker(null)} />
+          <div style={{ position: "relative", width: "100%", maxWidth: 440, margin: "0 auto", borderRadius: "20px 20px 0 0", padding: "24px 20px", background: "var(--card-bg)", border: "1px solid var(--header-border)", zIndex: 1 }}>
+            <p style={{ fontSize: 15, fontWeight: 800, color: "var(--text-hi)", marginBottom: 4 }}>
+              Seat {seatPicker.name || "Guest"} ({seatPicker.party_size}p)
+            </p>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Choose an available table:</p>
+            {availableTables.length === 0 ? (
+              <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>No tables available right now</p>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
+                {availableTables.map(t => (
+                  <button key={t.id} onClick={() => seatAtTable(seatPicker, t.id)} disabled={seating === seatPicker.id}
+                    style={{ height: 58, borderRadius: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+                      background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.30)", cursor: "pointer", opacity: seating === seatPicker.id ? 0.5 : 1 }}>
+                    <span style={{ fontSize: 20, fontWeight: 900, color: "#22c55e" }}>{t.table_number}</span>
+                    <span style={{ fontSize: 9, color: "#22c55e", opacity: 0.7 }}>{t.capacity}p</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setSeatPicker(null)}
+              style={{ width: "100%", padding: "11px 0", borderRadius: 10, background: "var(--surf-1)", border: "1px solid var(--bdr-1)", color: "var(--text-warm)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
@@ -1316,6 +1527,8 @@ export default function HostDashboard() {
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [tableTapModal, setTableTapModal] = useState<{ tableNumber: number; tableId: string | undefined; capacity: number | undefined } | null>(null)
+  const [showHistory, setShowHistory]     = useState(false)
+  const [history,     setHistory]         = useState<HistoryEntry[]>([])
   const [sidebarW, setSidebarW]           = useState(300)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
@@ -1450,6 +1663,12 @@ export default function HostDashboard() {
     } finally {
       fetchingRef.current = false
     }
+    // fetch history for today
+    const today = getBusinessDate()
+    fetch(`${API}/queue/history?restaurant_id=${restaurantId}&date=${today}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setHistory(Array.isArray(data) ? data : []))
+      .catch(() => {})
   }, [restaurantId])
 
   useEffect(() => {
@@ -1659,9 +1878,31 @@ export default function HostDashboard() {
       onDragEnd={handleDragEnd}
     >
       <style>{`
-        [data-host-theme="dark"]  { --accent:255,185,100; --warm:255,200,150; --cream:255,248,240; --page-bg:#0C0907; --card-bg:#100C09; --page-deep:#0a0704; --header-bg:rgba(7,4,2,0.98); --header-border:rgba(var(--accent),0.18); --divider:rgba(var(--accent),0.16); }
-        [data-host-theme="light"] { --accent:160,90,0;   --warm:110,60,5;    --cream:18,10,3;     --page-bg:#F5F2EE; --card-bg:#FFFFFF;   --page-deep:#EDE9E3; --header-bg:rgba(252,249,245,0.98); --header-border:rgba(160,90,0,0.18); --divider:rgba(160,90,0,0.14); }
-      `}</style>
+  [data-host-theme="dark"] {
+    --accent:255,185,100; --warm:255,200,150; --cream:255,248,240;
+    --page-bg:#0C0907; --card-bg:#100C09; --page-deep:#0a0704;
+    --header-bg:rgba(7,4,2,0.98); --header-border:rgba(var(--accent),0.18); --divider:rgba(var(--accent),0.16);
+    --text-hi:var(--text-hi); --text-hi2:var(--text-hi2);
+    --text-warm:var(--text-warm); --text-warm2:var(--text-warm2); --text-warm3:var(--text-warm3); --text-warm4:var(--text-warm4);
+    --text-muted:var(--text-muted); --text-muted2:var(--text-muted2); --text-muted3:var(--text-muted3); --text-muted4:var(--text-muted4);
+    --text-dim:var(--text-dim); --text-dim2:var(--text-dim2); --text-dim3:var(--text-dim3);
+    --surf-1:var(--surf-1); --surf-2:var(--surf-2); --surf-3:var(--surf-3); --surf-4:var(--surf-4); --surf-5:var(--surf-5);
+    --bdr-1:var(--bdr-1); --bdr-2:var(--bdr-2); --bdr-3:var(--bdr-3); --bdr-4:var(--text-dim3); --bdr-5:var(--surf-4); --bdr-6:var(--bdr-6); --bdr-7:var(--bdr-7);
+    --modal-bg:#100C09; --modal-bg2:#0C0907;
+  }
+  [data-host-theme="light"] {
+    --accent:160,90,0; --warm:110,60,5; --cream:18,10,3;
+    --page-bg:#F5F2EE; --card-bg:#FFFFFF; --page-deep:#EDE9E3;
+    --header-bg:rgba(252,249,245,0.98); --header-border:rgba(160,90,0,0.18); --divider:rgba(160,90,0,0.14);
+    --text-hi:rgba(22,12,4,0.90); --text-hi2:rgba(22,12,4,0.95);
+    --text-warm:rgba(100,55,5,0.85); --text-warm2:rgba(100,55,5,0.75); --text-warm3:rgba(100,55,5,0.90); --text-warm4:rgba(100,55,5,0.95);
+    --text-muted:rgba(100,55,5,0.65); --text-muted2:rgba(100,55,5,0.58); --text-muted3:rgba(100,55,5,0.50); --text-muted4:rgba(100,55,5,0.70);
+    --text-dim:rgba(130,75,10,0.55); --text-dim2:rgba(130,75,10,0.48); --text-dim3:rgba(130,75,10,0.35);
+    --surf-1:rgba(160,90,0,0.07); --surf-2:rgba(160,90,0,0.04); --surf-3:rgba(160,90,0,0.06); --surf-4:rgba(160,90,0,0.12); --surf-5:rgba(160,90,0,0.08);
+    --bdr-1:rgba(160,90,0,0.16); --bdr-2:rgba(160,90,0,0.18); --bdr-3:rgba(160,90,0,0.22); --bdr-4:rgba(160,90,0,0.30); --bdr-5:rgba(160,90,0,0.14); --bdr-6:rgba(160,90,0,0.24); --bdr-7:rgba(160,90,0,0.28);
+    --modal-bg:#FFFFFF; --modal-bg2:#F5F2EE;
+  }
+`}</style>
       <div data-host-theme={theme} style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--page-bg)" }}>
       <div className="flex flex-col" style={{
         width: `${(1 / zoom * 100).toFixed(6)}vw`,
@@ -1685,23 +1926,23 @@ export default function HostDashboard() {
             }
             {/* Location label for Walnut restaurants (Original / Southside) */}
             {(restaurantName.includes("Original") || restaurantName.includes("Southside")) && (
-              <span className="hidden sm:block text-[10px] font-black tracking-[0.14em] px-2 py-0.5 rounded-md shrink-0" style={{ background: "rgba(200,144,96,0.12)", color: "rgba(255,200,150,0.75)", border: "1px solid rgba(200,144,96,0.25)", textTransform: "uppercase" }}>
+              <span className="hidden sm:block text-[10px] font-black tracking-[0.14em] px-2 py-0.5 rounded-md shrink-0" style={{ background: "var(--surf-4)", color: "var(--text-warm)", border: "1px solid rgba(200,144,96,0.25)", textTransform: "uppercase" }}>
                 {restaurantName.includes("Original") ? "Original" : "Southside"}
               </span>
             )}
 
-            <div className="w-px h-5 shrink-0" style={{ background: "rgba(255,185,100,0.20)" }} />
+            <div className="w-px h-5 shrink-0" style={{ background: "var(--bdr-6)" }} />
 
             {/* Stats */}
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "var(--surf-1)", border: "1px solid var(--bdr-2)" }}>
                 <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
                 <span className="text-xs" style={{ color: "rgba(255,185,100,0.50)" }}>/{FLOOR_PLAN.length}</span>
-                <span className="text-[10px] ml-0.5" style={{ color: "rgba(255,200,150,0.60)" }}>free</span>
+                <span className="text-[10px] ml-0.5" style={{ color: "var(--text-muted4)" }}>free</span>
               </div>
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(255,185,100,0.07)", border: "1px solid rgba(255,185,100,0.16)" }}>
-                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(255,200,150,0.60)" }}>{waitingList.length}</span>
-                <span className="text-[10px]" style={{ color: "rgba(255,200,150,0.60)" }}>waiting</span>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "var(--surf-1)", border: "1px solid var(--bdr-2)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "var(--text-muted4)" }}>{waitingList.length}</span>
+                <span className="text-[10px]" style={{ color: "var(--text-muted4)" }}>waiting</span>
               </div>
               {readyList.length > 0 && (
                 <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)" }}>
@@ -1716,51 +1957,59 @@ export default function HostDashboard() {
             {/* Live clock */}
             <span
               className="hidden sm:block text-[11px] tabular-nums font-medium px-2"
-              style={{ color: "rgba(255,200,150,0.65)", letterSpacing: "0.04em" }}
+              style={{ color: "var(--text-warm2)", letterSpacing: "0.04em" }}
             >
               {clockStr}
             </span>
             {/* Analog view — only for Walnut restaurants */}
             {(restaurantName.includes("Original") || restaurantName.includes("Southside")) && (
-              <Link href="/analog" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+              <Link href="/analog" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "var(--text-warm2)" }}>
                 <Activity className="w-3 h-3" /> Analog
               </Link>
             )}
             {/* Zoom controls */}
-            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(255,185,100,0.14)", background: "rgba(255,185,100,0.04)" }}>
+            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid var(--bdr-1)", background: "var(--surf-2)" }}>
               <button onClick={() => setZoom(z => Math.max(0.7, Math.round((z - 0.1) * 10) / 10))}
                 className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
-                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                style={{ color: "var(--text-muted4)", fontSize: 14, fontWeight: 300 }}
                 title="Zoom out">−</button>
-              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "rgba(255,200,150,0.45)", minWidth: 28, textAlign: "center" }}>
+              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "var(--text-muted3)", minWidth: 28, textAlign: "center" }}>
                 {Math.round(zoom * 100)}%
               </span>
               <button onClick={() => setZoom(z => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))}
                 className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
-                style={{ color: "rgba(255,200,150,0.60)", fontSize: 14, fontWeight: 300 }}
+                style={{ color: "var(--text-muted4)", fontSize: 14, fontWeight: 300 }}
                 title="Zoom in">+</button>
             </div>
             {/* Light / Dark toggle */}
             <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
               className="h-7 px-2 rounded-lg hidden sm:flex items-center gap-1 text-[11px] font-semibold transition-colors hover:bg-white/8"
-              style={{ color: "rgba(255,200,150,0.65)", border: "1px solid rgba(255,185,100,0.14)", background: "rgba(255,185,100,0.04)" }}
+              style={{ color: "var(--text-warm2)", border: "1px solid var(--bdr-1)", background: "var(--surf-2)" }}
               title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
               {theme === "dark" ? "☀︎" : "◗"} {theme === "dark" ? "Light" : "Dark"}
             </button>
+            {/* History */}
+            {(restaurantName.includes("Original") || restaurantName.includes("Southside")) && (
+              <button onClick={() => setShowHistory(true)}
+                className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors"
+                style={{ color: "var(--text-warm2)", border: "1px solid var(--bdr-1)", background: "var(--surf-1)" }}>
+                <History className="w-3 h-3" /> History
+              </button>
+            )}
             {/* Admin link — Walnut goes to unified dashboard, others go to /admin */}
             {(restaurantName.includes("Original") || restaurantName.includes("Southside")) ? (
-              <Link href="/walnut/dashboard" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+              <Link href="/walnut/dashboard" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "var(--text-warm2)" }}>
                 <LayoutDashboard className="w-3 h-3" /> Admin
               </Link>
             ) : (
-              <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
+              <Link href="/admin" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "var(--text-warm2)" }}>
                 <LayoutDashboard className="w-3 h-3" /> Admin
               </Link>
             )}
             <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
               {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             </div>
-            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.55)" }}>
+            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "var(--text-muted)" }}>
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -1785,7 +2034,7 @@ export default function HostDashboard() {
                 position: "absolute", right: 0, top: 0, bottom: 0, width: 6,
                 cursor: "col-resize", zIndex: 20,
                 background: "transparent",
-                borderRight: "1px solid rgba(255,185,100,0.16)",
+                borderRight: "1px solid var(--bdr-2)",
               }}
               title="Drag to resize"
             >
@@ -1796,7 +2045,7 @@ export default function HostDashboard() {
                 display: "flex", flexDirection: "column", gap: 3,
               }}>
                 {[0,1,2].map(i => (
-                  <div key={i} style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(255,185,100,0.28)" }} />
+                  <div key={i} style={{ width: 2, height: 2, borderRadius: "50%", background: "var(--text-dim3)" }} />
                 ))}
               </div>
             </div>
@@ -1825,7 +2074,7 @@ export default function HostDashboard() {
 
             {/* Divider */}
             {readyList.length > 0 && waitingList.length > 0 && (
-              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(255,185,100,0.14)" }} />
+              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "var(--bdr-1)" }} />
             )}
 
             {/* Needs Quote section — guests who joined without a quoted time */}
@@ -1885,20 +2134,20 @@ export default function HostDashboard() {
               {quotedWaiting.length > 0 && (
                 <div className="flex items-center gap-2 mb-2 px-1">
                   <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
-                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(255,200,150,0.65)" }}>
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "var(--text-warm2)" }}>
                     Waiting · {quotedWaiting.length}
                   </span>
                 </div>
               )}
 
               {queue.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid var(--bdr-1)", borderRadius: 12 }}>
                   <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
-                  <p className="text-[11px] font-medium" style={{ color: "rgba(255,200,150,0.50)" }}>Queue is clear</p>
+                  <p className="text-[11px] font-medium" style={{ color: "var(--text-muted2)" }}>Queue is clear</p>
                 </div>
               ) : quotedWaiting.length === 0 && needsQuoteList.length === 0 ? (
-                <div className="flex items-center justify-center py-8" style={{ border: "1px solid rgba(255,185,100,0.14)", borderRadius: 12 }}>
-                  <p className="text-xs" style={{ color: "rgba(255,200,150,0.50)" }}>No one else waiting</p>
+                <div className="flex items-center justify-center py-8" style={{ border: "1px solid var(--bdr-1)", borderRadius: 12 }}>
+                  <p className="text-xs" style={{ color: "var(--text-muted2)" }}>No one else waiting</p>
                 </div>
               ) : quotedWaiting.length > 0 ? (
                 <div className="flex flex-col gap-1.5 pb-24">
@@ -1915,7 +2164,7 @@ export default function HostDashboard() {
             </div>
 
             {/* Sidebar footer — system health */}
-            <div className="px-4 py-3 shrink-0 flex items-center justify-between" style={{ borderTop: "1px solid rgba(255,185,100,0.14)" }}>
+            <div className="px-4 py-3 shrink-0 flex items-center justify-between" style={{ borderTop: "1px solid var(--bdr-1)" }}>
               <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.40)" }}>
                 Synced {lastSync.toLocaleTimeString()}
               </p>
@@ -1962,7 +2211,7 @@ export default function HostDashboard() {
 
           {/* ── Mobile: no floor map — full queue ─────────────────── */}
           <div className="flex-1 lg:hidden overflow-y-auto p-4 flex flex-col gap-4">
-            <p className="text-xs text-center py-8" style={{ color: "rgba(255,200,150,0.50)" }}>
+            <p className="text-xs text-center py-8" style={{ color: "var(--text-muted2)" }}>
               Floor map available on larger screens
             </p>
           </div>
@@ -2037,10 +2286,10 @@ export default function HostDashboard() {
         {clearConfirm && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setClearConfirm(null)} />
-            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "#100C09", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
-              <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(255,185,100,0.18)" }} />
-              <p className="text-base font-bold mb-1" style={{ color: "rgba(255,248,240,0.92)" }}>Table {clearConfirm.tableNumber}</p>
-              <p className="text-sm mb-8" style={{ color: "rgba(255,200,150,0.55)" }}>
+            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "var(--modal-bg)", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
+              <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "var(--bdr-3)" }} />
+              <p className="text-base font-bold mb-1" style={{ color: "var(--text-hi)" }}>Table {clearConfirm.tableNumber}</p>
+              <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
                 What would you like to do with{" "}
                 <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
                 ({clearConfirm.occupant.party_size}p)?
@@ -2063,12 +2312,24 @@ export default function HostDashboard() {
                 <button
                   onClick={() => setClearConfirm(null)}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                  style={{ background: "rgba(255,185,100,0.06)", color: "rgba(255,200,150,0.65)", border: "1px solid rgba(255,185,100,0.12)", fontSize: 15, padding: "18px 0" }}>
+                  style={{ background: "var(--surf-3)", color: "var(--text-warm2)", border: "1px solid var(--surf-4)", fontSize: 15, padding: "18px 0" }}>
                   Keep Seated
                 </button>
               </div>
             </div>
           </div>
+        )}
+
+        {/* History drawer */}
+        {showHistory && (
+          <StationHistoryDrawer
+            restaurantId={restaurantId}
+            history={history}
+            tables={tables}
+            localOccupants={localOccupants}
+            onClose={() => setShowHistory(false)}
+            onRestored={refreshAll}
+          />
         )}
 
         {/* Queue seat picker */}
