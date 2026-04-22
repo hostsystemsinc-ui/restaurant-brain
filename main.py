@@ -852,17 +852,18 @@ def debug_history(restaurant_id: Optional[str] = None):
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
     """Returns seated and removed entries for the given restaurant.
-    Fetches all entries and filters in Python to avoid PostgREST operator issues."""
+    Uses explicit column list instead of * to avoid PostgREST issues with computed columns."""
     rid = _rid(restaurant_id)
     try:
         res = (
             supabase.table("queue_entries")
-            .select("*")
+            .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
             .eq("restaurant_id", rid)
+            .in_("status", ["seated", "removed"])
+            .order("arrival_time", desc=True)
             .execute()
         )
-        data = res.data or []
-        return [e for e in data if e.get("status") in ("seated", "removed")]
+        return res.data or []
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
