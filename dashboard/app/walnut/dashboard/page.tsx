@@ -871,30 +871,17 @@ export default function WalnutDashboard() {
           ))}
         </div>
 
-        {/* Floor map + queue */}
-        <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 16, marginBottom: 16 }}>
-
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <h3 style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Floor Map</h3>
-              {d.tables.length === 0 && (
-                <span style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>loading…</span>
-              )}
-            </div>
-            <FloorMap tables={d.tables} occupants={d.occupants} />
-          </div>
-
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px" }}>
-            <h3 style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 14 }}>
-              Waitlist
-              {s.waiting > 0 && (
-                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: C.orange, color: "#fff", padding: "2px 7px", borderRadius: 20 }}>
-                  {s.waiting}
-                </span>
-              )}
-            </h3>
-            <QueueList queue={d.queue} />
-          </div>
+        {/* Live waitlist */}
+        <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "18px 20px", marginBottom: 16 }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 14 }}>
+            Waitlist
+            {s.waiting > 0 && (
+              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 800, background: C.orange, color: "#fff", padding: "2px 7px", borderRadius: 20 }}>
+                {s.waiting}
+              </span>
+            )}
+          </h3>
+          <QueueList queue={d.queue} />
         </div>
 
         {/* Guest join links */}

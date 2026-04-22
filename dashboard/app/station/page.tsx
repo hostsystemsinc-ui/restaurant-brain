@@ -6,7 +6,7 @@ import Link from "next/link"
 import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
-  LayoutDashboard, GripVertical, CalendarDays, CalendarCheck,
+  LayoutDashboard, GripVertical,
   Pencil, Activity, Trash2,
 } from "lucide-react"
 import {
@@ -85,16 +85,6 @@ interface QueueEntry {
 
 interface LocalOccupant { name: string; party_size: number; entry_id?: string }
 
-interface Reservation {
-  id:         string
-  guest_name: string
-  party_size: number
-  date:       string   // "YYYY-MM-DD"
-  time:       string   // "HH:MM" or "HH:MM:SS"
-  status:     string
-  phone:      string | null
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 // Parse a backend timestamp as UTC milliseconds.
@@ -115,27 +105,6 @@ function timeWaiting(iso: string): string {
   return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
 }
 
-function toLocalDateStr(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-}
-
-function fmt12Res(t: string): string {
-  const [h, m] = t.split(":").map(Number)
-  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
-}
-
-type ResUrgency = "upcoming" | "arriving" | "now" | "late"
-
-function getResUrgency(dateStr: string, timeStr: string, now: Date): ResUrgency {
-  const [h, m] = timeStr.split(":").map(Number)
-  const [y, mo, d] = dateStr.split("-").map(Number)
-  const resTime = new Date(y, mo - 1, d, h, m, 0)
-  const diff = (resTime.getTime() - now.getTime()) / 60_000
-  if (diff > 30)  return "upcoming"
-  if (diff > 15)  return "arriving"
-  if (diff > -15) return "now"
-  return "late"
-}
 
 const SOURCE_LABELS: Record<string, string> = {
   nfc: "NFC", host: "Host", phone: "Phone",
@@ -748,7 +717,7 @@ function FloorMap({
   return (
     <div
       className="flex-1 relative overflow-hidden"
-      style={{ background: "#0a0704" }}
+      style={{ background: "var(--page-deep)" }}
     >
       <span style={{
         position: "absolute",
@@ -1344,8 +1313,6 @@ export default function HostDashboard() {
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
-  const [resPicker, setResPicker]         = useState<Reservation | null>(null)
-  const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [tableTapModal, setTableTapModal] = useState<{ tableNumber: number; tableId: string | undefined; capacity: number | undefined } | null>(null)
@@ -1485,31 +1452,15 @@ export default function HostDashboard() {
     }
   }, [restaurantId])
 
-  // Fetch today's confirmed reservations
-  const fetchReservations = useCallback(async () => {
-    try {
-      const r = await fetch(`${API}/reservations${restaurantId ? `?restaurant_id=${restaurantId}` : ""}`)
-      if (r.ok) {
-        const all: Reservation[] = await r.json()
-        const todayStr = toLocalDateStr(new Date())
-        setTodayRes(
-          all
-            .filter(r => r.date === todayStr && r.status === "confirmed")
-            .sort((a, b) => a.time.localeCompare(b.time))
-        )
-      }
-    } catch {}
-  }, [])
-
   useEffect(() => {
-    refreshAll(); fetchReservations()
+    refreshAll()
     const tick = () => {
       const interval = failCountRef.current >= 3 ? 15_000 : 4_000
       pollTimerRef.current = setTimeout(() => { refreshAll(); tick() }, interval)
     }
     tick()
     return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current) }
-  }, [refreshAll, fetchReservations])
+  }, [refreshAll])
 
   // Pause polling when iPad screen locks, resume immediately on wake
   useEffect(() => {
@@ -1517,12 +1468,6 @@ export default function HostDashboard() {
     document.addEventListener("visibilitychange", onVis)
     return () => document.removeEventListener("visibilitychange", onVis)
   }, [refreshAll])
-
-  // Slow-poll reservations separately (less critical)
-  useEffect(() => {
-    const t = setInterval(fetchReservations, 30_000)
-    return () => clearInterval(t)
-  }, [fetchReservations])
 
   // Keep waitModalRef in sync with waitModal state (lets auto-prompt read it without being in deps)
   useEffect(() => { waitModalRef.current = waitModal }, [waitModal])
@@ -1571,24 +1516,6 @@ export default function HostDashboard() {
     }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
     refreshAll()
-  }, [refreshAll])
-
-  // Check in a reservation — mark as seated + assign table
-  const checkInConfirm = useCallback(async (res: Reservation, tableNumber: number, tableId: string | undefined) => {
-    setResPicker(null)
-    // Mark reservation as seated
-    try {
-      await fetch(`${API}/reservations/${res.id}/status?status=seated`, { method: "PATCH" })
-    } catch {}
-    // Remove from today's sidebar immediately
-    setTodayRes(prev => prev.filter(r => r.id !== res.id))
-    // Mark table occupied if an API table was found
-    if (tableId) {
-      try { await fetch(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
-      refreshAll()
-    }
-    // Always update local occupant map (floor map visual)
-    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
   }, [refreshAll])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string, mode: "restore" | "cancel" = "cancel") => {
@@ -1720,23 +1647,6 @@ export default function HostDashboard() {
   const needsQuoteList = waitingList.filter(q => q.quoted_wait == null)
   const quotedWaiting  = waitingList.filter(q => q.quoted_wait != null)
 
-  // Reservations to show in sidebar: window of 3hr future + 45min past, sorted by urgency
-  const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
-  const activeRes = todayReservations
-    .filter(r => {
-      const [h, m] = r.time.split(":").map(Number)
-      const [y, mo, d] = r.date.split("-").map(Number)
-      const resTime = new Date(y, mo - 1, d, h, m)
-      const diffMin = (resTime.getTime() - now.getTime()) / 60_000
-      return diffMin > -45 && diffMin < 180
-    })
-    .sort((a, b) => {
-      const ua = urgencyOrder[getResUrgency(a.date, a.time, now)]
-      const ub = urgencyOrder[getResUrgency(b.date, b.time, now)]
-      if (ua !== ub) return ua - ub
-      return a.time.localeCompare(b.time)
-    })
-
   // Live clock string
   const clockStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
 
@@ -1765,7 +1675,7 @@ export default function HostDashboard() {
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header
           className="flex items-center justify-between px-5 h-12 shrink-0"
-          style={{ background: "rgba(7,4,2,0.98)", borderBottom: "1px solid rgba(255,185,100,0.18)", backdropFilter: "blur(20px)" }}
+          style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
             {/* Restaurant logo / name */}
@@ -1810,9 +1720,6 @@ export default function HostDashboard() {
             >
               {clockStr}
             </span>
-            <Link href="/reservations" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
-              <CalendarDays className="w-3 h-3" /> Reservations
-            </Link>
             {/* Analog view — only for Walnut restaurants */}
             {(restaurantName.includes("Original") || restaurantName.includes("Southside")) && (
               <Link href="/analog" className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(255,200,150,0.65)" }}>
@@ -1868,7 +1775,7 @@ export default function HostDashboard() {
             style={{
               width: sidebarW,
               position: "relative",
-              background: "#0C0907",
+              background: "var(--page-bg)",
             }}
           >
             {/* Drag-to-resize handle */}
@@ -1893,106 +1800,6 @@ export default function HostDashboard() {
                 ))}
               </div>
             </div>
-
-            {/* ── Today's reservations ──────────────────────────── */}
-            {activeRes.length > 0 && (
-              <div
-                style={{
-                  padding: "8px 12px 8px",
-                  borderBottom: "1px solid rgba(255,185,100,0.16)",
-                  flexShrink: 0,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, padding: "0 2px" }}>
-                  <CalendarDays style={{ width: 9, height: 9, color: "rgba(99,179,237,0.80)" }} />
-                  <span style={{
-                    fontSize: 9, fontWeight: 800, letterSpacing: "0.16em",
-                    color: "rgba(99,179,237,0.75)", textTransform: "uppercase",
-                  }}>
-                    Reservations · {activeRes.length}
-                  </span>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {activeRes.map(res => {
-                    const urgency = getResUrgency(res.date, res.time, now)
-                    const isLate     = urgency === "late"
-                    const isNow      = urgency === "now"
-                    const isArriving = urgency === "arriving"
-
-                    return (
-                      <div
-                        key={res.id}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 8,
-                          padding: "7px 9px", borderRadius: 9,
-                          background: isLate
-                            ? "rgba(239,68,68,0.12)"
-                            : isNow
-                            ? "rgba(249,115,22,0.10)"
-                            : isArriving
-                            ? "rgba(251,191,36,0.08)"
-                            : "rgba(99,179,237,0.06)",
-                          border: `1px solid ${isLate
-                            ? "rgba(239,68,68,0.45)"
-                            : isNow
-                            ? "rgba(249,115,22,0.40)"
-                            : isArriving
-                            ? "rgba(251,191,36,0.35)"
-                            : "rgba(99,179,237,0.22)"}`,
-                        }}
-                      >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{
-                            fontSize: 12, fontWeight: 600,
-                            color: "rgba(255,248,240,0.97)",
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            marginBottom: 2,
-                          }}>
-                            {res.guest_name}
-                          </div>
-                          <div style={{
-                            fontSize: 10, display: "flex", gap: 5, alignItems: "center",
-                            color: "rgba(255,200,150,0.70)",
-                          }}>
-                            <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
-                            <span>·</span>
-                            <span>{res.party_size}p</span>
-                            {isArriving && (
-                              <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
-                                ARRIVING
-                              </span>
-                            )}
-                            {isNow && (
-                              <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
-                                DUE NOW
-                              </span>
-                            )}
-                            {isLate && (
-                              <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>
-                                LATE
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => setResPicker(res)}
-                          style={{
-                            height: 24, padding: "0 8px", borderRadius: 6, border: "none",
-                            cursor: "pointer", fontSize: 9, fontWeight: 800,
-                            letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
-                            background: "rgba(34,197,94,0.12)", color: "#22c55e",
-                          }}
-                        >
-                          Check In
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
 
             {/* Ready section */}
             {readyList.length > 0 && (
@@ -2272,17 +2079,6 @@ export default function HostDashboard() {
             localOccupants={localOccupants}
             onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
             onClose={() => setSeatPicker(null)}
-          />
-        )}
-
-        {/* Reservation check-in picker */}
-        {resPicker && (
-          <SeatTablePicker
-            guest={{ name: resPicker.guest_name, party_size: resPicker.party_size }}
-            tables={tables}
-            localOccupants={localOccupants}
-            onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
-            onClose={() => setResPicker(null)}
           />
         )}
 
