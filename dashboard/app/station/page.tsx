@@ -608,56 +608,28 @@ function DroppableFloorTable({
         justifyContent: "center",
         gap: 2,
         overflow: "hidden",
-        cursor: hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : isOccupied && onClear ? "pointer" : onAvailableTap && !isOccupied && !hasLocalOccupant ? "pointer" : canReceiveDrop ? "copy" : "default",
+        cursor: isOccupied && onClear ? "pointer" : hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : onAvailableTap && !isOccupied && !hasLocalOccupant ? "pointer" : canReceiveDrop ? "copy" : "default",
         opacity: isDragging ? 0.4 : 1,
       }}
       onClick={
         isSelectTarget && onSeatFromSelect
           ? onSeatFromSelect
-          : isOccupied && onClear && !hasLocalOccupant
+          : isOccupied && onClear
           ? onClear
           : !isOccupied && !hasLocalOccupant && !isSelectMode && onAvailableTap
           ? onAvailableTap
           : undefined
       }
     >
-      {isOccupied && onClear ? (
-        <button
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onClear() }}
-          style={{
-            position: "absolute",
-            top: pos.shape === "round" ? "18%" : 4,
-            right: pos.shape === "round" ? "18%" : 4,
-            width: 16, height: 16,
-            borderRadius: "50%",
-            background: "rgba(239,68,68,0.75)",
-            border: "none",
-            cursor: "pointer",
-            color: "rgba(255,255,255,0.95)",
-            fontSize: 11,
-            fontWeight: 900,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            lineHeight: 1,
-            padding: 0,
-          }}
-          title="Clear table"
-        >
-          ×
-        </button>
-      ) : (
-        <div style={{
-          position: "absolute",
-          top: pos.shape === "round" ? "18%" : 7,
-          right: pos.shape === "round" ? "18%" : 7,
-          width: 6, height: 6,
-          borderRadius: "50%",
-          background: noTable ? "var(--table-none-dot)" : "#22c55e",
-          opacity: 0.85,
-        }} />
-      )}
+      <div style={{
+        position: "absolute",
+        top: pos.shape === "round" ? "18%" : 7,
+        right: pos.shape === "round" ? "18%" : 7,
+        width: 6, height: 6,
+        borderRadius: "50%",
+        background: noTable ? "var(--table-none-dot)" : isOccupied ? "rgba(239,68,68,0.70)" : "#22c55e",
+        opacity: 0.85,
+      }} />
 
       {isOver && canReceiveDrop ? (
         <span style={{
@@ -1649,9 +1621,12 @@ export default function HostDashboard() {
     fetchingRef.current = true
     try {
       const rid = restaurantId
-      const r = await fetch(`${API}/state${rid ? `?restaurant_id=${rid}` : ""}`)
-      if (r.ok) {
-        const d = await r.json()
+      const [stateRes, occupantsRes] = await Promise.all([
+        fetch(`${API}/state${rid ? `?restaurant_id=${rid}` : ""}`),
+        rid ? fetch(`${API}/tables/occupants?restaurant_id=${rid}`) : Promise.resolve(null),
+      ])
+      if (stateRes.ok) {
+        const d = await stateRes.json()
         setQueue(d.queue ?? [])
         // If any table clears are still in-flight, don't let the server response
         // revert them back to "occupied" — that's what causes a guest to appear on 2 tables.
@@ -1683,6 +1658,23 @@ export default function HostDashboard() {
       } else {
         setOnline(false)
         failCountRef.current++
+      }
+      // Sync localOccupants from server — prevents color from disappearing after multiple moves.
+      // We ADD/UPDATE entries from server but never REMOVE (removal only happens via clearTable).
+      // This avoids a race where the server doesn't have a table yet (move in-flight) but we
+      // already updated localOccupants optimistically — a replace-all would wipe it out.
+      if (occupantsRes && occupantsRes.ok) {
+        const raw = await occupantsRes.json() as Record<string, { name: string; party_size: number; entry_id?: string }>
+        setLocalOccupants(prev => {
+          const next = new Map(prev)  // start with current local state
+          for (const [numStr, occ] of Object.entries(raw)) {
+            const num = parseInt(numStr, 10)
+            if (!pendingClearsRef.current.has(num)) {
+              next.set(num, { name: occ.name || "Guest", party_size: occ.party_size || 2, entry_id: occ.entry_id })
+            }
+          }
+          return next
+        })
       }
     } catch {
       setOnline(false)
@@ -2348,42 +2340,72 @@ export default function HostDashboard() {
         )}
 
         {/* ── Clear Table Confirmation ──────────────────────────── */}
-        {clearConfirm && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setClearConfirm(null)} />
-            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "var(--modal-bg)", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
-              <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "var(--bdr-3)" }} />
-              <p className="text-base font-bold mb-1" style={{ color: "var(--text-hi)" }}>Table {clearConfirm.tableNumber}</p>
-              <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
-                What would you like to do with{" "}
-                <strong style={{ color: "var(--text-hi4)" }}>{clearConfirm.occupant.name}</strong>{" "}
-                ({clearConfirm.occupant.party_size}p)?
-              </p>
-              <div className="flex flex-col gap-3">
-                {clearConfirm.occupant.entry_id && (
+        {clearConfirm && (() => {
+          // Look up full details from history (seated guests appear in history)
+          const histEntry = clearConfirm.occupant.entry_id
+            ? history.find(e => e.id === clearConfirm.occupant.entry_id)
+            : null
+          const phone = histEntry?.phone ?? null
+          const notes = histEntry?.notes ?? null
+          const arrivedAt = histEntry?.arrival_time
+            ? new Date(histEntry.arrival_time).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+            : null
+          const quotedWait = histEntry?.quoted_wait ?? null
+          return (
+            <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setClearConfirm(null)} />
+              <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "var(--modal-bg)", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
+                <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-5" style={{ background: "var(--bdr-3)" }} />
+                {/* Guest details */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-muted3)" }}>Table {clearConfirm.tableNumber}</span>
+                  </div>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: "var(--text-hi)", marginBottom: 6, lineHeight: 1.1 }}>{clearConfirm.occupant.name}</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>Party of {clearConfirm.occupant.party_size}</span>
+                    {arrivedAt && <span style={{ fontSize: 13, color: "var(--text-muted3)" }}>In at {arrivedAt}</span>}
+                    {quotedWait && <span style={{ fontSize: 13, color: "var(--text-muted3)" }}>{quotedWait}m quoted</span>}
+                  </div>
+                  {phone && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, color: "var(--text-dim3)", fontWeight: 700, letterSpacing: "0.08em" }}>PHONE</span>
+                      <span style={{ fontSize: 14, color: "var(--text-warm3)", fontWeight: 600, fontFamily: "monospace", letterSpacing: "0.04em" }}>{phone}</span>
+                    </div>
+                  )}
+                  {notes && (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                      <span style={{ fontSize: 12, color: "var(--text-dim3)", fontWeight: 700, letterSpacing: "0.08em", marginTop: 1 }}>NOTES</span>
+                      <span style={{ fontSize: 13, color: "var(--text-muted)", fontStyle: "italic" }}>{notes}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-3">
+                  {clearConfirm.occupant.entry_id && (
+                    <button
+                      onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "restore"); setClearConfirm(null) }}
+                      className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                      style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.35)", fontSize: 16, padding: "18px 0" }}>
+                      Return to Waitlist
+                    </button>
+                  )}
                   <button
-                    onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "restore"); setClearConfirm(null) }}
+                    onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "cancel"); setClearConfirm(null) }}
                     className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                    style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.35)", fontSize: 16, padding: "20px 0" }}>
-                    Return to Waitlist
+                    style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.28)", fontSize: 16, padding: "18px 0" }}>
+                    Clear Table
                   </button>
-                )}
-                <button
-                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "cancel"); setClearConfirm(null) }}
-                  className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                  style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.28)", fontSize: 16, padding: "20px 0" }}>
-                  Clear Table
-                </button>
-                <button
-                  onClick={() => setClearConfirm(null)}
-                  className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
-                  style={{ background: "var(--surf-3)", color: "var(--text-warm2)", border: "1px solid var(--surf-4)", fontSize: 15, padding: "18px 0" }}>
-                  Keep Seated
-                </button>
+                  <button
+                    onClick={() => setClearConfirm(null)}
+                    className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                    style={{ background: "var(--surf-3)", color: "var(--text-warm2)", border: "1px solid var(--surf-4)", fontSize: 15, padding: "16px 0" }}>
+                    Keep Seated
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* History drawer */}
         {showHistory && (

@@ -388,6 +388,12 @@ function PinScreen({ onSuccess }: { onSuccess: () => void }) {
         </div>
 
         {loading && <p style={{ textAlign: "center", fontSize: 12, color: C.muted, marginTop: 16 }}>Verifying…</p>}
+
+        <div style={{ marginTop: 20, textAlign: "center" }}>
+          <Link href="/station" style={{ fontSize: 12, color: C.muted, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.border}` }}>
+            ← Back to restaurant
+          </Link>
+        </div>
       </div>
     </div>
   )
@@ -883,6 +889,10 @@ export default function WalnutDashboard() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Link href="/station"
+            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
+            ← Station
+          </Link>
           <Link href="/walnut/logins"
             style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
             Logins

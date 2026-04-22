@@ -469,11 +469,14 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
     setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "occupied" } : t))
     const table = tables.find(t => t.table_number === tableNum)
     try {
-      if (row.queueEntryId) {
+      if (row.queueEntryId && table) {
+        // seat-to-table atomically marks the guest seated AND occupies the table with correct name
+        await fetch(`${API}/queue/${row.queueEntryId}/seat-to-table/${table.id}`, { method: "POST" })
+      } else if (row.queueEntryId) {
         await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
-        if (table) await fetch(`${API}/tables/${table.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ guest_name: row.name || "Guest", party_size: row.partySize }) })
+        if (table) await fetch(`${API}/tables/${table.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: row.name || "Guest", party_size: row.partySize, entry_id: row.queueEntryId }) })
       } else if (table) {
-        await fetch(`${API}/tables/${table.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ guest_name: row.name || "Guest", party_size: row.partySize }) })
+        await fetch(`${API}/tables/${table.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: row.name || "Guest", party_size: row.partySize }) })
       }
     } catch {}
     showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
@@ -508,7 +511,7 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
     ))
     try {
       if (fromTable) await fetch(`${API}/tables/${fromTable.id}/clear`, { method: "POST" })
-      if (toTable && occupant) await fetch(`${API}/tables/${toTable.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ guest_name: occupant.name, party_size: occupant.party_size }) })
+      if (toTable && occupant) await fetch(`${API}/tables/${toTable.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }) })
     } catch {}
     showToast(`Table ${fromNum} → Table ${toNum}`)
     fetchTables()
