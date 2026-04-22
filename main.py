@@ -826,6 +826,16 @@ def restore_entry(entry_id: str):
     entry = updated.data[0] if updated.data else res.data[0]
     return {"status": "restored", "entry": entry}
 
+@app.get("/queue/history/debug")
+def debug_history(restaurant_id: Optional[str] = None):
+    """Temporary debug endpoint to surface the actual Supabase error."""
+    rid = _rid(restaurant_id)
+    try:
+        res = supabase.table("queue_entries").select("id,status").eq("restaurant_id", rid).limit(5).execute()
+        return {"ok": True, "rid": rid, "count": len(res.data or []), "sample": (res.data or [])[:3]}
+    except Exception as e:
+        return {"ok": False, "rid": rid, "error": str(e), "type": type(e).__name__}
+
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
     """Returns seated and removed entries for the given restaurant.
