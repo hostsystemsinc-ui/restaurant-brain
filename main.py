@@ -828,13 +828,26 @@ def restore_entry(entry_id: str):
 
 @app.get("/queue/history/debug")
 def debug_history(restaurant_id: Optional[str] = None):
-    """Temporary debug endpoint to surface the actual Supabase error."""
+    """Debug endpoint: tests the full history query to surface the actual Supabase error."""
     rid = _rid(restaurant_id)
+    # Step 1: simple count query
     try:
-        res = supabase.table("queue_entries").select("id,status").eq("restaurant_id", rid).limit(5).execute()
-        return {"ok": True, "rid": rid, "count": len(res.data or []), "sample": (res.data or [])[:3]}
+        res1 = supabase.table("queue_entries").select("id,status").eq("restaurant_id", rid).limit(5).execute()
+        step1 = {"ok": True, "count": len(res1.data or [])}
     except Exception as e:
-        return {"ok": False, "rid": rid, "error": str(e), "type": type(e).__name__}
+        return {"step": "count", "ok": False, "error": str(e), "type": type(e).__name__}
+    # Step 2: full select without limit (mimics the broken endpoint)
+    try:
+        res2 = supabase.table("queue_entries").select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes").eq("restaurant_id", rid).execute()
+        step2 = {"ok": True, "count": len(res2.data or []), "sample_statuses": list({e.get("status") for e in (res2.data or [])})}
+    except Exception as e:
+        return {"step": "full_select", "ok": False, "step1": step1, "error": str(e), "type": type(e).__name__}
+    # Step 3: filter to seated/removed
+    try:
+        filtered = [e for e in (res2.data or []) if e.get("status") in ("seated", "removed")]
+        return {"step1": step1, "step2": step2, "filtered_count": len(filtered), "sample": filtered[:2]}
+    except Exception as e:
+        return {"step": "filter", "ok": False, "step1": step1, "step2": step2, "error": str(e), "type": type(e).__name__}
 
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
