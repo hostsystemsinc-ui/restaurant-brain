@@ -563,20 +563,20 @@ function DroppableFloorTable({
   const isSelectTarget = !!isSelectMode && !isOccupied
 
   const bg = isOver && canReceiveDrop
-    ? "rgba(34,197,94,0.55)"
+    ? "var(--table-over-bg)"
     : isSelectTarget
-    ? "rgba(34,197,94,0.38)"
-    : isOccupied ? "rgba(239,68,68,0.28)"
-    : noTable ? "rgba(255,255,255,0.07)"
-    : "rgba(34,197,94,0.22)"
+    ? "var(--table-select-bg)"
+    : isOccupied ? "var(--table-occ-bg)"
+    : noTable ? "var(--table-none-bg)"
+    : "var(--table-avail-bg)"
 
   const borderColor = isOver && canReceiveDrop
-    ? "#22c55e"
+    ? "var(--table-over-border)"
     : isSelectTarget
-    ? "#4ade80"
-    : isOccupied ? "rgba(239,68,68,0.90)"
-    : noTable ? "rgba(255,255,255,0.32)"
-    : "rgba(34,197,94,0.82)"
+    ? "var(--table-select-border)"
+    : isOccupied ? "var(--table-occ-border)"
+    : noTable ? "var(--table-none-border)"
+    : "var(--table-avail-border)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
 
@@ -596,9 +596,9 @@ function DroppableFloorTable({
         background: bg,
         border: `1.5px solid ${borderColor}`,
         boxShadow: isOver && canReceiveDrop
-          ? "0 0 0 4px rgba(34,197,94,0.35), inset 0 0 20px rgba(34,197,94,0.10)"
-          : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
-          : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
+          ? "var(--table-shadow-over)"
+          : isOccupied ? "var(--table-shadow-occ)"
+          : avail ? "var(--table-shadow-avail)"
           : "none",
         // No transition — background/border must snap instantly when a guest is moved or cleared.
         transition: "none",
@@ -654,7 +654,7 @@ function DroppableFloorTable({
           right: pos.shape === "round" ? "18%" : 7,
           width: 6, height: 6,
           borderRadius: "50%",
-          background: noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
+          background: noTable ? "var(--table-none-dot)" : "#22c55e",
           opacity: 0.85,
         }} />
       )}
@@ -676,7 +676,7 @@ function DroppableFloorTable({
           <span style={{
             fontSize: pos.shape === "rect" ? 11 : 10,
             fontWeight: 700,
-            color: "rgba(255,240,220,0.97)",
+            color: "var(--text-cream)",
             textAlign: "center",
             lineHeight: 1.2,
             paddingInline: 4,
@@ -689,22 +689,22 @@ function DroppableFloorTable({
         </>
       ) : table && table.status !== "available" ? (
         <>
-          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(239,68,68,0.95)" }}>
+          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "var(--table-occ-num)" }}>
             {pos.number}
           </span>
-          <span style={{ fontSize: 9, color: "rgba(239,68,68,0.72)" }}>{table.capacity}p</span>
+          <span style={{ fontSize: 9, color: "var(--table-occ-cap)" }}>{table.capacity}p</span>
         </>
       ) : (
         <>
           <span style={{
             fontSize: pos.shape === "rect" ? 17 : 14,
             fontWeight: 800,
-            color: table ? "#22c55e" : "var(--text-muted)",
+            color: table ? "var(--table-avail-num)" : "var(--text-muted)",
           }}>
             {pos.number}
           </span>
           {table && (
-            <span style={{ fontSize: 10, color: "rgba(34,197,94,0.90)" }}>
+            <span style={{ fontSize: 10, color: "var(--table-avail-cap)" }}>
               {table.capacity}p
             </span>
           )}
@@ -888,7 +888,7 @@ function SeatTablePicker({
         <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "var(--surf-4)" }} />
 
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "var(--text-cream2)" }}>
             Seat Guest
           </span>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "var(--text-dim5)" }}>
@@ -1020,7 +1020,7 @@ function TableGuestPicker({
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <p className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+            <p className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "var(--text-cream2)" }}>
               Table {tableNumber}
             </p>
             {capacity && (
@@ -1203,7 +1203,7 @@ function AddGuestDrawer({
     }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid var(--surf-4)", flexShrink: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,240,220,0.88)" }}>
+        <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-cream2)" }}>
           Add Guest
         </span>
         <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid var(--bdr-1)", cursor: "pointer", color: "var(--text-muted3)" }}>
@@ -1617,6 +1617,17 @@ export default function HostDashboard() {
       .catch(() => {})
   }, [])
 
+  // fetchHistory is decoupled from the fetchingRef guard so it always runs after mutations,
+  // even if a poll cycle is already in-flight when the user removes/seats a guest.
+  const fetchHistory = useCallback(() => {
+    if (!restaurantId) return
+    const today = getBusinessDate()
+    fetch(`${API}/queue/history?restaurant_id=${restaurantId}&date=${today}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: unknown) => setHistory(Array.isArray(data) ? (data as HistoryEntry[]) : []))
+      .catch(() => {})
+  }, [restaurantId])
+
   const refreshAll = useCallback(async () => {
     if (fetchingRef.current) return
     fetchingRef.current = true
@@ -1663,13 +1674,8 @@ export default function HostDashboard() {
     } finally {
       fetchingRef.current = false
     }
-    // fetch history for today
-    const today = getBusinessDate()
-    fetch(`${API}/queue/history?restaurant_id=${restaurantId}&date=${today}`)
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setHistory(Array.isArray(data) ? data : []))
-      .catch(() => {})
-  }, [restaurantId])
+    fetchHistory()
+  }, [restaurantId, fetchHistory])
 
   useEffect(() => {
     refreshAll()
@@ -1717,9 +1723,9 @@ export default function HostDashboard() {
     void newEntry
   }, [queue])
 
-  const seat   = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
+  const seat   = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }) } catch {} refreshAll(); setTimeout(fetchHistory, 600) }, [refreshAll, fetchHistory])
   const notify = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
-  const remove = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
+  const remove = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch {} refreshAll(); setTimeout(fetchHistory, 600) }, [refreshAll, fetchHistory])
 
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
@@ -1735,7 +1741,8 @@ export default function HostDashboard() {
     }
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
     refreshAll()
-  }, [refreshAll])
+    setTimeout(fetchHistory, 600)
+  }, [refreshAll, fetchHistory])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string, mode: "restore" | "cancel" = "cancel") => {
     // flushSync forces the optimistic render to commit NOW, before the network call starts —
@@ -1758,7 +1765,8 @@ export default function HostDashboard() {
     }
     pendingClearsRef.current.delete(tableNumber)
     refreshAll()  // refreshAll will remove tableNumber from locallyAvailableTables once server confirms available
-  }, [refreshAll])
+    setTimeout(fetchHistory, 600)
+  }, [refreshAll, fetchHistory])
 
   // ── DnD handlers ──────────────────────────────────────────────────────
 
@@ -1893,6 +1901,16 @@ export default function HostDashboard() {
     --text-dim:rgba(255, 185, 100, 0.45); --text-dim2:rgba(255, 185, 100, 0.40); --text-dim3:rgba(255, 185, 100, 0.28);
     --text-dim4:rgba(255, 200, 150, 0.28); --text-dim5:rgba(255, 200, 150, 0.25); --text-dim6:rgba(255, 200, 150, 0.30); --text-dim7:rgba(255, 200, 150, 0.35);
     --text-bright:rgba(255, 220, 160, 0.97);
+    --text-cream:rgba(255, 240, 220, 0.97); --text-cream2:rgba(255, 240, 220, 0.88);
+    /* table states */
+    --table-avail-bg:rgba(34,197,94,0.22); --table-avail-border:rgba(34,197,94,0.82); --table-avail-num:#22c55e; --table-avail-cap:rgba(34,197,94,0.90);
+    --table-occ-bg:rgba(239,68,68,0.28); --table-occ-border:rgba(239,68,68,0.90); --table-occ-num:rgba(239,68,68,0.95); --table-occ-cap:rgba(239,68,68,0.72);
+    --table-name:rgba(255, 240, 220, 0.97);
+    --table-over-bg:rgba(34,197,94,0.55); --table-over-border:#22c55e; --table-select-bg:rgba(34,197,94,0.38); --table-select-border:#4ade80;
+    --table-none-bg:rgba(255,255,255,0.07); --table-none-border:rgba(255,255,255,0.32); --table-none-dot:rgba(255,255,255,0.28);
+    --table-shadow-avail:0 0 0 2px rgba(34,197,94,0.18),inset 0 0 12px rgba(34,197,94,0.06);
+    --table-shadow-occ:0 0 0 2px rgba(239,68,68,0.18),inset 0 0 12px rgba(239,68,68,0.08);
+    --table-shadow-over:0 0 0 4px rgba(34,197,94,0.35),inset 0 0 20px rgba(34,197,94,0.10);
     /* surfaces */
     --surf-1:rgba(255, 185, 100, 0.07); --surf-2:rgba(255, 185, 100, 0.04); --surf-3:rgba(255, 185, 100, 0.06); --surf-4:rgba(255, 185, 100, 0.12); --surf-5:rgba(255, 185, 100, 0.08);
     --surf-6:rgba(255, 185, 100, 0.05); --surf-7:rgba(255, 185, 100, 0.10); --surf-8:rgba(255, 185, 100, 0.03);
@@ -1915,6 +1933,16 @@ export default function HostDashboard() {
     --text-dim:rgba(130,75,10,0.55); --text-dim2:rgba(130,75,10,0.48); --text-dim3:rgba(130,75,10,0.38);
     --text-dim4:rgba(100,55,5,0.48); --text-dim5:rgba(100,55,5,0.42); --text-dim6:rgba(100,55,5,0.50); --text-dim7:rgba(100,55,5,0.55);
     --text-bright:rgba(100,55,5,0.97);
+    --text-cream:rgba(30,14,4,0.94); --text-cream2:rgba(30,14,4,0.82);
+    /* table states — high contrast for light bg */
+    --table-avail-bg:rgba(22,163,74,0.18); --table-avail-border:#15803d; --table-avail-num:#14532d; --table-avail-cap:#166534;
+    --table-occ-bg:rgba(220,38,38,0.16); --table-occ-border:#b91c1c; --table-occ-num:#991b1b; --table-occ-cap:#b91c1c;
+    --table-name:rgba(30,14,4,0.94);
+    --table-over-bg:rgba(22,163,74,0.40); --table-over-border:#15803d; --table-select-bg:rgba(22,163,74,0.32); --table-select-border:#16a34a;
+    --table-none-bg:rgba(150,120,90,0.14); --table-none-border:rgba(120,90,60,0.40); --table-none-dot:rgba(120,90,60,0.45);
+    --table-shadow-avail:0 0 0 2px rgba(22,163,74,0.30),inset 0 0 12px rgba(22,163,74,0.10);
+    --table-shadow-occ:0 0 0 2px rgba(220,38,38,0.28),inset 0 0 12px rgba(220,38,38,0.10);
+    --table-shadow-over:0 0 0 4px rgba(22,163,74,0.40),inset 0 0 20px rgba(22,163,74,0.14);
     /* surfaces */
     --surf-1:rgba(160,90,0,0.07); --surf-2:rgba(160,90,0,0.04); --surf-3:rgba(160,90,0,0.06); --surf-4:rgba(160,90,0,0.12); --surf-5:rgba(160,90,0,0.08); --surf-6:rgba(160,90,0,0.05); --surf-7:rgba(160,90,0,0.10); --surf-8:rgba(160,90,0,0.03);
     /* borders */
@@ -2390,7 +2418,7 @@ export default function HostDashboard() {
             border: "1.5px solid rgba(239,68,68,0.90)",
             borderRadius: 10,
             padding: "6px 12px",
-            color: "rgba(255,240,220,0.97)",
+            color: "var(--text-cream)",
             fontSize: 11,
             fontWeight: 700,
             whiteSpace: "nowrap",
