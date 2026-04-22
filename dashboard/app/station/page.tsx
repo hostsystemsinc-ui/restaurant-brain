@@ -1540,6 +1540,14 @@ export default function HostDashboard() {
   const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(new Map())
   const localOccupantsLoadedRef = useRef(false)
 
+  // ── Client-side history tracking ──────────────────────────────────────────
+  // Stores seated/removed entries locally so history works even when the backend
+  // /queue/history endpoint is unavailable. Persisted to localStorage, scoped
+  // to the current restaurant and cleared at the 3am business day boundary.
+  const localHistoryRef = useRef<HistoryEntry[]>([])
+  // Mirror of queue state accessible in callbacks without causing dep array churn
+  const queueRef = useRef<QueueEntry[]>([])
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 5 } }),
@@ -1576,6 +1584,28 @@ export default function HostDashboard() {
   // React state mirror of pendingClearsRef — drives instant green on DroppableFloorTable via forceAvailable.
   const [locallyAvailableTables, setLocallyAvailableTables] = useState<Set<number>>(new Set())
 
+  // Keep queueRef in sync so addToLocalHistory can read the latest queue without dep issues
+  useEffect(() => { queueRef.current = queue }, [queue])
+
+  // Load local history from localStorage once we know the restaurant ID, and reset if new business day
+  useEffect(() => {
+    if (!restaurantId) return
+    const bd = getBusinessDate()
+    const key = `host_history_${restaurantId}`
+    try {
+      const stored = localStorage.getItem(key)
+      if (stored) {
+        const parsed = JSON.parse(stored) as { bdate: string; entries: HistoryEntry[] }
+        if (parsed.bdate === bd && Array.isArray(parsed.entries)) {
+          localHistoryRef.current = parsed.entries
+          setHistory(parsed.entries)  // show local history immediately
+        } else {
+          localStorage.removeItem(key)
+        }
+      }
+    } catch {}
+  }, [restaurantId])
+
   // Fetch restaurant config on mount
   useEffect(() => {
     fetch("/api/client/me")
@@ -1589,29 +1619,68 @@ export default function HostDashboard() {
       .catch(() => {})
   }, [])
 
-  // fetchHistory is decoupled from the fetchingRef guard so it always runs after mutations,
-  // even if a poll cycle is already in-flight when the user removes/seats a guest.
-  // Fetches ALL history (no date param — same as admin dashboard) then filters client-side
-  // so the server-side date handling doesn't silently drop entries.
+  // Save local history to localStorage (restaurant-scoped, tagged with business date)
+  const saveLocalHistory = useCallback(() => {
+    if (!restaurantId) return
+    try {
+      localStorage.setItem(`host_history_${restaurantId}`, JSON.stringify({ bdate: getBusinessDate(), entries: localHistoryRef.current }))
+    } catch {}
+  }, [restaurantId])
+
+  // Add a queue entry to local history when it's seated or removed.
+  // This makes history work immediately and persists across refreshes even when server is down.
+  const addToLocalHistory = useCallback((entry: QueueEntry, finalStatus: "seated" | "removed") => {
+    const histEntry: HistoryEntry = {
+      id: entry.id,
+      name: entry.name,
+      party_size: entry.party_size,
+      status: finalStatus,
+      arrival_time: entry.arrival_time,
+      quoted_wait: entry.quoted_wait,
+      phone: entry.phone,
+      notes: entry.notes,
+    }
+    // Remove any previous entry with the same ID (e.g., if guest was restored then re-removed)
+    localHistoryRef.current = [histEntry, ...localHistoryRef.current.filter(e => e.id !== entry.id)]
+    saveLocalHistory()
+    // Immediately reflect in state (server fetch will merge on top later)
+    setHistory(localHistoryRef.current)
+  }, [saveLocalHistory])
+
+  // fetchHistory is decoupled from the fetchingRef guard so it always runs after mutations.
+  // It merges server data on top of local history — server entries take priority,
+  // but local-only entries fill any gaps (e.g., when server is temporarily unavailable).
   const fetchHistory = useCallback(() => {
     if (!restaurantId) return
     const bd = getBusinessDate()
+    const filterToday = (entries: HistoryEntry[]) => entries.filter(e => {
+      try {
+        const d = new Date(e.arrival_time)
+        const hour = d.getHours()
+        if (hour < 3) {
+          const prev = new Date(d); prev.setDate(prev.getDate() - 1)
+          return prev.toLocaleDateString("en-CA") === bd
+        }
+        return d.toLocaleDateString("en-CA") === bd
+      } catch { return false }
+    })
+    // Always apply local history immediately (works even when server is down)
+    const localToday = filterToday(localHistoryRef.current)
+    if (localToday.length > 0) setHistory(localToday)
+
     fetch(`${API}/queue/history?restaurant_id=${restaurantId}`)
       .then(r => r.ok ? r.json() : [])
       .then((all: unknown) => {
-        if (!Array.isArray(all)) return
-        const today = (all as HistoryEntry[]).filter(e => {
-          try {
-            const d = new Date(e.arrival_time)
-            const hour = d.getHours()
-            if (hour < 3) {
-              const prev = new Date(d); prev.setDate(prev.getDate() - 1)
-              return prev.toLocaleDateString("en-CA") === bd
-            }
-            return d.toLocaleDateString("en-CA") === bd
-          } catch { return false }
-        })
-        setHistory(today)
+        if (!Array.isArray(all) || (all as unknown[]).length === 0) return
+        const serverToday = filterToday(all as HistoryEntry[])
+        if (serverToday.length === 0) return
+        // Merge: server entries take priority; local-only entries fill gaps
+        const serverIds = new Set(serverToday.map(e => e.id))
+        const localOnly = localToday.filter(e => !serverIds.has(e.id))
+        const merged = [...serverToday, ...localOnly].sort(
+          (a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime()
+        )
+        setHistory(merged)
       })
       .catch(() => {})
   }, [restaurantId])
@@ -1731,9 +1800,19 @@ export default function HostDashboard() {
     void newEntry
   }, [queue])
 
-  const seat   = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/seat`,   { method: "POST" }) } catch {} refreshAll(); setTimeout(fetchHistory, 600) }, [refreshAll, fetchHistory])
+  const seat   = useCallback(async (id: string) => {
+    const entry = queueRef.current.find(e => e.id === id)
+    if (entry) addToLocalHistory(entry, "seated")
+    try { await fetch(`${API}/queue/${id}/seat`, { method: "POST" }) } catch {}
+    refreshAll(); setTimeout(fetchHistory, 600)
+  }, [refreshAll, fetchHistory, addToLocalHistory])
   const notify = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
-  const remove = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch {} refreshAll(); setTimeout(fetchHistory, 600) }, [refreshAll, fetchHistory])
+  const remove = useCallback(async (id: string) => {
+    const entry = queueRef.current.find(e => e.id === id)
+    if (entry) addToLocalHistory(entry, "removed")
+    try { await fetch(`${API}/queue/${id}/remove`, { method: "POST" }) } catch {}
+    refreshAll(); setTimeout(fetchHistory, 600)
+  }, [refreshAll, fetchHistory, addToLocalHistory])
 
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
@@ -1742,6 +1821,7 @@ export default function HostDashboard() {
 
   const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
     setSeatPicker(null)
+    addToLocalHistory(entry, "seated")
     if (tableId) {
       await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
     } else {
@@ -1750,7 +1830,7 @@ export default function HostDashboard() {
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
     refreshAll()
     setTimeout(fetchHistory, 600)
-  }, [refreshAll, fetchHistory])
+  }, [refreshAll, fetchHistory, addToLocalHistory])
 
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string, mode: "restore" | "cancel" = "cancel") => {
     // flushSync forces the optimistic render to commit NOW, before the network call starts —
@@ -1861,6 +1941,7 @@ export default function HostDashboard() {
     const entry = (data as { entry?: QueueEntry } | undefined)?.entry
     if (!entry) return
     if (localOccupants.has(targetTable)) return
+    addToLocalHistory(entry, "seated")
     const apiTable = tables.find(t => t.table_number === targetTable)
     if (apiTable) {
       fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
