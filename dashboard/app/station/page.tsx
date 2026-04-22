@@ -158,25 +158,25 @@ function WaitTimeModal({
       >
         <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "var(--bdr-3)" }} />
         <p className="text-xs font-black tracking-[0.22em] uppercase mb-1" style={{ color: "var(--text-muted3)" }}>Estimated Wait</p>
-        <p className="text-sm mb-7" style={{ color: "rgba(255,200,150,0.28)" }}>The guest will see this count down live on their phone.</p>
+        <p className="text-sm mb-7" style={{ color: "var(--text-dim4)" }}>The guest will see this count down live on their phone.</p>
         <div className="flex items-center justify-between mb-6 px-2">
-          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>−</button>
+          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid var(--bdr-8)", color: "var(--text-warm5)", background: "var(--surf-3)" }}>−</button>
           <div className="text-center">
-            <span className="text-7xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
-            <span className="block text-sm mt-1" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
+            <span className="text-7xl font-extralight tabular-nums leading-none" style={{ color: "var(--text-hi3)" }}>{minutes}</span>
+            <span className="block text-sm mt-1" style={{ color: "var(--text-warm6)" }}>min</span>
           </div>
-          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>+</button>
+          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid var(--bdr-8)", color: "var(--text-warm5)", background: "var(--surf-3)" }}>+</button>
         </div>
         <div className="grid grid-cols-3 gap-3 mb-8">
           {PRESETS.map(p => (
-            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{ height: 76, background: minutes === p ? "var(--bdr-2)" : "rgba(255,185,100,0.05)", border: `1.5px solid ${minutes === p ? "rgba(255,185,100,0.55)" : "rgba(255,185,100,0.11)"}`, boxShadow: minutes === p ? "0 0 0 3px rgba(255,185,100,0.10)" : "none" }}>
+            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95" style={{ height: 76, background: minutes === p ? "var(--bdr-2)" : "var(--surf-6)", border: `1.5px solid ${minutes === p ? "var(--bdr-9)" : "var(--bdr-10)"}`, boxShadow: minutes === p ? "0 0 0 3px var(--surf-7)" : "none" }}>
               <span style={{ fontSize: 30, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "var(--text-muted2)" }}>{p}</span>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: minutes === p ? "var(--text-muted4)" : "rgba(255,185,100,0.30)", marginTop: 4 }}>MIN</span>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", color: minutes === p ? "var(--text-muted4)" : "var(--bdr-11)", marginTop: 4 }}>MIN</span>
             </button>
           ))}
         </div>
         <button onClick={save} disabled={saving} className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 16, padding: "20px 0" }}>{saving ? "Saving…" : "Set Wait Time"}</button>
-        <button onClick={onClose} className="w-full mt-3 py-3 text-sm transition-all" style={{ color: "rgba(255,200,150,0.28)", background: "none", border: "none", cursor: "pointer" }}>Skip for now</button>
+        <button onClick={onClose} className="w-full mt-3 py-3 text-sm transition-all" style={{ color: "var(--text-dim4)", background: "none", border: "none", cursor: "pointer" }}>Skip for now</button>
       </div>
     </div>
   )
@@ -239,8 +239,8 @@ function GuestEditModal({
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(255,200,150,0.40)" }}>Edit Guest</p>
-            <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "var(--text-warm6)" }}>Edit Guest</p>
+            <p className="text-lg font-semibold leading-tight" style={{ color: "var(--text-hi3)" }}>{entry.name || "Guest"}</p>
           </div>
           <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95" style={{ color: "var(--text-muted2)", border: "1px solid var(--bdr-6)", background: "var(--surf-3)" }}>
             <X className="w-4 h-4" />
@@ -250,16 +250,16 @@ function GuestEditModal({
         {/* Wait time */}
         <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "var(--text-muted3)" }}>Set Wait Time</p>
         <div className="flex items-center justify-between mb-4 px-2">
-          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>−</button>
+          <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid var(--bdr-8)", color: "var(--text-warm5)", background: "var(--surf-3)" }}>−</button>
           <div className="text-center">
-            <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(255,248,240,0.95)" }}>{minutes}</span>
-            <span className="text-sm ml-2" style={{ color: "rgba(255,200,150,0.40)" }}>min</span>
+            <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "var(--text-hi3)" }}>{minutes}</span>
+            <span className="text-sm ml-2" style={{ color: "var(--text-warm6)" }}>min</span>
           </div>
-          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(255,185,100,0.22)", color: "rgba(255,200,150,0.7)", background: "var(--surf-3)" }}>+</button>
+          <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid var(--bdr-8)", color: "var(--text-warm5)", background: "var(--surf-3)" }}>+</button>
         </div>
         <div className="grid grid-cols-6 gap-2 mb-5">
           {PRESETS.map(p => (
-            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "var(--bdr-2)" : "rgba(255,185,100,0.05)", border: `1px solid ${minutes === p ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}` }}>
+            <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "var(--bdr-2)" : "var(--surf-6)", border: `1px solid ${minutes === p ? "var(--bdr-12)" : "var(--surf-7)"}` }}>
               <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "var(--text-muted2)" }}>{p}</span>
               <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "var(--text-muted)" : "var(--text-dim3)", marginTop: 2 }}>min</span>
             </button>
@@ -269,17 +269,17 @@ function GuestEditModal({
         {/* Party size */}
         <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Party Size</p>
         <div className="flex items-center rounded-xl mb-4" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", padding: "0 12px", height: 56 }}>
-          <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>−</button>
-          <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
-          <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "rgba(255,200,150,0.7)" }}>+</button>
+          <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "var(--text-warm5)" }}>−</button>
+          <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "var(--text-hi3)" }}>{partySize}</span>
+          <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center text-2xl transition-all active:scale-95" style={{ color: "var(--text-warm5)" }}>+</button>
         </div>
 
         {/* Phone */}
-        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Phone <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Phone <span style={{ color: "var(--text-dim5)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
         <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" className="w-full rounded-xl outline-none mb-4" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", color: "var(--text-hi)", fontSize: 15, padding: "15px 14px", height: 56 }} />
 
         {/* Notes */}
-        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Notes <span style={{ color: "rgba(255,200,150,0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+        <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Notes <span style={{ color: "var(--text-dim5)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
         <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Allergies, preferences, occasion…" className="w-full rounded-xl outline-none mb-5" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", color: "var(--text-hi)", fontSize: 15, padding: "15px 14px", height: 56 }} />
 
         {/* Save */}
@@ -395,13 +395,13 @@ function DraggableQueueCard({
         <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Users className="w-2.5 h-2.5" />{entry.party_size}p
         </span>
-        <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
+        <span style={{ color: "var(--bdr-15)" }}>·</span>
         <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
         </span>
         {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
           <>
-            <span style={{ color: "rgba(255,185,100,0.35)" }}>·</span>
+            <span style={{ color: "var(--bdr-15)" }}>·</span>
             <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
               {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
             </span>
@@ -413,7 +413,7 @@ function DraggableQueueCard({
               style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "var(--surf-5)", border: `1px solid ${showBar ? barColor : "var(--bdr-6)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
               title={showBar ? "Hide timer bar" : "Show timer bar"}
             >
-              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(255,185,100,0.35)" }} />
+              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "var(--bdr-15)" }} />
             </button>
           </>
         )}
@@ -421,7 +421,7 @@ function DraggableQueueCard({
       {/* ── Progress bar (shown when toggled) ── */}
       {showBar && quotedTotal > 0 && !isReady && (
         <div onPointerDown={e => e.stopPropagation()} style={{ paddingLeft: 38, paddingRight: 4 }}>
-          <div style={{ height: 4, borderRadius: 2, background: "rgba(255,185,100,0.10)", overflow: "hidden", position: "relative" }}>
+          <div style={{ height: 4, borderRadius: 2, background: "var(--surf-7)", overflow: "hidden", position: "relative" }}>
             <div style={{
               position: "absolute", left: 0, top: 0, bottom: 0,
               width: `${(progress * 100).toFixed(1)}%`,
@@ -446,7 +446,7 @@ function DraggableQueueCard({
           <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1 }}>Remove {entry.name || "guest"}?</span>
           <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
             className="h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95"
-            style={{ background: "var(--surf-5)", color: "var(--text-muted4)", border: "1px solid rgba(255,185,100,0.15)" }}>
+            style={{ background: "var(--surf-5)", color: "var(--text-muted4)", border: "1px solid var(--bdr-13)" }}>
             Cancel
           </button>
           <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
@@ -494,7 +494,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
     <div
       style={{
         background: "rgba(10,6,3,0.96)",
-        border: "1px solid rgba(255,185,100,0.22)",
+        border: "1px solid var(--bdr-8)",
         borderRadius: 10,
         padding: "9px 13px",
         boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
@@ -505,7 +505,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
       <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-hi)" }}>
         {entry.name || "Guest"}
       </div>
-      <div style={{ fontSize: 11, color: "rgba(255,200,150,0.4)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
+      <div style={{ fontSize: 11, color: "var(--text-warm6)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
         <Users style={{ width: 10, height: 10 }} />
         {entry.party_size} guests
       </div>
@@ -683,7 +683,7 @@ function DroppableFloorTable({
           }}>
             {occupant.name}
           </span>
-          <span style={{ fontSize: 9, color: "rgba(255,200,150,0.70)" }}>
+          <span style={{ fontSize: 9, color: "var(--text-warm5)" }}>
             {occupant.party_size}p
           </span>
         </>
@@ -770,7 +770,7 @@ function FloorMap({
             top: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(255,185,100,0.03)",
+            background: "var(--surf-8)",
             borderLeft: "1px solid var(--bdr-2)",
             borderRadius: "0 8px 8px 0",
           }} />
@@ -810,7 +810,7 @@ function FloorMap({
             bottom: `${(8 / CANVAS_H * 100).toFixed(2)}%`,
             fontSize: 8,
             letterSpacing: "0.08em",
-            color: "rgba(255,185,100,0.35)",
+            color: "var(--bdr-15)",
             pointerEvents: "none",
           }}>
             Powered by <strong>HOST</strong>
@@ -883,7 +883,7 @@ function SeatTablePicker({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-6"
-        style={{ background: "var(--modal-bg)", border: "1px solid rgba(255,185,100,0.09)", zIndex: 1 }}
+        style={{ background: "var(--modal-bg)", border: "1px solid var(--bdr-14)", zIndex: 1 }}
       >
         <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "var(--surf-4)" }} />
 
@@ -891,17 +891,17 @@ function SeatTablePicker({
           <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
             Seat Guest
           </span>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(255,200,150,0.25)" }}>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "var(--text-dim5)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
-        <p className="text-xs mb-6" style={{ color: "rgba(255,200,150,0.3)" }}>
+        <p className="text-xs mb-6" style={{ color: "var(--text-dim6)" }}>
           {guest.name || "Guest"} · {guest.party_size}p — choose a table
         </p>
 
         {available.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-xs" style={{ color: "rgba(255,200,150,0.3)" }}>No tables available right now</p>
+            <p className="text-xs" style={{ color: "var(--text-dim6)" }}>No tables available right now</p>
           </div>
         ) : (
           <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
@@ -937,7 +937,7 @@ function SeatTablePicker({
         <button
           onClick={onClose}
           className="w-full mt-5 py-3 rounded-xl text-xs font-bold tracking-[0.1em] uppercase"
-          style={{ background: "rgba(255,185,100,0.05)", color: "rgba(255,200,150,0.35)", border: "1px solid var(--surf-1)" }}
+          style={{ background: "var(--surf-6)", color: "var(--text-dim7)", border: "1px solid var(--surf-1)" }}
         >
           Cancel
         </button>
@@ -1031,7 +1031,7 @@ function TableGuestPicker({
             )}
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg"
-            style={{ color: "rgba(255,200,150,0.25)", border: "1px solid var(--surf-4)" }}>
+            style={{ color: "var(--text-dim5)", border: "1px solid var(--surf-4)" }}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -1043,8 +1043,8 @@ function TableGuestPicker({
             style={{
               padding: "14px 0", fontSize: 14,
               background: mode === "pick" ? "var(--bdr-2)" : "var(--surf-2)",
-              border: `1px solid ${mode === "pick" ? "rgba(255,185,100,0.50)" : "rgba(255,185,100,0.10)"}`,
-              color: mode === "pick" ? "rgba(255,220,160,0.97)" : "rgba(255,200,150,0.35)",
+              border: `1px solid ${mode === "pick" ? "var(--bdr-12)" : "var(--surf-7)"}`,
+              color: mode === "pick" ? "var(--text-bright)" : "var(--text-dim7)",
             }}>
             Waiting{waitingGuests.length > 0 ? ` (${waitingGuests.length})` : ""}
           </button>
@@ -1062,7 +1062,7 @@ function TableGuestPicker({
 
         {mode === "pick" ? (
           waitingGuests.length === 0 ? (
-            <p className="text-sm py-8 text-center" style={{ color: "rgba(255,200,150,0.40)" }}>
+            <p className="text-sm py-8 text-center" style={{ color: "var(--text-warm6)" }}>
               No guests waiting — switch to Walk-in to seat directly
             </p>
           ) : (
@@ -1078,14 +1078,14 @@ function TableGuestPicker({
                       border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.35)" : "var(--bdr-2)"}`,
                     }}>
                     <div className="min-w-0">
-                      <p className="font-bold truncate" style={{ fontSize: 16, color: "rgba(255,248,240,0.95)" }}>{entry.name || "Guest"}</p>
+                      <p className="font-bold truncate" style={{ fontSize: 16, color: "var(--text-hi3)" }}>{entry.name || "Guest"}</p>
                       <p className="mt-1" style={{ fontSize: 13, color: "var(--text-muted)" }}>
                         {entry.party_size}p{displayWait != null ? ` · ${displayWait}m quoted` : ""}
                       </p>
                     </div>
                     {entry.status === "ready"
                       ? <span className="text-xs font-black ml-3 shrink-0 px-2 py-1 rounded-lg" style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e" }}>READY</span>
-                      : <span style={{ fontSize: 20, color: "rgba(255,185,100,0.30)", marginLeft: 12 }}>›</span>
+                      : <span style={{ fontSize: 20, color: "var(--bdr-11)", marginLeft: 12 }}>›</span>
                     }
                   </button>
                 )
@@ -1103,11 +1103,11 @@ function TableGuestPicker({
               <div className="flex items-center gap-3 ml-auto">
                 <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
-                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "var(--text-warm3)" }}>−</button>
-                <span className="w-8 text-center font-bold tabular-nums" style={{ fontSize: 18, color: "rgba(255,248,240,0.95)" }}>{partySize}</span>
+                  style={{ background: "var(--surf-7)", border: "1px solid var(--bdr-8)", color: "var(--text-warm3)" }}>−</button>
+                <span className="w-8 text-center font-bold tabular-nums" style={{ fontSize: 18, color: "var(--text-hi3)" }}>{partySize}</span>
                 <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
                   className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
-                  style={{ background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.22)", color: "var(--text-warm3)" }}>+</button>
+                  style={{ background: "var(--surf-7)", border: "1px solid var(--bdr-8)", color: "var(--text-warm3)" }}>+</button>
               </div>
             </div>
             <input placeholder="Phone (optional)" value={phone} onChange={e => setPhone(e.target.value)} type="tel"
@@ -1195,7 +1195,7 @@ function AddGuestDrawer({
       width: sidebarW,
       zIndex: 45,
       background: "var(--modal-bg2)",
-      borderTop: "1px solid rgba(255,185,100,0.22)",
+      borderTop: "1px solid var(--bdr-8)",
       borderRight: "1px solid var(--bdr-3)",
       display: "flex",
       flexDirection: "column",
@@ -1218,12 +1218,12 @@ function AddGuestDrawer({
         <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-muted3)", marginBottom: 8 }}>Party Size</p>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
           <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
-            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "var(--surf-3)", border: "1.5px solid var(--bdr-6)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>−</button>
-          <span style={{ fontSize: 62, fontWeight: 200, color: "rgba(255,248,240,0.95)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "var(--surf-3)", border: "1.5px solid var(--bdr-6)", color: "var(--text-warm5)", cursor: "pointer" }}>−</button>
+          <span style={{ fontSize: 62, fontWeight: 200, color: "var(--text-hi3)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
             {partySize}
           </span>
           <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
-            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "var(--surf-3)", border: "1.5px solid var(--bdr-6)", color: "rgba(255,200,150,0.7)", cursor: "pointer" }}>+</button>
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "var(--surf-3)", border: "1.5px solid var(--bdr-6)", color: "var(--text-warm5)", cursor: "pointer" }}>+</button>
         </div>
 
         {/* Name */}
@@ -1236,7 +1236,7 @@ function AddGuestDrawer({
 
         {/* Phone */}
         <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-muted3)", marginBottom: 6 }}>
-          Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(255,200,150,0.28)" }}>— opt.</span>
+          Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-dim4)" }}>— opt.</span>
         </p>
         <input
           type="tel" value={phone} onChange={e => setPhone(e.target.value)}
@@ -1251,7 +1251,7 @@ function AddGuestDrawer({
               Quote Wait
             </p>
             {waitMins !== null && (
-              <button onClick={() => setWaitMins(null)} style={{ fontSize: 9, color: "rgba(255,200,150,0.30)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+              <button onClick={() => setWaitMins(null)} style={{ fontSize: 9, color: "var(--text-dim6)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
                 skip →
               </button>
             )}
@@ -1263,8 +1263,8 @@ function AddGuestDrawer({
               <button key={p} onClick={() => setWaitMins(p)}
                 style={{
                   height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: waitMins === p ? "var(--bdr-3)" : "rgba(255,185,100,0.05)",
-                  border: `1px solid ${waitMins === p ? "rgba(255,185,100,0.55)" : "var(--surf-4)"}`,
+                  background: waitMins === p ? "var(--bdr-3)" : "var(--surf-6)",
+                  border: `1px solid ${waitMins === p ? "var(--bdr-9)" : "var(--surf-4)"}`,
                   cursor: "pointer", transition: "all 0.1s",
                 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: waitMins === p ? "rgba(255,230,190,0.97)" : "var(--text-muted2)" }}>{p}</span>
@@ -1275,18 +1275,18 @@ function AddGuestDrawer({
           {/* Fine-tune stepper */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
             <button onClick={() => setWaitMins(m => Math.max(1, (m ?? 15) - 1))}
-              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surf-3)", border: "1px solid var(--bdr-3)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
-            <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "rgba(255,248,240,0.95)" : "rgba(255,200,150,0.25)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surf-3)", border: "1px solid var(--bdr-3)", color: "var(--text-warm5)", cursor: "pointer", fontSize: 16 }}>−</button>
+            <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "var(--text-hi3)" : "var(--text-dim5)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
               {waitMins ?? "—"}
             </span>
             <button onClick={() => setWaitMins(m => Math.min(120, (m ?? 14) + 1))}
-              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surf-3)", border: "1px solid var(--bdr-3)", color: "rgba(255,200,150,0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surf-3)", border: "1px solid var(--bdr-3)", color: "var(--text-warm5)", cursor: "pointer", fontSize: 16 }}>+</button>
           </div>
         </div>
       </div>
 
       {/* Footer */}
-      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(255,185,100,0.10)", flexShrink: 0 }}>
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid var(--surf-7)", flexShrink: 0 }}>
         {error && <p style={{ fontSize: 11, color: "rgba(248,113,113,0.90)", textAlign: "center", marginBottom: 8 }}>{error}</p>}
         <button onClick={submit} disabled={loading}
           style={{
@@ -1881,25 +1881,45 @@ export default function HostDashboard() {
   [data-host-theme="dark"] {
     --accent:255,185,100; --warm:255,200,150; --cream:255,248,240;
     --page-bg:#0C0907; --card-bg:#100C09; --page-deep:#0a0704;
-    --header-bg:rgba(7,4,2,0.98); --header-border:rgba(var(--accent),0.18); --divider:rgba(var(--accent),0.16);
-    --text-hi:var(--text-hi); --text-hi2:var(--text-hi2);
-    --text-warm:var(--text-warm); --text-warm2:var(--text-warm2); --text-warm3:var(--text-warm3); --text-warm4:var(--text-warm4);
-    --text-muted:var(--text-muted); --text-muted2:var(--text-muted2); --text-muted3:var(--text-muted3); --text-muted4:var(--text-muted4);
-    --text-dim:var(--text-dim); --text-dim2:var(--text-dim2); --text-dim3:var(--text-dim3);
-    --surf-1:var(--surf-1); --surf-2:var(--surf-2); --surf-3:var(--surf-3); --surf-4:var(--surf-4); --surf-5:var(--surf-5);
-    --bdr-1:var(--bdr-1); --bdr-2:var(--bdr-2); --bdr-3:var(--bdr-3); --bdr-4:var(--text-dim3); --bdr-5:var(--surf-4); --bdr-6:var(--bdr-6); --bdr-7:var(--bdr-7);
+    --header-bg:rgba(7,4,2,0.98); --header-border:rgba(255,185,100,0.18); --divider:rgba(255,185,100,0.16);
+    /* text — cream primary */
+    --text-hi:rgba(255, 248, 240, 0.92); --text-hi2:rgba(255, 248, 240, 0.97); --text-hi3:rgba(255, 248, 240, 0.95); --text-hi4:rgba(255, 248, 240, 0.88);
+    /* text — warm amber secondary */
+    --text-warm:rgba(255, 200, 150, 0.75); --text-warm2:rgba(255, 200, 150, 0.65); --text-warm3:rgba(255, 200, 150, 0.80); --text-warm4:rgba(255, 200, 150, 0.90);
+    --text-warm5:rgba(255, 200, 150, 0.70); --text-warm6:rgba(255, 200, 150, 0.40);
+    /* text — muted */
+    --text-muted:rgba(255, 200, 150, 0.55); --text-muted2:rgba(255, 200, 150, 0.50); --text-muted3:rgba(255, 200, 150, 0.45); --text-muted4:rgba(255, 200, 150, 0.60);
+    /* text — dim */
+    --text-dim:rgba(255, 185, 100, 0.45); --text-dim2:rgba(255, 185, 100, 0.40); --text-dim3:rgba(255, 185, 100, 0.28);
+    --text-dim4:rgba(255, 200, 150, 0.28); --text-dim5:rgba(255, 200, 150, 0.25); --text-dim6:rgba(255, 200, 150, 0.30); --text-dim7:rgba(255, 200, 150, 0.35);
+    --text-bright:rgba(255, 220, 160, 0.97);
+    /* surfaces */
+    --surf-1:rgba(255, 185, 100, 0.07); --surf-2:rgba(255, 185, 100, 0.04); --surf-3:rgba(255, 185, 100, 0.06); --surf-4:rgba(255, 185, 100, 0.12); --surf-5:rgba(255, 185, 100, 0.08);
+    --surf-6:rgba(255, 185, 100, 0.05); --surf-7:rgba(255, 185, 100, 0.10); --surf-8:rgba(255, 185, 100, 0.03);
+    /* borders */
+    --bdr-1:rgba(255, 185, 100, 0.14); --bdr-2:rgba(255, 185, 100, 0.16); --bdr-3:rgba(255, 185, 100, 0.18); --bdr-4:rgba(255, 185, 100, 0.28); --bdr-5:rgba(255, 185, 100, 0.12); --bdr-6:rgba(255, 185, 100, 0.20); --bdr-7:rgba(255, 185, 100, 0.25);
+    --bdr-8:rgba(255, 185, 100, 0.22); --bdr-9:rgba(255, 185, 100, 0.55); --bdr-10:rgba(255, 185, 100, 0.11); --bdr-11:rgba(255, 185, 100, 0.30); --bdr-12:rgba(255, 185, 100, 0.50); --bdr-13:rgba(255, 185, 100, 0.15); --bdr-14:rgba(255, 185, 100, 0.09); --bdr-15:rgba(255, 185, 100, 0.35);
     --modal-bg:#100C09; --modal-bg2:#0C0907;
   }
   [data-host-theme="light"] {
     --accent:160,90,0; --warm:110,60,5; --cream:18,10,3;
     --page-bg:#F5F2EE; --card-bg:#FFFFFF; --page-deep:#EDE9E3;
     --header-bg:rgba(252,249,245,0.98); --header-border:rgba(160,90,0,0.18); --divider:rgba(160,90,0,0.14);
-    --text-hi:rgba(22,12,4,0.90); --text-hi2:rgba(22,12,4,0.95);
-    --text-warm:rgba(100,55,5,0.85); --text-warm2:rgba(100,55,5,0.75); --text-warm3:rgba(100,55,5,0.90); --text-warm4:rgba(100,55,5,0.95);
+    /* text — dark primary */
+    --text-hi:rgba(22,12,4,0.90); --text-hi2:rgba(22,12,4,0.95); --text-hi3:rgba(22,12,4,0.92); --text-hi4:rgba(22,12,4,0.85);
+    /* text — warm brown secondary */
+    --text-warm:rgba(100,55,5,0.85); --text-warm2:rgba(100,55,5,0.75); --text-warm3:rgba(100,55,5,0.90); --text-warm4:rgba(100,55,5,0.95); --text-warm5:rgba(100,55,5,0.80); --text-warm6:rgba(100,55,5,0.58);
+    /* text — muted */
     --text-muted:rgba(100,55,5,0.65); --text-muted2:rgba(100,55,5,0.58); --text-muted3:rgba(100,55,5,0.50); --text-muted4:rgba(100,55,5,0.70);
-    --text-dim:rgba(130,75,10,0.55); --text-dim2:rgba(130,75,10,0.48); --text-dim3:rgba(130,75,10,0.35);
-    --surf-1:rgba(160,90,0,0.07); --surf-2:rgba(160,90,0,0.04); --surf-3:rgba(160,90,0,0.06); --surf-4:rgba(160,90,0,0.12); --surf-5:rgba(160,90,0,0.08);
+    /* text — dim */
+    --text-dim:rgba(130,75,10,0.55); --text-dim2:rgba(130,75,10,0.48); --text-dim3:rgba(130,75,10,0.38);
+    --text-dim4:rgba(100,55,5,0.48); --text-dim5:rgba(100,55,5,0.42); --text-dim6:rgba(100,55,5,0.50); --text-dim7:rgba(100,55,5,0.55);
+    --text-bright:rgba(100,55,5,0.97);
+    /* surfaces */
+    --surf-1:rgba(160,90,0,0.07); --surf-2:rgba(160,90,0,0.04); --surf-3:rgba(160,90,0,0.06); --surf-4:rgba(160,90,0,0.12); --surf-5:rgba(160,90,0,0.08); --surf-6:rgba(160,90,0,0.05); --surf-7:rgba(160,90,0,0.10); --surf-8:rgba(160,90,0,0.03);
+    /* borders */
     --bdr-1:rgba(160,90,0,0.16); --bdr-2:rgba(160,90,0,0.18); --bdr-3:rgba(160,90,0,0.22); --bdr-4:rgba(160,90,0,0.30); --bdr-5:rgba(160,90,0,0.14); --bdr-6:rgba(160,90,0,0.24); --bdr-7:rgba(160,90,0,0.28);
+    --bdr-8:rgba(160,90,0,0.26); --bdr-9:rgba(160,90,0,0.42); --bdr-10:rgba(160,90,0,0.15); --bdr-11:rgba(160,90,0,0.28); --bdr-12:rgba(160,90,0,0.40); --bdr-13:rgba(160,90,0,0.18); --bdr-14:rgba(160,90,0,0.12); --bdr-15:rgba(160,90,0,0.30);
     --modal-bg:#FFFFFF; --modal-bg2:#F5F2EE;
   }
 `}</style>
@@ -1922,7 +1942,7 @@ export default function HostDashboard() {
             {/* Restaurant logo / name */}
             {restaurantLogo
               ? <HeaderLogo src={restaurantLogo} name={restaurantName} />
-              : <span style={{ fontSize: 15, fontWeight: 800, color: "rgba(255,200,150,0.9)", letterSpacing: "0.04em", flexShrink: 0 }}>{restaurantName}</span>
+              : <span style={{ fontSize: 15, fontWeight: 800, color: "var(--text-warm4)", letterSpacing: "0.04em", flexShrink: 0 }}>{restaurantName}</span>
             }
             {/* Location label for Walnut restaurants (Original / Southside) */}
             {(restaurantName.includes("Original") || restaurantName.includes("Southside")) && (
@@ -1937,7 +1957,7 @@ export default function HostDashboard() {
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "var(--surf-1)", border: "1px solid var(--bdr-2)" }}>
                 <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
-                <span className="text-xs" style={{ color: "rgba(255,185,100,0.50)" }}>/{FLOOR_PLAN.length}</span>
+                <span className="text-xs" style={{ color: "var(--bdr-12)" }}>/{FLOOR_PLAN.length}</span>
                 <span className="text-[10px] ml-0.5" style={{ color: "var(--text-muted4)" }}>free</span>
               </div>
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "var(--surf-1)", border: "1px solid var(--bdr-2)" }}>
@@ -2142,7 +2162,7 @@ export default function HostDashboard() {
 
               {queue.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid var(--bdr-1)", borderRadius: 12 }}>
-                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(255,185,100,0.30)" }} />
+                  <CheckCircle2 className="w-7 h-7" style={{ color: "var(--bdr-11)" }} />
                   <p className="text-[11px] font-medium" style={{ color: "var(--text-muted2)" }}>Queue is clear</p>
                 </div>
               ) : quotedWaiting.length === 0 && needsQuoteList.length === 0 ? (
@@ -2165,7 +2185,7 @@ export default function HostDashboard() {
 
             {/* Sidebar footer — system health */}
             <div className="px-4 py-3 shrink-0 flex items-center justify-between" style={{ borderTop: "1px solid var(--bdr-1)" }}>
-              <p className="text-[10px] tabular-nums" style={{ color: "rgba(255,200,150,0.40)" }}>
+              <p className="text-[10px] tabular-nums" style={{ color: "var(--text-warm6)" }}>
                 Synced {lastSync.toLocaleTimeString()}
               </p>
               <div className="flex items-center gap-1.5">
@@ -2291,7 +2311,7 @@ export default function HostDashboard() {
               <p className="text-base font-bold mb-1" style={{ color: "var(--text-hi)" }}>Table {clearConfirm.tableNumber}</p>
               <p className="text-sm mb-8" style={{ color: "var(--text-muted)" }}>
                 What would you like to do with{" "}
-                <strong style={{ color: "rgba(255,248,240,0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
+                <strong style={{ color: "var(--text-hi4)" }}>{clearConfirm.occupant.name}</strong>{" "}
                 ({clearConfirm.occupant.party_size}p)?
               </p>
               <div className="flex flex-col gap-3">
