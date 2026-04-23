@@ -392,7 +392,7 @@ function DraggableQueueCard({
       </div>
 
       {/* ── Row 2: meta info ── */}
-      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)" }}>
+      <div style={{ paddingLeft: 38, paddingRight: 4, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
           <Users className="w-2.5 h-2.5" />{entry.party_size}p
         </span>
@@ -416,6 +416,17 @@ function DraggableQueueCard({
             >
               <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "var(--bdr-15)" }} />
             </button>
+            {/* +5 min — small rectangle on the right of this row */}
+            {onAddTime && (
+              <button
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => { e.stopPropagation(); onAddTime() }}
+                style={{ marginLeft: "auto", padding: "3px 9px", borderRadius: 6, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", cursor: "pointer", flexShrink: 0, lineHeight: 1.3 }}
+                title="+5 min"
+              >
+                +5 min
+              </button>
+            )}
           </>
         )}
       </div>
@@ -476,15 +487,6 @@ function DraggableQueueCard({
             </button>
           ) : (
             <div style={{ flex: 1 }} />
-          )}
-          {/* +5 min — only shown when guest has a quoted wait */}
-          {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && onAddTime && (
-            <button onClick={e => { e.stopPropagation(); onAddTime() }}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all active:scale-95 hover:brightness-125"
-              style={{ height: 48, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.90)", border: "1px solid rgba(96,165,250,0.18)" }} title="+5 min">
-              <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1 }}>+5</span>
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>MIN</span>
-            </button>
           )}
           {/* Edit */}
           <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
