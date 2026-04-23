@@ -4,8 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import {
   Plus, Minus, Bell, Pause, Play,
-  ChevronLeft, Check, X, ToggleLeft, ToggleRight, Palette,
-  Download,
+  ChevronLeft, Check, X, Palette,
 } from "lucide-react"
 
 const API          = "https://restaurant-brain-production.up.railway.app"
@@ -16,12 +15,6 @@ function getBusinessDate(): string {
   if (now.getHours() < 3) now.setDate(now.getDate() - 1)
   return now.toLocaleDateString("en-CA")
 }
-
-const TABLE_NUMBERS = Array.from({ length: 16 }, (_, i) => i + 1)
-
-type TablePickerMode =
-  | { mode: "seat"; localId: string }
-  | { mode: "move"; from: number | null }
 
 function parseUTCMs(ts: string | null | undefined): number | null {
   if (!ts) return null
@@ -192,21 +185,13 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
   const ROWS_KEY    = `analog_rows_${slug}`
   const VISUAL_KEY  = `analog_visual_${slug}`
   const ZOOM_KEY    = `analog_zoom_${slug}`
-  const TABLES_KEY  = `analog_tables_${slug}`
   const BDATE_KEY   = `analog_bdate_${slug}`
 
   const [rows, setRows] = useState<AnalogRow[]>(() => {
     try { const s = localStorage.getItem(ROWS_KEY); if (s) { const p = JSON.parse(s) as AnalogRow[]; if (p.length) return p } } catch {}
     return [makeRow()]
   })
-  const [tableAssignment, setTableAssignment] = useState(() => {
-    try { const s = localStorage.getItem(TABLES_KEY); if (s !== null) return s === "true" } catch {}
-    return true
-  })
-  const [tablePicker,   setTablePicker]   = useState<TablePickerMode | null>(null)
-  const [seatConfirm,   setSeatConfirm]   = useState<{ tableNum: number; occupantName: string } | null>(null)
   const [confirmFor,    setConfirmFor]    = useState<string | null>(null)
-  const [tables,        setTables]        = useState<Table[]>([])
   const [toast,         setToast]         = useState<string | null>(null)
   const [zoom,          setZoom]          = useState(() => {
     try { const s = localStorage.getItem(ZOOM_KEY); if (s) return parseFloat(s) || 1.0 } catch {}
@@ -235,13 +220,11 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
   const adjustTimerDebounce = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const partySizeDebounce   = useRef<Record<string, { timer: ReturnType<typeof setTimeout>; entryId: string; val: number }>>({})
   const adjustingUntilRef   = useRef<Record<string, number>>({})
-  const [tableOccupants, setTableOccupants] = useState<Record<string, { name: string; party_size: number }>>({})
 
   const V = makeV(visual)
 
   useEffect(() => { try { localStorage.setItem(ROWS_KEY, JSON.stringify(rows)) } catch {} }, [rows, ROWS_KEY])
   useEffect(() => { try { localStorage.setItem(VISUAL_KEY, visual) } catch {} }, [visual, VISUAL_KEY])
-  useEffect(() => { try { localStorage.setItem(TABLES_KEY, String(tableAssignment)) } catch {} }, [tableAssignment, TABLES_KEY])
   useEffect(() => { try { localStorage.setItem(ZOOM_KEY, String(zoom)) } catch {} }, [zoom, ZOOM_KEY])
 
   // 3am business day reset
@@ -277,13 +260,6 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length, rows.map(r => r.name + r.status + r.queueEntryId).join("|")])
-
-  // Fetch tables + occupants
-  const fetchTables = useCallback(() => {
-    fetch(`${API}/tables?restaurant_id=${rid}`).then(r => r.ok ? r.json() : []).then(setTables).catch(() => {})
-    fetch(`${API}/tables/occupants?restaurant_id=${rid}`).then(r => r.ok ? r.json() : {}).then(setTableOccupants).catch(() => {})
-  }, [rid])
-  useEffect(() => { fetchTables(); const t = setInterval(fetchTables, 2_000); return () => clearInterval(t) }, [fetchTables])
 
   // Poll queue
   const pollQueue = useCallback(async () => {
@@ -458,75 +434,6 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
     }
   }, [rows, patchRow, showToast])
 
-  // Table operations
-  const seatToTable = useCallback(async (localId: string, tableNum: number) => {
-    setTablePicker(null)
-    const row = rows.find(r => r.localId === localId)
-    if (!row) return
-    const resolvedMs = Date.now()
-    patchRow(localId, { status: "seated", seatedMs: resolvedMs })
-    setTableOccupants(prev => ({ ...prev, [String(tableNum)]: { name: row.name || "Guest", party_size: row.partySize } }))
-    setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "occupied" } : t))
-    const table = tables.find(t => t.table_number === tableNum)
-    try {
-      if (row.queueEntryId && table) {
-        // seat-to-table atomically marks the guest seated AND occupies the table with correct name
-        await fetch(`${API}/queue/${row.queueEntryId}/seat-to-table/${table.id}`, { method: "POST" })
-      } else if (row.queueEntryId) {
-        await fetch(`${API}/queue/${row.queueEntryId}/seat`, { method: "POST" })
-        if (table) await fetch(`${API}/tables/${table.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: row.name || "Guest", party_size: row.partySize, entry_id: row.queueEntryId }) })
-      } else if (table) {
-        await fetch(`${API}/tables/${table.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: row.name || "Guest", party_size: row.partySize }) })
-      }
-    } catch {}
-    showToast(`${row.name || "Guest"} seated at Table ${tableNum}`)
-    fetchTables()
-  }, [rows, tables, patchRow, showToast, fetchTables])
-
-  const clearAndSeatGuest = useCallback(async (localId: string, tableNum: number) => {
-    setSeatConfirm(null); setTablePicker(null)
-    const row = rows.find(r => r.localId === localId)
-    if (!row) return
-    const table = tables.find(t => t.table_number === tableNum)
-    if (table) {
-      try { await fetch(`${API}/tables/${table.id}/clear`, { method: "POST" }) } catch {}
-    }
-    await seatToTable(localId, tableNum)
-  }, [rows, tables, seatToTable])
-
-  const moveTableGuest = useCallback(async (fromNum: number, toNum: number) => {
-    setSeatConfirm(null); setTablePicker(null)
-    const fromTable = tables.find(t => t.table_number === fromNum)
-    const toTable   = tables.find(t => t.table_number === toNum)
-    const occupant  = tableOccupants[String(fromNum)]
-    setTableOccupants(prev => {
-      const n = { ...prev }
-      delete n[String(fromNum)]
-      n[String(toNum)] = occupant ?? { name: "Guest", party_size: 2 }
-      return n
-    })
-    setTables(prev => prev.map(t =>
-      t.table_number === fromNum ? { ...t, status: "available" } :
-      t.table_number === toNum   ? { ...t, status: "occupied" }  : t
-    ))
-    try {
-      if (fromTable) await fetch(`${API}/tables/${fromTable.id}/clear`, { method: "POST" })
-      if (toTable && occupant) await fetch(`${API}/tables/${toTable.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }) })
-    } catch {}
-    showToast(`Table ${fromNum} → Table ${toNum}`)
-    fetchTables()
-  }, [tables, tableOccupants, showToast, fetchTables])
-
-  const clearTableOnly = useCallback(async (tableNum: number) => {
-    setSeatConfirm(null); setTablePicker(null)
-    const table = tables.find(t => t.table_number === tableNum)
-    setTableOccupants(prev => { const n = { ...prev }; delete n[String(tableNum)]; return n })
-    setTables(prev => prev.map(t => t.table_number === tableNum ? { ...t, status: "available" } : t))
-    if (table) { try { await fetch(`${API}/tables/${table.id}/clear`, { method: "POST" }) } catch {} }
-    showToast(`Table ${tableNum} cleared`)
-    fetchTables()
-  }, [tables, showToast, fetchTables])
-
   // Pen helpers
   const clearOnPen = useCallback((localId: string, field: "name" | "phone" | "notes") =>
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -547,7 +454,7 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
 
   const firstCol = visual === "classic" ? "68px" : "52px"
   const gridCols = isLandscape
-    ? `${firstCol} 1fr 100px 1fr minmax(170px,1.2fr) minmax(140px,1fr)`
+    ? `${firstCol} 1fr 100px 1fr minmax(170px,1.2fr) minmax(100px,0.7fr)`
     : `${firstCol} 1fr 100px 1fr minmax(170px,1.2fr)`
   const colHeaders = isLandscape
     ? ["", "Name", "Party", "Phone", "Wait / Timer", "Notes"]
@@ -561,6 +468,9 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
   }
 
   const locationShort = restaurantName.includes("Original") ? "Original" : restaurantName.includes("Southside") ? "Southside" : restaurantName
+
+  // Suppress unused variable warning — Table type is still used in QueueEntry polling
+  void (null as unknown as Table)
 
   return (
     <div style={{ minHeight: "100dvh", background: V.pageBg, fontFamily: V.font, display: "flex", flexDirection: "column" }}>
@@ -618,13 +528,6 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
               </div>
             )}
           </div>
-
-          {/* Table assignment toggle */}
-          <button onClick={() => setTableAssignment(v => !v)}
-            style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 15px", borderRadius: 12, border: `1.5px solid ${tableAssignment ? "rgba(34,197,94,0.50)" : V.btnBorder}`, background: tableAssignment ? "rgba(34,197,94,0.11)" : (visual === "modern" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)"), cursor: "pointer", touchAction: "manipulation", transition: "all 0.12s" }}>
-            {tableAssignment ? <ToggleRight style={{ width: 17, height: 17, color: "#22c55e" }} /> : <ToggleLeft style={{ width: 17, height: 17, color: V.textMuted }} />}
-            <span style={{ fontSize: 13, fontWeight: 700, color: tableAssignment ? "#16a34a" : V.textSub }}>Tables</span>
-          </button>
         </div>
       </header>
 
@@ -654,25 +557,6 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 6px", background: V.completedBg }}>
                   <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: V.textMuted }}>Completed · {completedRows.length}</span>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={() => {
-                        const header = ["Name","Party Size","Phone","Quoted Wait (min)","Status","Arrived","Waited (min)","Notes"]
-                        const csvRows = completedRows.map(r => [
-                          r.name || "Guest", r.partySize, r.phone || "", r.quotedWait ?? "",
-                          r.status === "seated" ? "Seated" : r.removedByGuest ? "Left waitlist" : "Removed",
-                          r.addedMs ? new Date(r.addedMs).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }) : "",
-                          r.addedMs ? Math.round(((r.seatedMs ?? Date.now()) - r.addedMs) / 60_000) : "",
-                          r.notes || "",
-                        ])
-                        const csv = [header, ...csvRows].map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n")
-                        const blob = new Blob([csv], { type: "text/csv" })
-                        const url = URL.createObjectURL(blob)
-                        const a = document.createElement("a"); a.href = url; a.download = `waitlist-${getBusinessDate()}.csv`; a.click()
-                        URL.revokeObjectURL(url)
-                        showToast("Exported to CSV")
-                      }}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, border: `1.5px solid rgba(34,197,94,0.30)`, background: "rgba(34,197,94,0.08)", color: "#22c55e", fontSize: 11, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
-                    ><Download style={{ width: 12, height: 12 }} /> CSV</button>
                     <button
                       onClick={() => { setRows(prev => prev.filter(r => r.status !== "seated" && r.status !== "removed")); showToast("History cleared") }}
                       style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", borderRadius: 8, border: `1.5px solid rgba(239,68,68,0.25)`, background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.75)", fontSize: 11, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
@@ -734,6 +618,10 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
                 : row.source === "host"  ? { label: "Host", color: V.textMuted }
                 : !isBlank               ? { label: "Host Stand", color: V.textMuted }
                 : null
+
+              const elapsedMins = isWaiting && row.addedMs
+                ? Math.floor((Date.now() - row.addedMs) / 60_000)
+                : 0
 
               return (
                 <div key={row.localId} style={{ display: "grid", gridTemplateColumns: gridCols, alignItems: "center", minHeight: 68, borderBottom: `1px solid ${V.rowBorder}`, background: needsQuote ? V.rowBgNFC : isOverdue ? V.rowBgOverdue : V.rowBgNormal, padding: "8px 0" }}>
@@ -829,6 +717,9 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
                     ) : (
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{ textAlign: "center", minWidth: 56 }}>
+                          {isWaiting && row.addedMs && elapsedMins > 0 && (
+                            <div style={{ fontSize: 10, fontWeight: 700, color: V.textSub, marginBottom: 2 }}>{elapsedMins}m waited</div>
+                          )}
                           <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.03em", lineHeight: 1, color: isOverdue ? "#dc2626" : secs < 60 ? "#f97316" : V.text, fontVariantNumeric: "tabular-nums" }}>
                             {row.isPaused ? <span style={{ color: V.textSub }}>{fmtCountdown(row.pausedSecsLeft)}</span> : fmtCountdown(secs)}
                           </div>
@@ -847,14 +738,6 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
                             <Bell style={{ width: 14, height: 14 }} />
                             {row.status === "ready" ? "Notified" : "Notify"}
                           </button>
-                          {tableAssignment && (
-                            <button
-                              onPointerDown={() => setTablePicker({ mode: "seat", localId: row.localId })}
-                              style={{ height: 36, borderRadius: 10, border: `1px solid ${V.btnBorder}`, background: V.quoteBtnBg, color: V.quoteBtnText, fontSize: 12, fontWeight: 700, cursor: "pointer", touchAction: "manipulation" }}
-                            >
-                              Seat → Table
-                            </button>
-                          )}
                         </div>
                       </div>
                     )}
@@ -866,19 +749,19 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
                       <input type="text" value={row.notes}
                         onChange={e => patchRow(row.localId, { notes: e.target.value })}
                         placeholder="Notes…" inputMode="text" autoCorrect="off" spellCheck={false} autoCapitalize="sentences"
-                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, color: V.inputColor, caretColor: "#22c55e", borderBottom: `1px solid ${V.rowBorder}`, padding: "6px 0", touchAction: "manipulation" }}
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 11, color: V.inputColor, caretColor: "#22c55e", borderBottom: `1px solid ${V.rowBorder}`, padding: "6px 0", touchAction: "manipulation" }}
                       />
                     </div>
                   )}
 
                   {/* Notes — portrait card below */}
                   {!isBlank && !isLandscape && (
-                    <div style={{ gridColumn: "1 / -1", margin: "6px 12px 10px 60px", background: V.notesBg, borderRadius: 10, border: `1px solid ${V.notesBorder}`, padding: "7px 12px" }} onPointerDown={clearOnPen(row.localId, "notes")}>
-                      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: V.notesLabel, marginBottom: 3 }}>Notes</div>
+                    <div style={{ gridColumn: "1 / -1", margin: "3px 12px 4px 56px", background: V.notesBg, borderRadius: 8, border: `1px solid ${V.notesBorder}`, padding: "4px 10px" }} onPointerDown={clearOnPen(row.localId, "notes")}>
+                      <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: V.notesLabel, marginBottom: 3 }}>Notes</div>
                       <input type="text" value={row.notes}
                         onChange={e => patchRow(row.localId, { notes: e.target.value })}
-                        placeholder="Allergies, special requests…" inputMode="text" autoCorrect="off" spellCheck={false} autoCapitalize="sentences"
-                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, color: V.inputColor, caretColor: "#22c55e", touchAction: "manipulation" }}
+                        placeholder="Notes…" inputMode="text" autoCorrect="off" spellCheck={false} autoCapitalize="sentences"
+                        style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 11, color: V.inputColor, caretColor: "#22c55e", touchAction: "manipulation" }}
                       />
                     </div>
                   )}
@@ -909,104 +792,6 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
           </div>
         </div>
       )}
-
-      {/* ── Table picker ── */}
-      {tablePicker && (() => {
-        const isSeat = tablePicker.mode === "seat"
-        const isMove = tablePicker.mode === "move"
-        const moveFrom = isMove ? tablePicker.from : null
-        const seatLocalId = isSeat ? tablePicker.localId : null
-        const seatGuestName = isSeat ? (rows.find(r => r.localId === seatLocalId)?.name || "Guest") : null
-
-        return (
-          <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.50)", backdropFilter: "blur(6px)", display: "flex", alignItems: "flex-end" }} onPointerDown={() => { setTablePicker(null); setSeatConfirm(null) }}>
-            <div style={{ width: "100%", background: "white", borderRadius: "24px 24px 0 0", maxHeight: "80dvh", display: "flex", flexDirection: "column" }} onPointerDown={e => e.stopPropagation()}>
-              <div style={{ padding: "20px 20px 0", flexShrink: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                  <p style={{ fontSize: 18, fontWeight: 800, color: "#111", margin: 0 }}>Tables</p>
-                  <button onPointerDown={() => { setTablePicker(null); setSeatConfirm(null) }} style={{ width: 32, height: 32, borderRadius: 10, border: "1px solid rgba(0,0,0,0.10)", background: "rgba(0,0,0,0.04)", cursor: "pointer", color: "rgba(0,0,0,0.40)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation" }}>✕</button>
-                </div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                  {seatGuestName && (
-                    <button onPointerDown={() => { setSeatConfirm(null); setTablePicker({ mode: "seat", localId: seatLocalId! }) }}
-                      style={{ flex: 1, height: 44, borderRadius: 12, border: `2px solid ${isSeat ? "rgba(34,197,94,0.60)" : "rgba(0,0,0,0.08)"}`, background: isSeat ? "rgba(34,197,94,0.10)" : "rgba(0,0,0,0.03)", color: isSeat ? "#16a34a" : "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 13, cursor: "pointer", touchAction: "manipulation" }}>
-                      Seat {seatGuestName}
-                    </button>
-                  )}
-                  <button onPointerDown={() => { setSeatConfirm(null); setTablePicker({ mode: "move", from: null }) }}
-                    style={{ flex: 1, height: 44, borderRadius: 12, border: `2px solid ${isMove ? "rgba(99,102,241,0.60)" : "rgba(0,0,0,0.08)"}`, background: isMove ? "rgba(99,102,241,0.10)" : "rgba(0,0,0,0.03)", color: isMove ? "#4f46e5" : "rgba(0,0,0,0.35)", fontWeight: 700, fontSize: 13, cursor: "pointer", touchAction: "manipulation" }}>
-                    Move Guests
-                  </button>
-                </div>
-                <p style={{ fontSize: 12, color: "rgba(0,0,0,0.38)", margin: "0 0 14px" }}>
-                  {isMove && moveFrom === null && "Tap an occupied table for options"}
-                  {isMove && moveFrom !== null && `Moving Table ${moveFrom} → tap destination`}
-                  {isSeat && !seatConfirm && "Tap open table to seat · Tap occupied for options"}
-                </p>
-              </div>
-              {seatConfirm && (
-                <div style={{ margin: "0 20px 14px", padding: "16px", borderRadius: 16, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.20)", flexShrink: 0 }}>
-                  <p style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#111" }}>Table {seatConfirm.tableNum} · <span style={{ color: "#dc2626" }}>{seatConfirm.occupantName}</span></p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {isSeat && (
-                      <button onPointerDown={() => clearAndSeatGuest(seatLocalId!, seatConfirm.tableNum)}
-                        style={{ height: 52, borderRadius: 14, border: "none", background: "rgba(34,197,94,0.88)", color: "white", fontWeight: 800, fontSize: 15, cursor: "pointer", touchAction: "manipulation" }}>
-                        Clear &amp; Seat Here
-                      </button>
-                    )}
-                    {isMove && moveFrom === null && (
-                      <button onPointerDown={() => { setSeatConfirm(null); setTablePicker({ mode: "move", from: seatConfirm.tableNum }) }}
-                        style={{ height: 52, borderRadius: 14, border: "1px solid rgba(99,102,241,0.40)", background: "rgba(99,102,241,0.10)", color: "#4f46e5", fontWeight: 800, fontSize: 15, cursor: "pointer", touchAction: "manipulation" }}>
-                        Move to Another Table →
-                      </button>
-                    )}
-                    <button onPointerDown={() => clearTableOnly(seatConfirm.tableNum)}
-                      style={{ height: 52, borderRadius: 14, border: "1px solid rgba(239,68,68,0.30)", background: "rgba(239,68,68,0.10)", color: "#dc2626", fontWeight: 800, fontSize: 15, cursor: "pointer", touchAction: "manipulation" }}>
-                      Clear Table
-                    </button>
-                    <button onPointerDown={() => setSeatConfirm(null)}
-                      style={{ height: 44, borderRadius: 14, border: "1px solid rgba(0,0,0,0.10)", background: "rgba(0,0,0,0.03)", color: "rgba(0,0,0,0.40)", fontWeight: 700, fontSize: 13, cursor: "pointer", touchAction: "manipulation" }}>
-                      Back
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div style={{ padding: "0 20px 40px", overflowY: "auto" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-                  {TABLE_NUMBERS.map(n => {
-                    const occupied     = tables.find(t => Number(t.table_number) === n)?.status === "occupied" || !!tableOccupants[String(n)]
-                    const occupantName = tableOccupants[String(n)]?.name
-                    const isMoveSrc    = isMove && moveFrom === n
-                    let bg = "rgba(34,197,94,0.08)"; let border = "rgba(34,197,94,0.40)"; let color = "#16a34a"
-                    if (isMoveSrc)  { bg = "rgba(99,102,241,0.16)"; border = "rgba(99,102,241,0.70)"; color = "#4f46e5" }
-                    else if (occupied) { bg = "rgba(239,68,68,0.07)"; border = "rgba(239,68,68,0.45)"; color = "#dc2626" }
-                    return (
-                      <button key={n}
-                        onPointerDown={() => {
-                          if (isMove) {
-                            if (moveFrom === null) {
-                              if (occupied) setSeatConfirm({ tableNum: n, occupantName: occupantName || `Table ${n} guest` })
-                            } else { moveTableGuest(moveFrom, n) }
-                          } else {
-                            if (!occupied) { seatToTable(seatLocalId!, n) }
-                            else { setSeatConfirm({ tableNum: n, occupantName: occupantName || `Table ${n} guest` }) }
-                          }
-                        }}
-                        style={{ height: 68, borderRadius: 16, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, border: `2px solid ${border}`, background: bg, color, cursor: "pointer", touchAction: "manipulation", opacity: isMove && moveFrom !== null && isMoveSrc ? 0.5 : 1, transition: "opacity 0.15s" }}>
-                        {isMoveSrc
-                          ? <><span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", opacity: 0.7 }}>MOVING</span><span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{n}</span></>
-                          : <><span style={{ fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{n}</span>
-                              {occupied && occupantName && <span style={{ fontSize: 9, fontWeight: 600, opacity: 0.6, overflow: "hidden", maxWidth: "90%", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{occupantName}</span>}</>
-                        }
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
 
       {/* Toast */}
       {toast && (
