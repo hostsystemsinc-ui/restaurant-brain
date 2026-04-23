@@ -75,10 +75,87 @@ def _seed_wait_set_at():
 
 threading.Thread(target=_seed_wait_set_at, daemon=True).start()
 
+def _ensure_demo_tables():
+    """Guarantee the demo restaurant + its 16 tables exist in the DB.
+    Idempotent — inserts only the table numbers that are missing.
+    Also clears stale in-memory occupant state for the demo restaurant."""
+    try:
+        rid = DEMO_RESTAURANT_ID
+        # Ensure demo restaurant row exists
+        if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
+            supabase.table("restaurants").insert({
+                "id": rid, "name": "Demo Restaurant", "slug": "demo"
+            }).execute()
+        # Find which table numbers already exist
+        existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
+        existing_nums = {row["table_number"] for row in existing}
+        capacities = [2,2,2,4,4,4,6,6,6,4,4,4,1,1,1,1]
+        missing = [
+            {"restaurant_id": rid, "table_number": i+1, "capacity": c, "status": "available"}
+            for i, c in enumerate(capacities)
+            if (i+1) not in existing_nums
+        ]
+        if missing:
+            supabase.table("tables").insert(missing).execute()
+            print(f"[startup] Inserted {len(missing)} missing demo tables: {[m['table_number'] for m in missing]}")
+        # Clear stale in-memory occupants for demo restaurant on every startup
+        prefix = f"{rid}:"
+        stale_keys = [k for k in list(_table_occupants.keys()) if k.startswith(prefix)]
+        for k in stale_keys:
+            del _table_occupants[k]
+        if stale_keys:
+            print(f"[startup] Cleared {len(stale_keys)} stale demo occupant(s): {stale_keys}")
+    except Exception as e:
+        print(f"[startup] _ensure_demo_tables failed: {e}")
+
+threading.Thread(target=_ensure_demo_tables, daemon=True).start()
+
+WALNUT_RESTAURANTS = [
+    {
+        "id":   "0001cafe-0001-4000-8000-000000000001",
+        "name": "The Original Walnut Cafe",
+        "slug": "walnut-original",
+    },
+    {
+        "id":   "0002cafe-0001-4000-8000-000000000002",
+        "name": "The Southside Walnut Cafe",
+        "slug": "walnut-southside",
+    },
+]
+
+def _ensure_walnut_restaurants():
+    """Guarantee both Walnut Cafe restaurants + their 16 tables exist in the DB.
+    Idempotent — only inserts rows that are missing."""
+    # Same layout as demo: 16 tables matching the HOST floor plan
+    capacities = [2, 2, 2, 4, 4, 4, 6, 6, 6, 4, 4, 4, 1, 1, 1, 1]
+    for rest in WALNUT_RESTAURANTS:
+        rid = rest["id"]
+        try:
+            if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
+                supabase.table("restaurants").insert({
+                    "id": rid, "name": rest["name"], "slug": rest["slug"]
+                }).execute()
+                print(f"[startup] Created restaurant: {rest['name']}")
+            existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
+            existing_nums = {row["table_number"] for row in existing}
+            missing = [
+                {"restaurant_id": rid, "table_number": i + 1, "capacity": c, "status": "available"}
+                for i, c in enumerate(capacities)
+                if (i + 1) not in existing_nums
+            ]
+            if missing:
+                supabase.table("tables").insert(missing).execute()
+                print(f"[startup] Inserted {len(missing)} tables for {rest['name']}: {[m['table_number'] for m in missing]}")
+        except Exception as e:
+            print(f"[startup] _ensure_walnut_restaurants failed for {rest['name']}: {e}")
+
+threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
+
 def _seed_table_occupants():
     """Restore real guest names in _table_occupants from seating_events after a server restart.
     Without this, tables show 'Guest' after every Railway deployment (any git push auto-deploys).
-    Strategy: for each occupied table, find the most recent seating event and look up the entry."""
+    Strategy: for each occupied table, find the most recent seating event and look up the entry.
+    Defined AFTER WALNUT_RESTAURANTS so the thread never accesses an undefined module variable."""
     from datetime import timedelta
     try:
         now = datetime.now(timezone.utc)
@@ -158,82 +235,6 @@ def _seed_table_occupants():
         print(f"[startup] _seed_table_occupants outer error: {e}")
 
 threading.Thread(target=_seed_table_occupants, daemon=True).start()
-
-def _ensure_demo_tables():
-    """Guarantee the demo restaurant + its 16 tables exist in the DB.
-    Idempotent — inserts only the table numbers that are missing.
-    Also clears stale in-memory occupant state for the demo restaurant."""
-    try:
-        rid = DEMO_RESTAURANT_ID
-        # Ensure demo restaurant row exists
-        if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
-            supabase.table("restaurants").insert({
-                "id": rid, "name": "Demo Restaurant", "slug": "demo"
-            }).execute()
-        # Find which table numbers already exist
-        existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
-        existing_nums = {row["table_number"] for row in existing}
-        capacities = [2,2,2,4,4,4,6,6,6,4,4,4,1,1,1,1]
-        missing = [
-            {"restaurant_id": rid, "table_number": i+1, "capacity": c, "status": "available"}
-            for i, c in enumerate(capacities)
-            if (i+1) not in existing_nums
-        ]
-        if missing:
-            supabase.table("tables").insert(missing).execute()
-            print(f"[startup] Inserted {len(missing)} missing demo tables: {[m['table_number'] for m in missing]}")
-        # Clear stale in-memory occupants for demo restaurant on every startup
-        prefix = f"{rid}:"
-        stale_keys = [k for k in list(_table_occupants.keys()) if k.startswith(prefix)]
-        for k in stale_keys:
-            del _table_occupants[k]
-        if stale_keys:
-            print(f"[startup] Cleared {len(stale_keys)} stale demo occupant(s): {stale_keys}")
-    except Exception as e:
-        print(f"[startup] _ensure_demo_tables failed: {e}")
-
-threading.Thread(target=_ensure_demo_tables, daemon=True).start()
-
-WALNUT_RESTAURANTS = [
-    {
-        "id":   "0001cafe-0001-4000-8000-000000000001",
-        "name": "The Original Walnut Cafe",
-        "slug": "walnut-original",
-    },
-    {
-        "id":   "0002cafe-0001-4000-8000-000000000002",
-        "name": "The Southside Walnut Cafe",
-        "slug": "walnut-southside",
-    },
-]
-
-def _ensure_walnut_restaurants():
-    """Guarantee both Walnut Cafe restaurants + their 16 tables exist in the DB.
-    Idempotent — only inserts rows that are missing."""
-    # Same layout as demo: 16 tables matching the HOST floor plan
-    capacities = [2, 2, 2, 4, 4, 4, 6, 6, 6, 4, 4, 4, 1, 1, 1, 1]
-    for rest in WALNUT_RESTAURANTS:
-        rid = rest["id"]
-        try:
-            if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
-                supabase.table("restaurants").insert({
-                    "id": rid, "name": rest["name"], "slug": rest["slug"]
-                }).execute()
-                print(f"[startup] Created restaurant: {rest['name']}")
-            existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
-            existing_nums = {row["table_number"] for row in existing}
-            missing = [
-                {"restaurant_id": rid, "table_number": i + 1, "capacity": c, "status": "available"}
-                for i, c in enumerate(capacities)
-                if (i + 1) not in existing_nums
-            ]
-            if missing:
-                supabase.table("tables").insert(missing).execute()
-                print(f"[startup] Inserted {len(missing)} tables for {rest['name']}: {[m['table_number'] for m in missing]}")
-        except Exception as e:
-            print(f"[startup] _ensure_walnut_restaurants failed for {rest['name']}: {e}")
-
-threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
 
 app = FastAPI(title="Restaurant Brain API")
 
@@ -595,9 +596,21 @@ def get_restaurant(restaurant_id: Optional[str] = None):
 
 # ── Tables ───────────────────────────────────────────────────────────────────
 
+def _dedup_tables(rows: list) -> list:
+    """Deduplicate table rows by table_number, keeping the first occurrence.
+    Duplicate rows accumulate when _ensure_* startup functions race on first deploy."""
+    seen: set = set()
+    out = []
+    for t in (rows or []):
+        n = t.get("table_number")
+        if n not in seen:
+            seen.add(n)
+            out.append(t)
+    return out
+
 @app.get("/tables")
 def get_tables(restaurant_id: Optional[str] = None):
-    return (
+    rows = (
         supabase.table("tables")
         .select("*")
         .eq("restaurant_id", _rid(restaurant_id))
@@ -605,6 +618,7 @@ def get_tables(restaurant_id: Optional[str] = None):
         .execute()
         .data
     )
+    return _dedup_tables(rows)
 
 class OccupyRequest(BaseModel):
     name:       Optional[str] = None
@@ -653,15 +667,19 @@ def get_table_occupants(restaurant_id: Optional[str] = None):
     # Start from in-memory (has name/party_size already set)
     with _occupants_lock:
         result: dict = {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
-    # Fill any gaps from DB: find tables with status="occupied" not already in result
+    # Fill any gaps from DB: find tables with status="occupied" not already in result.
+    # Re-acquire lock before writing to avoid overwriting a concurrent seat that happened
+    # between the initial read and this DB query.
     try:
         occ_tables = supabase.table("tables").select("table_number").eq("restaurant_id", rid).eq("status", "occupied").execute().data or []
         for t in occ_tables:
             tnum = str(t["table_number"])
             if tnum not in result:
-                result[tnum] = {"name": "Guest", "party_size": 2, "entry_id": None}
+                key = f"{rid}:{t['table_number']}"
                 with _occupants_lock:
-                    _table_occupants[f"{rid}:{t['table_number']}"] = result[tnum]
+                    if key not in _table_occupants:  # Don't overwrite a concurrent seat
+                        _table_occupants[key] = {"name": "Guest", "party_size": 2, "entry_id": None}
+                    result[tnum] = _table_occupants[key]
     except Exception:
         pass
     return result
@@ -683,7 +701,7 @@ def get_queue(restaurant_id: Optional[str] = None):
 @app.get("/state")
 def get_state(restaurant_id: Optional[str] = None):
     rid     = _rid(restaurant_id)
-    tables  = supabase.table("tables").select("*").eq("restaurant_id", rid).execute().data
+    tables  = _dedup_tables(supabase.table("tables").select("*").eq("restaurant_id", rid).execute().data)
     entries = _active_queue(rid)
     for i, e in enumerate(entries):
         e["position"]       = i + 1
