@@ -1461,3 +1461,133 @@ def get_demo_submissions(secret: Optional[str] = None):
     if not _demo_submissions:
         _load_demo_subs()
     return _demo_submissions
+
+# ── Owner Analytics ────────────────────────────────────────────────────────────
+
+def _check_owner_secret(secret: Optional[str]) -> None:
+    op = os.environ.get("OWNER_PASS", "")
+    if not op or not secret or secret != op:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+def _owner_rids(restaurant_ids: Optional[str]) -> list:
+    """Parse comma-separated restaurant_ids, or return all known restaurant IDs."""
+    all_rids = (
+        ([RESTAURANT_ID] if RESTAURANT_ID else [])
+        + [r["id"] for r in WALNUT_RESTAURANTS]
+        + [DEMO_RESTAURANT_ID]
+    )
+    if restaurant_ids:
+        return [r.strip() for r in restaurant_ids.split(",") if r.strip()]
+    return all_rids
+
+@app.get("/owner/analytics")
+def owner_analytics(restaurant_ids: Optional[str] = None, secret: Optional[str] = None):
+    """Deep guest analytics — all queue_entries joined with first seating event per entry.
+    Returns up to 5 000 rows ordered by arrival_time desc."""
+    _check_owner_secret(secret)
+    rids = _owner_rids(restaurant_ids)
+    try:
+        entries_res = (
+            supabase.table("queue_entries")
+            .select("id, name, party_size, phone, source, status, arrival_time, quoted_wait, notes, restaurant_id")
+            .in_("restaurant_id", rids)
+            .order("arrival_time", desc=True)
+            .limit(5000)
+            .execute()
+        )
+        entries = entries_res.data or []
+
+        # Fetch seating events in 200-row chunks to stay under Supabase IN-clause limits
+        entry_ids = [e["id"] for e in entries]
+        seated_at_map: dict = {}
+        for i in range(0, len(entry_ids), 200):
+            chunk = entry_ids[i:i + 200]
+            if not chunk:
+                continue
+            ev_res = (
+                supabase.table("seating_events")
+                .select("queue_entry_id, created_at")
+                .in_("queue_entry_id", chunk)
+                .eq("action", "seated")
+                .order("created_at")
+                .execute()
+            )
+            for ev in (ev_res.data or []):
+                eid = ev.get("queue_entry_id")
+                if eid and eid not in seated_at_map:
+                    seated_at_map[eid] = ev["created_at"]
+
+        result = []
+        for e in entries:
+            seated_at = seated_at_map.get(e["id"])
+            actual_wait = None
+            if seated_at and e.get("arrival_time"):
+                try:
+                    arr = datetime.fromisoformat(e["arrival_time"].replace("Z", ""))
+                    sat = datetime.fromisoformat(seated_at.replace("Z", ""))
+                    actual_wait = max(0, int((sat - arr).total_seconds() / 60))
+                except Exception:
+                    pass
+            result.append({
+                "id":            e["id"],
+                "name":          e.get("name") or "Guest",
+                "party_size":    e.get("party_size"),
+                "phone":         e.get("phone"),
+                "source":        e.get("source") or "nfc",
+                "status":        e.get("status"),
+                "arrival_time":  e.get("arrival_time"),
+                "quoted_wait":   e.get("quoted_wait"),
+                "seated_at":     seated_at,
+                "actual_wait":   actual_wait,
+                "notes":         e.get("notes"),
+                "restaurant_id": e.get("restaurant_id"),
+            })
+
+        return {"entries": result, "total": len(result)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/owner/analytics/clear")
+def owner_analytics_clear(restaurant_ids: Optional[str] = None, secret: Optional[str] = None):
+    """Hard-DELETE queue_entries and seating_events for specified restaurants.
+    This permanently frees Supabase row storage. Export CSV before calling this."""
+    _check_owner_secret(secret)
+    rids = _owner_rids(restaurant_ids)
+    freed = {"queue_entries": 0, "seating_events": 0}
+    for rid in rids:
+        # Delete seating_events first (may reference queue_entries)
+        try:
+            ev_res = supabase.table("seating_events").delete().eq("restaurant_id", rid).execute()
+            freed["seating_events"] += len(ev_res.data or [])
+        except Exception as ex:
+            print(f"[owner/clear] seating_events delete failed for {rid}: {ex}")
+        try:
+            q_res = supabase.table("queue_entries").delete().eq("restaurant_id", rid).execute()
+            freed["queue_entries"] += len(q_res.data or [])
+        except Exception as ex:
+            print(f"[owner/clear] queue_entries delete failed for {rid}: {ex}")
+        # Clear in-memory occupant cache so the floor map reflects the empty state
+        prefix = f"{rid}:"
+        with _occupants_lock:
+            for k in [k for k in list(_table_occupants.keys()) if k.startswith(prefix)]:
+                del _table_occupants[k]
+    # All entries gone — clear wait-timer cache too
+    _wait_set_at.clear()
+    print(f"[owner/clear] freed {freed} rows across {len(rids)} restaurants")
+    return {"status": "cleared", "freed": freed, "restaurants": rids}
+
+
+@app.get("/owner/capacity")
+def owner_capacity(secret: Optional[str] = None):
+    """Return Supabase row counts for storage capacity monitoring."""
+    _check_owner_secret(secret)
+    row_counts: dict = {}
+    for tbl in ["queue_entries", "seating_events", "tables", "restaurants"]:
+        try:
+            res = supabase.table(tbl).select("id").limit(10000).execute()
+            row_counts[tbl] = len(res.data or [])
+        except Exception as ex:
+            row_counts[tbl] = -1
+            print(f"[owner/capacity] row count failed for {tbl}: {ex}")
+    return {"supabase_rows": row_counts, "server_time": _now()}

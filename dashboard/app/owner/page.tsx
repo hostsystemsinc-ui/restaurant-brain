@@ -29,7 +29,7 @@ const D = {
 const API      = "https://restaurant-brain-production.up.railway.app"
 const DEMO_RID = "dec0cafe-0000-4000-8000-000000000001"
 
-const TABS = ["Overview", "Clients", "SMS", "Customizer", "Prompts"]
+const TABS = ["Overview", "Clients", "SMS", "Customizer", "Analytics", "Prompts"]
 
 // ── Customizer editor types ────────────────────────────────────────────────────
 type SelectedEl =
@@ -102,6 +102,26 @@ interface DemoReq {
   city:        string
   type:        string
   submittedAt: string
+}
+
+interface AnalyticsEntry {
+  id: string
+  name: string
+  party_size: number
+  phone: string | null
+  source: string
+  status: string
+  arrival_time: string | null
+  quoted_wait: number | null
+  seated_at: string | null
+  actual_wait: number | null
+  notes: string | null
+  restaurant_id: string | null
+}
+
+interface CapacityData {
+  supabase_rows: Record<string, number>
+  server_time: string
 }
 
 interface GuestConfig {
@@ -277,6 +297,25 @@ function fmtRefresh(d: Date | null) {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })
 }
 
+function sourceLabel(s: string) {
+  return s === "nfc" ? "NFC" : s === "host" ? "Manual" : s === "analog" ? "Analog" : s === "web" ? "Web" : s
+}
+function sourceStyle(s: string): React.CSSProperties {
+  const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px", letterSpacing: "0.05em", border: "1px solid", whiteSpace: "nowrap" as const }
+  if (s === "nfc")    return { ...base, color: "#60A5FA", background: "rgba(96,165,250,0.12)",  borderColor: "rgba(96,165,250,0.25)"  }
+  if (s === "host")   return { ...base, color: "#22C55E", background: "rgba(34,197,94,0.10)",   borderColor: "rgba(34,197,94,0.22)"   }
+  if (s === "analog") return { ...base, color: "#F59E0B", background: "rgba(245,158,11,0.10)",  borderColor: "rgba(245,158,11,0.25)"  }
+  if (s === "web")    return { ...base, color: "#A78BFA", background: "rgba(167,139,250,0.10)", borderColor: "rgba(167,139,250,0.25)" }
+  return { ...base, color: D.muted, background: D.surface, borderColor: D.border }
+}
+function statusStyle(s: string): React.CSSProperties {
+  const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px", border: "1px solid", whiteSpace: "nowrap" as const }
+  if (s === "seated")  return { ...base, color: "#22C55E", background: "rgba(34,197,94,0.10)",  borderColor: "rgba(34,197,94,0.22)"  }
+  if (s === "removed") return { ...base, color: "#EF4444", background: "rgba(239,68,68,0.10)",  borderColor: "rgba(239,68,68,0.22)"  }
+  if (s === "ready")   return { ...base, color: "#FBBF24", background: "rgba(251,191,36,0.10)", borderColor: "rgba(251,191,36,0.25)" }
+  return { ...base, color: "#60A5FA", background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.25)" }
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 export default function OwnerPage() {
   const router = useRouter()
@@ -345,6 +384,19 @@ export default function OwnerPage() {
 
   // SMS tab: quota from textbelt state
   const [textbeltQuota, setTextbeltQuota] = useState<number | null>(null)
+
+  // Analytics tab
+  const [analyticsData,     setAnalyticsData]     = useState<AnalyticsEntry[]>([])
+  const [analyticsLoading,  setAnalyticsLoading]  = useState(false)
+  const [analyticsFetched,  setAnalyticsFetched]  = useState(false)
+  const [showClearConfirm,  setShowClearConfirm]  = useState(false)
+  const [analyticsClearing, setAnalyticsClearing] = useState(false)
+  const [analyticsPage,     setAnalyticsPage]     = useState(0)
+  const analyticsPageSize = 50
+
+  // Capacity (Supabase row counts)
+  const [capacityData,    setCapacityData]    = useState<CapacityData | null>(null)
+  const [capacityLoading, setCapacityLoading] = useState(false)
 
   // Secrets fetched server-side — never hardcoded in client
   const [ownerSecrets, setOwnerSecrets] = useState<{
@@ -503,7 +555,7 @@ export default function OwnerPage() {
   }, [])
 
   useEffect(() => {
-    if (authed) fetchAll()
+    if (authed) { fetchAll(); fetchCapacity() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
 
@@ -568,6 +620,74 @@ export default function OwnerPage() {
 
   function getClientCred(id: string) {
     return clientCreds[id] ?? { username: id, password: "" }
+  }
+
+  async function fetchAnalytics() {
+    setAnalyticsLoading(true)
+    const token = sessionStorage.getItem("host_owner_token") || ""
+    const rids  = [WALNUT_ORIGINAL_RID, WALNUT_SOUTHSIDE_RID, DEMO_RID].join(",")
+    try {
+      const r = await fetch(
+        `${API}/owner/analytics?restaurant_ids=${encodeURIComponent(rids)}&secret=${encodeURIComponent(token)}`,
+        { cache: "no-store" }
+      )
+      if (r.ok) {
+        const d = await r.json()
+        setAnalyticsData(d.entries || [])
+        setAnalyticsFetched(true)
+        setAnalyticsPage(0)
+      }
+    } catch { /* ignore */ }
+    setAnalyticsLoading(false)
+  }
+
+  async function fetchCapacity() {
+    setCapacityLoading(true)
+    const token = sessionStorage.getItem("host_owner_token") || ""
+    try {
+      const r = await fetch(`${API}/owner/capacity?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      if (r.ok) setCapacityData(await r.json())
+    } catch { /* ignore */ }
+    setCapacityLoading(false)
+  }
+
+  function exportCSV() {
+    const restName = (rid: string | null) => RESTS.find(r => r.rid === rid)?.name || rid || "Unknown"
+    const fmtDate  = (iso: string | null) => iso ? new Date(iso).toLocaleString() : ""
+    const headers  = ["Name","Party","Phone","Source","Status","Arrived","Quoted Wait (min)","Seated At","Actual Wait (min)","Notes","Restaurant"]
+    const rows = analyticsData.map(e => [
+      e.name, e.party_size, e.phone || "", sourceLabel(e.source), e.status,
+      fmtDate(e.arrival_time), e.quoted_wait ?? "", fmtDate(e.seated_at),
+      e.actual_wait ?? "", e.notes || "", restName(e.restaurant_id),
+    ])
+    const csv = [headers, ...rows].map(row =>
+      row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
+    ).join("\n")
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }))
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `host-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function clearAnalytics() {
+    setAnalyticsClearing(true)
+    const token = sessionStorage.getItem("host_owner_token") || ""
+    const rids  = [WALNUT_ORIGINAL_RID, WALNUT_SOUTHSIDE_RID, DEMO_RID].join(",")
+    try {
+      const r = await fetch(
+        `${API}/owner/analytics/clear?restaurant_ids=${encodeURIComponent(rids)}&secret=${encodeURIComponent(token)}`,
+        { method: "DELETE", cache: "no-store" }
+      )
+      if (r.ok) {
+        setAnalyticsData([])
+        setAnalyticsFetched(false)
+        setShowClearConfirm(false)
+        fetchCapacity()
+      }
+    } catch { /* ignore */ }
+    setAnalyticsClearing(false)
   }
 
   const font = "'Inter', system-ui, -apple-system, sans-serif"
@@ -765,6 +885,78 @@ export default function OwnerPage() {
               <SvcCard name="Backend DB" svc={db} icon={
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
               } />
+            </div>
+
+            {/* System Capacity */}
+            <SectionLabel>System Capacity</SectionLabel>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 36 }}>
+              {/* TextBelt */}
+              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "18px 20px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: D.muted }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>TextBelt SMS</span>
+                </div>
+                {textbeltQuota != null ? (
+                  <>
+                    <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: textbeltQuota > 500 ? D.green : textbeltQuota >= 100 ? D.yellow : D.red, marginBottom: 6 }}>
+                      {textbeltQuota.toLocaleString()}
+                      <span style={{ fontSize: 12, fontWeight: 400, color: D.muted, marginLeft: 6 }}>texts left</span>
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 100, height: 5, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${Math.min(100, (textbeltQuota / 2000) * 100)}%`, background: textbeltQuota > 500 ? D.green : textbeltQuota >= 100 ? D.yellow : D.red, borderRadius: 100 }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: D.muted, marginTop: 6 }}>{textbeltQuota > 500 ? "Healthy" : textbeltQuota >= 100 ? "Running low" : "Critical — buy now"}</div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 13, color: D.muted }}>{textbelt.status === "degraded" ? "Key not configured" : "Checking…"}</div>
+                )}
+              </div>
+
+              {/* Supabase rows */}
+              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "18px 20px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: D.muted }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supabase (Free 500MB)</span>
+                </div>
+                {capacityLoading && !capacityData ? (
+                  <div style={{ fontSize: 13, color: D.muted }}>Checking…</div>
+                ) : capacityData ? (
+                  <>
+                    <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: D.text, marginBottom: 6 }}>
+                      {((capacityData.supabase_rows.queue_entries || 0) + (capacityData.supabase_rows.seating_events || 0)).toLocaleString()}
+                      <span style={{ fontSize: 12, fontWeight: 400, color: D.muted, marginLeft: 6 }}>rows</span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                      {[
+                        { label: "Guest entries", val: capacityData.supabase_rows.queue_entries },
+                        { label: "Seating events", val: capacityData.supabase_rows.seating_events },
+                      ].map(row => (
+                        <div key={row.label} style={{ fontSize: 11, color: D.muted }}>
+                          <span style={{ color: D.text2, fontWeight: 600 }}>{row.val?.toLocaleString() ?? "—"}</span> {row.label}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 13, color: D.muted }}>—</div>
+                )}
+              </div>
+
+              {/* Railway latency */}
+              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "18px 20px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: D.muted }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Railway API</span>
+                </div>
+                <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: railway.status === "up" ? D.green : railway.status === "degraded" ? D.yellow : D.red, marginBottom: 6 }}>
+                  {railway.latency != null ? `${railway.latency}` : "—"}
+                  {railway.latency != null && <span style={{ fontSize: 12, fontWeight: 400, color: D.muted, marginLeft: 4 }}>ms</span>}
+                </div>
+                <div style={{ fontSize: 11, color: D.muted }}>
+                  {railway.status === "up" ? "Operational" : railway.status === "degraded" ? "Slow response" : "Down"}
+                  {railway.latency != null && ` · ${railway.latency < 800 ? "fast" : railway.latency < 2000 ? "normal" : "slow"}`}
+                </div>
+              </div>
             </div>
 
             {/* Restaurants */}
@@ -1786,6 +1978,251 @@ export default function OwnerPage() {
             </div>
           </div>
         )}
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* TAB: ANALYTICS                                             */}
+        {/* ══════════════════════════════════════════════════════════ */}
+        {activeTab === "Analytics" && (() => {
+          const seated  = analyticsData.filter(e => e.status === "seated")
+          const removed = analyticsData.filter(e => e.status === "removed")
+          const waits   = analyticsData.map(e => e.actual_wait).filter((w): w is number => w != null)
+          const avgWait = waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null
+          const avgParty = analyticsData.length
+            ? (analyticsData.reduce((a, e) => a + (e.party_size || 0), 0) / analyticsData.length).toFixed(1)
+            : null
+          const pageStart = analyticsPage * analyticsPageSize
+          const pageRows  = analyticsFetched ? analyticsData.slice(pageStart, pageStart + analyticsPageSize) : []
+          const totalPages = Math.ceil(analyticsData.length / analyticsPageSize)
+
+          return (
+            <>
+              {/* Header row: action buttons + capacity chips */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <button
+                    onClick={fetchAnalytics}
+                    disabled={analyticsLoading}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 7,
+                      padding: "9px 16px", borderRadius: 8,
+                      background: D.surface, border: `1px solid ${D.border}`,
+                      color: D.text2, fontSize: 13, fontWeight: 600,
+                      cursor: analyticsLoading ? "not-allowed" : "pointer", opacity: analyticsLoading ? 0.5 : 1,
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: analyticsLoading ? "spin 1s linear infinite" : "none" }}>
+                      <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                    {analyticsLoading ? "Loading…" : analyticsFetched ? "Refresh Data" : "Load Analytics"}
+                  </button>
+
+                  {analyticsFetched && analyticsData.length > 0 && (
+                    <button
+                      onClick={exportCSV}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 7,
+                        padding: "9px 16px", borderRadius: 8,
+                        background: D.greenBg, border: `1px solid ${D.greenBorder}`,
+                        color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      Export CSV
+                    </button>
+                  )}
+
+                  {analyticsFetched && (
+                    <button
+                      onClick={() => setShowClearConfirm(true)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 7,
+                        padding: "9px 16px", borderRadius: 8,
+                        background: D.redBg, border: `1px solid rgba(239,68,68,0.25)`,
+                        color: D.red, fontSize: 13, fontWeight: 600, cursor: "pointer",
+                      }}
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                      Clear All Data
+                    </button>
+                  )}
+                </div>
+
+                {/* Supabase row count chip */}
+                {capacityData && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: D.muted }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                    <span><strong style={{ color: D.text2 }}>{((capacityData.supabase_rows.queue_entries || 0) + (capacityData.supabase_rows.seating_events || 0)).toLocaleString()}</strong> Supabase rows stored</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Summary stats */}
+              {analyticsFetched && analyticsData.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 24 }}>
+                  {[
+                    { label: "Total Guests",   value: analyticsData.length.toLocaleString(), color: D.text },
+                    { label: "Seated",         value: seated.length.toLocaleString(),         color: D.green },
+                    { label: "Removed / Left", value: removed.length.toLocaleString(),        color: D.muted },
+                    { label: "Avg Actual Wait",value: avgWait != null ? `${avgWait}m` : "—",  color: D.text },
+                    { label: "Avg Party Size", value: avgParty ?? "—",                        color: D.text },
+                  ].map(stat => (
+                    <div key={stat.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: stat.color, letterSpacing: "-0.02em" }}>{stat.value}</div>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: D.muted, marginTop: 4, letterSpacing: "0.06em", textTransform: "uppercase" }}>{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Empty / loading states */}
+              {!analyticsFetched && !analyticsLoading && (
+                <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, padding: "60px 24px", textAlign: "center" }}>
+                  <div style={{ fontSize: 13, color: D.muted, marginBottom: 8 }}>Click "Load Analytics" to fetch all guest data.</div>
+                  <div style={{ fontSize: 12, color: D.muted, opacity: 0.6 }}>Data is stored indefinitely and cleared only when you press Clear All Data.</div>
+                </div>
+              )}
+
+              {analyticsLoading && (
+                <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, padding: "60px 24px", textAlign: "center", color: D.muted, fontSize: 13 }}>
+                  Loading guest data…
+                </div>
+              )}
+
+              {/* Data table */}
+              {analyticsFetched && !analyticsLoading && (
+                <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden" }}>
+                  {/* Table header */}
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+                      <thead>
+                        <tr style={{ background: D.surface, borderBottom: `1px solid ${D.border}` }}>
+                          {["Name","Party","Source","Arrived","Quoted","Actual","Status","Restaurant","Phone","Notes"].map((h, i) => (
+                            <th key={h} style={{
+                              padding: "10px 14px", textAlign: "left",
+                              fontSize: 10, fontWeight: 700, color: D.muted,
+                              letterSpacing: "0.08em", textTransform: "uppercase",
+                              whiteSpace: "nowrap",
+                              borderRight: i < 9 ? `1px solid ${D.border}` : "none",
+                            }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pageRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={10} style={{ padding: "32px 20px", textAlign: "center", color: D.muted, fontSize: 13 }}>
+                              No records found.
+                            </td>
+                          </tr>
+                        ) : pageRows.map((entry, idx) => {
+                          const restName = RESTS.find(r => r.rid === entry.restaurant_id)?.name
+                            ?? (entry.restaurant_id ? entry.restaurant_id.slice(0, 8) + "…" : "—")
+                          return (
+                            <tr
+                              key={entry.id}
+                              style={{
+                                borderBottom: idx < pageRows.length - 1 ? `1px solid ${D.border}` : "none",
+                                background: "transparent", transition: "background 0.1s",
+                              }}
+                              onMouseEnter={e => (e.currentTarget.style.background = D.surfaceHover)}
+                              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                            >
+                              <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 600, color: D.text, whiteSpace: "nowrap", borderRight: `1px solid ${D.border}` }}>{entry.name}</td>
+                              <td style={{ padding: "11px 14px", fontSize: 13, color: D.text2, textAlign: "center", borderRight: `1px solid ${D.border}` }}>{entry.party_size}</td>
+                              <td style={{ padding: "11px 14px", borderRight: `1px solid ${D.border}` }}>
+                                <span style={sourceStyle(entry.source)}>{sourceLabel(entry.source)}</span>
+                              </td>
+                              <td style={{ padding: "11px 14px", fontSize: 12, color: D.text2, whiteSpace: "nowrap", borderRight: `1px solid ${D.border}` }}>
+                                {entry.arrival_time ? new Date(entry.arrival_time).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—"}
+                              </td>
+                              <td style={{ padding: "11px 14px", fontSize: 13, color: D.text2, textAlign: "center", borderRight: `1px solid ${D.border}` }}>
+                                {entry.quoted_wait != null ? `${entry.quoted_wait}m` : "—"}
+                              </td>
+                              <td style={{ padding: "11px 14px", fontSize: 13, color: entry.actual_wait != null ? D.text : D.muted, textAlign: "center", fontWeight: entry.actual_wait != null ? 600 : 400, borderRight: `1px solid ${D.border}` }}>
+                                {entry.actual_wait != null ? `${entry.actual_wait}m` : "—"}
+                              </td>
+                              <td style={{ padding: "11px 14px", borderRight: `1px solid ${D.border}` }}>
+                                <span style={statusStyle(entry.status)}>{entry.status}</span>
+                              </td>
+                              <td style={{ padding: "11px 14px", fontSize: 11, color: D.muted, whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", borderRight: `1px solid ${D.border}` }}>
+                                {restName}
+                              </td>
+                              <td style={{ padding: "11px 14px", fontSize: 12, color: D.text2, whiteSpace: "nowrap", borderRight: `1px solid ${D.border}` }}>
+                                {entry.phone || "—"}
+                              </td>
+                              <td style={{ padding: "11px 14px", fontSize: 12, color: D.muted, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {entry.notes || "—"}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination footer */}
+                  {totalPages > 1 && (
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "12px 16px",
+                      borderTop: `1px solid ${D.border}`,
+                      background: D.surface,
+                    }}>
+                      <div style={{ fontSize: 12, color: D.muted }}>
+                        Showing {pageStart + 1}–{Math.min(pageStart + analyticsPageSize, analyticsData.length)} of {analyticsData.length.toLocaleString()} records
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => setAnalyticsPage(p => Math.max(0, p - 1))}
+                          disabled={analyticsPage === 0}
+                          style={{ padding: "6px 12px", borderRadius: 6, background: D.surface, border: `1px solid ${D.border}`, color: analyticsPage === 0 ? D.muted : D.text2, fontSize: 12, cursor: analyticsPage === 0 ? "default" : "pointer", opacity: analyticsPage === 0 ? 0.4 : 1 }}
+                        >← Prev</button>
+                        <span style={{ padding: "6px 12px", fontSize: 12, color: D.muted }}>Page {analyticsPage + 1} / {totalPages}</span>
+                        <button
+                          onClick={() => setAnalyticsPage(p => Math.min(totalPages - 1, p + 1))}
+                          disabled={analyticsPage >= totalPages - 1}
+                          style={{ padding: "6px 12px", borderRadius: 6, background: D.surface, border: `1px solid ${D.border}`, color: analyticsPage >= totalPages - 1 ? D.muted : D.text2, fontSize: 12, cursor: analyticsPage >= totalPages - 1 ? "default" : "pointer", opacity: analyticsPage >= totalPages - 1 ? 0.4 : 1 }}
+                        >Next →</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Clear confirm modal */}
+              {showClearConfirm && (
+                <div
+                  onClick={() => !analyticsClearing && setShowClearConfirm(false)}
+                  style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <div
+                    onClick={e => e.stopPropagation()}
+                    style={{ width: 440, maxWidth: "92vw", background: "#0D1117", border: `1px solid rgba(239,68,68,0.35)`, borderRadius: 12, padding: "32px 28px" }}
+                  >
+                    <div style={{ fontSize: 18, fontWeight: 800, color: D.red, marginBottom: 8 }}>Clear All Analytics Data</div>
+                    <div style={{ fontSize: 13, color: D.text2, lineHeight: 1.7, marginBottom: 20 }}>
+                      This will permanently <strong style={{ color: D.text }}>DELETE</strong> all {analyticsData.length.toLocaleString()} guest records and seating events from Supabase, freeing storage immediately.
+                      <br /><br />
+                      <strong style={{ color: D.yellow }}>Export CSV first</strong> — this action cannot be undone.
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        onClick={() => setShowClearConfirm(false)}
+                        disabled={analyticsClearing}
+                        style={{ flex: 1, padding: "11px 0", borderRadius: 8, background: D.surface, border: `1px solid ${D.border}`, color: D.text2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                      >Cancel</button>
+                      <button
+                        onClick={clearAnalytics}
+                        disabled={analyticsClearing}
+                        style={{ flex: 1, padding: "11px 0", borderRadius: 8, background: D.red, border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: analyticsClearing ? "not-allowed" : "pointer", opacity: analyticsClearing ? 0.6 : 1 }}
+                      >{analyticsClearing ? "Clearing…" : "Clear All Data"}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )
+        })()}
 
         {/* ══════════════════════════════════════════════════════════ */}
         {/* TAB: PROMPTS                                               */}
