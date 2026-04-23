@@ -828,27 +828,34 @@ def restore_entry(entry_id: str):
 
 @app.get("/queue/history/debug")
 def debug_history(restaurant_id: Optional[str] = None):
-    """Debug endpoint: tests the exact query used by /queue/history to surface errors."""
+    """Debug endpoint v6: tests the exact history query inline."""
     rid = _rid(restaurant_id)
-    # Step 1: simple count query (known working)
+    results = {}
+    # Step 1: simple count (known working baseline)
     try:
-        res1 = supabase.table("queue_entries").select("id,status").eq("restaurant_id", rid).limit(5).execute()
-        step1 = {"ok": True, "count": len(res1.data or [])}
+        r = supabase.table("queue_entries").select("id,status").eq("restaurant_id", rid).limit(5).execute()
+        results["step1"] = {"ok": True, "count": len(r.data or [])}
     except Exception as e:
-        return {"step": "count", "ok": False, "error": str(e), "type": type(e).__name__}
-    # Step 2: explicit columns, no filter (test select without in_())
+        results["step1"] = {"ok": False, "error": str(e), "type": type(e).__name__}
+    # Step 2: exact history query — explicit cols + in_() + order()
     try:
-        res2 = supabase.table("queue_entries").select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes").eq("restaurant_id", rid).execute()
-        step2 = {"ok": True, "count": len(res2.data or []), "sample_statuses": list({e.get("status") for e in (res2.data or [])})}
+        r2 = (supabase.table("queue_entries")
+              .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
+              .eq("restaurant_id", rid)
+              .in_("status", ["seated", "removed"])
+              .order("arrival_time", desc=True)
+              .execute())
+        results["step2"] = {"ok": True, "count": len(r2.data or []), "sample": (r2.data or [])[:1]}
     except Exception as e:
-        return {"step": "full_select", "ok": False, "step1": step1, "error": str(e), "type": type(e).__name__}
-    # Step 3: same query WITH .in_() filter — this is what the main endpoint now uses
+        results["step2"] = {"ok": False, "error": str(e), "type": type(e).__name__}
+    # Step 3: select(*) query — what the broken endpoint was using
     try:
-        res3 = supabase.table("queue_entries").select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id").eq("restaurant_id", rid).in_("status", ["seated", "removed"]).order("arrival_time", desc=True).execute()
-        step3 = {"ok": True, "count": len(res3.data or []), "sample": (res3.data or [])[:2]}
+        r3 = supabase.table("queue_entries").select("*").eq("restaurant_id", rid).execute()
+        data3 = r3.data or []
+        results["step3_select_star"] = {"ok": True, "count": len(data3), "filtered": len([x for x in data3 if x.get("status") in ("seated","removed")])}
     except Exception as e:
-        return {"step": "in_filter", "ok": False, "step1": step1, "step2": step2, "error": str(e), "type": type(e).__name__}
-    return {"step1": step1, "step2": step2, "step3": step3}
+        results["step3_select_star"] = {"ok": False, "error": str(e), "type": type(e).__name__}
+    return {"v": 6, **results}
 
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
