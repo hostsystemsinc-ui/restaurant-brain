@@ -416,12 +416,12 @@ function DraggableQueueCard({
             >
               <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "var(--bdr-15)" }} />
             </button>
-            {/* +5 min — small rectangle on the right of this row */}
+            {/* +5 min — fills the remaining width of the info row */}
             {onAddTime && (
               <button
                 onPointerDown={e => e.stopPropagation()}
                 onClick={e => { e.stopPropagation(); onAddTime() }}
-                style={{ marginLeft: "auto", padding: "3px 9px", borderRadius: 6, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.02em", cursor: "pointer", flexShrink: 0, lineHeight: 1.3 }}
+                style={{ marginLeft: 6, flex: 1, height: 26, borderRadius: 7, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                 title="+5 min"
               >
                 +5 min
@@ -711,6 +711,7 @@ function DroppableFloorTable({
 
 function FloorMap({
   tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onAvailableTap, locallyAvailableTables,
+  isTableMoveMode, onCancelTableMove,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -720,6 +721,8 @@ function FloorMap({
   onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
   onAvailableTap?: (tableNumber: number, tableId: string | undefined, capacity: number | undefined) => void
   locallyAvailableTables?: Set<number>
+  isTableMoveMode?: boolean
+  onCancelTableMove?: () => void
 }) {
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
 
@@ -813,6 +816,7 @@ function FloorMap({
           {FLOOR_PLAN.map(pos => {
             const table = tableByNumber.get(pos.number)
             const occupant = localOccupants.get(pos.number)
+            const isAvailable = !occupant && (!table || table.status === "available" || locallyAvailableTables?.has(pos.number))
             return (
               <DroppableFloorTable
                 key={pos.number}
@@ -821,30 +825,53 @@ function FloorMap({
                 occupant={occupant}
                 onClear={() => onClear(table?.id, pos.number)}
                 isDraggingOccupant={isDraggingOccupant}
-                isSelectMode={!!selectedEntry}
+                isSelectMode={!!selectedEntry || !!isTableMoveMode}
                 onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
                 forceAvailable={locallyAvailableTables?.has(pos.number)}
-                onAvailableTap={!occupant && (!table || table.status === "available" || locallyAvailableTables?.has(pos.number)) ? () => onAvailableTap?.(pos.number, table?.id, table?.capacity) : undefined}
+                onAvailableTap={isAvailable ? () => onAvailableTap?.(pos.number, table?.id, table?.capacity) : undefined}
               />
             )
           })}
         </div>
       </div>
 
-      {/* Hint text */}
-      <div style={{
-        position: "absolute",
-        bottom: 14,
-        left: "50%",
-        transform: "translateX(-50%)",
-        fontSize: 10,
-        color: "var(--text-muted3)",
-        letterSpacing: "0.1em",
-        whiteSpace: "nowrap",
-        pointerEvents: "none",
-      }}>
-        Tap a guest to select · tap a table to seat · or drag directly
-      </div>
+      {/* Bottom bar: Cancel button in move mode, otherwise hint text */}
+      {isTableMoveMode && onCancelTableMove ? (
+        <div style={{ position: "absolute", bottom: 10, left: 12, right: 12 }}>
+          <button
+            onClick={onCancelTableMove}
+            style={{
+              width: "100%",
+              padding: "13px 0",
+              borderRadius: 14,
+              background: "rgba(239,68,68,0.14)",
+              color: "#ef4444",
+              border: "1px solid rgba(239,68,68,0.32)",
+              fontSize: 14,
+              fontWeight: 800,
+              letterSpacing: "0.06em",
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+          >
+            Cancel Move
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          position: "absolute",
+          bottom: 14,
+          left: "50%",
+          transform: "translateX(-50%)",
+          fontSize: 10,
+          color: "var(--text-muted3)",
+          letterSpacing: "0.1em",
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+        }}>
+          Tap a guest to select · tap a table to seat · or drag directly
+        </div>
+      )}
     </div>
   )
 }
@@ -1516,10 +1543,12 @@ export default function HostDashboard() {
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
-  const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
-  const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
-  const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
-  const [tableTapModal, setTableTapModal] = useState<{ tableNumber: number; tableId: string | undefined; capacity: number | undefined } | null>(null)
+  const [seatPicker, setSeatPicker]             = useState<QueueEntry | null>(null)
+  const [selectedEntry, setSelectedEntry]       = useState<QueueEntry | null>(null)
+  const [clearConfirm, setClearConfirm]         = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [tableTapModal, setTableTapModal]       = useState<{ tableNumber: number; tableId: string | undefined; capacity: number | undefined } | null>(null)
+  // Active table-move: host tapped "Move" in the table popup; floor map becomes a target picker
+  const [pendingTableMove, setPendingTableMove] = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [showHistory, setShowHistory]     = useState(false)
   const [history,     setHistory]         = useState<HistoryEntry[]>([])
   const [sidebarW, setSidebarW]           = useState(300)
@@ -1613,6 +1642,10 @@ export default function HostDashboard() {
   const lastHistoryFetchRef = useRef<number>(0)
   // Tables whose clear API call is still in-flight. refreshAll must not revert these to "occupied".
   const pendingClearsRef = useRef<Set<number>>(new Set())
+  // Tables whose occupy API call is still in-flight. refreshAll must not evict these from localOccupants.
+  // Without this, a poll that fires between the optimistic UI update and the occupy response will
+  // see the target as "not occupied" on the server and remove it — causing the guest to disappear.
+  const pendingOccupiesRef = useRef<Set<number>>(new Set())
   // React state mirror of pendingClearsRef — drives instant green on DroppableFloorTable via forceAvailable.
   const [locallyAvailableTables, setLocallyAvailableTables] = useState<Set<number>>(new Set())
 
@@ -1785,6 +1818,10 @@ export default function HostDashboard() {
         pendingClearsRef.current.forEach(num => {
           if (!serverOccupiedNums.has(num)) pendingClearsRef.current.delete(num)
         })
+        // Server confirmed these are occupied — the occupy call landed, safe to stop protecting
+        pendingOccupiesRef.current.forEach(num => {
+          if (serverOccupiedNums.has(num)) pendingOccupiesRef.current.delete(num)
+        })
         setLocalOccupants(prev => {
           const next = new Map(prev)
           // Add/update from server, skip tables whose clear is still in-flight
@@ -1795,9 +1832,13 @@ export default function HostDashboard() {
             }
           }
           // Server-authoritative removal: evict any local entry the server says is gone
-          // (and no in-flight operation is protecting it)
+          // and no in-flight operation is protecting it.
+          // pendingClearsRef protects the source of a move (clear in-flight).
+          // pendingOccupiesRef protects the target of a move (occupy in-flight) —
+          // without this guard, a poll that fires before the occupy lands will delete
+          // the guest from the target table, causing them to visually disappear.
           next.forEach((_, num) => {
-            if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num)) {
+            if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num) && !pendingOccupiesRef.current.has(num)) {
               next.delete(num)
             }
           })
@@ -1933,6 +1974,47 @@ export default function HostDashboard() {
     setTimeout(fetchHistory, 600)
   }, [refreshAll, fetchHistory])
 
+  // ── Table-move (tap-to-move alternative to drag-and-drop) ─────────────
+  // Triggered by the "Move" button in the occupied-table popup. Works like
+  // the drag-and-drop path but uses tap selection instead.
+  const executeTableMove = useCallback((toTableNumber: number, toTableId: string | undefined) => {
+    if (!pendingTableMove) return
+    const { tableId: fromTableId, tableNumber: fromTableNumber, occupant } = pendingTableMove
+    setPendingTableMove(null)
+    if (fromTableNumber === toTableNumber) return
+
+    // Optimistic UI: same as handleDragEnd table-to-table
+    const displaced = localOccupants.get(toTableNumber)
+    flushSync(() => {
+      setLocalOccupants(prev => {
+        const next = new Map(prev)
+        next.delete(fromTableNumber)
+        if (displaced) next.set(fromTableNumber, displaced)
+        next.set(toTableNumber, occupant)
+        return next
+      })
+      setLocallyAvailableTables(prev => new Set(prev).add(fromTableNumber))
+      setTables(prev => prev.map(t =>
+        t.table_number === fromTableNumber ? { ...t, status: "available" as const } :
+        t.table_number === toTableNumber   ? { ...t, status: "occupied"  as const } :
+        t
+      ))
+    })
+
+    pendingClearsRef.current.add(fromTableNumber)
+    pendingClearsRef.current.delete(toTableNumber)
+    pendingOccupiesRef.current.add(toTableNumber)
+
+    const calls: Promise<unknown>[] = []
+    if (fromTableId) calls.push(fetch(`${API}/tables/${fromTableId}/clear`, { method: "POST" }))
+    if (toTableId)   calls.push(fetch(`${API}/tables/${toTableId}/occupy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
+    }))
+    Promise.all(calls).then(() => refreshAll()).catch(() => refreshAll())
+  }, [pendingTableMove, localOccupants, refreshAll])
+
   // ── DnD handlers ──────────────────────────────────────────────────────
 
   function handleDragStart(event: DragStartEvent) {
@@ -1991,9 +2073,11 @@ export default function HostDashboard() {
       })
 
       // 2. Register source as pending-clear so refreshAll won't re-add its stale occupant.
-      //    Also clear any pending-clear on the target — a new guest is going there now.
+      //    Register target as pending-occupy so refreshAll won't evict the optimistic occupant
+      //    if a poll fires before the occupy API call lands.
       pendingClearsRef.current.add(sourceTable)
       pendingClearsRef.current.delete(targetTable)
+      pendingOccupiesRef.current.add(targetTable)
 
       // 3. Fire API calls in parallel then sync.
       const sourceApiTable = tables.find(t => t.table_number === sourceTable)
@@ -2005,8 +2089,8 @@ export default function HostDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
       }))
-      // Do NOT remove sourceTable from pendingClearsRef here — refreshAll is the authoritative
-      // cleanup path, triggered once the server confirms the table is free.
+      // refreshAll is the authoritative cleanup for both pendingClearsRef and pendingOccupiesRef —
+      // it removes entries only once the server confirms the expected state.
       const finalize = () => refreshAll()
       Promise.all(calls).then(finalize).catch(finalize)
       return
@@ -2403,6 +2487,7 @@ export default function HostDashboard() {
               tables={tables}
               localOccupants={localOccupants}
               onClear={(tableId, tableNumber) => {
+                if (pendingTableMove) return  // ignore taps while move mode is active
                 const occupant = localOccupants.get(tableNumber)
                 const dbOccupied = tables.find(t => t.table_number === tableNumber)?.status === "occupied"
                 if (occupant || dbOccupied) {
@@ -2419,10 +2504,16 @@ export default function HostDashboard() {
                 setSelectedEntry(null)
               }}
               onAvailableTap={(tableNumber, tableId, capacity) => {
+                if (pendingTableMove) {
+                  executeTableMove(tableNumber, tableId)
+                  return
+                }
                 if (selectedEntry) return
                 setTableTapModal({ tableNumber, tableId, capacity })
               }}
               locallyAvailableTables={locallyAvailableTables}
+              isTableMoveMode={!!pendingTableMove}
+              onCancelTableMove={() => setPendingTableMove(null)}
             />
           </div>
 
@@ -2549,6 +2640,12 @@ export default function HostDashboard() {
                       Return to Waitlist
                     </button>
                   )}
+                  <button
+                    onClick={() => { setPendingTableMove({ tableId: clearConfirm.tableId, tableNumber: clearConfirm.tableNumber, occupant: clearConfirm.occupant }); setClearConfirm(null) }}
+                    className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                    style={{ background: "rgba(96,165,250,0.12)", color: "rgba(96,165,250,0.95)", border: "1px solid rgba(96,165,250,0.30)", fontSize: 16, padding: "18px 0" }}>
+                    Move to Another Table
+                  </button>
                   <button
                     onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "cancel"); setClearConfirm(null) }}
                     className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
