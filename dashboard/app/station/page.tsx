@@ -7,7 +7,7 @@ import {
   Users, Clock, CheckCircle2, BellRing,
   RefreshCw, Wifi, WifiOff, Plus, X,
   LayoutDashboard, GripVertical,
-  Pencil, Activity, Trash2, History,
+  Pencil, Activity, Trash2, History, HelpCircle,
 } from "lucide-react"
 import {
   DndContext, DragOverlay,
@@ -1558,6 +1558,7 @@ export default function HostDashboard() {
   // Active table-move: host tapped "Move" in the table popup; floor map becomes a target picker
   const [pendingTableMove, setPendingTableMove] = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [showHistory, setShowHistory]     = useState(false)
+  const [showHelp,    setShowHelp]        = useState(false)
   const [history,     setHistory]         = useState<HistoryEntry[]>([])
   const [sidebarW, setSidebarW]           = useState(300)
   const isResizing = useRef(false)
@@ -2336,6 +2337,12 @@ export default function HostDashboard() {
                 <LayoutDashboard className="w-3 h-3" /> Admin
               </Link>
             )}
+            {/* Help / FAQ */}
+            <button onClick={() => setShowHelp(true)}
+              className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors"
+              style={{ color: "var(--text-muted)" }} title="How to use HOST">
+              <HelpCircle className="w-3.5 h-3.5" />
+            </button>
             <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
               {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             </div>
@@ -2705,6 +2712,109 @@ export default function HostDashboard() {
             onClose={() => setShowHistory(false)}
             onRestored={refreshAll}
           />
+        )}
+
+        {/* ── Help / FAQ modal ───────────────────────────────────── */}
+        {showHelp && (
+          <div
+            style={{ position: "absolute", inset: 0, zIndex: 120, background: "rgba(0,0,0,0.72)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+            onClick={() => setShowHelp(false)}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: "var(--modal-bg)", border: "1px solid var(--bdr-4)", borderRadius: 18, width: "100%", maxWidth: 560, maxHeight: "88dvh", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.55)" }}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px 12px", borderBottom: "1px solid var(--bdr-2)", flexShrink: 0 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-hi2)", letterSpacing: "0.01em" }}>How to use HOST</div>
+                  <div style={{ fontSize: 11, color: "var(--text-warm2)", marginTop: 2 }}>Quick reference for hosts</div>
+                </div>
+                <button onClick={() => setShowHelp(false)} style={{ width: 30, height: 30, borderRadius: 8, background: "var(--surf-4)", border: "1px solid var(--bdr-5)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted4)", cursor: "pointer" }}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Scrollable body */}
+              <div style={{ overflowY: "auto", padding: "14px 20px 20px", display: "flex", flexDirection: "column", gap: 18 }}>
+
+                {/* Adding guests */}
+                <section>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 8 }}>Adding &amp; Managing Guests</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[
+                      { label: "+ Add Guest", desc: "Tap the button at the top of the waitlist. Enter name, party size, and optional phone + wait time. Phone + quoted wait → guest gets an automatic text confirmation." },
+                      { label: "SEAT", desc: "Marks the guest as seated and auto-picks the best available table. Or drag the guest card directly onto a table for a specific seat." },
+                      { label: "NOTIFY", desc: "Sends a 'your table is ready' text. Use this while the table is being bussed — guest walks in ready to sit. Then hit SEAT to finalize." },
+                      { label: "+5 min", desc: "Extends the quoted wait by 5 minutes instantly. Tap it freely when service is running behind — faster than opening EDIT." },
+                      { label: "EDIT", desc: "Change name, party size, phone number, notes, or the quoted wait time." },
+                      { label: "REMOVE", desc: "Removes the guest from the list (left, no-show). They move to History — you can restore them if needed." },
+                    ].map(({ label, desc }) => (
+                      <div key={label} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ flexShrink: 0, marginTop: 1, fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(255,185,100,0.90)", background: "rgba(255,185,100,0.10)", border: "1px solid rgba(255,185,100,0.20)", borderRadius: 5, padding: "2px 6px", whiteSpace: "nowrap" }}>{label}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-warm2)", lineHeight: 1.5 }}>{desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Floor map */}
+                <section>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 8 }}>Floor Map</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[
+                      { label: "🟢 Green table", desc: "Available — tap to choose a guest to seat there, or drag a guest card from the waitlist onto it." },
+                      { label: "🔴 Red table", desc: "Occupied — shows guest name and party size. Tap to bring up options: Keep at Table, Move, Restore to Waitlist, or Clear." },
+                      { label: "Drag to move", desc: "Press and hold a guest on a red table, then drag to another table to move them. Tables swap if both are occupied." },
+                      { label: "Move button", desc: "In the occupied table popup, tap 'Move to Another Table', then tap any green table to move the guest there." },
+                      { label: "Clear Table", desc: "Tap a red table → Clear Table. The table turns green immediately. Use this once a guest has left." },
+                    ].map(({ label, desc }) => (
+                      <div key={label} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ flexShrink: 0, marginTop: 1, fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(96,165,250,0.90)", background: "rgba(96,165,250,0.10)", border: "1px solid rgba(96,165,250,0.20)", borderRadius: 5, padding: "2px 6px", whiteSpace: "nowrap" }}>{label}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-warm2)", lineHeight: 1.5 }}>{desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* History */}
+                <section>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 8 }}>History</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[
+                      { label: "History tab", desc: "Tap History (top of sidebar) to see every guest seated or removed today. Resets at 3am." },
+                      { label: "Restore", desc: "Find a guest in History and tap Restore to Waitlist — puts them back in the queue. Re-quote their wait time." },
+                    ].map(({ label, desc }) => (
+                      <div key={label} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        <div style={{ flexShrink: 0, marginTop: 1, fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(34,197,94,0.90)", background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.22)", borderRadius: 5, padding: "2px 6px", whiteSpace: "nowrap" }}>{label}</div>
+                        <div style={{ fontSize: 12, color: "var(--text-warm2)", lineHeight: 1.5 }}>{desc}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                {/* Pro tips */}
+                <section style={{ background: "var(--surf-1)", border: "1px solid var(--bdr-2)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", color: "var(--text-dim)", textTransform: "uppercase", marginBottom: 8 }}>Tips</div>
+                  <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 5 }}>
+                    {[
+                      "Always quote a wait time when adding a guest — it triggers the SMS and sets expectations.",
+                      "Tap NOTIFY first while the table is being bussed, then SEAT once it's clean.",
+                      "Drag guest cards to reorder the waitlist priority.",
+                      "Use +5 min freely — it's one tap and keeps timers accurate.",
+                      "If the app shows a spinner, check WiFi — it reconnects automatically.",
+                    ].map((tip, i) => (
+                      <li key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <span style={{ color: "rgba(255,185,100,0.50)", fontSize: 10, marginTop: 3, flexShrink: 0 }}>▸</span>
+                        <span style={{ fontSize: 12, color: "var(--text-warm2)", lineHeight: 1.5 }}>{tip}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Queue seat picker */}
