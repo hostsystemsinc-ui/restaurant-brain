@@ -376,7 +376,8 @@ function DraggableQueueCard({
       }}
     >
       {/* ── Rows 1+2 wrapper: left stacked content, right +5 min button ── */}
-      <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+      {/* gap:4 matches the action bar gap so +5 min aligns exactly over EDIT+REMOVE */}
+      <div style={{ display: "flex", gap: 4, alignItems: "stretch" }}>
         {/* Left column: name row + meta row */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
           {/* ── Row 1: grip + position + name ── */}
@@ -430,7 +431,7 @@ function DraggableQueueCard({
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onAddTime() }}
-            style={{ alignSelf: "stretch", width: 72, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            style={{ alignSelf: "stretch", flex: 1, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             title="+5 min"
           >
             +5 min
@@ -1644,6 +1645,11 @@ export default function HostDashboard() {
   const fetchingRef        = useRef(false)
   const failCountRef       = useRef(0)
   const pollTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // On the very first occupants fetch after mount, skip server-authoritative removal so
+  // localStorage-restored occupants (e.g. a guest just moved to a new table) are not
+  // wiped before the server can confirm them. After the first successful fetch this flag
+  // is cleared and normal reconciliation resumes.
+  const firstOccupantsFetchRef = useRef(true)
   // Tracks when history was last fetched so the poll loop only fetches every 30s.
   // Mutation-triggered calls (setTimeout(fetchHistory, 600)) bypass this via fetchHistory directly.
   const lastHistoryFetchRef = useRef<number>(0)
@@ -1847,15 +1853,17 @@ export default function HostDashboard() {
           }
           // Server-authoritative removal: evict any local entry the server says is gone
           // and no in-flight operation is protecting it.
-          // pendingClearsRef protects the source of a move (clear in-flight).
-          // pendingOccupiesRef protects the target of a move (occupy in-flight) —
-          // without this guard, a poll that fires before the occupy lands will delete
-          // the guest from the target table, causing them to visually disappear.
-          next.forEach((_, num) => {
-            if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num) && !pendingOccupiesRef.current.has(num)) {
-              next.delete(num)
-            }
-          })
+          // Skipped on the very first fetch after mount — localStorage may have restored
+          // a guest that was just moved (APIs still in-flight or server restarted), and
+          // removing them immediately would revert the move before the server catches up.
+          if (!firstOccupantsFetchRef.current) {
+            next.forEach((_, num) => {
+              if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num) && !pendingOccupiesRef.current.has(num)) {
+                next.delete(num)
+              }
+            })
+          }
+          firstOccupantsFetchRef.current = false
           return next
         })
       }
@@ -2031,7 +2039,7 @@ export default function HostDashboard() {
     if (toTableId)   calls.push(fetch(`${API}/tables/${toTableId}/occupy`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
+      body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
     }))
     Promise.all(calls).then(() => refreshAll()).catch(() => refreshAll())
   }, [pendingTableMove, localOccupants, refreshAll])
@@ -2108,7 +2116,7 @@ export default function HostDashboard() {
       if (targetApiTable) calls.push(fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
+        body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
       }))
       // refreshAll is the authoritative cleanup for both pendingClearsRef and pendingOccupiesRef —
       // it removes entries only once the server confirms the expected state.

@@ -641,6 +641,19 @@ def occupy_table(table_id: str, body: Optional[OccupyRequest] = None):
                     "party_size": (body.party_size if body and body.party_size else None) or 2,
                     "entry_id": (body.entry_id if body else None),
                 }
+        # Persist a seating_event so _seed_table_occupants correctly restores the moved
+        # guest's location after a Railway restart, rather than seeding them at the original
+        # table from the older seat-to-table event.
+        if body and body.entry_id:
+            try:
+                supabase.table("seating_events").insert({
+                    "restaurant_id": rid,
+                    "table_id":      table_id,
+                    "queue_entry_id": body.entry_id,
+                    "action":        "seated",
+                }).execute()
+            except Exception as e:
+                print(f"[occupy] seating_event insert failed: {e}")
     return {"status": "occupied"}
 
 @app.post("/tables/{table_id}/clear")
