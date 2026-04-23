@@ -828,26 +828,27 @@ def restore_entry(entry_id: str):
 
 @app.get("/queue/history/debug")
 def debug_history(restaurant_id: Optional[str] = None):
-    """Debug endpoint: tests the full history query to surface the actual Supabase error."""
+    """Debug endpoint: tests the exact query used by /queue/history to surface errors."""
     rid = _rid(restaurant_id)
-    # Step 1: simple count query
+    # Step 1: simple count query (known working)
     try:
         res1 = supabase.table("queue_entries").select("id,status").eq("restaurant_id", rid).limit(5).execute()
         step1 = {"ok": True, "count": len(res1.data or [])}
     except Exception as e:
         return {"step": "count", "ok": False, "error": str(e), "type": type(e).__name__}
-    # Step 2: full select without limit (mimics the broken endpoint)
+    # Step 2: explicit columns, no filter (test select without in_())
     try:
         res2 = supabase.table("queue_entries").select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes").eq("restaurant_id", rid).execute()
         step2 = {"ok": True, "count": len(res2.data or []), "sample_statuses": list({e.get("status") for e in (res2.data or [])})}
     except Exception as e:
         return {"step": "full_select", "ok": False, "step1": step1, "error": str(e), "type": type(e).__name__}
-    # Step 3: filter to seated/removed
+    # Step 3: same query WITH .in_() filter — this is what the main endpoint now uses
     try:
-        filtered = [e for e in (res2.data or []) if e.get("status") in ("seated", "removed")]
-        return {"step1": step1, "step2": step2, "filtered_count": len(filtered), "sample": filtered[:2]}
+        res3 = supabase.table("queue_entries").select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id").eq("restaurant_id", rid).in_("status", ["seated", "removed"]).order("arrival_time", desc=True).execute()
+        step3 = {"ok": True, "count": len(res3.data or []), "sample": (res3.data or [])[:2]}
     except Exception as e:
-        return {"step": "filter", "ok": False, "step1": step1, "step2": step2, "error": str(e), "type": type(e).__name__}
+        return {"step": "in_filter", "ok": False, "step1": step1, "step2": step2, "error": str(e), "type": type(e).__name__}
+    return {"step1": step1, "step2": step2, "step3": step3}
 
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
