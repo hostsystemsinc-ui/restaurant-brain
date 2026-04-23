@@ -859,10 +859,10 @@ def debug_history(restaurant_id: Optional[str] = None):
 
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
-    """Returns seated and removed entries for the given restaurant.
-    Uses explicit column list instead of * to avoid PostgREST issues with computed columns."""
-    rid = _rid(restaurant_id)
+    """Returns seated and removed entries for the given restaurant."""
+    import traceback as _tb
     try:
+        rid = _rid(restaurant_id)
         res = (
             supabase.table("queue_entries")
             .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
@@ -873,7 +873,9 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
         )
         return res.data or []
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        err = _tb.format_exc()
+        print(f"[history] ERROR: {err}")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}\n{err}")
 
 @app.patch("/queue/{entry_id}/wait")
 def update_wait(entry_id: str, minutes: int):
