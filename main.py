@@ -687,6 +687,24 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
 def join_waitlist_legacy(name: Optional[str] = None, party_size: int = 2, phone: Optional[str] = None):
     return join_queue(JoinQueueRequest(name=name, party_size=party_size, phone=phone, source="host"))
 
+@app.get("/queue/history")
+def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
+    """Returns seated/removed entries for the given restaurant (today's business day).
+    Registered BEFORE /queue/{entry_id} so 'history' isn't captured as a UUID param."""
+    rid = _rid(restaurant_id)
+    try:
+        res = (
+            supabase.table("queue_entries")
+            .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
+            .eq("restaurant_id", rid)
+            .in_("status", ["seated", "removed"])
+            .order("arrival_time", desc=True)
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/queue/{entry_id}")
 def get_entry(entry_id: str):
     res = supabase.table("queue_entries").select("*").eq("id", entry_id).execute()
@@ -826,56 +844,6 @@ def restore_entry(entry_id: str):
     entry = updated.data[0] if updated.data else res.data[0]
     return {"status": "restored", "entry": entry}
 
-@app.get("/queue/history/debug")
-def debug_history(restaurant_id: Optional[str] = None):
-    """Debug endpoint v6: tests the exact history query inline."""
-    rid = _rid(restaurant_id)
-    results = {}
-    # Step 1: simple count (known working baseline)
-    try:
-        r = supabase.table("queue_entries").select("id,status").eq("restaurant_id", rid).limit(5).execute()
-        results["step1"] = {"ok": True, "count": len(r.data or [])}
-    except Exception as e:
-        results["step1"] = {"ok": False, "error": str(e), "type": type(e).__name__}
-    # Step 2: exact history query — explicit cols + in_() + order()
-    try:
-        r2 = (supabase.table("queue_entries")
-              .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
-              .eq("restaurant_id", rid)
-              .in_("status", ["seated", "removed"])
-              .order("arrival_time", desc=True)
-              .execute())
-        results["step2"] = {"ok": True, "count": len(r2.data or []), "sample": (r2.data or [])[:1]}
-    except Exception as e:
-        results["step2"] = {"ok": False, "error": str(e), "type": type(e).__name__}
-    # Step 3: select(*) query — what the broken endpoint was using
-    try:
-        r3 = supabase.table("queue_entries").select("*").eq("restaurant_id", rid).execute()
-        data3 = r3.data or []
-        results["step3_select_star"] = {"ok": True, "count": len(data3), "filtered": len([x for x in data3 if x.get("status") in ("seated","removed")])}
-    except Exception as e:
-        results["step3_select_star"] = {"ok": False, "error": str(e), "type": type(e).__name__}
-    return {"v": 6, **results}
-
-@app.get("/queue/history")
-def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
-    """Returns seated and removed entries for the given restaurant."""
-    import traceback as _tb
-    try:
-        rid = _rid(restaurant_id)
-        res = (
-            supabase.table("queue_entries")
-            .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
-            .eq("restaurant_id", rid)
-            .in_("status", ["seated", "removed"])
-            .order("arrival_time", desc=True)
-            .execute()
-        )
-        return res.data or []
-    except Exception as e:
-        err = _tb.format_exc()
-        print(f"[history] ERROR: {err}")
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}\n{err}")
 
 @app.patch("/queue/{entry_id}/wait")
 def update_wait(entry_id: str, minutes: int):
