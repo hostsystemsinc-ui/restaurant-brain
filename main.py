@@ -835,11 +835,18 @@ def remove_entry(entry_id: str):
 
 @app.post("/queue/{entry_id}/restore")
 def restore_entry(entry_id: str):
-    """Restore a removed or incorrectly-seated entry back to waiting."""
+    """Restore a removed or incorrectly-seated entry back to waiting.
+    Clears the wait timer so the host re-quotes them fresh (avoids a frozen/overdue bar)."""
     res = supabase.table("queue_entries").select("*").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
-    supabase.table("queue_entries").update({"status": "waiting"}).eq("id", entry_id).execute()
+    supabase.table("queue_entries").update({
+        "status": "waiting",
+        "quoted_wait": None,
+        "quoted_wait_set_at": None,
+    }).eq("id", entry_id).execute()
+    # Also clear the in-memory timer so remaining_wait returns None until re-quoted
+    _wait_set_at.pop(entry_id, None)
     updated = supabase.table("queue_entries").select("*").eq("id", entry_id).execute()
     entry = updated.data[0] if updated.data else res.data[0]
     return {"status": "restored", "entry": entry}

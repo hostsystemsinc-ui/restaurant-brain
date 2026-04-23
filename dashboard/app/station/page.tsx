@@ -301,7 +301,7 @@ function GuestEditModal({
 // ── Draggable Queue Card ───────────────────────────────────────────────────────
 
 function DraggableQueueCard({
-  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved,
+  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved, onAddTime,
 }: {
   entry: QueueEntry
   onSeat: () => void
@@ -310,6 +310,7 @@ function DraggableQueueCard({
   onSelect?: () => void
   onEdit?: (displayWait: number) => void
   onRemoved?: () => void
+  onAddTime?: () => void
 }) {
   const isReady = entry.status === "ready"
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -442,44 +443,62 @@ function DraggableQueueCard({
 
       {/* ── Row 3: action buttons or delete confirm ── */}
       {confirmDelete ? (
-        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", flex: 1 }}>Remove {entry.name || "guest"}?</span>
           <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
-            className="h-8 px-3 rounded-lg text-xs font-semibold transition-all active:scale-95"
+            className="h-9 px-3 rounded-xl text-xs font-semibold transition-all active:scale-95"
             style={{ background: "var(--surf-5)", color: "var(--text-muted4)", border: "1px solid var(--bdr-13)" }}>
             Cancel
           </button>
           <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
-            className="h-8 px-3 rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+            className="h-9 px-3 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
             style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
             {removing ? "…" : "Remove"}
           </button>
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onSeat() }}
-            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(34,197,94,0.1)", color: "#22c55e" }} title="Seat">
-            <CheckCircle2 className="w-5 h-5" />
+        /* Full-width action bar — each button expands equally to fill the card width */
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 4, marginTop: 2 }}>
+          {/* Seat */}
+          <button onClick={e => { e.stopPropagation(); onSeat() }}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ height: 48, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.20)" }} title="Seat">
+            <CheckCircle2 className="w-4.5 h-4.5" style={{ width: 18, height: 18 }} />
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>SEAT</span>
           </button>
+          {/* Notify / placeholder */}
           {!isReady ? (
-            <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onNotify() }}
-              className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-              style={{ background: "rgba(249,115,22,0.1)", color: "#f97316" }} title="Notify ready">
-              <BellRing className="w-5 h-5" />
+            <button onClick={e => { e.stopPropagation(); onNotify() }}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all active:scale-95 hover:brightness-125"
+              style={{ height: 48, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.18)" }} title="Notify ready">
+              <BellRing style={{ width: 18, height: 18 }} />
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>NOTIFY</span>
             </button>
           ) : (
-            <div className="h-10 w-10" />
+            <div style={{ flex: 1 }} />
           )}
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
-            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.75)", border: "1px solid rgba(251,191,36,0.14)" }} title="Edit guest">
-            <Pencil className="w-4 h-4" />
+          {/* +5 min — only shown when guest has a quoted wait */}
+          {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && onAddTime && (
+            <button onClick={e => { e.stopPropagation(); onAddTime() }}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all active:scale-95 hover:brightness-125"
+              style={{ height: 48, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.90)", border: "1px solid rgba(96,165,250,0.18)" }} title="+5 min">
+              <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1 }}>+5</span>
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>MIN</span>
+            </button>
+          )}
+          {/* Edit */}
+          <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ height: 48, background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.16)" }} title="Edit guest">
+            <Pencil style={{ width: 16, height: 16 }} />
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>EDIT</span>
           </button>
-          <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
-            className="h-10 w-10 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125"
-            style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.14)" }} title="Remove guest">
-            <Trash2 className="w-4 h-4" />
+          {/* Remove */}
+          <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl transition-all active:scale-95 hover:brightness-125"
+            style={{ height: 48, background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.60)", border: "1px solid rgba(239,68,68,0.14)" }} title="Remove guest">
+            <Trash2 style={{ width: 16, height: 16 }} />
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em" }}>REMOVE</span>
           </button>
         </div>
       )}
@@ -1664,26 +1683,34 @@ export default function HostDashboard() {
         return d.toLocaleDateString("en-CA") === bd
       } catch { return false }
     })
-    // Always apply local history immediately (works even when server is down)
+    // Compute local history (used to fill gaps when server is down/empty)
+    // We deliberately do NOT setHistory here — that double-render causes the visible flash
+    // every polling cycle. Local history is already loaded at mount via the localStorage effect.
     const localToday = filterToday(localHistoryRef.current)
-    if (localToday.length > 0) setHistory(localToday)
 
     fetch(`${API}/queue/history?restaurant_id=${restaurantId}`)
       .then(r => r.ok ? r.json() : [])
       .then((all: unknown) => {
-        if (!Array.isArray(all) || (all as unknown[]).length === 0) return
-        const serverToday = filterToday(all as HistoryEntry[])
-        if (serverToday.length === 0) return
-        // Merge: server entries take priority; local-only entries fill gaps
-        const serverIds = new Set(serverToday.map(e => e.id))
-        const localOnly = localToday.filter(e => !serverIds.has(e.id))
-        const merged = [...serverToday, ...localOnly].sort(
-          (a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime()
-        )
-        setHistory(merged)
+        const serverToday = Array.isArray(all) ? filterToday(all as HistoryEntry[]) : []
+        if (serverToday.length > 0) {
+          // Merge: server entries take priority; local-only entries fill gaps
+          const serverIds = new Set(serverToday.map(e => e.id))
+          const localOnly = localToday.filter(e => !serverIds.has(e.id))
+          const merged = [...serverToday, ...localOnly].sort(
+            (a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime()
+          )
+          setHistory(merged)
+          localHistoryRef.current = merged
+          saveLocalHistory()
+        } else if (localToday.length > 0) {
+          // Server returned nothing — show local (handles offline / server down)
+          setHistory(localToday)
+        }
       })
-      .catch(() => {})
-  }, [restaurantId])
+      .catch(() => {
+        // Network error — local history (already shown from mount effect) stands
+      })
+  }, [restaurantId, saveLocalHistory])
 
   const refreshAll = useCallback(async () => {
     if (fetchingRef.current) return
@@ -1728,20 +1755,37 @@ export default function HostDashboard() {
         setOnline(false)
         failCountRef.current++
       }
-      // Sync localOccupants from server — prevents color from disappearing after multiple moves.
-      // We ADD/UPDATE entries from server but never REMOVE (removal only happens via clearTable).
-      // This avoids a race where the server doesn't have a table yet (move in-flight) but we
-      // already updated localOccupants optimistically — a replace-all would wipe it out.
+      // Sync localOccupants from server.
+      // Rules:
+      //  - ADD/UPDATE tables the server shows as occupied (unless a clear is in-flight for them)
+      //  - REMOVE tables that the server says are free AND have no pending clear in-flight
+      //    (this fixes "names remaining after clear" — the stale local entry is evicted)
+      //  - Clean up pendingClearsRef for any table the server has confirmed is now free.
+      //    This is the authoritative place to remove from pendingClearsRef — NOT in the API
+      //    callback — so we only stop protecting a table once the server confirms it's gone.
       if (occupantsRes && occupantsRes.ok) {
         const raw = await occupantsRes.json() as Record<string, { name: string; party_size: number; entry_id?: string }>
+        const serverOccupiedNums = new Set(Object.keys(raw).map(k => parseInt(k, 10)))
+        // Server confirmed these are free — safe to stop protecting them from re-add
+        pendingClearsRef.current.forEach(num => {
+          if (!serverOccupiedNums.has(num)) pendingClearsRef.current.delete(num)
+        })
         setLocalOccupants(prev => {
-          const next = new Map(prev)  // start with current local state
+          const next = new Map(prev)
+          // Add/update from server, skip tables whose clear is still in-flight
           for (const [numStr, occ] of Object.entries(raw)) {
             const num = parseInt(numStr, 10)
             if (!pendingClearsRef.current.has(num)) {
               next.set(num, { name: occ.name || "Guest", party_size: occ.party_size || 2, entry_id: occ.entry_id })
             }
           }
+          // Server-authoritative removal: evict any local entry the server says is gone
+          // (and no in-flight operation is protecting it)
+          next.forEach((_, num) => {
+            if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num)) {
+              next.delete(num)
+            }
+          })
           return next
         })
       }
@@ -1814,6 +1858,14 @@ export default function HostDashboard() {
     refreshAll(); setTimeout(fetchHistory, 600)
   }, [refreshAll, fetchHistory, addToLocalHistory])
 
+  // Quick "+5 min" — extends the guest's quoted wait by 5 minutes from now.
+  // Uses the current remaining time (displayWait) + 5 so the deadline shifts forward.
+  const addTime = useCallback(async (id: string, currentDisplayWait: number) => {
+    const newMinutes = Math.max(1, currentDisplayWait + 5)
+    try { await fetch(`${API}/queue/${id}/wait?minutes=${newMinutes}`, { method: "PATCH" }) } catch {}
+    refreshAll()
+  }, [refreshAll])
+
   const openSeatPicker = useCallback((entry: QueueEntry) => {
     setSeatPicker(entry)
     setSelectedEntry(null)
@@ -1822,6 +1874,8 @@ export default function HostDashboard() {
   const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
     setSeatPicker(null)
     addToLocalHistory(entry, "seated")
+    // Cancel any pending-clear on this table — a new guest is being placed here
+    pendingClearsRef.current.delete(tableNumber)
     if (tableId) {
       await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
     } else {
@@ -1851,8 +1905,11 @@ export default function HostDashboard() {
         try { await fetch(`${API}/queue/${entryId}/remove`, { method: "POST" }) } catch {}
       }
     }
-    pendingClearsRef.current.delete(tableNumber)
-    refreshAll()  // refreshAll will remove tableNumber from locallyAvailableTables once server confirms available
+    // Do NOT remove tableNumber from pendingClearsRef here — refreshAll is the authoritative
+    // place that cleans up pendingClearsRef only once the server confirms the table is free.
+    // Removing it here (before the next refreshAll) caused stale server data to re-add the
+    // occupant, leaving names on cleared tables with no color.
+    refreshAll()  // refreshAll cleans up pendingClearsRef + locallyAvailableTables from server
     setTimeout(fetchHistory, 600)
   }, [refreshAll, fetchHistory])
 
@@ -1913,8 +1970,10 @@ export default function HostDashboard() {
         ))
       })
 
-      // 2. Also register in ref so refreshAll won't revert table.status while in-flight.
+      // 2. Register source as pending-clear so refreshAll won't re-add its stale occupant.
+      //    Also clear any pending-clear on the target — a new guest is going there now.
       pendingClearsRef.current.add(sourceTable)
+      pendingClearsRef.current.delete(targetTable)
 
       // 3. Fire API calls in parallel then sync.
       const sourceApiTable = tables.find(t => t.table_number === sourceTable)
@@ -1926,13 +1985,9 @@ export default function HostDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size }),
       }))
-      const finalize = () => {
-        pendingClearsRef.current.delete(sourceTable)
-        // Don't touch locallyAvailableTables here — refreshAll will remove sourceTable from it
-        // atomically with setTables once the server confirms status === "available".
-        // Removing it here before the server response causes a red flash.
-        refreshAll()
-      }
+      // Do NOT remove sourceTable from pendingClearsRef here — refreshAll is the authoritative
+      // cleanup path, triggered once the server confirms the table is free.
+      const finalize = () => refreshAll()
       Promise.all(calls).then(finalize).catch(finalize)
       return
     }
@@ -1942,6 +1997,8 @@ export default function HostDashboard() {
     if (!entry) return
     if (localOccupants.has(targetTable)) return
     addToLocalHistory(entry, "seated")
+    // A new guest is being placed here — cancel any pending-clear protection on this table
+    pendingClearsRef.current.delete(targetTable)
     const apiTable = tables.find(t => t.table_number === targetTable)
     if (apiTable) {
       fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
@@ -2204,7 +2261,8 @@ export default function HostDashboard() {
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                      onRemoved={() => refreshAll()} />
+                      onRemoved={() => refreshAll()}
+                      onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
                   ))}
                 </div>
               </div>
@@ -2295,7 +2353,8 @@ export default function HostDashboard() {
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                      onRemoved={() => refreshAll()} />
+                      onRemoved={() => refreshAll()}
+                      onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
                   ))}
                 </div>
               ) : null}
