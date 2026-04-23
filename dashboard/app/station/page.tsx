@@ -375,59 +375,66 @@ function DraggableQueueCard({
         padding: "10px 12px",
       }}
     >
-      {/* ── Row 1: grip + position + name ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted3)" }} />
-        <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "var(--surf-4)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
-          {entry.position ?? "—"}
-        </div>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "var(--text-hi2)", wordBreak: "break-word" }}>
-            {entry.name || "Guest"}
-          </span>
-          {isReady && (
-            <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
-          )}
-        </div>
-      </div>
+      {/* ── Rows 1+2 wrapper: left stacked content, right +5 min button ── */}
+      <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+        {/* Left column: name row + meta row */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {/* ── Row 1: grip + position + name ── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "var(--text-muted3)" }} />
+            <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "var(--surf-4)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
+              {entry.position ?? "—"}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
+              <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "var(--text-hi2)", wordBreak: "break-word" }}>
+                {entry.name || "Guest"}
+              </span>
+              {isReady && (
+                <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
+              )}
+            </div>
+          </div>
 
-      {/* ── Row 2: meta info ── */}
-      <div style={{ paddingLeft: 38, paddingRight: 4, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <Users className="w-2.5 h-2.5" />{entry.party_size}p
-        </span>
-        <span style={{ color: "var(--bdr-15)" }}>·</span>
-        <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
-        </span>
-        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
-          <>
-            <span style={{ color: "var(--bdr-15)" }}>·</span>
-            <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
-              {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
+          {/* ── Row 2: meta info ── */}
+          <div style={{ paddingLeft: 38, paddingRight: 4, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <Users className="w-2.5 h-2.5" />{entry.party_size}p
             </span>
-            {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
-            {/* Progress bar toggle */}
-            <button
-              onPointerDown={e => { e.stopPropagation() }}
-              onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
-              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "var(--surf-5)", border: `1px solid ${showBar ? barColor : "var(--bdr-6)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
-              title={showBar ? "Hide timer bar" : "Show timer bar"}
-            >
-              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "var(--bdr-15)" }} />
-            </button>
-            {/* +5 min — fills the remaining width of the info row */}
-            {onAddTime && (
-              <button
-                onPointerDown={e => e.stopPropagation()}
-                onClick={e => { e.stopPropagation(); onAddTime() }}
-                style={{ marginLeft: 6, flex: 1, height: 26, borderRadius: 7, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                title="+5 min"
-              >
-                +5 min
-              </button>
+            <span style={{ color: "var(--bdr-15)" }}>·</span>
+            <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
+            </span>
+            {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
+              <>
+                <span style={{ color: "var(--bdr-15)" }}>·</span>
+                <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
+                  {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
+                </span>
+                {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
+                {/* Progress bar toggle */}
+                <button
+                  onPointerDown={e => { e.stopPropagation() }}
+                  onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
+                  style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "var(--surf-5)", border: `1px solid ${showBar ? barColor : "var(--bdr-6)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
+                  title={showBar ? "Hide timer bar" : "Show timer bar"}
+                >
+                  <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "var(--bdr-15)" }} />
+                </button>
+              </>
             )}
-          </>
+          </div>
+        </div>
+
+        {/* Right column: +5 min button spanning full height of both rows */}
+        {onAddTime && (entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
+          <button
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => { e.stopPropagation(); onAddTime() }}
+            style={{ alignSelf: "stretch", width: 52, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            title="+5 min"
+          >
+            +5 min
+          </button>
         )}
       </div>
       {/* ── Progress bar (shown when toggled) ── */}
@@ -1791,7 +1798,11 @@ export default function HostDashboard() {
           const next = new Set(prev)
           next.forEach(tableNumber => {
             const srv = serverTables.find(t => t.table_number === tableNumber)
-            if (srv?.status === "available") next.delete(tableNumber)
+            // Remove once server has ANY definitive state:
+            //  "available" = clear confirmed (normal path)
+            //  "occupied"  = table re-seated before server caught up on the clear,
+            //                so forceAvailable must be dropped or the table stays green
+            if (srv?.status === "available" || srv?.status === "occupied") next.delete(tableNumber)
           })
           return next.size === prev.size ? prev : next
         })
@@ -1937,6 +1948,8 @@ export default function HostDashboard() {
     addToLocalHistory(entry, "seated")
     // Cancel any pending-clear on this table — a new guest is being placed here
     pendingClearsRef.current.delete(tableNumber)
+    // Drop forceAvailable immediately so the table color can turn red right away
+    setLocallyAvailableTables(prev => { const n = new Set(prev); n.delete(tableNumber); return n })
     if (tableId) {
       await fetch(`${API}/queue/${entry.id}/seat-to-table/${tableId}`, { method: "POST" })
     } else {
@@ -1993,7 +2006,12 @@ export default function HostDashboard() {
         next.set(toTableNumber, occupant)
         return next
       })
-      setLocallyAvailableTables(prev => new Set(prev).add(fromTableNumber))
+      setLocallyAvailableTables(prev => {
+        const n = new Set(prev)
+        n.add(fromTableNumber)      // source turns green (cleared)
+        n.delete(toTableNumber)     // target must NOT be forceAvailable — it's now occupied
+        return n
+      })
       setTables(prev => prev.map(t =>
         t.table_number === fromTableNumber ? { ...t, status: "available" as const } :
         t.table_number === toTableNumber   ? { ...t, status: "occupied"  as const } :
@@ -2103,6 +2121,8 @@ export default function HostDashboard() {
     addToLocalHistory(entry, "seated")
     // A new guest is being placed here — cancel any pending-clear protection on this table
     pendingClearsRef.current.delete(targetTable)
+    // Drop forceAvailable so the table turns red, not stays green
+    setLocallyAvailableTables(prev => { const n = new Set(prev); n.delete(targetTable); return n })
     const apiTable = tables.find(t => t.table_number === targetTable)
     if (apiTable) {
       fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
