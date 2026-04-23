@@ -430,7 +430,7 @@ function DraggableQueueCard({
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onAddTime() }}
-            style={{ alignSelf: "stretch", width: 52, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+            style={{ alignSelf: "stretch", width: 72, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
             title="+5 min"
           >
             +5 min
@@ -1790,22 +1790,8 @@ export default function HostDashboard() {
               : t
           )
         })
-        // Remove tables from locallyAvailableTables only once the server confirms they are
-        // available. This prevents a flash of "occupied" between finalize() removing forceAvailable
-        // and the refreshAll response arriving.
-        setLocallyAvailableTables(prev => {
-          if (prev.size === 0) return prev
-          const next = new Set(prev)
-          next.forEach(tableNumber => {
-            const srv = serverTables.find(t => t.table_number === tableNumber)
-            // Remove once server has ANY definitive state:
-            //  "available" = clear confirmed (normal path)
-            //  "occupied"  = table re-seated before server caught up on the clear,
-            //                so forceAvailable must be dropped or the table stays green
-            if (srv?.status === "available" || srv?.status === "occupied") next.delete(tableNumber)
-          })
-          return next.size === prev.size ? prev : next
-        })
+        // locallyAvailableTables is cleaned up in the occupants section below,
+        // coupled directly to pendingClearsRef so they always move together.
         setAvgWait(d.avg_wait ?? 0)
         setOnline(true)
         setLastSync(new Date())
@@ -1825,10 +1811,27 @@ export default function HostDashboard() {
       if (occupantsRes && occupantsRes.ok) {
         const raw = await occupantsRes.json() as Record<string, { name: string; party_size: number; entry_id?: string }>
         const serverOccupiedNums = new Set(Object.keys(raw).map(k => parseInt(k, 10)))
-        // Server confirmed these are free — safe to stop protecting them from re-add
+        // Server confirmed these are free — stop protecting them AND drop forceAvailable.
+        // locallyAvailableTables lifetime is EXACTLY pendingClearsRef lifetime:
+        // both are added together (clearTable / move source) and removed together here.
+        // This prevents the race where a status-based cleanup loop fires on source tables
+        // while their clear is still in-flight (server still says "occupied") and
+        // incorrectly removes forceAvailable, causing the table to flicker or lock red.
+        const confirmedFree: number[] = []
         pendingClearsRef.current.forEach(num => {
-          if (!serverOccupiedNums.has(num)) pendingClearsRef.current.delete(num)
+          if (!serverOccupiedNums.has(num)) {
+            pendingClearsRef.current.delete(num)
+            confirmedFree.push(num)
+          }
         })
+        if (confirmedFree.length > 0) {
+          setLocallyAvailableTables(prev => {
+            if (prev.size === 0) return prev
+            const next = new Set(prev)
+            confirmedFree.forEach(n => next.delete(n))
+            return next.size === prev.size ? prev : next
+          })
+        }
         // Server confirmed these are occupied — the occupy call landed, safe to stop protecting
         pendingOccupiesRef.current.forEach(num => {
           if (serverOccupiedNums.has(num)) pendingOccupiesRef.current.delete(num)
