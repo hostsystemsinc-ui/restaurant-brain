@@ -431,7 +431,7 @@ function DraggableQueueCard({
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onAddTime() }}
-            style={{ alignSelf: "stretch", flex: 1, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{ alignSelf: "stretch", width: 52, flexShrink: 0, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             title="+5 min"
           >
             +5 min
@@ -1646,11 +1646,6 @@ export default function HostDashboard() {
   const fetchingRef        = useRef(false)
   const failCountRef       = useRef(0)
   const pollTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // On the very first occupants fetch after mount, skip server-authoritative removal so
-  // localStorage-restored occupants (e.g. a guest just moved to a new table) are not
-  // wiped before the server can confirm them. After the first successful fetch this flag
-  // is cleared and normal reconciliation resumes.
-  const firstOccupantsFetchRef = useRef(true)
   // Tracks when history was last fetched so the poll loop only fetches every 30s.
   // Mutation-triggered calls (setTimeout(fetchHistory, 600)) bypass this via fetchHistory directly.
   const lastHistoryFetchRef = useRef<number>(0)
@@ -1854,17 +1849,13 @@ export default function HostDashboard() {
           }
           // Server-authoritative removal: evict any local entry the server says is gone
           // and no in-flight operation is protecting it.
-          // Skipped on the very first fetch after mount — localStorage may have restored
-          // a guest that was just moved (APIs still in-flight or server restarted), and
-          // removing them immediately would revert the move before the server catches up.
-          if (!firstOccupantsFetchRef.current) {
-            next.forEach((_, num) => {
-              if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num) && !pendingOccupiesRef.current.has(num)) {
-                next.delete(num)
-              }
-            })
-          }
-          firstOccupantsFetchRef.current = false
+          // pendingClearsRef and pendingOccupiesRef guard in-flight operations so the
+          // removal loop never fires on a table whose API call is still in transit.
+          next.forEach((_, num) => {
+            if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num) && !pendingOccupiesRef.current.has(num)) {
+              next.delete(num)
+            }
+          })
           return next
         })
       }
@@ -2838,6 +2829,14 @@ export default function HostDashboard() {
             restaurantId={restaurantId}
             onClose={() => setTableTapModal(null)}
             onSeated={(tableNumber, occupant) => {
+              // Protect this table from server-authoritative removal on the next poll
+              // (the server may not have fully processed the seat when refreshAll fires)
+              pendingOccupiesRef.current.add(tableNumber)
+              // Record in local history before refreshAll removes the guest from the queue
+              if (occupant.entry_id) {
+                const histEntry = queueRef.current.find(e => e.id === occupant.entry_id)
+                if (histEntry) addToLocalHistory(histEntry, "seated")
+              }
               setLocalOccupants(prev => new Map(prev).set(tableNumber, occupant))
               setTableTapModal(null)
               refreshAll()

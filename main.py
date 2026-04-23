@@ -988,14 +988,22 @@ def update_wait(entry_id: str, minutes: int):
     """Update the quoted wait time. Fires link SMS for host-added guests on first quote."""
     if minutes < 1 or minutes > 180:
         raise HTTPException(status_code=400, detail="Wait time must be between 1 and 180 minutes")
-    res = supabase.table("queue_entries").select("id, quoted_wait, phone, source, restaurant_id").eq("id", entry_id).execute()
+    res = supabase.table("queue_entries").select("id, quoted_wait, quoted_wait_set_at, phone, source, restaurant_id").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
     entry = res.data[0]
     was_unquoted = entry.get("quoted_wait") is None
     now = _now()
-    _wait_set_at[entry_id] = now
-    _set_quoted_wait(entry_id, minutes, now)
+    if was_unquoted:
+        # First time quoting — reset the timer origin to now
+        _wait_set_at[entry_id] = now
+        _set_quoted_wait(entry_id, minutes, now)
+    else:
+        # Re-quoting an already-quoted guest — keep the original wait_set_at so the
+        # guest-side progress bar continues moving forward rather than resetting to 0.
+        existing_set_at = _wait_set_at.get(entry_id) or entry.get("quoted_wait_set_at") or now
+        _set_quoted_wait(entry_id, minutes, existing_set_at)
+        # Do NOT update _wait_set_at — the original start time is the anchor
     # Fire link SMS synchronously for host-added guests receiving their first quote
     sms_sent = False
     sms_error = ""
@@ -1012,19 +1020,28 @@ def update_wait(entry_id: str, minutes: int):
             body=f"Welcome to {rest_name}! You've been added to the waitlist. Your wait code is {short_id}. We'll text you when your table is ready. Reply STOP to opt out.",
         )
         print(f"[SMS] update_wait result: sent={sms_sent} err={sms_error!r}")
-    return {"status": "updated", "quoted_wait": minutes, "wait_set_at": now, "sms_sent": sms_sent, "sms_error": sms_error}
+    actual_set_at = now if was_unquoted else existing_set_at
+    return {"status": "updated", "quoted_wait": minutes, "wait_set_at": actual_set_at, "sms_sent": sms_sent, "sms_error": sms_error}
 
 @app.patch("/queue/{entry_id}")
 def update_entry(entry_id: str, req: QueueUpdateRequest):
     """Update editable fields on a queue entry (party size, phone, quoted wait)."""
-    res = supabase.table("queue_entries").select("id").eq("id", entry_id).execute()
+    res = supabase.table("queue_entries").select("id, quoted_wait, quoted_wait_set_at").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
+    existing_entry = res.data[0]
     update: dict = {}
     qw_now: Optional[str] = None
     if req.quoted_wait is not None:
-        qw_now = _now()
-        _wait_set_at[entry_id] = qw_now
+        was_unquoted = existing_entry.get("quoted_wait") is None
+        if was_unquoted:
+            # First quote — reset timer origin to now
+            qw_now = _now()
+            _wait_set_at[entry_id] = qw_now
+        else:
+            # Re-quote — keep original start time so progress bar keeps moving forward
+            qw_now = _wait_set_at.get(entry_id) or existing_entry.get("quoted_wait_set_at") or _now()
+            # Do NOT update _wait_set_at
         # quoted_wait + quoted_wait_set_at handled below via _set_quoted_wait
     if req.party_size is not None:
         update["party_size"] = req.party_size

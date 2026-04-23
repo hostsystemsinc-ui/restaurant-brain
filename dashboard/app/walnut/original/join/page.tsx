@@ -146,7 +146,7 @@ export default function OriginalJoinPage() {
         <img
           src={LOGO}
           alt="The Walnut Cafe"
-          style={{ height: 72, objectFit: "contain", display: "inline-block" }}
+          style={{ height: 110, objectFit: "contain", display: "inline-block" }}
         />
       </div>
 
