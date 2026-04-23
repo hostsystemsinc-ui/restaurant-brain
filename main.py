@@ -75,6 +75,90 @@ def _seed_wait_set_at():
 
 threading.Thread(target=_seed_wait_set_at, daemon=True).start()
 
+def _seed_table_occupants():
+    """Restore real guest names in _table_occupants from seating_events after a server restart.
+    Without this, tables show 'Guest' after every Railway deployment (any git push auto-deploys).
+    Strategy: for each occupied table, find the most recent seating event and look up the entry."""
+    from datetime import timedelta
+    try:
+        now = datetime.now(timezone.utc)
+        bd_start = now.replace(hour=3, minute=0, second=0, microsecond=0)
+        if now.hour < 3:
+            bd_start -= timedelta(days=1)
+
+        all_rids = [r for r in [RESTAURANT_ID] + [r["id"] for r in WALNUT_RESTAURANTS] + [DEMO_RESTAURANT_ID] if r]
+
+        for rid in all_rids:
+            try:
+                # Find currently occupied tables for this restaurant
+                occ_tables = (
+                    supabase.table("tables")
+                    .select("id, table_number")
+                    .eq("restaurant_id", rid)
+                    .eq("status", "occupied")
+                    .execute().data or []
+                )
+                if not occ_tables:
+                    continue
+
+                table_id_to_num = {t["id"]: t["table_number"] for t in occ_tables}
+                occ_table_ids   = list(table_id_to_num.keys())
+
+                # Most recent seating event per occupied table (today's business day)
+                events = (
+                    supabase.table("seating_events")
+                    .select("table_id, queue_entry_id")
+                    .eq("restaurant_id", rid)
+                    .in_("table_id", occ_table_ids)
+                    .eq("action", "seated")
+                    .gte("created_at", bd_start.isoformat())
+                    .order("created_at", desc=True)
+                    .execute().data or []
+                )
+
+                # Keep only the first (most recent) event per table
+                seen: set = set()
+                entry_id_to_table_id: dict = {}
+                for ev in events:
+                    tid = ev.get("table_id")
+                    if tid and tid not in seen:
+                        seen.add(tid)
+                        entry_id_to_table_id[ev["queue_entry_id"]] = tid
+
+                if not entry_id_to_table_id:
+                    continue
+
+                # Fetch the queue entries to get names + party sizes
+                entries = (
+                    supabase.table("queue_entries")
+                    .select("id, name, party_size")
+                    .in_("id", list(entry_id_to_table_id.keys()))
+                    .execute().data or []
+                )
+
+                seeded = 0
+                with _occupants_lock:
+                    for e in entries:
+                        tid  = entry_id_to_table_id[e["id"]]
+                        tnum = table_id_to_num.get(tid)
+                        if tnum is not None:
+                            key = f"{rid}:{tnum}"
+                            if key not in _table_occupants:  # Never overwrite a live entry
+                                _table_occupants[key] = {
+                                    "name":       e.get("name") or "Guest",
+                                    "party_size": e.get("party_size", 2),
+                                    "entry_id":   e["id"],
+                                }
+                                seeded += 1
+                if seeded:
+                    print(f"[startup] Seeded {seeded} occupant name(s) for restaurant {rid}")
+            except Exception as e:
+                print(f"[startup] _seed_table_occupants skipped {rid}: {e}")
+    except Exception as e:
+        print(f"[startup] _seed_table_occupants outer error: {e}")
+
+threading.Thread(target=_seed_table_occupants, daemon=True).start()
+
 def _ensure_demo_tables():
     """Guarantee the demo restaurant + its 16 tables exist in the DB.
     Idempotent — inserts only the table numbers that are missing.
@@ -689,16 +773,26 @@ def join_waitlist_legacy(name: Optional[str] = None, party_size: int = 2, phone:
 
 @app.get("/queue/history")
 def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] = None):
-    """Returns seated/removed entries for the given restaurant (today's business day).
-    Registered BEFORE /queue/{entry_id} so 'history' isn't captured as a UUID param."""
+    """Returns seated/removed entries for today's business day only (3am cutoff).
+    Registered BEFORE /queue/{entry_id} so 'history' isn't captured as a UUID param.
+    Server-side date filter + 200-row cap prevents Supabase's 1000-row limit being hit
+    as volume grows, and cuts per-poll bandwidth by ~95%."""
+    from datetime import timedelta
     rid = _rid(restaurant_id)
+    now = datetime.now(timezone.utc)
+    # Business day starts at 3am. Before 3am means the day started yesterday.
+    bd_start = now.replace(hour=3, minute=0, second=0, microsecond=0)
+    if now.hour < 3:
+        bd_start -= timedelta(days=1)
     try:
         res = (
             supabase.table("queue_entries")
             .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
             .eq("restaurant_id", rid)
             .in_("status", ["seated", "removed"])
+            .gte("arrival_time", bd_start.isoformat())
             .order("arrival_time", desc=True)
+            .limit(200)
             .execute()
         )
         return res.data or []
@@ -772,8 +866,14 @@ def seat_entry(entry_id: str):
 
 @app.post("/queue/{entry_id}/seat-to-table/{table_id}")
 def seat_to_table(entry_id: str, table_id: str):
-    """Seat a queue entry and mark a specific table as occupied (used by floor-map drag-and-drop)."""
-    entry_res = supabase.table("queue_entries").select("name, party_size, restaurant_id").eq("id", entry_id).execute()
+    """Seat a queue entry and mark a specific table as occupied (used by floor-map drag-and-drop).
+    Status check prevents two iPads from double-seating the same guest simultaneously."""
+    entry_res = supabase.table("queue_entries").select("name, party_size, status, restaurant_id").eq("id", entry_id).execute()
+    if not entry_res.data:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    current_status = entry_res.data[0].get("status")
+    if current_status not in ("waiting", "ready"):
+        raise HTTPException(status_code=409, detail=f"Entry is already {current_status}")
     supabase.table("queue_entries").update({"status": "seated"}).eq("id", entry_id).execute()
     supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table_id).execute()
     # Track occupant in memory for cross-view sync

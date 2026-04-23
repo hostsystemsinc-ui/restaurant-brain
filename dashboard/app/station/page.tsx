@@ -1583,10 +1583,18 @@ export default function HostDashboard() {
     } catch {}
   }, [restaurantId])
 
-  // Persist floor map occupancy to a restaurant-scoped localStorage key
+  // Persist floor map occupancy to a restaurant-scoped localStorage key.
+  // Compare JSON before writing to skip the write when nothing changed — the poll loop
+  // creates a new Map reference every 4s even if content is identical, which would
+  // otherwise block the iPad main thread with a serialization + write on every tick.
   useEffect(() => {
     if (!restaurantId) return
-    try { localStorage.setItem(`host_occupants_${restaurantId}`, JSON.stringify([...localOccupants])) } catch {}
+    try {
+      const next = JSON.stringify([...localOccupants])
+      if (next !== localStorage.getItem(`host_occupants_${restaurantId}`)) {
+        localStorage.setItem(`host_occupants_${restaurantId}`, next)
+      }
+    } catch {}
   }, [localOccupants, restaurantId])
 
   // Live clock — ticks every 30s for urgency updates
@@ -1595,9 +1603,12 @@ export default function HostDashboard() {
     return () => clearInterval(t)
   }, [])
 
-  const fetchingRef     = useRef(false)
-  const failCountRef    = useRef(0)
-  const pollTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchingRef        = useRef(false)
+  const failCountRef       = useRef(0)
+  const pollTimerRef       = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Tracks when history was last fetched so the poll loop only fetches every 30s.
+  // Mutation-triggered calls (setTimeout(fetchHistory, 600)) bypass this via fetchHistory directly.
+  const lastHistoryFetchRef = useRef<number>(0)
   // Tables whose clear API call is still in-flight. refreshAll must not revert these to "occupied".
   const pendingClearsRef = useRef<Set<number>>(new Set())
   // React state mirror of pendingClearsRef — drives instant green on DroppableFloorTable via forceAvailable.
@@ -1669,8 +1680,10 @@ export default function HostDashboard() {
   // fetchHistory is decoupled from the fetchingRef guard so it always runs after mutations.
   // It merges server data on top of local history — server entries take priority,
   // but local-only entries fill any gaps (e.g., when server is temporarily unavailable).
+  // Stamps lastHistoryFetchRef so the poll loop can rate-limit to every 30s.
   const fetchHistory = useCallback(() => {
     if (!restaurantId) return
+    lastHistoryFetchRef.current = Date.now()
     const bd = getBusinessDate()
     const filterToday = (entries: HistoryEntry[]) => entries.filter(e => {
       try {
@@ -1795,7 +1808,12 @@ export default function HostDashboard() {
     } finally {
       fetchingRef.current = false
     }
-    fetchHistory()
+    // Rate-limit history fetches to every 30s from the poll loop.
+    // Mutation callbacks (seat/remove/clear) still call fetchHistory directly via setTimeout,
+    // which bypasses this guard and always fires immediately after a change.
+    if (Date.now() - lastHistoryFetchRef.current >= 30_000) {
+      fetchHistory()
+    }
   }, [restaurantId, fetchHistory])
 
   useEffect(() => {
