@@ -21,6 +21,27 @@ import { CSS } from "@dnd-kit/utilities"
 
 const API = "https://restaurant-brain-production.up.railway.app"
 
+// ── Clear-table API with retry ─────────────────────────────────────────────────
+// A dropped clear request leaves the DB row "occupied" AND _table_occupants populated —
+// which means after the next reload the server returns the table as still occupied and the
+// host's just-cleared table pops back to red. We retry 3 times with exponential backoff
+// on any network/500 failure so transient server hiccups don't leak stale state.
+async function clearTableAPI(tableId: string): Promise<boolean> {
+  const delays = [0, 400, 1200] // ms before each attempt (includes the first)
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i] > 0) await new Promise(r => setTimeout(r, delays[i]))
+    try {
+      const res = await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" })
+      if (res.ok) return true
+      // 5xx → retry. 4xx → don't bother (the tableId is probably invalid).
+      if (res.status < 500) return false
+    } catch {
+      // Network error — retry
+    }
+  }
+  return false
+}
+
 // ── Floor plan ─────────────────────────────────────────────────────────────────
 
 const CANVAS_W = 920
@@ -431,7 +452,7 @@ function DraggableQueueCard({
           <button
             onPointerDown={e => e.stopPropagation()}
             onClick={e => { e.stopPropagation(); onAddTime() }}
-            style={{ alignSelf: "stretch", width: 52, flexShrink: 0, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{ alignSelf: "stretch", flex: 1, minWidth: 56, borderRadius: 8, background: "rgba(96,165,250,0.10)", color: "rgba(96,165,250,0.85)", border: "1px solid rgba(96,165,250,0.22)", fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             title="+5 min"
           >
             +5 min
@@ -557,9 +578,13 @@ function DroppableFloorTable({
   onAvailableTap?: () => void
   forceAvailable?: boolean
 }) {
-  // forceAvailable overrides table.status so a just-cleared table goes green instantly,
+  // forceAvailable overrides any occupant so a just-cleared table goes green instantly,
   // without waiting for the server to confirm and refreshAll to propagate.
-  const isOccupied = !forceAvailable && (!!occupant || (!!table && table.status !== "available"))
+  // We deliberately treat `occupant` (from /tables/occupants) as the single source of truth
+  // and ignore raw table.status. table.status can linger as "occupied" in the DB after a
+  // failed clear, but the in-memory occupants dict is authoritative — if there's no
+  // occupant, the table is available.
+  const isOccupied = !forceAvailable && !!occupant
   const hasLocalOccupant = !!occupant
   // When dragging an occupant, allow dropping on any table without a local occupant
   const canReceiveDrop = isDraggingOccupant ? !hasLocalOccupant : !isOccupied
@@ -687,13 +712,6 @@ function DroppableFloorTable({
           <span style={{ fontSize: 9, color: "var(--text-warm5)" }}>
             {occupant.party_size}p
           </span>
-        </>
-      ) : table && table.status !== "available" ? (
-        <>
-          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "var(--table-occ-num)" }}>
-            {pos.number}
-          </span>
-          <span style={{ fontSize: 9, color: "var(--table-occ-cap)" }}>{table.capacity}p</span>
         </>
       ) : (
         <>
@@ -824,7 +842,9 @@ function FloorMap({
           {FLOOR_PLAN.map(pos => {
             const table = tableByNumber.get(pos.number)
             const occupant = localOccupants.get(pos.number)
-            const isAvailable = !occupant && (!table || table.status === "available" || locallyAvailableTables?.has(pos.number))
+            // Occupant-only check — DB status is intentionally ignored to keep this
+            // consistent with DroppableFloorTable's visual logic (green iff no occupant).
+            const isAvailable = !occupant
             return (
               <DroppableFloorTable
                 key={pos.number}
@@ -900,11 +920,11 @@ function SeatTablePicker({
   onConfirm: (tableNumber: number, tableId: string | undefined) => void
   onClose: () => void
 }) {
-  const available = FLOOR_PLAN.filter(pos => {
-    if (localOccupants.has(pos.number)) return false
-    const t = tables.find(t => t.table_number === pos.number)
-    return !t || t.status === "available"
-  })
+  // A table is available for seating if no local occupant holds it. We deliberately
+  // ignore tables[].status because DB status can lag reality (e.g., a clear call that
+  // succeeded in-memory but had a flaky DB round-trip). localOccupants mirrors the
+  // server's in-memory _table_occupants which is the authoritative source.
+  const available = FLOOR_PLAN.filter(pos => !localOccupants.has(pos.number))
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -1384,7 +1404,10 @@ function StationHistoryDrawer({
 
   const seated  = history.filter(e => e.status === "seated")
   const removed = history.filter(e => e.status === "removed")
-  const availableTables = tables.filter(t => !localOccupants.has(t.table_number) && t.status === "available")
+  // Same rationale as SeatPickerModal: localOccupants is the client-side mirror of the
+  // server's authoritative in-memory _table_occupants. DB status can lag reality, so
+  // gate availability on occupant presence only.
+  const availableTables = tables.filter(t => !localOccupants.has(t.table_number))
 
   // Suppress unused variable warning — restaurantId may be used in future
   void restaurantId
@@ -1573,7 +1596,7 @@ export default function HostDashboard() {
   const handleResizePointerMove = useCallback((e: PointerEvent) => {
     if (!isResizing.current) return
     const delta = e.clientX - resizeStartX.current
-    setSidebarW(Math.max(220, Math.min(520, resizeStartW.current + delta)))
+    setSidebarW(Math.max(260, Math.min(520, resizeStartW.current + delta)))
   }, [])
 
   const handleResizePointerUp = useCallback(() => {
@@ -1973,7 +1996,7 @@ export default function HostDashboard() {
     })
     pendingClearsRef.current.add(tableNumber)
     if (tableId) {
-      try { await fetch(`${API}/tables/${tableId}/clear`, { method: "POST" }) } catch {}
+      await clearTableAPI(tableId)
     }
     if (entryId) {
       if (mode === "restore") {
@@ -2027,7 +2050,7 @@ export default function HostDashboard() {
     pendingOccupiesRef.current.add(toTableNumber)
 
     const calls: Promise<unknown>[] = []
-    if (fromTableId) calls.push(fetch(`${API}/tables/${fromTableId}/clear`, { method: "POST" }))
+    if (fromTableId) calls.push(clearTableAPI(fromTableId))
     if (toTableId)   calls.push(fetch(`${API}/tables/${toTableId}/occupy`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2104,7 +2127,7 @@ export default function HostDashboard() {
       const sourceApiTable = tables.find(t => t.table_number === sourceTable)
       const targetApiTable = tables.find(t => t.table_number === targetTable)
       const calls: Promise<unknown>[] = []
-      if (sourceApiTable) calls.push(fetch(`${API}/tables/${sourceApiTable.id}/clear`, { method: "POST" }))
+      if (sourceApiTable) calls.push(clearTableAPI(sourceApiTable.id))
       if (targetApiTable) calls.push(fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2136,12 +2159,9 @@ export default function HostDashboard() {
     setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
   }
 
-  // Floor availability
-  const floorOccupied = FLOOR_PLAN.filter(pos => {
-    if (localOccupants.has(pos.number)) return true
-    const t = tables.find(t => t.table_number === pos.number)
-    return !!t && t.status !== "available"
-  }).length
+  // Floor availability — occupant-only, matches DroppableFloorTable's visual logic so the
+  // "X available / Y occupied" header counts always match the colors on the floor map.
+  const floorOccupied = FLOOR_PLAN.filter(pos => localOccupants.has(pos.number)).length
   const available   = FLOOR_PLAN.length - floorOccupied
   const readyList      = queue.filter(q => q.status === "ready")
   const waitingList    = queue.filter(q => q.status === "waiting")

@@ -658,14 +658,28 @@ def occupy_table(table_id: str, body: Optional[OccupyRequest] = None):
 
 @app.post("/tables/{table_id}/clear")
 def clear_table(table_id: str):
-    supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
-    # Remove occupant tracking
+    # Look up table first so we can always clean up _table_occupants even if the DB update fails.
+    # This matters because get_table_occupants now returns in-memory only — if we popped only on
+    # success but the DB write failed, the table would still show cleared to the client, yet a
+    # server restart would rebuild _table_occupants from DB status and re-seat the ghost guest.
+    # So: pop in-memory + update DB. If DB update raises, re-add and 500 so the client retries.
     tbl_res = supabase.table("tables").select("table_number, restaurant_id").eq("id", table_id).execute()
+    key: Optional[str] = None
+    removed_entry: Optional[dict] = None
     if tbl_res.data:
         t = tbl_res.data[0]
         rid = t.get("restaurant_id") or RESTAURANT_ID
+        key = f"{rid}:{t['table_number']}"
         with _occupants_lock:
-            _table_occupants.pop(f"{rid}:{t['table_number']}", None)
+            removed_entry = _table_occupants.pop(key, None)
+    try:
+        supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
+    except Exception as e:
+        # DB write failed — restore in-memory so we don't silently leak state and tell client to retry
+        if key and removed_entry is not None:
+            with _occupants_lock:
+                _table_occupants[key] = removed_entry
+        raise HTTPException(status_code=500, detail=f"clear_table failed: {e}")
     return {"status": "cleared"}
 
 @app.post("/clear-table/{table_id}")  # legacy
@@ -674,27 +688,15 @@ def clear_table_legacy(table_id: str):
 
 @app.get("/tables/occupants")
 def get_table_occupants(restaurant_id: Optional[str] = None):
-    """Return table→guest mapping, merging in-memory dict with DB state so restarts don't clear it."""
+    """Return table→guest mapping. The in-memory _table_occupants dict is the single
+    source of truth. After a server restart, _seed_table_occupants() rebuilds it from
+    seating_events. We intentionally DO NOT fall back to DB table.status=='occupied',
+    because a stale DB row (e.g., a clear API call that failed to persist) would cause
+    cleared tables to re-appear as occupied after the client reloads."""
     rid = _rid(restaurant_id)
     prefix = f"{rid}:"
-    # Start from in-memory (has name/party_size already set)
     with _occupants_lock:
         result: dict = {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
-    # Fill any gaps from DB: find tables with status="occupied" not already in result.
-    # Re-acquire lock before writing to avoid overwriting a concurrent seat that happened
-    # between the initial read and this DB query.
-    try:
-        occ_tables = supabase.table("tables").select("table_number").eq("restaurant_id", rid).eq("status", "occupied").execute().data or []
-        for t in occ_tables:
-            tnum = str(t["table_number"])
-            if tnum not in result:
-                key = f"{rid}:{t['table_number']}"
-                with _occupants_lock:
-                    if key not in _table_occupants:  # Don't overwrite a concurrent seat
-                        _table_occupants[key] = {"name": "Guest", "party_size": 2, "entry_id": None}
-                    result[tnum] = _table_occupants[key]
-    except Exception:
-        pass
     return result
 
 # ── Queue ────────────────────────────────────────────────────────────────────
