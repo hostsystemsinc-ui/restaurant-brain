@@ -2,7 +2,7 @@
   "pin": "1234",
   "credentials": {
     "original": "original",
-    "southside": null,
+    "southside": "southside",
     "walnut": null
   }
 }

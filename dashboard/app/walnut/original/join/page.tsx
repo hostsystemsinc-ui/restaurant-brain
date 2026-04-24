@@ -131,7 +131,7 @@ export default function OriginalJoinPage() {
       `}</style>
 
       {/* ── HOST Wordmark ── */}
-      <div style={{ textAlign: "center", paddingTop: 30, flexShrink: 0 }}>
+      <div style={{ textAlign: "center", paddingTop: 14, flexShrink: 0 }}>
         <div style={{ fontSize: "clamp(1.8rem,7vw,2.6rem)", fontWeight: 900, letterSpacing: "0.08em", color: DARK, lineHeight: 1 }}>
           HOST
         </div>
@@ -141,12 +141,12 @@ export default function OriginalJoinPage() {
       </div>
 
       {/* ── Walnut Cafe Logo ── */}
-      <div style={{ textAlign: "center", padding: "16px 24px 0", flexShrink: 0 }}>
+      <div style={{ textAlign: "center", padding: "8px 24px 0", flexShrink: 0 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={LOGO}
           alt="The Walnut Cafe"
-          style={{ height: 110, objectFit: "contain", display: "inline-block" }}
+          style={{ height: 80, objectFit: "contain", display: "inline-block" }}
         />
       </div>
 
@@ -175,7 +175,7 @@ export default function OriginalJoinPage() {
       </div>
 
       {/* ── Form ── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 11, padding: "16px 22px 0", overflow: "hidden" }}>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 10, padding: "12px 22px 0", overflowY: "auto" }}>
 
         {/* Party Size */}
         <div style={{ background: DARK4, border: `1px solid ${DARK5}`, borderRadius: 16, padding: "12px 16px 14px", flexShrink: 0 }}>
@@ -220,22 +220,22 @@ export default function OriginalJoinPage() {
       </div>
 
       {/* ── CTA ── */}
-      <div style={{ padding: "14px 22px 28px", flexShrink: 0 }}>
-        {error && <p style={{ textAlign: "center", fontSize: ".78rem", color: "rgba(180,40,40,0.9)", marginBottom: 10 }}>{error}</p>}
+      <div style={{ padding: "10px 22px 16px", flexShrink: 0 }}>
+        {error && <p style={{ textAlign: "center", fontSize: ".78rem", color: "rgba(180,40,40,0.9)", marginBottom: 8 }}>{error}</p>}
         <button className="cta-btn" onClick={submit} disabled={loading || joined}
-          style={{ width: "100%", height: 60, borderRadius: 18, background: loading || joined ? DARK2 : DARK, color: BG, fontWeight: 800, fontSize: ".95rem", letterSpacing: ".12em", textTransform: "uppercase", border: "none", cursor: loading || joined ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "transform .12s" }}>
+          style={{ width: "100%", height: 52, borderRadius: 18, background: loading || joined ? DARK2 : DARK, color: BG, fontWeight: 800, fontSize: ".95rem", letterSpacing: ".12em", textTransform: "uppercase", border: "none", cursor: loading || joined ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "transform .12s" }}>
           {loading && !joined
             ? <Loader2 style={{ width: 20, height: 20, animation: "spin 1s linear infinite" }} />
             : "Join Waitlist"}
         </button>
 
         <button className="menu-btn" onClick={() => setMenuOpen(true)}
-          style={{ width: "100%", height: 48, marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "transparent", border: `1px solid ${DARK5}`, borderRadius: 14, cursor: "pointer", color: DARK2, fontSize: ".82rem", fontWeight: 600, letterSpacing: ".04em", transition: "transform .12s" }}>
+          style={{ width: "100%", height: 40, marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, background: "transparent", border: `1px solid ${DARK5}`, borderRadius: 14, cursor: "pointer", color: DARK2, fontSize: ".82rem", fontWeight: 600, letterSpacing: ".04em", transition: "transform .12s" }}>
           <UtensilsCrossed size={14} style={{ opacity: 0.7 }} />
           View Menu
         </button>
 
-        <p style={{ textAlign: "center", marginTop: 10, fontSize: ".66rem", color: DARK3, letterSpacing: ".06em" }}>
+        <p style={{ textAlign: "center", marginTop: 6, fontSize: ".66rem", color: DARK3, letterSpacing: ".06em" }}>
           HOST · No app download needed
         </p>
       </div>
