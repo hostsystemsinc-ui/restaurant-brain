@@ -151,11 +151,18 @@ def _ensure_walnut_restaurants():
 
 threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
 
-def _seed_table_occupants():
-    """Restore real guest names in _table_occupants from seating_events after a server restart.
-    Without this, tables show 'Guest' after every Railway deployment (any git push auto-deploys).
-    Strategy: for each occupied table, find the most recent seating event and look up the entry.
-    Defined AFTER WALNUT_RESTAURANTS so the thread never accesses an undefined module variable."""
+def _rebuild_occupants_for_restaurant(rid: str) -> int:
+    """Reconstruct in-memory occupants for a single restaurant from DB + seating_events.
+    Returns the number of occupant entries that were seeded. Safe to call repeatedly —
+    it NEVER overwrites a live in-memory entry, so any fresh seats written since the
+    reconstruction began are preserved.
+
+    Used by:
+      - _seed_table_occupants() at server startup (background thread).
+      - /tables/occupants as a self-heal when memory is empty but DB says tables
+        are occupied (e.g., the startup seed thread hasn't finished yet, or a
+        process restart during an active service).
+    """
     from datetime import timedelta
     try:
         now = datetime.now(timezone.utc)
@@ -163,74 +170,95 @@ def _seed_table_occupants():
         if now.hour < 3:
             bd_start -= timedelta(days=1)
 
+        occ_tables = (
+            supabase.table("tables")
+            .select("id, table_number")
+            .eq("restaurant_id", rid)
+            .eq("status", "occupied")
+            .execute().data or []
+        )
+        if not occ_tables:
+            return 0
+
+        table_id_to_num = {t["id"]: t["table_number"] for t in occ_tables}
+        occ_table_ids   = list(table_id_to_num.keys())
+
+        events = (
+            supabase.table("seating_events")
+            .select("table_id, queue_entry_id")
+            .eq("restaurant_id", rid)
+            .in_("table_id", occ_table_ids)
+            .eq("action", "seated")
+            .gte("created_at", bd_start.isoformat())
+            .order("created_at", desc=True)
+            .execute().data or []
+        )
+
+        seen: set = set()
+        entry_id_to_table_id: dict = {}
+        for ev in events:
+            tid = ev.get("table_id")
+            if tid and tid not in seen:
+                seen.add(tid)
+                entry_id_to_table_id[ev["queue_entry_id"]] = tid
+
+        # Fallback: if a table is flagged "occupied" but has NO seating_event today
+        # (shouldn't happen in normal flow, but can happen if a row was manually set
+        # or a walkin was inserted directly), still populate a placeholder so the
+        # client knows the table is taken.
+        remaining_tids = set(occ_table_ids) - set(entry_id_to_table_id.values())
+
+        entries = []
+        if entry_id_to_table_id:
+            entries = (
+                supabase.table("queue_entries")
+                .select("id, name, party_size")
+                .in_("id", list(entry_id_to_table_id.keys()))
+                .execute().data or []
+            )
+
+        seeded = 0
+        with _occupants_lock:
+            for e in entries:
+                tid  = entry_id_to_table_id[e["id"]]
+                tnum = table_id_to_num.get(tid)
+                if tnum is None:
+                    continue
+                key = f"{rid}:{tnum}"
+                if key not in _table_occupants:
+                    _table_occupants[key] = {
+                        "name":       e.get("name") or "Guest",
+                        "party_size": e.get("party_size", 2),
+                        "entry_id":   e["id"],
+                    }
+                    seeded += 1
+            # Placeholder for any orphaned "occupied" tables
+            for tid in remaining_tids:
+                tnum = table_id_to_num.get(tid)
+                if tnum is None:
+                    continue
+                key = f"{rid}:{tnum}"
+                if key not in _table_occupants:
+                    _table_occupants[key] = {
+                        "name":       "Guest",
+                        "party_size": 2,
+                        "entry_id":   None,
+                    }
+                    seeded += 1
+        return seeded
+    except Exception as e:
+        print(f"[rebuild_occupants] rid={rid} error: {e}")
+        return 0
+
+def _seed_table_occupants():
+    """Restore real guest names in _table_occupants from seating_events after a server restart.
+    Without this, tables show 'Guest' after every Railway deployment (any git push auto-deploys)."""
+    try:
         all_rids = [r for r in [RESTAURANT_ID] + [r["id"] for r in WALNUT_RESTAURANTS] + [DEMO_RESTAURANT_ID] if r]
-
         for rid in all_rids:
-            try:
-                # Find currently occupied tables for this restaurant
-                occ_tables = (
-                    supabase.table("tables")
-                    .select("id, table_number")
-                    .eq("restaurant_id", rid)
-                    .eq("status", "occupied")
-                    .execute().data or []
-                )
-                if not occ_tables:
-                    continue
-
-                table_id_to_num = {t["id"]: t["table_number"] for t in occ_tables}
-                occ_table_ids   = list(table_id_to_num.keys())
-
-                # Most recent seating event per occupied table (today's business day)
-                events = (
-                    supabase.table("seating_events")
-                    .select("table_id, queue_entry_id")
-                    .eq("restaurant_id", rid)
-                    .in_("table_id", occ_table_ids)
-                    .eq("action", "seated")
-                    .gte("created_at", bd_start.isoformat())
-                    .order("created_at", desc=True)
-                    .execute().data or []
-                )
-
-                # Keep only the first (most recent) event per table
-                seen: set = set()
-                entry_id_to_table_id: dict = {}
-                for ev in events:
-                    tid = ev.get("table_id")
-                    if tid and tid not in seen:
-                        seen.add(tid)
-                        entry_id_to_table_id[ev["queue_entry_id"]] = tid
-
-                if not entry_id_to_table_id:
-                    continue
-
-                # Fetch the queue entries to get names + party sizes
-                entries = (
-                    supabase.table("queue_entries")
-                    .select("id, name, party_size")
-                    .in_("id", list(entry_id_to_table_id.keys()))
-                    .execute().data or []
-                )
-
-                seeded = 0
-                with _occupants_lock:
-                    for e in entries:
-                        tid  = entry_id_to_table_id[e["id"]]
-                        tnum = table_id_to_num.get(tid)
-                        if tnum is not None:
-                            key = f"{rid}:{tnum}"
-                            if key not in _table_occupants:  # Never overwrite a live entry
-                                _table_occupants[key] = {
-                                    "name":       e.get("name") or "Guest",
-                                    "party_size": e.get("party_size", 2),
-                                    "entry_id":   e["id"],
-                                }
-                                seeded += 1
-                if seeded:
-                    print(f"[startup] Seeded {seeded} occupant name(s) for restaurant {rid}")
-            except Exception as e:
-                print(f"[startup] _seed_table_occupants skipped {rid}: {e}")
+            seeded = _rebuild_occupants_for_restaurant(rid)
+            if seeded:
+                print(f"[startup] Seeded {seeded} occupant name(s) for restaurant {rid}")
     except Exception as e:
         print(f"[startup] _seed_table_occupants outer error: {e}")
 
@@ -597,16 +625,74 @@ def get_restaurant(restaurant_id: Optional[str] = None):
 # ── Tables ───────────────────────────────────────────────────────────────────
 
 def _dedup_tables(rows: list) -> list:
-    """Deduplicate table rows by table_number, keeping the first occurrence.
-    Duplicate rows accumulate when _ensure_* startup functions race on first deploy."""
-    seen: set = set()
-    out = []
+    """Deduplicate table rows by table_number, keeping the MOST RECENTLY UPDATED row.
+
+    Duplicate rows can accumulate when _ensure_* startup functions race on first deploy.
+    Previously this kept the first occurrence, but Supabase doesn't guarantee stable row
+    ordering — so the "first" row could flip between calls, causing a table to appear
+    occupied on one refresh and available on the next. Always keeping the latest
+    updated_at row makes this deterministic and ensures that a seat/clear action
+    (which updates exactly one row) is always the row that wins the dedup."""
+    best: dict = {}  # table_number -> row
     for t in (rows or []):
         n = t.get("table_number")
-        if n not in seen:
-            seen.add(n)
-            out.append(t)
-    return out
+        if n is None:
+            continue
+        prev = best.get(n)
+        if prev is None:
+            best[n] = t
+            continue
+        # Compare updated_at timestamps as strings — ISO-8601 sorts correctly lexically.
+        prev_ts = prev.get("updated_at") or ""
+        this_ts = t.get("updated_at") or ""
+        if this_ts > prev_ts:
+            best[n] = t
+    # Sort by table_number numerically (values may be str or int in the DB)
+    try:
+        return sorted(best.values(), key=lambda t: int(t.get("table_number") or 0))
+    except Exception:
+        return list(best.values())
+
+def _cleanup_duplicate_tables():
+    """One-shot: delete duplicate rows per (restaurant_id, table_number), keeping only
+    the most recently updated one. Runs on startup. Without this, duplicate rows keep
+    accumulating and _dedup_tables has to paper over them on every request — and any
+    endpoint that reads by row-id (seat-to-table, clear-table) can still hit the stale
+    row and silently mis-update."""
+    try:
+        all_rids = [r for r in [RESTAURANT_ID] + [r["id"] for r in WALNUT_RESTAURANTS] + [DEMO_RESTAURANT_ID] if r]
+        for rid in all_rids:
+            try:
+                rows = supabase.table("tables").select("*").eq("restaurant_id", rid).execute().data or []
+                # Group by table_number
+                by_num: dict = {}
+                for t in rows:
+                    by_num.setdefault(t.get("table_number"), []).append(t)
+                stale_ids: list = []
+                for num, group in by_num.items():
+                    if len(group) <= 1:
+                        continue
+                    # Pick keeper: latest updated_at; on tie, pick any stable one (first)
+                    group.sort(key=lambda t: t.get("updated_at") or "", reverse=True)
+                    keeper = group[0]
+                    for t in group[1:]:
+                        if t.get("id") and t["id"] != keeper.get("id"):
+                            stale_ids.append(t["id"])
+                if stale_ids:
+                    # Delete in batches
+                    for i in range(0, len(stale_ids), 50):
+                        batch = stale_ids[i:i+50]
+                        try:
+                            supabase.table("tables").delete().in_("id", batch).execute()
+                        except Exception as e:
+                            print(f"[cleanup_duplicate_tables] batch delete failed rid={rid}: {e}")
+                    print(f"[startup] Deleted {len(stale_ids)} duplicate table row(s) for rid={rid}")
+            except Exception as e:
+                print(f"[cleanup_duplicate_tables] rid={rid} error: {e}")
+    except Exception as e:
+        print(f"[cleanup_duplicate_tables] outer error: {e}")
+
+threading.Thread(target=_cleanup_duplicate_tables, daemon=True).start()
 
 @app.get("/tables")
 def get_tables(restaurant_id: Optional[str] = None):
@@ -658,22 +744,29 @@ def occupy_table(table_id: str, body: Optional[OccupyRequest] = None):
 
 @app.post("/tables/{table_id}/clear")
 def clear_table(table_id: str):
-    # Look up table first so we can always clean up _table_occupants even if the DB update fails.
-    # This matters because get_table_occupants now returns in-memory only — if we popped only on
-    # success but the DB write failed, the table would still show cleared to the client, yet a
-    # server restart would rebuild _table_occupants from DB status and re-seat the ghost guest.
-    # So: pop in-memory + update DB. If DB update raises, re-add and 500 so the client retries.
+    # Look up the table's (restaurant_id, table_number) first so we can:
+    #   1) Clear in-memory occupants keyed by table_number
+    #   2) Mark EVERY row with the same (rid, table_number) as available — duplicate-row
+    #      safe, mirrors _claim_table_for_occupying which claims all siblings together.
     tbl_res = supabase.table("tables").select("table_number, restaurant_id").eq("id", table_id).execute()
     key: Optional[str] = None
+    rid: Optional[str] = None
+    tnum = None
     removed_entry: Optional[dict] = None
     if tbl_res.data:
         t = tbl_res.data[0]
         rid = t.get("restaurant_id") or RESTAURANT_ID
-        key = f"{rid}:{t['table_number']}"
-        with _occupants_lock:
-            removed_entry = _table_occupants.pop(key, None)
+        tnum = t.get("table_number")
+        if tnum is not None:
+            key = f"{rid}:{tnum}"
+            with _occupants_lock:
+                removed_entry = _table_occupants.pop(key, None)
     try:
-        supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
+        if rid is not None and tnum is not None:
+            # Clear ALL sibling rows so a stale duplicate can't be read back as "occupied".
+            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("restaurant_id", rid).eq("table_number", tnum).execute()
+        else:
+            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
     except Exception as e:
         # DB write failed — restore in-memory so we don't silently leak state and tell client to retry
         if key and removed_entry is not None:
@@ -688,16 +781,106 @@ def clear_table_legacy(table_id: str):
 
 @app.get("/tables/occupants")
 def get_table_occupants(restaurant_id: Optional[str] = None):
-    """Return table→guest mapping. The in-memory _table_occupants dict is the single
-    source of truth. After a server restart, _seed_table_occupants() rebuilds it from
-    seating_events. We intentionally DO NOT fall back to DB table.status=='occupied',
-    because a stale DB row (e.g., a clear API call that failed to persist) would cause
-    cleared tables to re-appear as occupied after the client reloads."""
+    """Return table→guest mapping, self-healing across restarts.
+
+    Primary source: in-memory _table_occupants (fast, authoritative for live mutations).
+    Fallback: if memory is empty for this restaurant but DB has occupied tables, rebuild
+    from seating_events inline before responding. This guarantees table occupancy
+    survives every client refresh AND every server restart — there is no window where
+    occupancy "disappears" because the startup seed thread hasn't run yet.
+
+    We DO NOT fall back to DB table.status for tables that have been explicitly cleared
+    in memory — once a clear lands, the in-memory pop is authoritative."""
     rid = _rid(restaurant_id)
     prefix = f"{rid}:"
-    with _occupants_lock:
-        result: dict = {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
+
+    def _snapshot() -> dict:
+        with _occupants_lock:
+            return {k.split(":", 1)[1]: v for k, v in _table_occupants.items() if k.startswith(prefix)}
+
+    result = _snapshot()
+
+    # Self-heal: if nothing in memory for this restaurant, try to rebuild from DB.
+    # This covers the window right after a Railway deploy when the startup seed
+    # thread hasn't populated this restaurant yet. Rebuild never overwrites a
+    # live in-memory entry, so concurrent seats are safe.
+    if not result:
+        try:
+            seeded = _rebuild_occupants_for_restaurant(rid)
+            if seeded:
+                print(f"[tables/occupants] self-healed {seeded} occupant(s) for rid={rid}")
+                result = _snapshot()
+        except Exception as e:
+            print(f"[tables/occupants] self-heal failed for rid={rid}: {e}")
+
     return result
+
+
+@app.post("/admin/clear-day")
+def admin_clear_day(restaurant_id: Optional[str] = None):
+    """Soft-reset a single restaurant to "empty floor + empty queue" without waiting for
+    the 3am business-day rollover. Managers tap this from the Walnut admin dashboard.
+
+    What it does:
+      - Marks all waiting/ready entries as 'removed' so they drop from the live queue.
+      - Marks all currently-seated entries as 'removed' (they've already been served;
+        this just clears them from the history "still here" view).
+      - Sets every table's DB status back to 'available'.
+      - Wipes _table_occupants for this restaurant → floor map goes green.
+      - Wipes _wait_set_at for entries in this restaurant → no stale timers.
+
+    What it does NOT do:
+      - Delete rows. History / analytics stay intact. If a manager taps "Clear" early,
+        the history tab still shows who was seated today. Only the 3am rollover + the
+        owner's /owner/analytics/clear hard-delete remove rows.
+    """
+    rid = _rid(restaurant_id)
+    counts = {"queue_entries_updated": 0, "tables_reset": 0, "occupants_dropped": 0}
+
+    # 1. Drop all active queue entries (waiting/ready/seated) to 'removed'. "Seated" entries
+    # are included because they represent guests currently at tables; after a clear those
+    # tables should be free AND the entries shouldn't re-appear in anything that filters
+    # on seated status.
+    try:
+        upd = (
+            supabase.table("queue_entries")
+            .update({"status": "removed"})
+            .eq("restaurant_id", rid)
+            .in_("status", ["waiting", "ready", "seated"])
+            .execute()
+        )
+        counts["queue_entries_updated"] = len(upd.data or [])
+    except Exception as e:
+        print(f"[admin/clear-day] queue update failed for {rid}: {e}")
+
+    # 2. Mark every table as available. Not conditional — we want every table free
+    # regardless of its current state.
+    try:
+        tbl_upd = (
+            supabase.table("tables")
+            .update({"status": "available", "updated_at": _now()})
+            .eq("restaurant_id", rid)
+            .execute()
+        )
+        counts["tables_reset"] = len(tbl_upd.data or [])
+    except Exception as e:
+        print(f"[admin/clear-day] tables reset failed for {rid}: {e}")
+
+    # 3. Clear in-memory state for this restaurant.
+    prefix = f"{rid}:"
+    with _occupants_lock:
+        keys_to_drop = [k for k in list(_table_occupants.keys()) if k.startswith(prefix)]
+        for k in keys_to_drop:
+            del _table_occupants[k]
+        counts["occupants_dropped"] = len(keys_to_drop)
+
+    # _wait_set_at is keyed by entry_id (not rid), so we'd need an entry lookup to clear it
+    # precisely. But since every entry we just touched is now 'removed' and the queue
+    # endpoint filters to waiting/ready, those timer entries are dereferenced and harmless.
+
+    print(f"[admin/clear-day] restaurant={rid} counts={counts}")
+    return {"status": "cleared", "restaurant_id": rid, **counts}
+
 
 # ── Queue ────────────────────────────────────────────────────────────────────
 
@@ -851,82 +1034,238 @@ def get_entry(entry_id: str):
         entry["wait_set_at"]    = _wait_set_at.get(entry_id)
     return entry
 
+def _claim_entry_for_seating(entry_id: str) -> dict:
+    """Atomically transition a queue entry from waiting/ready → seated.
+    Returns the entry row if we won the race. Raises 404 if entry doesn't exist, 409 if it's
+    already in a terminal state (seated/removed) — which means another request beat us.
+
+    This replaces the previous read-then-write pattern (SELECT status, then UPDATE) which
+    had a classic check-then-act race window: two rapid /seat calls for the same entry
+    could both read status='waiting', both proceed, and both pick/occupy different tables,
+    leaving a single guest visibly sat at two tables (user report, 2026-04-22). The
+    conditional WHERE status IN ('waiting','ready') guarantees only one call wins.
+    """
+    upd = (
+        supabase.table("queue_entries")
+        .update({"status": "seated"})
+        .eq("id", entry_id)
+        .in_("status", ["waiting", "ready"])
+        .execute()
+    )
+    if upd.data:
+        return upd.data[0]
+    # No row updated — either entry missing or already seated/removed. Differentiate.
+    existing = supabase.table("queue_entries").select("*").eq("id", entry_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    raise HTTPException(status_code=409, detail=f"Entry is already {existing.data[0].get('status', 'unknown')}")
+
+
+def _claim_table_for_occupying(table_id: str) -> Optional[dict]:
+    """Atomically transition a table from available → occupied. Returns the table row if
+    we won the race. Returns None if the table was already occupied (caller decides how to
+    handle: either release the entry-claim for retry, or pick another table).
+
+    Duplicate-row safe: if legacy duplicate rows exist for the same (restaurant_id,
+    table_number), claim ALL of them. Otherwise a second request could claim the sibling
+    row and we'd silently double-book the physical table — which is exactly the "guest
+    at two tables" bug the user hit. After the one-time _cleanup_duplicate_tables pass
+    this is a no-op beyond the single-row claim, but the defense-in-depth makes the race
+    harmless even mid-cleanup."""
+    # Look up target row to get its (restaurant_id, table_number).
+    target = supabase.table("tables").select("id, table_number, restaurant_id").eq("id", table_id).execute().data
+    if not target:
+        return None
+    t = target[0]
+    rid = t.get("restaurant_id")
+    tnum = t.get("table_number")
+    if rid is None or tnum is None:
+        # Missing metadata — fall back to the plain id-based claim
+        upd = (
+            supabase.table("tables")
+            .update({"status": "occupied", "updated_at": _now()})
+            .eq("id", table_id)
+            .eq("status", "available")
+            .execute()
+        )
+        return upd.data[0] if upd.data else None
+
+    # Claim every sibling row for this (rid, tnum) that is currently available.
+    upd = (
+        supabase.table("tables")
+        .update({"status": "occupied", "updated_at": _now()})
+        .eq("restaurant_id", rid)
+        .eq("table_number", tnum)
+        .eq("status", "available")
+        .execute()
+    )
+    if not upd.data:
+        return None
+    # Prefer the row whose id matches the caller's target so the response id is stable.
+    for row in upd.data:
+        if row.get("id") == table_id:
+            return row
+    return upd.data[0]
+
+
+def _record_seating(rid: str, entry_id: str, table_id: str, tnum: int,
+                    name: str, party_size: int) -> None:
+    """Update in-memory occupants + persist a seating_events row.
+    Factored so both seat endpoints and the walkin-at-table endpoint do this identically."""
+    with _occupants_lock:
+        _table_occupants[f"{rid}:{tnum}"] = {
+            "name": name or "Guest", "party_size": party_size or 2, "entry_id": entry_id,
+        }
+    try:
+        supabase.table("seating_events").insert({
+            "restaurant_id": rid, "table_id": table_id,
+            "queue_entry_id": entry_id, "action": "seated",
+        }).execute()
+    except Exception as e:
+        print(f"[seating_events] insert failed: {e}")
+
+
+def _release_entry_claim(entry_id: str, back_to: str = "waiting") -> None:
+    """Revert a queue entry's status back to waiting when a follow-up step fails (e.g., the
+    target table was already occupied). Without this, the entry would be stuck in 'seated'
+    state with no actual table assignment."""
+    try:
+        supabase.table("queue_entries").update({"status": back_to}).eq("id", entry_id).execute()
+    except Exception as e:
+        print(f"[release_entry_claim] failed: {e}")
+
+
 @app.post("/queue/{entry_id}/seat")
 def seat_entry(entry_id: str):
-    party_res = supabase.table("queue_entries").select("*").eq("id", entry_id).execute()
-    if not party_res.data:
-        raise HTTPException(status_code=404, detail="Entry not found")
-    party = party_res.data[0]
-    if party.get("status") not in ("waiting", "ready"):
-        raise HTTPException(status_code=409, detail=f"Entry is already {party.get('status', 'unknown')}")
-    # Use the entry's own restaurant_id so demo and real restaurants are kept separate
+    """Auto-pick smallest available table and seat the entry. Both the entry status and
+    the target table are claimed atomically, so concurrent /seat calls for the same entry
+    can never each successfully occupy different tables."""
+    party = _claim_entry_for_seating(entry_id)
     entry_rid = party.get("restaurant_id") or RESTAURANT_ID
 
-    table_res = (
+    # Find candidate tables (smallest→largest), then race-safely try to occupy one.
+    # If another request grabs our first pick, move to the next candidate.
+    candidates = (
         supabase.table("tables")
         .select("*")
         .eq("restaurant_id", entry_rid)
         .eq("status", "available")
         .gte("capacity", party["party_size"])
         .order("capacity")
-        .limit(1)
+        .limit(6)
         .execute()
+        .data or []
     )
-    table = table_res.data[0] if table_res.data else None
 
-    supabase.table("queue_entries").update({"status": "seated"}).eq("id", entry_id).execute()
-
-    if table:
-        supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table["id"]).execute()
-        # Track occupant in memory for cross-view sync (same as seat-to-table)
-        tnum = table.get("table_number")
+    table = None
+    for cand in candidates:
+        # Also skip candidates already held in-memory but not yet reflected in DB
+        tnum = cand.get("table_number")
         if tnum is not None:
             with _occupants_lock:
-                _table_occupants[f"{entry_rid}:{tnum}"] = {
-                    "name": party.get("name") or "Guest",
-                    "party_size": party.get("party_size", 2),
-                    "entry_id": entry_id,
-                }
-        try:
-            supabase.table("seating_events").insert({
-                "restaurant_id": entry_rid, "table_id": table["id"],
-                "queue_entry_id": entry_id, "action": "seated",
-            }).execute()
-        except Exception:
-            pass
+                if f"{entry_rid}:{tnum}" in _table_occupants:
+                    continue
+        claimed = _claim_table_for_occupying(cand["id"])
+        if claimed:
+            table = claimed
+            break
 
-    return {"status": "seated", "table": table}
+    if table:
+        tnum = table.get("table_number")
+        if tnum is not None:
+            _record_seating(entry_rid, entry_id, table["id"], tnum,
+                            party.get("name") or "Guest", party.get("party_size", 2))
+        return {"status": "seated", "table": table}
+
+    # No table could be claimed — entry stays "seated" per the existing contract
+    # (caller treats this as "seated without a specific table yet"). Previous behavior.
+    return {"status": "seated", "table": None}
+
 
 @app.post("/queue/{entry_id}/seat-to-table/{table_id}")
 def seat_to_table(entry_id: str, table_id: str):
-    """Seat a queue entry and mark a specific table as occupied (used by floor-map drag-and-drop).
-    Status check prevents two iPads from double-seating the same guest simultaneously."""
-    entry_res = supabase.table("queue_entries").select("name, party_size, status, restaurant_id").eq("id", entry_id).execute()
-    if not entry_res.data:
-        raise HTTPException(status_code=404, detail="Entry not found")
-    current_status = entry_res.data[0].get("status")
-    if current_status not in ("waiting", "ready"):
-        raise HTTPException(status_code=409, detail=f"Entry is already {current_status}")
-    supabase.table("queue_entries").update({"status": "seated"}).eq("id", entry_id).execute()
-    supabase.table("tables").update({"status": "occupied", "updated_at": _now()}).eq("id", table_id).execute()
-    # Track occupant in memory for cross-view sync
-    if entry_res.data:
-        e = entry_res.data[0]
-        rid = e.get("restaurant_id") or RESTAURANT_ID
-        tbl_res = supabase.table("tables").select("table_number").eq("id", table_id).execute()
-        if tbl_res.data:
-            tnum = tbl_res.data[0]["table_number"]
-            with _occupants_lock:
-                _table_occupants[f"{rid}:{tnum}"] = {"name": e.get("name") or "Guest", "party_size": e.get("party_size", 2), "entry_id": entry_id}
-    try:
-        rid_for_event = (entry_res.data[0].get("restaurant_id") if entry_res.data else None) or RESTAURANT_ID
-        supabase.table("seating_events").insert({
-            "restaurant_id": rid_for_event, "table_id": table_id,
-            "queue_entry_id": entry_id, "action": "seated",
-        }).execute()
-    except Exception:
-        pass
+    """Seat an entry at a specific table (floor-map drag-and-drop + walk-in modal).
+    Atomically claims both the entry (status='seated') AND the target table (status='occupied').
+    If the table is already occupied, the entry-claim is released so it can be re-seated."""
+    party = _claim_entry_for_seating(entry_id)
+    rid = party.get("restaurant_id") or RESTAURANT_ID
+
+    claimed_table = _claim_table_for_occupying(table_id)
+    if not claimed_table:
+        # Target table is no longer available — don't leave the entry stuck in 'seated'.
+        # If the entry was 'ready' when we claimed it, we also don't know which prior
+        # status to revert to, so default to 'waiting' and let the client re-seat.
+        _release_entry_claim(entry_id, back_to="waiting")
+        raise HTTPException(status_code=409, detail="Table already occupied")
+
+    tnum = claimed_table.get("table_number")
+    if tnum is not None:
+        _record_seating(rid, entry_id, table_id, tnum,
+                        party.get("name") or "Guest", party.get("party_size", 2))
     return {"status": "seated", "table_id": table_id}
+
+
+class WalkinAtTableRequest(BaseModel):
+    name:          Optional[str] = None
+    party_size:    int           = 2
+    phone:         Optional[str] = None
+    notes:         Optional[str] = None
+    restaurant_id: Optional[str] = None
+
+
+@app.post("/queue/walkin-at-table/{table_id}")
+def walkin_at_table(table_id: str, body: WalkinAtTableRequest):
+    """Atomically create a walk-in queue entry AND seat them at the given table in a single
+    server transaction. This replaces the two-call client flow (/queue/join then
+    /queue/{id}/seat-to-table/{table_id}) which could partial-fail and leave orphan entries.
+
+    Claim ordering: create entry as 'seated' from the start, then claim the table. If the
+    table is unavailable, mark the entry 'removed' so it doesn't pollute the queue."""
+    rid = _rid(body.restaurant_id)
+
+    # Claim the table first — fails fast if it's already occupied, no orphan entry created.
+    claimed_table = _claim_table_for_occupying(table_id)
+    if not claimed_table:
+        raise HTTPException(status_code=409, detail="Table already occupied")
+
+    tnum = claimed_table.get("table_number")
+    name = (body.name or "").strip() or "Guest"
+    party_size = max(1, int(body.party_size or 2))
+
+    # Create the entry already in 'seated' state so no other tab can also try to seat it.
+    try:
+        ins = supabase.table("queue_entries").insert({
+            "name":          name,
+            "party_size":    party_size,
+            "phone":         (body.phone or "").strip() or None,
+            "notes":         (body.notes or "").strip() or None,
+            "status":        "seated",
+            "source":        "host",
+            "restaurant_id": rid,
+            "preference":    "asap",
+        }).execute()
+    except Exception as e:
+        # Roll back the table claim — release all sibling rows so duplicates don't stay locked.
+        if tnum is not None:
+            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("restaurant_id", rid).eq("table_number", tnum).execute()
+        else:
+            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
+        raise HTTPException(status_code=500, detail=f"walkin insert failed: {e}")
+
+    if not ins.data:
+        if tnum is not None:
+            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("restaurant_id", rid).eq("table_number", tnum).execute()
+        else:
+            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
+        raise HTTPException(status_code=500, detail="walkin insert returned no data")
+
+    entry = ins.data[0]
+    entry_id = entry["id"]
+
+    if tnum is not None:
+        _record_seating(rid, entry_id, table_id, tnum, name, party_size)
+
+    return {"status": "seated", "entry": entry, "table_id": table_id, "table_number": tnum}
 
 def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
     # wait_url included once Textbelt URL sending is approved; currently omitted to ensure delivery

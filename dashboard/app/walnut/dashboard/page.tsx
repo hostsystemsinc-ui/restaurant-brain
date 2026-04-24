@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, Delete, LogIn, X } from "lucide-react"
+import { Wifi, WifiOff, RefreshCw, Users, CheckCircle2, Clock, Delete, LogIn, X, AlertTriangle, Trash2 } from "lucide-react"
 
 // Business day starts at 3am
 function getBusinessDate(): string {
@@ -706,6 +706,8 @@ export default function WalnutDashboard() {
   const [pinOk,     setPinOk]     = useState(false)
   const [activeTab, setActiveTab] = useState<0 | 1>(0)
   const [entering,  setEntering]  = useState<string | null>(null)
+  // Two-step clear confirm — { key, phase } where phase is "confirm" (showing modal) or "clearing"
+  const [clearState, setClearState] = useState<{ key: "original" | "southside"; phase: "confirm" | "clearing" } | null>(null)
   const [data, setData] = useState<[RestaurantData, RestaurantData]>([
     { tables: [], queue: [], occupants: new Map(), avgWait: 0, history: [], dailyAvgWait: null, online: true,  lastSync: new Date() },
     { tables: [], queue: [], occupants: new Map(), avgWait: 0, history: [], dailyAvgWait: null, online: true,  lastSync: new Date() },
@@ -865,6 +867,27 @@ export default function WalnutDashboard() {
     }
   }
 
+  async function handleClearDay(key: "original" | "southside") {
+    const r = RESTAURANTS.find(x => x.key === key)
+    if (!r) return
+    setClearState({ key, phase: "clearing" })
+    try {
+      const res = await fetch(`${API}/admin/clear-day?restaurant_id=${r.rid}`, { method: "POST" })
+      if (!res.ok) {
+        alert("Could not clear day — please try again.")
+        setClearState(null)
+        return
+      }
+      // Also clear the station page's local history cache so UI lines up
+      try { localStorage.removeItem(`host_history_${r.rid}`) } catch {}
+      await fetchAll()
+    } catch {
+      alert("Connection error — could not clear day.")
+    } finally {
+      setClearState(null)
+    }
+  }
+
   // ── PIN gate (always shown on load) ─────────────────────────────────────────
   if (!pinOk) return <PinScreen onSuccess={() => setPinOk(true)} />
 
@@ -981,23 +1004,42 @@ export default function WalnutDashboard() {
                 </div>
               </button>
 
-              {/* Enter station button */}
-              <button
-                onClick={() => enterRestaurant(r.key)}
-                disabled={entering === r.key}
-                style={{
-                  width: "100%", padding: "9px 0", borderRadius: 10,
-                  background: isActive ? r.color : "#F1F5F9",
-                  border: `1.5px solid ${isActive ? r.color : C.border}`,
-                  color: isActive ? "#fff" : C.text2,
-                  fontSize: 12, fontWeight: 700, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                  opacity: entering === r.key ? 0.6 : 1,
-                  transition: "background .15s, color .15s",
-                }}>
-                <LogIn size={13} />
-                {entering === r.key ? "Entering…" : `Enter ${r.short} Station`}
-              </button>
+              {/* Actions: Enter station + Clear day */}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => enterRestaurant(r.key)}
+                  disabled={entering === r.key}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 10,
+                    background: isActive ? r.color : "#F1F5F9",
+                    border: `1.5px solid ${isActive ? r.color : C.border}`,
+                    color: isActive ? "#fff" : C.text2,
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                    opacity: entering === r.key ? 0.6 : 1,
+                    transition: "background .15s, color .15s",
+                  }}>
+                  <LogIn size={13} />
+                  {entering === r.key ? "Entering…" : `Enter ${r.short} Station`}
+                </button>
+                <button
+                  onClick={() => setClearState({ key: r.key, phase: "confirm" })}
+                  disabled={clearState?.key === r.key}
+                  title={`Clear today's data for ${r.short}`}
+                  style={{
+                    padding: "9px 12px", borderRadius: 10,
+                    background: "#FEF2F2",
+                    border: `1.5px solid #FECACA`,
+                    color: C.red,
+                    fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    opacity: clearState?.key === r.key ? 0.6 : 1,
+                    whiteSpace: "nowrap",
+                  }}>
+                  <Trash2 size={13} />
+                  Clear
+                </button>
+              </div>
             </div>
           )
         })}
@@ -1055,6 +1097,61 @@ export default function WalnutDashboard() {
 
         {/* Today's guest history */}
         <DayHistory history={d.history} restaurantColor={restaurant.color} />
+
+        {/* Clear Day confirmation modal */}
+        {clearState && (() => {
+          const target = RESTAURANTS.find(x => x.key === clearState.key)
+          if (!target) return null
+          const rd = data[RESTAURANTS.findIndex(x => x.key === clearState.key) as 0 | 1]
+          const rs = stats(rd)
+          const isClearing = clearState.phase === "clearing"
+          return (
+            <div style={{
+              position: "fixed", inset: 0, zIndex: 100,
+              background: "rgba(15,23,42,0.55)", backdropFilter: "blur(4px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 20,
+            }}>
+              <div style={{
+                background: C.surface, borderRadius: 18, maxWidth: 440, width: "100%",
+                padding: "28px 28px 24px",
+                border: `1px solid ${C.border}`,
+                boxShadow: "0 20px 60px rgba(15,23,42,0.18)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: "#FEF2F2", border: "1px solid #FECACA", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <AlertTriangle size={20} style={{ color: C.red }} />
+                  </div>
+                  <div>
+                    <p style={{ fontSize: 17, fontWeight: 800, color: C.text }}>Clear today&apos;s data?</p>
+                    <p style={{ fontSize: 12, color: C.text2 }}>{target.name}</p>
+                  </div>
+                </div>
+                <p style={{ fontSize: 13, color: C.text2, lineHeight: 1.6, marginBottom: 14 }}>
+                  This will immediately mark all waiting, ready, and seated guests as <strong style={{ color: C.text }}>removed</strong>, and free every table. Use this to reset the floor before the automatic 3&nbsp;AM rollover.
+                </p>
+                <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: "10px 12px", marginBottom: 18, display: "flex", gap: 16, fontSize: 12, color: C.text2 }}>
+                  <span><strong style={{ color: C.red }}>{rs.occupied}</strong> tables seated</span>
+                  <span><strong style={{ color: C.orange }}>{rs.waiting}</strong> on waitlist</span>
+                </div>
+                <p style={{ fontSize: 11, color: C.muted, marginBottom: 18 }}>
+                  History stays intact for reporting. Nothing is permanently deleted.
+                </p>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setClearState(null)} disabled={isClearing}
+                    style={{ flex: 1, padding: "11px 0", borderRadius: 10, background: C.bg, border: `1px solid ${C.border}`, color: C.text2, fontSize: 13, fontWeight: 700, cursor: isClearing ? "default" : "pointer", opacity: isClearing ? 0.5 : 1 }}>
+                    Cancel
+                  </button>
+                  <button onClick={() => handleClearDay(clearState.key)} disabled={isClearing}
+                    style={{ flex: 1, padding: "11px 0", borderRadius: 10, background: isClearing ? "#FCA5A5" : C.red, border: "none", color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".04em", cursor: isClearing ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Trash2 size={13} />
+                    {isClearing ? "Clearing…" : `Clear ${target.short}`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Guest join links */}
         <div>

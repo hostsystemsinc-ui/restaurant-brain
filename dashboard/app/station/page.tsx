@@ -1033,26 +1033,57 @@ function TableGuestPicker({
     onClose()
   }
 
+  // Synchronous guard against double-tap — React state updates are async, so a rapid
+  // second click can fire before setSubmitting(true) renders. The ref pins the in-flight
+  // state immediately so subsequent clicks short-circuit. Without this guard we observed
+  // a walk-in getting seated at both the intended table AND an auto-picked backup.
+  const walkInInFlightRef = useRef(false)
+
   const addWalkIn = async () => {
+    if (walkInInFlightRef.current) return
+    walkInInFlightRef.current = true
     setSubmitting(true)
     try {
-      const r = await fetch(`${API}/queue/join`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() || null, party_size: partySize, phone: phone.trim() || null, preference: "asap", source: "host", restaurant_id: restaurantId }),
-      })
-      const data = await r.json()
-      const entryId = data.entry?.id
-      if (entryId) {
-        if (tableId) {
-          await fetch(`${API}/queue/${entryId}/seat-to-table/${tableId}`, { method: "POST" })
-        } else {
-          await fetch(`${API}/queue/${entryId}/seat`, { method: "POST" })
+      if (tableId) {
+        // Atomic server-side create+seat so there's no window between join and seat
+        // where another refresh/poll could see an unseated entry and trigger auto-seat.
+        const r = await fetch(`${API}/queue/walkin-at-table/${tableId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name.trim() || null,
+            party_size: partySize,
+            phone: phone.trim() || null,
+            restaurant_id: restaurantId,
+          }),
+        })
+        if (r.ok) {
+          const data = await r.json()
+          const entryId = data.entry?.id
+          if (entryId) {
+            onSeated(tableNumber, { name: name.trim() || "Guest", party_size: partySize, entry_id: entryId })
+            onClose()
+          }
         }
-        onSeated(tableNumber, { name: name.trim() || "Guest", party_size: partySize, entry_id: entryId })
-        onClose()
+        // 409 means someone else grabbed this table between open and submit — the caller's
+        // refreshAll will repaint the floor map with the real state. Modal stays open.
+      } else {
+        // Fallback path (shouldn't happen in the table-tap flow — tableId is always set there)
+        const r = await fetch(`${API}/queue/join`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim() || null, party_size: partySize, phone: phone.trim() || null, preference: "asap", source: "host", restaurant_id: restaurantId }),
+        })
+        const data = await r.json()
+        const entryId = data.entry?.id
+        if (entryId) {
+          await fetch(`${API}/queue/${entryId}/seat`, { method: "POST" })
+          onSeated(tableNumber, { name: name.trim() || "Guest", party_size: partySize, entry_id: entryId })
+          onClose()
+        }
       }
     } catch {}
+    walkInInFlightRef.current = false
     setSubmitting(false)
   }
 
@@ -1795,6 +1826,8 @@ export default function HostDashboard() {
   const refreshAll = useCallback(async () => {
     if (fetchingRef.current) return
     fetchingRef.current = true
+    // Captured inside the try so the occupants block can cross-check against live DB table status
+    let dbOccupiedNums: Set<number> = new Set()
     try {
       const rid = restaurantId
       const [stateRes, occupantsRes] = await Promise.all([
@@ -1807,6 +1840,15 @@ export default function HostDashboard() {
         // If any table clears are still in-flight, don't let the server response
         // revert them back to "occupied" — that's what causes a guest to appear on 2 tables.
         const serverTables: Table[] = d.tables ?? []
+        // Build the DB-occupancy set BEFORE the occupants block runs so we can use it as a
+        // safety net against evicting names when /tables/occupants briefly returns empty
+        // (e.g. during the Railway restart → seed-thread window).
+        dbOccupiedNums = new Set(
+          serverTables
+            .filter(t => t.status !== "available")
+            .map(t => typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10))
+            .filter(n => !isNaN(n))
+        )
         setTables(prev => {
           if (pendingClearsRef.current.size === 0) return serverTables
           return serverTables.map(t =>
@@ -1836,15 +1878,26 @@ export default function HostDashboard() {
       if (occupantsRes && occupantsRes.ok) {
         const raw = await occupantsRes.json() as Record<string, { name: string; party_size: number; entry_id?: string }>
         const serverOccupiedNums = new Set(Object.keys(raw).map(k => parseInt(k, 10)))
+
+        // SAFETY NET against stale-empty /tables/occupants responses (seen during Railway
+        // restart window): if the DB still marks tables as occupied, trust the DB for
+        // eviction decisions even when the in-memory response was empty. Otherwise we
+        // would evict all local names on refresh after a deploy, until _seed_table_occupants
+        // finishes and the next poll arrives — during which the iPad shows an empty floor.
+        // Note: pendingClearsRef is still the ground truth for clears in flight; we only
+        // use DB status to REFUSE eviction, never to force-occupy.
+        const evictable = (num: number): boolean => {
+          if (pendingClearsRef.current.has(num)) return false
+          if (pendingOccupiesRef.current.has(num)) return false
+          if (serverOccupiedNums.has(num)) return false
+          if (dbOccupiedNums.has(num))    return false
+          return true
+        }
+
         // Server confirmed these are free — stop protecting them AND drop forceAvailable.
-        // locallyAvailableTables lifetime is EXACTLY pendingClearsRef lifetime:
-        // both are added together (clearTable / move source) and removed together here.
-        // This prevents the race where a status-based cleanup loop fires on source tables
-        // while their clear is still in-flight (server still says "occupied") and
-        // incorrectly removes forceAvailable, causing the table to flicker or lock red.
         const confirmedFree: number[] = []
         pendingClearsRef.current.forEach(num => {
-          if (!serverOccupiedNums.has(num)) {
+          if (!serverOccupiedNums.has(num) && !dbOccupiedNums.has(num)) {
             pendingClearsRef.current.delete(num)
             confirmedFree.push(num)
           }
@@ -1859,7 +1912,7 @@ export default function HostDashboard() {
         }
         // Server confirmed these are occupied — the occupy call landed, safe to stop protecting
         pendingOccupiesRef.current.forEach(num => {
-          if (serverOccupiedNums.has(num)) pendingOccupiesRef.current.delete(num)
+          if (serverOccupiedNums.has(num) || dbOccupiedNums.has(num)) pendingOccupiesRef.current.delete(num)
         })
         setLocalOccupants(prev => {
           const next = new Map(prev)
@@ -1870,14 +1923,9 @@ export default function HostDashboard() {
               next.set(num, { name: occ.name || "Guest", party_size: occ.party_size || 2, entry_id: occ.entry_id })
             }
           }
-          // Server-authoritative removal: evict any local entry the server says is gone
-          // and no in-flight operation is protecting it.
-          // pendingClearsRef and pendingOccupiesRef guard in-flight operations so the
-          // removal loop never fires on a table whose API call is still in transit.
+          // Server-authoritative removal, guarded by DB cross-check above.
           next.forEach((_, num) => {
-            if (!serverOccupiedNums.has(num) && !pendingClearsRef.current.has(num) && !pendingOccupiesRef.current.has(num)) {
-              next.delete(num)
-            }
+            if (evictable(num)) next.delete(num)
           })
           return next
         })
