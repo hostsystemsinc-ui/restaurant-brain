@@ -834,8 +834,17 @@ def admin_clear_day(restaurant_id: Optional[str] = None):
         the history tab still shows who was seated today. Only the 3am rollover + the
         owner's /owner/analytics/clear hard-delete remove rows.
     """
+    from datetime import timedelta
     rid = _rid(restaurant_id)
-    counts = {"queue_entries_updated": 0, "tables_reset": 0, "occupants_dropped": 0}
+    counts = {"queue_entries_updated": 0, "tables_reset": 0, "occupants_dropped": 0, "history_deleted": 0}
+
+    # Business-day window (3am cutoff) — we hard-delete today's guest log rows so the
+    # "history" view in the station/admin UI reads empty after a clear. Older days stay
+    # intact for analytics.
+    now = datetime.now(timezone.utc)
+    bd_start = now.replace(hour=3, minute=0, second=0, microsecond=0)
+    if now.hour < 3:
+        bd_start -= timedelta(days=1)
 
     # 1. Drop all active queue entries (waiting/ready/seated) to 'removed'. "Seated" entries
     # are included because they represent guests currently at tables; after a clear those
@@ -852,6 +861,20 @@ def admin_clear_day(restaurant_id: Optional[str] = None):
         counts["queue_entries_updated"] = len(upd.data or [])
     except Exception as e:
         print(f"[admin/clear-day] queue update failed for {rid}: {e}")
+
+    # 1b. Hard-delete today's guest log entries so the history view empties out. We keep
+    # older days untouched — analytics/owner exports still see them.
+    try:
+        dele = (
+            supabase.table("queue_entries")
+            .delete()
+            .eq("restaurant_id", rid)
+            .gte("arrival_time", bd_start.isoformat())
+            .execute()
+        )
+        counts["history_deleted"] = len(dele.data or [])
+    except Exception as e:
+        print(f"[admin/clear-day] history delete failed for {rid}: {e}")
 
     # 2. Mark every table as available. Not conditional — we want every table free
     # regardless of its current state.
@@ -1233,24 +1256,42 @@ def walkin_at_table(table_id: str, body: WalkinAtTableRequest):
     party_size = max(1, int(body.party_size or 2))
 
     # Create the entry already in 'seated' state so no other tab can also try to seat it.
+    # `preference` is optional — some Supabase schemas don't have that column. If the first
+    # insert fails because of a missing column, retry without it. Same graceful-degrade
+    # pattern join_queue uses for `quoted_wait_set_at`.
+    base_walkin = {
+        "name":          name,
+        "party_size":    party_size,
+        "phone":         (body.phone or "").strip() or None,
+        "notes":         (body.notes or "").strip() or None,
+        "status":        "seated",
+        "source":        "host",
+        "restaurant_id": rid,
+        "preference":    "asap",
+    }
+    ins = None
     try:
-        ins = supabase.table("queue_entries").insert({
-            "name":          name,
-            "party_size":    party_size,
-            "phone":         (body.phone or "").strip() or None,
-            "notes":         (body.notes or "").strip() or None,
-            "status":        "seated",
-            "source":        "host",
-            "restaurant_id": rid,
-            "preference":    "asap",
-        }).execute()
+        ins = supabase.table("queue_entries").insert(base_walkin).execute()
     except Exception as e:
-        # Roll back the table claim — release all sibling rows so duplicates don't stay locked.
-        if tnum is not None:
-            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("restaurant_id", rid).eq("table_number", tnum).execute()
+        # Retry without `preference` (and any other optional columns) if the column is missing.
+        if "preference" in str(e).lower() or "column" in str(e).lower():
+            retry_walkin = {k: v for k, v in base_walkin.items() if k != "preference"}
+            try:
+                ins = supabase.table("queue_entries").insert(retry_walkin).execute()
+            except Exception as e2:
+                # Roll back the table claim — release all sibling rows so duplicates don't stay locked.
+                if tnum is not None:
+                    supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("restaurant_id", rid).eq("table_number", tnum).execute()
+                else:
+                    supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
+                raise HTTPException(status_code=500, detail=f"walkin insert failed (retry): {e2}")
         else:
-            supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
-        raise HTTPException(status_code=500, detail=f"walkin insert failed: {e}")
+            # Non-schema error — roll back and surface.
+            if tnum is not None:
+                supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("restaurant_id", rid).eq("table_number", tnum).execute()
+            else:
+                supabase.table("tables").update({"status": "available", "updated_at": _now()}).eq("id", table_id).execute()
+            raise HTTPException(status_code=500, detail=f"walkin insert failed: {e}")
 
     if not ins.data:
         if tnum is not None:

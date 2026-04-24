@@ -418,18 +418,24 @@ function DraggableQueueCard({
           </div>
 
           {/* ── Row 2: meta info ── */}
-          <div style={{ paddingLeft: 38, paddingRight: 4, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          {/* whiteSpace:nowrap on each span + overflow:hidden + minWidth:0 lets items
+              shrink away rather than wrap under the +5 min button at narrow sidebar widths.
+              Without this, `~14m left` wrapped to a second line and overlapped the button. */}
+          <div style={{ paddingLeft: 38, paddingRight: 4, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)", minWidth: 0, overflow: "hidden" }}>
+            <span style={{ display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap", flexShrink: 0 }}>
               <Users className="w-2.5 h-2.5" />{entry.party_size}p
             </span>
-            <span style={{ color: "var(--bdr-15)" }}>·</span>
-            <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }}>
-              <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
+            {/* grey elapsed + its leading divider collapse together when space is tight,
+                so the yellow "time left" stays visible (user-requested priority). */}
+            <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap", overflow: "hidden", minWidth: 0, flexShrink: 1 }}>
+              <span style={{ color: "var(--bdr-15)" }}>·</span>
+              <Clock className="w-2.5 h-2.5 shrink-0" />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{timeWaiting(entry.arrival_time)}</span>
             </span>
             {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
               <>
-                <span style={{ color: "var(--bdr-15)" }}>·</span>
-                <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
+                <span style={{ color: "var(--bdr-15)", flexShrink: 0 }}>·</span>
+                <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em", whiteSpace: "nowrap", flexShrink: 0 }}>
                   {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
                 </span>
                 {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
@@ -588,6 +594,11 @@ function DroppableFloorTable({
   const hasLocalOccupant = !!occupant
   // When dragging an occupant, allow dropping on any table without a local occupant
   const canReceiveDrop = isDraggingOccupant ? !hasLocalOccupant : !isOccupied
+  // `noTable` previously drove a grey "missing" visual whenever the DB row hadn't loaded
+  // yet — that caused the "first 3 go green, rest stay grey for a couple seconds after
+  // refresh" flash on initial page load. The 16-tile FLOOR_PLAN is the source of truth
+  // for which tables exist; the DB row only carries id/capacity/status. So while the
+  // DB data is still in-flight, render as available (green) rather than grey.
   const noTable = !table
   const avail = !isOccupied
 
@@ -616,12 +627,13 @@ function DroppableFloorTable({
 
   const isSelectTarget = !!isSelectMode && !isOccupied
 
+  // `noTable` falls through to available styling so the floor never flashes grey while
+  // /state is still in flight on initial load.
   const bg = isOver && canReceiveDrop
     ? "var(--table-over-bg)"
     : isSelectTarget
     ? "var(--table-select-bg)"
     : isOccupied ? "var(--table-occ-bg)"
-    : noTable ? "var(--table-none-bg)"
     : "var(--table-avail-bg)"
 
   const borderColor = isOver && canReceiveDrop
@@ -629,7 +641,6 @@ function DroppableFloorTable({
     : isSelectTarget
     ? "var(--table-select-border)"
     : isOccupied ? "var(--table-occ-border)"
-    : noTable ? "var(--table-none-border)"
     : "var(--table-avail-border)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
@@ -681,7 +692,7 @@ function DroppableFloorTable({
         right: pos.shape === "round" ? "18%" : 7,
         width: 6, height: 6,
         borderRadius: "50%",
-        background: noTable ? "var(--table-none-dot)" : isOccupied ? "rgba(239,68,68,0.70)" : "#22c55e",
+        background: isOccupied ? "rgba(239,68,68,0.70)" : "#22c55e",
         opacity: 0.85,
       }} />
 
@@ -718,7 +729,7 @@ function DroppableFloorTable({
           <span style={{
             fontSize: pos.shape === "rect" ? 17 : 14,
             fontWeight: 800,
-            color: table ? "var(--table-avail-num)" : "var(--text-muted)",
+            color: "var(--table-avail-num)",
           }}>
             {pos.number}
           </span>
@@ -750,7 +761,17 @@ function FloorMap({
   isTableMoveMode?: boolean
   onCancelTableMove?: () => void
 }) {
-  const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
+  // Coerce table_number to numeric when indexing — Supabase can return it as a string,
+  // and a string/number mismatch here would make `.get(pos.number)` miss and render the
+  // tile as "grey/no-table". That was the root cause of "first 3 go green, rest stay
+  // grey until I refresh a couple times" — the ones that matched happened to be whatever
+  // type the dedup pass happened to preserve. Always-numeric keys kill this class of bug.
+  const tableByNumber = new Map(
+    tables.map(t => {
+      const n = typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10)
+      return [n, t] as const
+    })
+  )
 
   return (
     <div
@@ -1022,6 +1043,7 @@ function TableGuestPicker({
   const [partySize,  setPartySize]  = useState(2)
   const [phone,      setPhone]      = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
 
   const seatGuest = async (entry: QueueEntry) => {
     if (tableId) {
@@ -1043,6 +1065,12 @@ function TableGuestPicker({
     if (walkInInFlightRef.current) return
     walkInInFlightRef.current = true
     setSubmitting(true)
+    // Surface-level errors to the user so "click does nothing" cannot happen silently.
+    // Previously, a failed request (404 on undefined tableId, 409 on stale occupied, network
+    // error) would end with the modal still open and no feedback — indistinguishable from
+    // "the button is broken". Now every failure ends with either the modal closing on
+    // success, or an inline error message telling the user what happened.
+    setError(null)
     try {
       if (tableId) {
         // Atomic server-side create+seat so there's no window between join and seat
@@ -1063,26 +1091,22 @@ function TableGuestPicker({
           if (entryId) {
             onSeated(tableNumber, { name: name.trim() || "Guest", party_size: partySize, entry_id: entryId })
             onClose()
+          } else {
+            setError("Server accepted the seat but returned no entry — refreshing.")
           }
+        } else if (r.status === 409) {
+          setError(`Table ${tableNumber} was just taken. Refresh and try again.`)
+        } else {
+          const detail = await r.text().catch(() => "")
+          setError(`Couldn't seat at Table ${tableNumber} (${r.status}). ${detail.slice(0, 120)}`)
         }
-        // 409 means someone else grabbed this table between open and submit — the caller's
-        // refreshAll will repaint the floor map with the real state. Modal stays open.
       } else {
-        // Fallback path (shouldn't happen in the table-tap flow — tableId is always set there)
-        const r = await fetch(`${API}/queue/join`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim() || null, party_size: partySize, phone: phone.trim() || null, preference: "asap", source: "host", restaurant_id: restaurantId }),
-        })
-        const data = await r.json()
-        const entryId = data.entry?.id
-        if (entryId) {
-          await fetch(`${API}/queue/${entryId}/seat`, { method: "POST" })
-          onSeated(tableNumber, { name: name.trim() || "Guest", party_size: partySize, entry_id: entryId })
-          onClose()
-        }
+        // No tableId resolved — refuse and tell the user, instead of firing a bogus request.
+        setError(`Couldn't identify Table ${tableNumber}. Refresh the page and try again.`)
       }
-    } catch {}
+    } catch (e) {
+      setError(`Network error seating at Table ${tableNumber}. ${e instanceof Error ? e.message : ""}`)
+    }
     walkInInFlightRef.current = false
     setSubmitting(false)
   }
@@ -1197,6 +1221,12 @@ function TableGuestPicker({
               style={{ fontSize: 17, padding: "22px 0", background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}>
               {submitting ? "Seating…" : `Seat at Table ${tableNumber}`}
             </button>
+            {error && (
+              <div className="rounded-xl px-3 py-2 text-sm"
+                style={{ background: "rgba(239,68,68,0.10)", color: "rgba(239,68,68,0.9)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                {error}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1839,14 +1869,22 @@ export default function HostDashboard() {
         setQueue(d.queue ?? [])
         // If any table clears are still in-flight, don't let the server response
         // revert them back to "occupied" — that's what causes a guest to appear on 2 tables.
-        const serverTables: Table[] = d.tables ?? []
+        // Normalize table_number to a real integer on ingress. Supabase returns the column
+        // as a string in some responses, and downstream code uses `=== sourceTable` / `=== targetTable`
+        // with numeric values — a string/number mismatch silently failed `tables.find()`, which
+        // caused queue drops to fall through to auto-pick (landing at table 3) and table-to-table
+        // moves to skip the source-clear API call (leaving the guest at two tables).
+        const serverTables: Table[] = (d.tables ?? []).map((t: Table) => ({
+          ...t,
+          table_number: typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10),
+        }))
         // Build the DB-occupancy set BEFORE the occupants block runs so we can use it as a
         // safety net against evicting names when /tables/occupants briefly returns empty
         // (e.g. during the Railway restart → seed-thread window).
         dbOccupiedNums = new Set(
           serverTables
             .filter(t => t.status !== "available")
-            .map(t => typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10))
+            .map(t => t.table_number)
             .filter(n => !isNaN(n))
         )
         setTables(prev => {
@@ -2606,7 +2644,21 @@ export default function HostDashboard() {
                   return
                 }
                 if (selectedEntry) return
-                setTableTapModal({ tableNumber, tableId, capacity })
+                // Resolve tableId fresh from current tables state as a fallback — the captured
+                // `tableId` can be undefined if the tile rendered grey (tableByNumber miss).
+                // Without this, the walk-in POST would go to `/queue/walkin-at-table/undefined`
+                // and fail silently, which is "click does nothing" from the user's view.
+                const resolvedId = tableId
+                  ?? tables.find(t => {
+                    const n = typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10)
+                    return n === tableNumber
+                  })?.id
+                const resolvedCap = capacity
+                  ?? tables.find(t => {
+                    const n = typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10)
+                    return n === tableNumber
+                  })?.capacity
+                setTableTapModal({ tableNumber, tableId: resolvedId, capacity: resolvedCap })
               }}
               locallyAvailableTables={locallyAvailableTables}
               isTableMoveMode={!!pendingTableMove}

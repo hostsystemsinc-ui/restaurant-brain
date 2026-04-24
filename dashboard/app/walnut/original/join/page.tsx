@@ -327,9 +327,14 @@ function WalnutMenuDrawer({ onClose }: { onClose: () => void }) {
         <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" as never, padding: "8px 0 40px" }}>
           {category.sections.map((section, si) => (
             <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.35s ${si * 0.05}s ease-out both` }}>
-              <p style={{ fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginBottom: 14 }}>
+              <p style={{ fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginBottom: section.subtitle ? 6 : 14 }}>
                 {section.title}
               </p>
+              {section.subtitle && (
+                <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.42)", lineHeight: 1.5, marginBottom: 14, fontStyle: "italic" }}>
+                  {section.subtitle}
+                </p>
+              )}
               {section.items.map((item, ii) => (
                 <div key={item.name}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
@@ -337,9 +342,11 @@ function WalnutMenuDrawer({ onClose }: { onClose: () => void }) {
                       <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: item.desc ? 3 : 0 }}>{item.name}</p>
                       {item.desc && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.desc}</p>}
                     </div>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap" as never, marginTop: 2, flexShrink: 0 }}>
-                      {item.price}
-                    </p>
+                    {item.price && (
+                      <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap" as never, marginTop: 2, flexShrink: 0 }}>
+                        {item.price}
+                      </p>
+                    )}
                   </div>
                   {ii < section.items.length - 1 && (
                     <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />

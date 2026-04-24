@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import {
   Plus, Minus, Bell, Pause, Play,
-  ChevronLeft, Check, X, Palette,
+  ChevronLeft, Check, X, Palette, Move,
 } from "lucide-react"
 
 const API          = "https://restaurant-brain-production.up.railway.app"
@@ -152,6 +152,232 @@ interface RestaurantConfig {
   logoUrl?: string
 }
 
+// ── Table picker (seat / move / clear) ─────────────────────────────────────────
+// Used by the analog page for any action that targets a specific table:
+//   - Seating a waiting guest at a chosen table (replaces the auto-pick flow).
+//   - Moving an already-seated guest to a different table.
+//   - Clearing (removing) the current occupant of a table.
+// The tile grid mirrors the station floor map at a glance but is tuned for a tablet:
+// big tap targets, state-colored (green=available, red=occupied), occupant name visible.
+
+interface TileOcc { name: string; party_size: number; entry_id?: string }
+
+function TablePicker({
+  mode,
+  rid,
+  apiBase,
+  sourceTableId,
+  label,
+  onDone,
+  onCancel,
+}: {
+  mode: "seat" | "move"
+  rid: string
+  apiBase: string
+  // for move mode: the table_id the guest is currently at, so we can clear it after the destination
+  // accepts a clear/occupy change. omitted for "seat".
+  sourceTableId?: string
+  label: string
+  onDone: (targetTable: { id: string; number: number }) => void
+  onCancel: () => void
+}) {
+  const [tables,    setTables]    = useState<Table[]>([])
+  const [occupants, setOccupants] = useState<Record<string, TileOcc>>({})
+  const [busy,      setBusy]      = useState(false)
+  const [error,     setError]     = useState<string | null>(null)
+  // When the user taps an occupied table, we offer a choice between "Clear" and "Move".
+  // Move flips the picker into a sub-mode where the NEXT tap targets the move destination.
+  const [occupiedAction, setOccupiedAction] = useState<{ table: Table; occ: TileOcc } | null>(null)
+  const [pendingMove,    setPendingMove]    = useState<{ fromTable: Table; occ: TileOcc } | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      const [tRes, oRes] = await Promise.all([
+        fetch(`${apiBase}/state?restaurant_id=${rid}`),
+        fetch(`${apiBase}/tables/occupants?restaurant_id=${rid}`),
+      ])
+      if (tRes.ok) {
+        const d = await tRes.json()
+        // Normalize table_number — Supabase returns it as a string in some responses.
+        const normalized: Table[] = (d.tables ?? []).map((t: Table) => ({
+          ...t,
+          table_number: typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10),
+        }))
+        setTables(normalized)
+      }
+      if (oRes.ok) setOccupants(await oRes.json())
+    } catch {}
+  }, [apiBase, rid])
+
+  useEffect(() => { refresh(); const t = setInterval(refresh, 2000); return () => clearInterval(t) }, [refresh])
+
+  const handleTap = async (t: Table) => {
+    if (busy) return
+    const occ = occupants[String(t.table_number)]
+
+    // If we're mid-way through a "move an existing occupant" sub-flow, the NEXT tap is the
+    // destination. Only allow available tiles to be the destination.
+    if (pendingMove) {
+      if (occ) {
+        setError(`Table ${t.table_number} is already occupied — pick an empty table.`)
+        return
+      }
+      setBusy(true); setError(null)
+      try {
+        // Clear the source, occupy the destination. Non-atomic but simple.
+        await fetch(`${apiBase}/tables/${pendingMove.fromTable.id}/clear`, { method: "POST" }).catch(() => {})
+        const r = await fetch(`${apiBase}/tables/${t.id}/occupy`, { method: "POST" })
+        if (!r.ok) throw new Error(`occupy failed (${r.status})`)
+        // Re-link the queue entry to the new table so /tables/occupants shows the name here.
+        if (pendingMove.occ.entry_id) {
+          await fetch(`${apiBase}/queue/${pendingMove.occ.entry_id}/seat-to-table/${t.id}`, { method: "POST" }).catch(() => {})
+        }
+        setPendingMove(null)
+        await refresh()
+      } catch (e) {
+        setError(`Couldn't move to Table ${t.table_number}. ${e instanceof Error ? e.message : ""}`)
+      }
+      setBusy(false)
+      return
+    }
+
+    if (occ) {
+      // Offer Clear or Move for occupied tiles.
+      setOccupiedAction({ table: t, occ })
+      return
+    }
+    // Available — execute the mode action.
+    setBusy(true)
+    setError(null)
+    try {
+      if (mode === "move" && sourceTableId) {
+        // Clear source first, then occupy target. Non-atomic but simple; server /occupy is
+        // sibling-safe on table_number so a stale source won't block the target.
+        await fetch(`${apiBase}/tables/${sourceTableId}/clear`, { method: "POST" }).catch(() => {})
+        const r = await fetch(`${apiBase}/tables/${t.id}/occupy`, { method: "POST" })
+        if (!r.ok) throw new Error(`occupy failed (${r.status})`)
+      }
+      onDone({ id: t.id, number: t.table_number })
+    } catch (e) {
+      setError(`Couldn't use Table ${t.table_number}. ${e instanceof Error ? e.message : ""}`)
+      setBusy(false)
+    }
+  }
+
+  const doClear = async () => {
+    if (!occupiedAction) return
+    const { table } = occupiedAction
+    setBusy(true); setError(null)
+    try {
+      const r = await fetch(`${apiBase}/tables/${table.id}/clear`, { method: "POST" })
+      if (!r.ok) throw new Error(`clear failed (${r.status})`)
+      setOccupiedAction(null)
+      await refresh()
+    } catch (e) {
+      setError(`Couldn't clear Table ${table.table_number}. ${e instanceof Error ? e.message : ""}`)
+    }
+    setBusy(false)
+  }
+
+  const startMove = () => {
+    if (!occupiedAction) return
+    setPendingMove({ fromTable: occupiedAction.table, occ: occupiedAction.occ })
+    setOccupiedAction(null)
+  }
+
+  const rendered = tables.length > 0
+    ? [...tables].sort((a, b) => a.table_number - b.table_number)
+    : []
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 250, background: "rgba(0,0,0,0.58)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center" }} onPointerDown={onCancel}>
+      <div style={{ width: "min(640px, 96vw)", maxHeight: "90vh", overflow: "auto", background: "white", borderRadius: 20, padding: 22, boxShadow: "0 20px 60px rgba(0,0,0,0.35)" }} onPointerDown={e => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <p style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#111" }}>{label}</p>
+          <button onPointerDown={onCancel} style={{ width: 36, height: 36, borderRadius: 10, border: "1px solid rgba(0,0,0,0.10)", background: "white", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(0,0,0,0.55)" }}>
+            <X style={{ width: 16, height: 16 }} />
+          </button>
+        </div>
+        <p style={{ margin: "0 0 16px", fontSize: 12, color: "rgba(0,0,0,0.52)" }}>
+          {pendingMove
+            ? `Moving ${pendingMove.occ.name || "guest"} from Table ${pendingMove.fromTable.table_number} — tap an empty table.`
+            : `Tap an available table to ${mode === "move" ? "move here" : "seat"}. Tap an occupied table to move or clear that guest.`}
+        </p>
+
+        {pendingMove && (
+          <button onPointerDown={() => setPendingMove(null)} style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(0,0,0,0.04)", color: "rgba(0,0,0,0.65)", fontSize: 12, cursor: "pointer" }}>
+            Cancel move
+          </button>
+        )}
+
+        {rendered.length === 0 ? (
+          <p style={{ textAlign: "center", padding: 20, color: "rgba(0,0,0,0.45)" }}>Loading tables…</p>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+            {rendered.map(t => {
+              const occ = occupants[String(t.table_number)]
+              const isOccupied = !!occ
+              return (
+                <button key={t.id}
+                  disabled={busy}
+                  onPointerDown={() => handleTap(t)}
+                  style={{
+                    aspectRatio: "1/1", borderRadius: 14, padding: 8,
+                    background: isOccupied ? "rgba(239,68,68,0.10)" : "rgba(34,197,94,0.10)",
+                    border: `1.5px solid ${isOccupied ? "rgba(239,68,68,0.45)" : "rgba(34,197,94,0.45)"}`,
+                    cursor: busy ? "wait" : "pointer", touchAction: "manipulation",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    gap: 4, opacity: busy ? 0.55 : 1,
+                  }}
+                >
+                  <span style={{ fontSize: 22, fontWeight: 800, color: isOccupied ? "#991b1b" : "#166534" }}>{t.table_number}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", color: isOccupied ? "rgba(153,27,27,0.75)" : "rgba(22,101,52,0.70)" }}>
+                    {t.capacity}p
+                  </span>
+                  {isOccupied && (
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "rgba(153,27,27,0.82)", textAlign: "center", lineHeight: 1.1, marginTop: 2, padding: "0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+                      {occ.name}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 10, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#991b1b", fontSize: 12 }}>
+            {error}
+          </div>
+        )}
+
+        {/* Occupied-table action sheet — shown when user taps a red tile. */}
+        {occupiedAction && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 260, background: "rgba(0,0,0,0.40)", display: "flex", alignItems: "flex-end", justifyContent: "center" }} onPointerDown={() => setOccupiedAction(null)}>
+            <div style={{ width: "min(480px, 96vw)", background: "white", borderRadius: "22px 22px 0 0", padding: "22px 22px 34px" }} onPointerDown={e => e.stopPropagation()}>
+              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: "rgba(0,0,0,0.55)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                Table {occupiedAction.table.table_number} · {occupiedAction.occ.name || "Guest"}
+              </p>
+              <p style={{ margin: "0 0 18px", fontSize: 16, fontWeight: 700, color: "#111" }}>What do you want to do?</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button onPointerDown={startMove} style={{ height: 60, borderRadius: 14, border: "none", background: "rgba(59,130,246,0.92)", color: "white", fontSize: 16, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, touchAction: "manipulation" }}>
+                  <Move style={{ width: 20, height: 20 }} />Move to another table
+                </button>
+                <button onPointerDown={doClear} style={{ height: 60, borderRadius: 14, border: "none", background: "rgba(239,68,68,0.92)", color: "white", fontSize: 16, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, touchAction: "manipulation" }}>
+                  <X style={{ width: 20, height: 20 }} />Remove guest (clear table)
+                </button>
+                <button onPointerDown={() => setOccupiedAction(null)} style={{ height: 40, borderRadius: 10, border: "1px solid rgba(0,0,0,0.10)", background: "rgba(0,0,0,0.03)", color: "rgba(0,0,0,0.50)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function AnalogPage() {
@@ -193,6 +419,12 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
   })
   const [confirmFor,    setConfirmFor]    = useState<string | null>(null)
   const [toast,         setToast]         = useState<string | null>(null)
+  // Table picker modal state — drives seat-at-specific-table and move-guest flows.
+  const [tablePicker,   setTablePicker]   = useState<
+    | { mode: "seat"; localId: string }
+    | { mode: "move"; localId: string; sourceTableId?: string }
+    | null
+  >(null)
   const [zoom,          setZoom]          = useState(() => {
     try { const s = localStorage.getItem(ZOOM_KEY); if (s) return parseFloat(s) || 1.0 } catch {}
     return 1.0
@@ -781,7 +1013,7 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
             <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "rgba(0,0,0,0.40)", letterSpacing: "0.04em", textTransform: "uppercase" }}>{confirmRow.name || "Guest"} · Party of {confirmRow.partySize}</p>
             <p style={{ margin: "0 0 24px", fontSize: 19, fontWeight: 700, color: "#111" }}>Seat or mark as left?</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <button onPointerDown={() => confirmAction(confirmFor, "seat")} style={{ height: 68, borderRadius: 18, border: "none", cursor: "pointer", fontSize: 18, fontWeight: 800, background: "rgba(34,197,94,0.88)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: "0 4px 16px rgba(34,197,94,0.28)", touchAction: "manipulation" }}>
+              <button onPointerDown={() => { if (confirmFor) { setTablePicker({ mode: "seat", localId: confirmFor }); setConfirmFor(null) } }} style={{ height: 68, borderRadius: 18, border: "none", cursor: "pointer", fontSize: 18, fontWeight: 800, background: "rgba(34,197,94,0.88)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: "0 4px 16px rgba(34,197,94,0.28)", touchAction: "manipulation" }}>
                 <Check style={{ width: 22, height: 22 }} />Seat Guest
               </button>
               <button onPointerDown={() => confirmAction(confirmFor, "left")} style={{ height: 68, borderRadius: 18, border: "none", cursor: "pointer", fontSize: 18, fontWeight: 800, background: "rgba(239,68,68,0.88)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: "0 4px 16px rgba(239,68,68,0.20)", touchAction: "manipulation" }}>
@@ -791,6 +1023,56 @@ function AnalogBoard({ config }: { config: RestaurantConfig }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Table picker — seats at specific table or moves a seated guest */}
+      {tablePicker && (
+        <TablePicker
+          mode={tablePicker.mode}
+          rid={rid}
+          apiBase={API}
+          sourceTableId={tablePicker.mode === "move" ? tablePicker.sourceTableId : undefined}
+          label={tablePicker.mode === "move" ? "Move guest to which table?" : "Seat guest at which table?"}
+          onCancel={() => setTablePicker(null)}
+          onDone={async (target) => {
+            const localId = tablePicker.localId
+            const row     = rows.find(r => r.localId === localId)
+            const picker  = tablePicker
+            setTablePicker(null)
+            if (!row) return
+            if (picker.mode === "seat") {
+              // Mark seated locally for immediate feedback; server call commits.
+              patchRow(localId, { status: "seated", seatedMs: Date.now() })
+              try {
+                if (row.queueEntryId) {
+                  await fetch(`${API}/queue/${row.queueEntryId}/seat-to-table/${target.id}`, { method: "POST" })
+                } else {
+                  // Row never made it to the server queue (no quote set). Fall back to walk-in
+                  // atomic-seat which creates + seats in one call.
+                  const r = await fetch(`${API}/queue/walkin-at-table/${target.id}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: row.name.trim() || "Guest", party_size: row.partySize, phone: row.phone.trim() || null, restaurant_id: rid }),
+                  })
+                  if (r.ok) {
+                    const d = await r.json()
+                    if (d.entry?.id) patchRow(localId, { queueEntryId: d.entry.id })
+                  }
+                }
+                showToast(`${row.name || "Guest"} seated at Table ${target.number}`)
+              } catch {
+                showToast("Seat request failed")
+              }
+            } else {
+              // Move flow: the picker already cleared the source and occupied the target.
+              // Persist the guest's seat-to-table so /tables/occupants reflects the new seat.
+              if (row.queueEntryId) {
+                try { await fetch(`${API}/queue/${row.queueEntryId}/seat-to-table/${target.id}`, { method: "POST" }) } catch {}
+              }
+              showToast(`${row.name || "Guest"} moved to Table ${target.number}`)
+            }
+          }}
+        />
       )}
 
       {/* Toast */}
