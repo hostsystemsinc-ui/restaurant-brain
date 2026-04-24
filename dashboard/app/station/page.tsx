@@ -1839,14 +1839,21 @@ export default function HostDashboard() {
         setQueue(d.queue ?? [])
         // If any table clears are still in-flight, don't let the server response
         // revert them back to "occupied" — that's what causes a guest to appear on 2 tables.
-        const serverTables: Table[] = d.tables ?? []
+        // Normalize table_number to a real integer on ingress. Supabase can return it as a
+        // string, and later code uses `=== (number)` comparisons — a silent type mismatch
+        // made `tables.find(t => t.table_number === 8)` fail and auto-picked a different
+        // table during queue-drag, producing the "lands at 11 instead of 8" bug.
+        const serverTables: Table[] = (d.tables ?? []).map((t: Table) => ({
+          ...t,
+          table_number: typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10),
+        }))
         // Build the DB-occupancy set BEFORE the occupants block runs so we can use it as a
         // safety net against evicting names when /tables/occupants briefly returns empty
         // (e.g. during the Railway restart → seed-thread window).
         dbOccupiedNums = new Set(
           serverTables
             .filter(t => t.status !== "available")
-            .map(t => typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10))
+            .map(t => t.table_number)
             .filter(n => !isNaN(n))
         )
         setTables(prev => {
@@ -1990,12 +1997,6 @@ export default function HostDashboard() {
     void newEntry
   }, [queue])
 
-  const seat   = useCallback(async (id: string) => {
-    const entry = queueRef.current.find(e => e.id === id)
-    if (entry) addToLocalHistory(entry, "seated")
-    try { await fetch(`${API}/queue/${id}/seat`, { method: "POST" }) } catch {}
-    refreshAll(); setTimeout(fetchHistory, 600)
-  }, [refreshAll, fetchHistory, addToLocalHistory])
   const notify = useCallback(async (id: string) => { try { await fetch(`${API}/queue/${id}/notify`, { method: "POST" }) } catch {} refreshAll() }, [refreshAll])
   const remove = useCallback(async (id: string) => {
     const entry = queueRef.current.find(e => e.id === id)
@@ -2097,14 +2098,19 @@ export default function HostDashboard() {
     pendingClearsRef.current.delete(toTableNumber)
     pendingOccupiesRef.current.add(toTableNumber)
 
-    const calls: Promise<unknown>[] = []
-    if (fromTableId) calls.push(clearTableAPI(fromTableId))
-    if (toTableId)   calls.push(fetch(`${API}/tables/${toTableId}/occupy`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
-    }))
-    Promise.all(calls).then(() => refreshAll()).catch(() => refreshAll())
+    // Single atomic server call — prevents the partial-fail window where /clear lands
+    // but /occupy doesn't (or vice versa) and the guest ends up at two tables after refresh.
+    if (fromTableId && toTableId) {
+      fetch(`${API}/tables/move-occupant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from_table_id: fromTableId, to_table_id: toTableId }),
+      }).then(() => refreshAll()).catch(() => refreshAll())
+    } else {
+      // Missing table ids — the optimistic UI already moved the guest, but we can't
+      // persist the change. Refresh to resync from server state.
+      refreshAll()
+    }
   }, [pendingTableMove, localOccupants, refreshAll])
 
   // ── DnD handlers ──────────────────────────────────────────────────────
@@ -2171,39 +2177,45 @@ export default function HostDashboard() {
       pendingClearsRef.current.delete(targetTable)
       pendingOccupiesRef.current.add(targetTable)
 
-      // 3. Fire API calls in parallel then sync.
-      const sourceApiTable = tables.find(t => t.table_number === sourceTable)
-      const targetApiTable = tables.find(t => t.table_number === targetTable)
-      const calls: Promise<unknown>[] = []
-      if (sourceApiTable) calls.push(clearTableAPI(sourceApiTable.id))
-      if (targetApiTable) calls.push(fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
-      }))
-      // refreshAll is the authoritative cleanup for both pendingClearsRef and pendingOccupiesRef —
-      // it removes entries only once the server confirms the expected state.
-      const finalize = () => refreshAll()
-      Promise.all(calls).then(finalize).catch(finalize)
+      // 3. Fire a single atomic server call for the move — eliminates the two-call
+      //    partial-fail window. Normalize table_number via Number() since serverTables
+      //    is already coerced on ingress but the find() still needs a numeric match.
+      const sourceApiTable = tables.find(t => Number(t.table_number) === sourceTable)
+      const targetApiTable = tables.find(t => Number(t.table_number) === targetTable)
+      if (sourceApiTable && targetApiTable) {
+        fetch(`${API}/tables/move-occupant`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from_table_id: sourceApiTable.id, to_table_id: targetApiTable.id }),
+        }).then(() => refreshAll()).catch(() => refreshAll())
+      } else {
+        // Couldn't resolve one of the tables — refresh to resync rather than guessing.
+        refreshAll()
+      }
       return
     }
 
-    // Queue-to-table: seat a waiting guest at a table
+    // Queue-to-table: seat a waiting guest at a specific table.
     const entry = (data as { entry?: QueueEntry } | undefined)?.entry
     if (!entry) return
     if (localOccupants.has(targetTable)) return
+    // Resolve the target table's DB id. If we can't, refuse the action and refresh —
+    // falling back to the auto-pick `seat(entry.id)` silently placed the guest at a
+    // different table than the user targeted (the "dropped on 8, landed on 11" bug).
+    // Coerce t.table_number via Number() so a string column from Supabase doesn't
+    // break the equality check.
+    const apiTable = tables.find(t => Number(t.table_number) === targetTable)
+    if (!apiTable) {
+      refreshAll()
+      return
+    }
     addToLocalHistory(entry, "seated")
     // A new guest is being placed here — cancel any pending-clear protection on this table
     pendingClearsRef.current.delete(targetTable)
     // Drop forceAvailable so the table turns red, not stays green
     setLocallyAvailableTables(prev => { const n = new Set(prev); n.delete(targetTable); return n })
-    const apiTable = tables.find(t => t.table_number === targetTable)
-    if (apiTable) {
-      fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
-        .then(() => { refreshAll(); setTimeout(fetchHistory, 600) })
-    } else {
-      seat(entry.id)
-    }
+    fetch(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
+      .then(() => { refreshAll(); setTimeout(fetchHistory, 600) })
     setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
   }
 
