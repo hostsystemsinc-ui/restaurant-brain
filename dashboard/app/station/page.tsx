@@ -42,41 +42,222 @@ async function clearTableAPI(tableId: string): Promise<boolean> {
   return false
 }
 
-// ── Floor plan ─────────────────────────────────────────────────────────────────
+// ── Restaurant IDs ─────────────────────────────────────────────────────────────
 
-const CANVAS_W = 920
-const CANVAS_H = 500
+const WALNUT_ORIGINAL_RID  = "0001cafe-0001-4000-8000-000000000001"
+const WALNUT_SOUTHSIDE_RID = "0002cafe-0001-4000-8000-000000000002"
+
+// ── Floor plan ─────────────────────────────────────────────────────────────────
 
 interface FloorPos {
   number: number
-  shape: "round" | "square" | "rect"
+  label?: string                                      // display override (e.g. "A", "B", "C")
+  shape: "round" | "square" | "rect" | "diamond"
   x: number; y: number; w: number; h: number
-  section: "main" | "bar"
+  section: string
 }
 
-const FLOOR_PLAN: FloorPos[] = [
-  // Window 2-tops (far left, round)
-  { number: 1,  shape: "round",  x: 28,  y: 32,  w: 72, h: 72,  section: "main" },
-  { number: 2,  shape: "round",  x: 28,  y: 148, w: 72, h: 72,  section: "main" },
-  { number: 3,  shape: "round",  x: 28,  y: 264, w: 72, h: 72,  section: "main" },
-  // 4-tops (second column, square)
-  { number: 4,  shape: "square", x: 148, y: 26,  w: 95, h: 95,  section: "main" },
-  { number: 5,  shape: "square", x: 148, y: 163, w: 95, h: 95,  section: "main" },
-  { number: 6,  shape: "square", x: 148, y: 298, w: 95, h: 95,  section: "main" },
-  // Center feature tables (rect)
-  { number: 7,  shape: "rect",   x: 293, y: 26,  w: 162, h: 112, section: "main" },
-  { number: 8,  shape: "rect",   x: 293, y: 196, w: 162, h: 112, section: "main" },
-  { number: 9,  shape: "rect",   x: 293, y: 366, w: 162, h: 98,  section: "main" },
-  // Right 4-tops
-  { number: 10, shape: "square", x: 506, y: 26,  w: 95, h: 95,  section: "main" },
-  { number: 11, shape: "square", x: 506, y: 163, w: 95, h: 95,  section: "main" },
-  { number: 12, shape: "square", x: 506, y: 298, w: 95, h: 95,  section: "main" },
-  // Bar stools (far right, behind divider)
-  { number: 13, shape: "round",  x: 748, y: 36,  w: 60, h: 60,  section: "bar" },
-  { number: 14, shape: "round",  x: 748, y: 134, w: 60, h: 60,  section: "bar" },
-  { number: 15, shape: "round",  x: 748, y: 232, w: 60, h: 60,  section: "bar" },
-  { number: 16, shape: "round",  x: 748, y: 330, w: 60, h: 60,  section: "bar" },
-]
+interface FloorWall {
+  x1: number; y1: number; x2: number; y2: number
+  thickness?: number   // px on canvas — defaults to 4
+}
+
+interface FloorObject {
+  id: string
+  type: "door" | "window" | "stairs" | "label" | "counter" | "host"
+  x: number; y: number; w: number; h: number
+  label?: string
+}
+
+interface FloorPlan {
+  canvasW: number
+  canvasH: number
+  tables: FloorPos[]
+  walls?: FloorWall[]
+  objects?: FloorObject[]
+}
+
+// Generic demo floor plan (fallback for unknown restaurants)
+const GENERIC_PLAN: FloorPlan = {
+  canvasW: 920,
+  canvasH: 500,
+  tables: [
+    // Window 2-tops (far left, round)
+    { number: 1,  shape: "round",  x: 28,  y: 32,  w: 72, h: 72,  section: "main" },
+    { number: 2,  shape: "round",  x: 28,  y: 148, w: 72, h: 72,  section: "main" },
+    { number: 3,  shape: "round",  x: 28,  y: 264, w: 72, h: 72,  section: "main" },
+    // 4-tops (second column, square)
+    { number: 4,  shape: "square", x: 148, y: 26,  w: 95, h: 95,  section: "main" },
+    { number: 5,  shape: "square", x: 148, y: 163, w: 95, h: 95,  section: "main" },
+    { number: 6,  shape: "square", x: 148, y: 298, w: 95, h: 95,  section: "main" },
+    // Center feature tables (rect)
+    { number: 7,  shape: "rect",   x: 293, y: 26,  w: 162, h: 112, section: "main" },
+    { number: 8,  shape: "rect",   x: 293, y: 196, w: 162, h: 112, section: "main" },
+    { number: 9,  shape: "rect",   x: 293, y: 366, w: 162, h: 98,  section: "main" },
+    // Right 4-tops
+    { number: 10, shape: "square", x: 506, y: 26,  w: 95, h: 95,  section: "main" },
+    { number: 11, shape: "square", x: 506, y: 163, w: 95, h: 95,  section: "main" },
+    { number: 12, shape: "square", x: 506, y: 298, w: 95, h: 95,  section: "main" },
+    // Bar stools (far right, behind divider)
+    { number: 13, shape: "round",  x: 748, y: 36,  w: 60, h: 60,  section: "bar" },
+    { number: 14, shape: "round",  x: 748, y: 134, w: 60, h: 60,  section: "bar" },
+    { number: 15, shape: "round",  x: 748, y: 232, w: 60, h: 60,  section: "bar" },
+    { number: 16, shape: "round",  x: 748, y: 330, w: 60, h: 60,  section: "bar" },
+  ],
+}
+
+// ── The Original Walnut Cafe — floor plan ──────────────────────────────────────
+// Canvas: 1100 × 720
+//
+// Left room col1 (tall rects, 44–40) | gap | col2 (mixed, 35–30) | wall at 205
+// Transition col (21,12,11) | main dining (22–26, 18–20, 13–16, 3–10)
+// Booths A/B/C right side | counter bar line near bottom | 77 below bar line
+
+const ORIGINAL_WALNUT_PLAN: FloorPlan = {
+  canvasW: 1168,
+  canvasH: 720,
+
+  walls: [
+    { x1: 282, y1: 0,   x2: 282,  y2: 720, thickness: 5 },
+    { x1: 579, y1: 232, x2: 1079, y2: 232, thickness: 9 },
+    { x1: 404, y1: 623, x2: 1148, y2: 623, thickness: 6 },
+  ],
+
+  objects: [
+    { id: "door-1",    type: "door",    x: 186, y: 331, w: 84,  h: 88, label: "Door" },
+    { id: "counter-2", type: "counter", x: 681, y: 643, w: 201, h: 73, label: "Counter" },
+  ],
+
+  tables: [
+    { number: 44, shape: "rect",    x: 12,  y: 42,  w: 68,  h: 112, section: "left" },
+    { number: 43, shape: "rect",    x: 12,  y: 186, w: 68,  h: 112, section: "left" },
+    { number: 42, shape: "rect",    x: 12,  y: 332, w: 68,  h: 112, section: "left" },
+    { number: 41, shape: "rect",    x: 12,  y: 476, w: 68,  h: 112, section: "left" },
+    { number: 40, shape: "round",   x: 14,  y: 633, w: 73,  h: 73,  section: "left" },
+    { number: 35, shape: "round",   x: 179, y: 6,   w: 73,  h: 73,  section: "left" },
+    { number: 34, shape: "diamond", x: 168, y: 95,  w: 100, h: 100, section: "left" },
+    { number: 33, shape: "diamond", x: 169, y: 210, w: 100, h: 100, section: "left" },
+    { number: 32, shape: "round",   x: 184, y: 443, w: 73,  h: 73,  section: "left" },
+    { number: 31, shape: "rect",    x: 159, y: 543, w: 110, h: 58,  section: "left" },
+    { number: 30, shape: "round",   x: 186, y: 633, w: 73,  h: 73,  section: "left" },
+    { number: 21, shape: "square",  x: 318, y: 69,  w: 82,  h: 80,  section: "main" },
+    { number: 12, shape: "round",   x: 324, y: 179, w: 75,  h: 75,  section: "main" },
+    { number: 11, shape: "round",   x: 325, y: 281, w: 75,  h: 75,  section: "main" },
+    { number: 22, shape: "rect",    x: 431, y: 23,  w: 150, h: 71,  section: "main" },
+    { number: 23, shape: "round",   x: 632, y: 12,  w: 82,  h: 82,  section: "main" },
+    { number: 24, shape: "round",   x: 774, y: 13,  w: 82,  h: 82,  section: "main" },
+    { number: 25, shape: "round",   x: 902, y: 9,   w: 82,  h: 82,  section: "main" },
+    { number: 26, shape: "round",   x: 1035, y: 12, w: 76,  h: 76,  section: "main" },
+    { number: 101, label: "A", shape: "rect", x: 581, y: 164, w: 110, h: 60, section: "booth" },
+    { number: 102, label: "B", shape: "rect", x: 762, y: 164, w: 110, h: 60, section: "booth" },
+    { number: 103, label: "C", shape: "rect", x: 962, y: 164, w: 110, h: 60, section: "booth" },
+    { number: 18, shape: "rect",    x: 582, y: 250, w: 110, h: 95,  section: "main" },
+    { number: 19, shape: "rect",    x: 762, y: 250, w: 110, h: 95,  section: "main" },
+    { number: 20, shape: "rect",    x: 962, y: 250, w: 110, h: 95,  section: "main" },
+    { number: 13, shape: "diamond", x: 404, y: 383, w: 100, h: 100, section: "main" },
+    { number: 14, shape: "diamond", x: 570, y: 388, w: 100, h: 100, section: "main" },
+    { number: 15, shape: "diamond", x: 752, y: 389, w: 100, h: 100, section: "main" },
+    { number: 16, shape: "diamond", x: 925, y: 395, w: 100, h: 100, section: "main" },
+    { number: 3,  shape: "round",   x: 343, y: 535, w: 78,  h: 78,  section: "bar" },
+    { number: 4,  shape: "round",   x: 443, y: 535, w: 78,  h: 78,  section: "bar" },
+    { number: 5,  shape: "round",   x: 543, y: 535, w: 78,  h: 78,  section: "bar" },
+    { number: 6,  shape: "round",   x: 643, y: 535, w: 78,  h: 78,  section: "bar" },
+    { number: 7,  shape: "round",   x: 743, y: 535, w: 78,  h: 78,  section: "bar" },
+    { number: 8,  shape: "round",   x: 843, y: 535, w: 78,  h: 78,  section: "bar" },
+    { number: 9,  shape: "round",   x: 943, y: 535, w: 78,  h: 78,  section: "bar" },
+    { number: 10, shape: "round",   x: 1043, y: 530, w: 78, h: 78,  section: "bar" },
+  ],
+}
+
+// ── The Southside Walnut Cafe — indoor floor plan ──────────────────────────────
+// TODO: Verify table numbers against the actual restaurant floor plan
+
+const SOUTHSIDE_INDOOR_PLAN: FloorPlan = {
+  canvasW: 1087,
+  canvasH: 769,
+
+  walls: [
+    { x1: 257, y1: 362, x2: 1038, y2: 362, thickness: 9 },
+  ],
+
+  objects: [
+    { id: "label-2",  type: "label",  x: 913, y: 17,  w: 163, h: 88, label: "BACK DOOR" },
+    { id: "window-4", type: "window", x: 370, y: 690, w: 520, h: 72, label: "BAR" },
+  ],
+
+  tables: [
+    { number: 1,  label: "19", shape: "round",   x: 16,  y: 85,  w: 108, h: 108, section: "booth" },
+    { number: 2,  label: "13", shape: "rect",    x: 12,  y: 248, w: 137, h: 65,  section: "booth" },
+    { number: 3,  label: "6",  shape: "rect",    x: 12,  y: 387, w: 137, h: 65,  section: "booth" },
+    { number: 4,  label: "1",  shape: "rect",    x: 12,  y: 519, w: 137, h: 65,  section: "booth" },
+    { number: 5,  label: "26", shape: "square",  x: 301, y: 12,  w: 100, h: 100, section: "main" },
+    { number: 6,  label: "27", shape: "square",  x: 440, y: 12,  w: 100, h: 100, section: "main" },
+    { number: 7,  label: "28", shape: "square",  x: 610, y: 12,  w: 100, h: 100, section: "main" },
+    { number: 8,  label: "29", shape: "square",  x: 791, y: 12,  w: 100, h: 100, section: "main" },
+    { number: 9,  label: "20", shape: "diamond", x: 216, y: 133, w: 100, h: 100, section: "main" },
+    { number: 10, label: "21", shape: "diamond", x: 379, y: 133, w: 100, h: 100, section: "main" },
+    { number: 11, label: "22", shape: "diamond", x: 525, y: 132, w: 100, h: 100, section: "main" },
+    { number: 12, label: "23", shape: "diamond", x: 679, y: 133, w: 100, h: 100, section: "main" },
+    { number: 13, label: "14", shape: "square",  x: 260, y: 267, w: 85,  h: 85,  section: "main" },
+    { number: 14, label: "15", shape: "square",  x: 409, y: 267, w: 85,  h: 85,  section: "main" },
+    { number: 15, label: "16", shape: "square",  x: 561, y: 267, w: 85,  h: 85,  section: "main" },
+    { number: 16, label: "17", shape: "square",  x: 753, y: 267, w: 85,  h: 85,  section: "main" },
+    { number: 17, label: "8",  shape: "square",  x: 392, y: 386, w: 80,  h: 70,  section: "bar" },
+    { number: 18, label: "24", shape: "diamond", x: 827, y: 133, w: 100, h: 100, section: "bar" },
+    { number: 19, label: "18", shape: "square",  x: 935, y: 267, w: 94,  h: 80,  section: "bar" },
+    { number: 20, label: "7",  shape: "square",  x: 260, y: 386, w: 80,  h: 70,  section: "bar" },
+    { number: 21, label: "9",  shape: "square",  x: 519, y: 386, w: 70,  h: 70,  section: "main" },
+    { number: 22, label: "10", shape: "square",  x: 624, y: 386, w: 70,  h: 70,  section: "main" },
+    { number: 23, label: "11", shape: "square",  x: 758, y: 386, w: 85,  h: 70,  section: "main" },
+    { number: 24, label: "12", shape: "square",  x: 907, y: 386, w: 86,  h: 69,  section: "main" },
+    { number: 25, label: "2",  shape: "square",  x: 320, y: 502, w: 70,  h: 70,  section: "main" },
+    { number: 26, label: "3",  shape: "diamond", x: 520, y: 500, w: 82,  h: 82,  section: "main" },
+    { number: 27, label: "4",  shape: "diamond", x: 681, y: 500, w: 82,  h: 82,  section: "main" },
+    { number: 28, label: "5",  shape: "diamond", x: 839, y: 500, w: 82,  h: 82,  section: "main" },
+    { number: 29, label: "C",  shape: "round",   x: 390, y: 608, w: 70,  h: 70,  section: "main" },
+    { number: 30, label: "U",  shape: "round",   x: 500, y: 606, w: 70,  h: 70,  section: "main" },
+    { number: 31, label: "N",  shape: "round",   x: 601, y: 607, w: 70,  h: 70,  section: "main" },
+    { number: 32, label: "T",  shape: "round",   x: 704, y: 611, w: 70,  h: 70,  section: "main" },
+    { number: 33, label: "Y",  shape: "round",   x: 803, y: 612, w: 70,  h: 70,  section: "main" },
+    { number: 34, label: "25", shape: "square",  x: 160, y: 12,  w: 100, h: 100, section: "main" },
+  ],
+}
+
+// ── The Southside Walnut Cafe — outdoor / patio floor plan ─────────────────────
+// Numbers 30-43 are placeholders — verify against actual patio layout
+
+const SOUTHSIDE_OUTDOOR_PLAN: FloorPlan = {
+  canvasW: 1011,
+  canvasH: 715,
+
+  objects: [
+    { id: "label-1", type: "label", x: 386, y: 321, w: 612, h: 382, label: " " },
+    { id: "label-2", type: "label", x: 723, y: 353, w: 229, h: 65,  label: "BACK DOOR" },
+  ],
+
+  tables: [
+    { number: 51, label: "P4",  shape: "square", x: 15,  y: 207, w: 97,  h: 112, section: "patio" },
+    { number: 52, label: "P2",  shape: "square", x: 14,  y: 464, w: 97,  h: 112, section: "patio" },
+    { number: 53, label: "W1",  shape: "square", x: 237, y: 626, w: 130, h: 79,  section: "patio" },
+    { number: 54, label: "W4",  shape: "square", x: 270, y: 346, w: 96,  h: 78,  section: "patio" },
+    { number: 55, label: "W5",  shape: "square", x: 237, y: 250, w: 130, h: 79,  section: "patio" },
+    { number: 35, label: "W8",  shape: "square", x: 697, y: 225, w: 73,  h: 77,  section: "patio" },
+    { number: 36, label: "W9",  shape: "square", x: 798, y: 234, w: 81,  h: 66,  section: "patio" },
+    { number: 37, label: "P3",  shape: "square", x: 15,  y: 335, w: 97,  h: 112, section: "patio" },
+    { number: 39, label: "P1",  shape: "square", x: 15,  y: 590, w: 97,  h: 112, section: "patio" },
+    { number: 40, label: "W2",  shape: "square", x: 237, y: 538, w: 130, h: 79,  section: "patio" },
+    { number: 41, label: "W3",  shape: "square", x: 271, y: 444, w: 96,  h: 78,  section: "patio" },
+    { number: 42, label: "W6",  shape: "square", x: 436, y: 192, w: 96,  h: 112, section: "patio" },
+    { number: 43, label: "W7",  shape: "square", x: 569, y: 192, w: 96,  h: 112, section: "patio" },
+    { number: 44, label: "W10", shape: "square", x: 910, y: 235, w: 81,  h: 66,  section: "main" },
+    { number: 45, label: "R1",  shape: "square", x: 254, y: 7,   w: 101, h: 123, section: "main" },
+    { number: 46, label: "R2",  shape: "square", x: 382, y: 9,   w: 101, h: 123, section: "main" },
+    { number: 47, label: "R3",  shape: "square", x: 501, y: 6,   w: 111, h: 62,  section: "main" },
+    { number: 48, label: "R4",  shape: "square", x: 630, y: 6,   w: 111, h: 62,  section: "main" },
+    { number: 49, label: "R5",  shape: "square", x: 758, y: 5,   w: 111, h: 62,  section: "main" },
+    { number: 50, label: "R6",  shape: "square", x: 888, y: 5,   w: 111, h: 62,  section: "main" },
+  ],
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -573,6 +754,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 
 function DroppableFloorTable({
   pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onAvailableTap, forceAvailable,
+  canvasW, canvasH,
 }: {
   pos: FloorPos
   table?: Table
@@ -583,6 +765,8 @@ function DroppableFloorTable({
   onSeatFromSelect?: () => void
   onAvailableTap?: () => void
   forceAvailable?: boolean
+  canvasW: number
+  canvasH: number
 }) {
   // forceAvailable overrides any occupant so a just-cleared table goes green instantly,
   // without waiting for the server to confirm and refreshAll to propagate.
@@ -596,7 +780,7 @@ function DroppableFloorTable({
   const canReceiveDrop = isDraggingOccupant ? !hasLocalOccupant : !isOccupied
   // `noTable` previously drove a grey "missing" visual whenever the DB row hadn't loaded
   // yet — that caused the "first 3 go green, rest stay grey for a couple seconds after
-  // refresh" flash on initial page load. The 16-tile FLOOR_PLAN is the source of truth
+  // refresh" flash on initial page load. The floor plan is the source of truth
   // for which tables exist; the DB row only carries id/capacity/status. So while the
   // DB data is still in-flight, render as available (green) rather than grey.
   const noTable = !table
@@ -643,7 +827,12 @@ function DroppableFloorTable({
     : isOccupied ? "var(--table-occ-border)"
     : "var(--table-avail-border)"
 
-  const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
+  const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "diamond" ? 0 : pos.shape === "square" ? 11 : 10
+  const clipPath = pos.shape === "round"
+    ? "circle(50%)"
+    : pos.shape === "diamond"
+    ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
+    : undefined
 
   return (
     <div
@@ -652,12 +841,12 @@ function DroppableFloorTable({
       {...(hasLocalOccupant ? dragAttrs : {})}
       style={{
         position: "absolute",
-        left: `${(pos.x / CANVAS_W * 100).toFixed(3)}%`,
-        top: `${(pos.y / CANVAS_H * 100).toFixed(3)}%`,
-        width: `${(pos.w / CANVAS_W * 100).toFixed(3)}%`,
-        height: `${(pos.h / CANVAS_H * 100).toFixed(3)}%`,
+        left: `${(pos.x / canvasW * 100).toFixed(3)}%`,
+        top: `${(pos.y / canvasH * 100).toFixed(3)}%`,
+        width: `${(pos.w / canvasW * 100).toFixed(3)}%`,
+        height: `${(pos.h / canvasH * 100).toFixed(3)}%`,
         borderRadius,
-        clipPath: pos.shape === "round" ? "circle(50%)" : undefined,
+        clipPath,
         background: bg,
         border: `1.5px solid ${borderColor}`,
         boxShadow: isOver && canReceiveDrop
@@ -688,8 +877,8 @@ function DroppableFloorTable({
     >
       <div style={{
         position: "absolute",
-        top: pos.shape === "round" ? "18%" : 7,
-        right: pos.shape === "round" ? "18%" : 7,
+        top: pos.shape === "diamond" ? "36%" : pos.shape === "round" ? "18%" : 7,
+        right: pos.shape === "diamond" ? "20%" : pos.shape === "round" ? "18%" : 7,
         width: 6, height: 6,
         borderRadius: "50%",
         background: isOccupied ? "rgba(239,68,68,0.70)" : "#22c55e",
@@ -708,7 +897,7 @@ function DroppableFloorTable({
       ) : occupant ? (
         <>
           <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-warm)", letterSpacing: "0.1em" }}>
-            T{pos.number}
+            T{pos.label ?? pos.number}
           </span>
           <span style={{
             fontSize: pos.shape === "rect" ? 11 : 10,
@@ -725,20 +914,13 @@ function DroppableFloorTable({
           </span>
         </>
       ) : (
-        <>
-          <span style={{
-            fontSize: pos.shape === "rect" ? 17 : 14,
-            fontWeight: 800,
-            color: "var(--table-avail-num)",
-          }}>
-            {pos.number}
-          </span>
-          {table && (
-            <span style={{ fontSize: 10, color: "var(--table-avail-cap)" }}>
-              {table.capacity}p
-            </span>
-          )}
-        </>
+        <span style={{
+          fontSize: pos.shape === "rect" ? 17 : 14,
+          fontWeight: 800,
+          color: "var(--table-avail-num)",
+        }}>
+          {pos.label ?? pos.number}
+        </span>
       )}
     </div>
   )
@@ -748,7 +930,7 @@ function DroppableFloorTable({
 
 function FloorMap({
   tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onAvailableTap, locallyAvailableTables,
-  isTableMoveMode, onCancelTableMove,
+  isTableMoveMode, onCancelTableMove, floorPlan, southsideTab, onSouthsideTabChange,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -760,6 +942,9 @@ function FloorMap({
   locallyAvailableTables?: Set<number>
   isTableMoveMode?: boolean
   onCancelTableMove?: () => void
+  floorPlan: FloorPlan
+  southsideTab?: "indoor" | "outdoor"
+  onSouthsideTabChange?: (tab: "indoor" | "outdoor") => void
 }) {
   // Coerce table_number to numeric when indexing — Supabase can return it as a string,
   // and a string/number mismatch here would make `.get(pos.number)` miss and render the
@@ -778,20 +963,28 @@ function FloorMap({
       className="flex-1 relative overflow-hidden"
       style={{ background: "var(--page-deep)" }}
     >
-      <span style={{
+      {/* Header row: "Floor Plan" label + optional INDOOR / OUTDOOR tabs */}
+      <div style={{
         position: "absolute",
-        top: 14,
+        top: 10,
         left: 18,
-        fontSize: 9,
-        fontWeight: 800,
-        letterSpacing: "0.2em",
-        color: "var(--text-muted3)",
-        textTransform: "uppercase",
-        zIndex: 1,
+        right: 16,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        zIndex: 2,
         pointerEvents: "none",
       }}>
-        Floor Plan
-      </span>
+        <span style={{
+          fontSize: 9,
+          fontWeight: 800,
+          letterSpacing: "0.2em",
+          color: "var(--text-muted3)",
+          textTransform: "uppercase",
+        }}>
+          Floor Plan
+        </span>
+      </div>
 
       <div style={{
         position: "absolute",
@@ -803,54 +996,71 @@ function FloorMap({
         <div style={{
           position: "relative",
           width: "100%",
-          aspectRatio: `${CANVAS_W} / ${CANVAS_H}`,
+          aspectRatio: `${floorPlan.canvasW} / ${floorPlan.canvasH}`,
           maxHeight: "100%",
         }}>
-          {/* Bar section background */}
-          <div style={{
-            position: "absolute",
-            left: `${(726 / CANVAS_W * 100).toFixed(2)}%`,
-            top: 0,
-            right: 0,
-            bottom: 0,
-            background: "var(--surf-8)",
-            borderLeft: "1px solid var(--bdr-2)",
-            borderRadius: "0 8px 8px 0",
-          }} />
+          {/* Walls */}
+          {floorPlan.walls?.map((wall, i) => {
+            const isVert = wall.x1 === wall.x2
+            const thick = wall.thickness ?? 4
+            const left = Math.min(wall.x1, wall.x2) / floorPlan.canvasW * 100
+            const top  = Math.min(wall.y1, wall.y2) / floorPlan.canvasH * 100
+            const lenPct = isVert
+              ? Math.abs(wall.y2 - wall.y1) / floorPlan.canvasH * 100
+              : Math.abs(wall.x2 - wall.x1) / floorPlan.canvasW * 100
+            return (
+              <div key={`wall-${i}`} style={{
+                position: "absolute",
+                left:   `${left.toFixed(3)}%`,
+                top:    `${top.toFixed(3)}%`,
+                width:  isVert ? thick : `${lenPct.toFixed(3)}%`,
+                height: isVert ? `${lenPct.toFixed(3)}%` : thick,
+                background: "rgba(255, 185, 100, 0.35)",
+                borderRadius: 2,
+                pointerEvents: "none",
+              }} />
+            )
+          })}
 
-          {/* Section labels */}
-          <span style={{
-            position: "absolute",
-            left: `${(760 / CANVAS_W * 100).toFixed(2)}%`,
-            top: `${(10 / CANVAS_H * 100).toFixed(2)}%`,
-            fontSize: 8,
-            fontWeight: 800,
-            letterSpacing: "0.22em",
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            pointerEvents: "none",
-          }}>
-            BAR
-          </span>
-          <span style={{
-            position: "absolute",
-            left: `${(30 / CANVAS_W * 100).toFixed(2)}%`,
-            bottom: `${(12 / CANVAS_H * 100).toFixed(2)}%`,
-            fontSize: 8,
-            fontWeight: 800,
-            letterSpacing: "0.2em",
-            color: "var(--text-muted3)",
-            textTransform: "uppercase",
-            pointerEvents: "none",
-          }}>
-            Main Dining
-          </span>
+          {/* Non-table objects: doors, counters, labels, etc. */}
+          {floorPlan.objects?.map(obj => {
+            const xP = obj.x / floorPlan.canvasW * 100
+            const yP = obj.y / floorPlan.canvasH * 100
+            const wP = obj.w / floorPlan.canvasW * 100
+            const hP = obj.h / floorPlan.canvasH * 100
+            const styles: Record<string, React.CSSProperties> = {
+              door:    { background: "rgba(50,185,158,0.18)", border: "1.5px solid rgba(50,185,158,0.45)", color: "rgba(80,220,190,0.8)" },
+              window:  { background: "rgba(110,160,255,0.12)", border: "1px solid rgba(110,160,255,0.4)",  color: "rgba(140,190,255,0.7)" },
+              stairs:  { background: "repeating-linear-gradient(0deg,rgba(195,150,65,0.18),rgba(195,150,65,0.18) 5px,rgba(0,0,0,0.1) 5px,rgba(0,0,0,0.1) 7px)", border: "1px solid rgba(195,150,65,0.4)", color: "rgba(240,200,100,0.8)" },
+              label:   { background: "transparent", border: "none", color: "rgba(180,180,180,0.55)" },
+              counter: { background: "rgba(140,90,45,0.22)", border: "1.5px solid rgba(170,110,55,0.45)", color: "rgba(230,180,100,0.8)" },
+              host:    { background: "rgba(110,70,195,0.18)", border: "1.5px solid rgba(140,90,220,0.45)", color: "rgba(200,160,255,0.8)" },
+            }
+            const s = styles[obj.type] ?? styles.label
+            return (
+              <div key={obj.id} style={{
+                position: "absolute",
+                left: `${xP.toFixed(3)}%`, top: `${yP.toFixed(3)}%`,
+                width: `${wP.toFixed(3)}%`, height: `${hP.toFixed(3)}%`,
+                ...s,
+                boxSizing: "border-box",
+                borderRadius: obj.type === "host" ? "10%" : 3,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: "clamp(5px, 0.85vw, 10px)", fontWeight: 700,
+                letterSpacing: "0.05em", textTransform: "uppercase",
+                pointerEvents: "none",
+                overflow: "hidden",
+              }}>
+                {obj.label}
+              </div>
+            )
+          })}
 
-          {/* "Powered by HOST" */}
+          {/* "Powered by HOST" watermark */}
           <span style={{
             position: "absolute",
-            right: `${(8 / CANVAS_W * 100).toFixed(2)}%`,
-            bottom: `${(8 / CANVAS_H * 100).toFixed(2)}%`,
+            right: `${(8 / floorPlan.canvasW * 100).toFixed(2)}%`,
+            bottom: `${(8 / floorPlan.canvasH * 100).toFixed(2)}%`,
             fontSize: 8,
             letterSpacing: "0.08em",
             color: "var(--bdr-15)",
@@ -860,7 +1070,7 @@ function FloorMap({
           </span>
 
           {/* Tables */}
-          {FLOOR_PLAN.map(pos => {
+          {floorPlan.tables.map(pos => {
             const table = tableByNumber.get(pos.number)
             const occupant = localOccupants.get(pos.number)
             // Occupant-only check — DB status is intentionally ignored to keep this
@@ -878,13 +1088,15 @@ function FloorMap({
                 onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
                 forceAvailable={locallyAvailableTables?.has(pos.number)}
                 onAvailableTap={isAvailable ? () => onAvailableTap?.(pos.number, table?.id, table?.capacity) : undefined}
+                canvasW={floorPlan.canvasW}
+                canvasH={floorPlan.canvasH}
               />
             )
           })}
         </div>
       </div>
 
-      {/* Bottom bar: Cancel button in move mode, otherwise hint text */}
+      {/* Bottom bar: Cancel (move mode) | Indoor/Outdoor toggle (Southside) | hint */}
       {isTableMoveMode && onCancelTableMove ? (
         <div style={{ position: "absolute", bottom: 10, left: 12, right: 12 }}>
           <button
@@ -905,6 +1117,38 @@ function FloorMap({
           >
             Cancel Move
           </button>
+        </div>
+      ) : southsideTab !== undefined ? (
+        <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)" }}>
+          <div style={{
+            display: "flex",
+            background: "var(--surf-3)",
+            border: "1px solid var(--bdr-2)",
+            borderRadius: 10,
+            overflow: "hidden",
+          }}>
+            {(["indoor", "outdoor"] as const).map((tab, i) => (
+              <button
+                key={tab}
+                onClick={() => onSouthsideTabChange?.(tab)}
+                style={{
+                  padding: "6px 20px",
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                  cursor: "pointer",
+                  background: southsideTab === tab ? "rgba(34,197,94,0.18)" : "transparent",
+                  color: southsideTab === tab ? "#22c55e" : "var(--text-muted3)",
+                  border: "none",
+                  borderRight: i === 0 ? "1px solid var(--bdr-2)" : "none",
+                  transition: "background 0.15s, color 0.15s",
+                }}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
         </div>
       ) : (
         <div style={{
@@ -934,18 +1178,20 @@ function SeatTablePicker({
   localOccupants,
   onConfirm,
   onClose,
+  floorPlan,
 }: {
   guest: { name: string | null; party_size: number }
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
   onConfirm: (tableNumber: number, tableId: string | undefined) => void
   onClose: () => void
+  floorPlan: FloorPlan
 }) {
   // A table is available for seating if no local occupant holds it. We deliberately
   // ignore tables[].status because DB status can lag reality (e.g., a clear call that
   // succeeded in-memory but had a flaky DB round-trip). localOccupants mirrors the
   // server's in-memory _table_occupants which is the authoritative source.
-  const available = FLOOR_PLAN.filter(pos => !localOccupants.has(pos.number))
+  const available = floorPlan.tables.filter(pos => !localOccupants.has(pos.number))
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -987,13 +1233,8 @@ function SeatTablePicker({
                   }}
                 >
                   <span className="text-xl font-bold" style={{ color: "rgba(34,197,94,0.9)" }}>
-                    {pos.number}
+                    {pos.label ?? pos.number}
                   </span>
-                  {t && (
-                    <span className="text-[10px]" style={{ color: "rgba(34,197,94,0.45)" }}>
-                      {t.capacity}p
-                    </span>
-                  )}
                   <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: "rgba(34,197,94,0.3)" }}>
                     {pos.section}
                   </span>
@@ -1023,7 +1264,7 @@ function SeatTablePicker({
 function TableGuestPicker({
   tableNumber,
   tableId,
-  capacity,
+  tableLabel,
   queue,
   restaurantId,
   onClose,
@@ -1031,7 +1272,7 @@ function TableGuestPicker({
 }: {
   tableNumber: number
   tableId: string | undefined
-  capacity: number | undefined
+  tableLabel: string
   queue: QueueEntry[]
   restaurantId: string
   onClose: () => void
@@ -1095,17 +1336,17 @@ function TableGuestPicker({
             setError("Server accepted the seat but returned no entry — refreshing.")
           }
         } else if (r.status === 409) {
-          setError(`Table ${tableNumber} was just taken. Refresh and try again.`)
+          setError(`Table ${tableLabel} was just taken. Refresh and try again.`)
         } else {
           const detail = await r.text().catch(() => "")
-          setError(`Couldn't seat at Table ${tableNumber} (${r.status}). ${detail.slice(0, 120)}`)
+          setError(`Couldn't seat at Table ${tableLabel} (${r.status}). ${detail.slice(0, 120)}`)
         }
       } else {
-        // No tableId resolved — refuse and tell the user, instead of firing a bogus request.
-        setError(`Couldn't identify Table ${tableNumber}. Refresh the page and try again.`)
+        // No tableId resolved — table exists on the floor plan but has no DB record yet.
+        setError(`Table ${tableLabel} isn't active in the system yet — a system update is needed.`)
       }
     } catch (e) {
-      setError(`Network error seating at Table ${tableNumber}. ${e instanceof Error ? e.message : ""}`)
+      setError(`Network error seating at Table ${tableLabel}. ${e instanceof Error ? e.message : ""}`)
     }
     walkInInFlightRef.current = false
     setSubmitting(false)
@@ -1124,14 +1365,8 @@ function TableGuestPicker({
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <p className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "var(--text-cream2)" }}>
-              Table {tableNumber}
+              Table {tableLabel}
             </p>
-            {capacity && (
-              <span className="text-xs font-black px-2 py-0.5 rounded-full"
-                style={{ background: "rgba(251,191,36,0.10)", color: "rgba(251,191,36,0.65)", border: "1px solid rgba(251,191,36,0.20)" }}>
-                {capacity}p
-              </span>
-            )}
           </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg"
             style={{ color: "var(--text-dim5)", border: "1px solid var(--surf-4)" }}>
@@ -1219,7 +1454,7 @@ function TableGuestPicker({
             <button onClick={addWalkIn} disabled={submitting}
               className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125 mt-1 disabled:opacity-40"
               style={{ fontSize: 17, padding: "22px 0", background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}>
-              {submitting ? "Seating…" : `Seat at Table ${tableNumber}`}
+              {submitting ? "Seating…" : `Seat at Table ${tableLabel}`}
             </button>
             {error && (
               <div className="rounded-xl px-3 py-2 text-sm"
@@ -1599,7 +1834,6 @@ function StationHistoryDrawer({
                     style={{ height: 58, borderRadius: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
                       background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.30)", cursor: "pointer", opacity: seating === seatPicker.id ? 0.5 : 1 }}>
                     <span style={{ fontSize: 20, fontWeight: 900, color: "#22c55e" }}>{t.table_number}</span>
-                    <span style={{ fontSize: 9, color: "#22c55e", opacity: 0.7 }}>{t.capacity}p</span>
                   </button>
                 ))}
               </div>
@@ -1621,6 +1855,7 @@ export default function HostDashboard() {
   const [restaurantId,   setRestaurantId]   = useState<string>("")
   const [restaurantName, setRestaurantName] = useState<string>("")
   const [restaurantLogo, setRestaurantLogo] = useState<string>("")
+  const [southsideTab,   setSouthsideTab]   = useState<"indoor" | "outdoor">("indoor")
   const [zoom, setZoom] = useState(() => { try { return parseFloat(localStorage.getItem("host_walnut_zoom") || "1") } catch { return 1 } })
   useEffect(() => { try { localStorage.setItem("host_walnut_zoom", String(zoom)) } catch {} }, [zoom])
   const [theme, setTheme] = useState<"dark" | "light">(() => { try { return (localStorage.getItem("host_walnut_theme") as "dark" | "light") || "dark" } catch { return "dark" } })
@@ -1638,7 +1873,7 @@ export default function HostDashboard() {
   const [seatPicker, setSeatPicker]             = useState<QueueEntry | null>(null)
   const [selectedEntry, setSelectedEntry]       = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]         = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
-  const [tableTapModal, setTableTapModal]       = useState<{ tableNumber: number; tableId: string | undefined; capacity: number | undefined } | null>(null)
+  const [tableTapModal, setTableTapModal]       = useState<{ tableNumber: number; tableId: string | undefined; tableLabel: string } | null>(null)
   // Active table-move: host tapped "Move" in the table popup; floor map becomes a target picker
   const [pendingTableMove, setPendingTableMove] = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [showHistory, setShowHistory]     = useState(false)
@@ -2245,10 +2480,21 @@ export default function HostDashboard() {
     setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
   }
 
+  // Per-restaurant floor plans — display plan is tab-aware for Southside;
+  // seatPlan includes ALL tables (both views) for stats and the seat picker.
+  const isOriginal  = restaurantId === WALNUT_ORIGINAL_RID
+  const isSouthside = restaurantId === WALNUT_SOUTHSIDE_RID
+  const displayPlan: FloorPlan = isOriginal  ? ORIGINAL_WALNUT_PLAN
+    : isSouthside ? (southsideTab === "indoor" ? SOUTHSIDE_INDOOR_PLAN : SOUTHSIDE_OUTDOOR_PLAN)
+    : GENERIC_PLAN
+  const seatPlan: FloorPlan = isOriginal ? ORIGINAL_WALNUT_PLAN
+    : isSouthside ? { ...SOUTHSIDE_INDOOR_PLAN, tables: [...SOUTHSIDE_INDOOR_PLAN.tables, ...SOUTHSIDE_OUTDOOR_PLAN.tables] }
+    : GENERIC_PLAN
+
   // Floor availability — occupant-only, matches DroppableFloorTable's visual logic so the
   // "X available / Y occupied" header counts always match the colors on the floor map.
-  const floorOccupied = FLOOR_PLAN.filter(pos => localOccupants.has(pos.number)).length
-  const available   = FLOOR_PLAN.length - floorOccupied
+  const floorOccupied = seatPlan.tables.filter(pos => localOccupants.has(pos.number)).length
+  const available   = seatPlan.tables.length - floorOccupied
   const readyList      = queue.filter(q => q.status === "ready")
   const waitingList    = queue.filter(q => q.status === "waiting")
   const needsQuoteList = waitingList.filter(q => q.quoted_wait == null)
@@ -2365,7 +2611,7 @@ export default function HostDashboard() {
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "var(--surf-1)", border: "1px solid var(--bdr-2)" }}>
                 <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
-                <span className="text-xs" style={{ color: "var(--bdr-12)" }}>/{FLOOR_PLAN.length}</span>
+                <span className="text-xs" style={{ color: "var(--bdr-12)" }}>/{seatPlan.tables.length}</span>
                 <span className="text-[10px] ml-0.5" style={{ color: "var(--text-muted4)" }}>free</span>
               </div>
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "var(--surf-1)", border: "1px solid var(--bdr-2)" }}>
@@ -2653,16 +2899,15 @@ export default function HostDashboard() {
                     const n = typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10)
                     return n === tableNumber
                   })?.id
-                const resolvedCap = capacity
-                  ?? tables.find(t => {
-                    const n = typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10)
-                    return n === tableNumber
-                  })?.capacity
-                setTableTapModal({ tableNumber, tableId: resolvedId, capacity: resolvedCap })
+                const tableLabel = displayPlan.tables.find(t => t.number === tableNumber)?.label ?? String(tableNumber)
+                setTableTapModal({ tableNumber, tableId: resolvedId, tableLabel })
               }}
               locallyAvailableTables={locallyAvailableTables}
               isTableMoveMode={!!pendingTableMove}
               onCancelTableMove={() => setPendingTableMove(null)}
+              floorPlan={displayPlan}
+              southsideTab={isSouthside ? southsideTab : undefined}
+              onSouthsideTabChange={isSouthside ? setSouthsideTab : undefined}
             />
           </div>
 
@@ -2936,6 +3181,7 @@ export default function HostDashboard() {
             localOccupants={localOccupants}
             onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
             onClose={() => setSeatPicker(null)}
+            floorPlan={seatPlan}
           />
         )}
 
@@ -2944,7 +3190,7 @@ export default function HostDashboard() {
           <TableGuestPicker
             tableNumber={tableTapModal.tableNumber}
             tableId={tableTapModal.tableId}
-            capacity={tableTapModal.capacity}
+            tableLabel={tableTapModal.tableLabel}
             queue={queue}
             restaurantId={restaurantId}
             onClose={() => setTableTapModal(null)}

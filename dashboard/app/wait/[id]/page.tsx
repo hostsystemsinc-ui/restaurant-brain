@@ -98,6 +98,8 @@ interface GuestConfig {
   logoUrl?: string        // show logo instead of restaurant name text
   waitMessages: string[]; seatedMessage: string
   finalButtons: Array<{ id: string; label: string; url: string; color: string }>
+  googleReviewsUrl?: string  // Google Maps / Business review link
+  instagramUrl?: string      // Instagram profile link
 }
 
 const DEFAULT_CONFIG: GuestConfig = {
@@ -140,9 +142,21 @@ const WALNUT_BASE: GuestConfig = {
   finalButtons: [],
 }
 
+const WALNUT_INSTAGRAM_URL = "https://www.instagram.com/walnutcafeboulder/"
+
 function configForRid(rid?: string): GuestConfig | null {
-  if (rid === WALNUT_ORIGINAL_RID)  return { ...WALNUT_BASE, restaurantName: "The Original Walnut Cafe" }
-  if (rid === WALNUT_SOUTHSIDE_RID) return { ...WALNUT_BASE, restaurantName: "The Southside Walnut Cafe" }
+  if (rid === WALNUT_ORIGINAL_RID)  return {
+    ...WALNUT_BASE,
+    restaurantName: "The Original Walnut Cafe",
+    googleReviewsUrl: "https://www.google.com/maps/place/Walnut+Cafe/@40.020757,-105.2526459,16z/data=!4m8!3m7!1s0x876bedd9f1fe5bbd:0xe93b8da7d35dedad!8m2!3d40.020757!4d-105.2526459!9m1!1b1!16s%2Fg%2F1tjfbrm0?entry=ttu",
+    instagramUrl: WALNUT_INSTAGRAM_URL,
+  }
+  if (rid === WALNUT_SOUTHSIDE_RID) return {
+    ...WALNUT_BASE,
+    restaurantName: "The Southside Walnut Cafe",
+    googleReviewsUrl: "https://www.google.com/maps/place/South+Side+Walnut+Cafe/@39.9830139,-105.2493306,17z/data=!3m1!4b1!4m6!3m5!1s0x876bed09855e15a1:0x100548c421560942!8m2!3d39.9830139!4d-105.2493306!16s%2Fg%2F1tf7smjx?entry=ttu",
+    instagramUrl: WALNUT_INSTAGRAM_URL,
+  }
   if (rid === WALTERS_RID)          return WALTERS_CONFIG
   return null
 }
@@ -412,6 +426,70 @@ export default function WaitPage() {
           <p style={{ fontSize: 14, color: cfg.text2Color, margin: "4px 0 20px", lineHeight: 1.5 }}>
             {cfg.seatedMessage}
           </p>
+
+          {/* Social / review links — shown when configured */}
+          {(cfg.googleReviewsUrl || cfg.instagramUrl) && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", marginTop: 4 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: cfg.text3Color, margin: 0, textAlign: "center" }}>
+                Share the love
+              </p>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+                {cfg.googleReviewsUrl && (
+                  <a
+                    href={cfg.googleReviewsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textDecoration: "none", flex: 1, maxWidth: 130 }}
+                  >
+                    <div style={{
+                      width: 56, height: 56, borderRadius: 16,
+                      background: "rgba(255,255,255,0.92)",
+                      boxShadow: `0 2px 12px ${cfg.cardBorder}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      border: `1px solid ${cfg.cardBorder}`,
+                    }}>
+                      {/* Google "G" logo in brand colors */}
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                      </svg>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.text2Color, letterSpacing: "0.04em" }}>
+                      Leave a review
+                    </span>
+                  </a>
+                )}
+                {cfg.instagramUrl && (
+                  <a
+                    href={cfg.instagramUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, textDecoration: "none", flex: 1, maxWidth: 130 }}
+                  >
+                    <div style={{
+                      width: 56, height: 56, borderRadius: 16,
+                      background: "linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)",
+                      boxShadow: "0 2px 12px rgba(220,39,67,0.25)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      {/* Instagram camera icon */}
+                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                        <circle cx="12" cy="12" r="4"/>
+                        <circle cx="17.5" cy="6.5" r="0.5" fill="white" stroke="none"/>
+                      </svg>
+                    </div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.text2Color, letterSpacing: "0.04em" }}>
+                      Follow us
+                    </span>
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
           {cfg.finalButtons.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
               {cfg.finalButtons.map(btn => btn.url ? (

@@ -88,7 +88,7 @@ def _ensure_demo_tables():
             }).execute()
         # Find which table numbers already exist
         existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
-        existing_nums = {row["table_number"] for row in existing}
+        existing_nums = {int(row["table_number"]) for row in existing}
         capacities = [2,2,2,4,4,4,6,6,6,4,4,4,1,1,1,1]
         missing = [
             {"restaurant_id": rid, "table_number": i+1, "capacity": c, "status": "available"}
@@ -124,12 +124,93 @@ WALNUT_RESTAURANTS = [
 ]
 
 def _ensure_walnut_restaurants():
-    """Guarantee both Walnut Cafe restaurants + their 16 tables exist in the DB.
-    Idempotent — only inserts rows that are missing."""
-    # Same layout as demo: 16 tables matching the HOST floor plan
-    capacities = [2, 2, 2, 4, 4, 4, 6, 6, 6, 4, 4, 4, 1, 1, 1, 1]
+    """Guarantee both Walnut Cafe restaurants + their tables exist in the DB.
+    Idempotent — only inserts rows that are missing.
+
+    Table numbers mirror the HOST floor plan for each location.
+    Booths A/B/C are stored as numeric 101/102/103 for Supabase compat.
+    Outdoor patio uses 35-55 to avoid collision with indoor 1-34.
+    """
+    # Original Walnut Cafe — matches ORIGINAL_WALNUT_PLAN in station/page.tsx
+    # Left room col1 (tall rects): 41-44
+    # Left room col2 (mixed): 30-35
+    # Transition col: 11, 12, 21
+    # Top row: 22-26  |  Booths A/B/C: 101-103  |  Middle: 18,19,20
+    # Diamonds: 13-16  |  Counter circles: 3-10
+    ORIGINAL_TABLES: list[dict] = [
+        # Left room column 1 — tall rects
+        {"table_number": 44, "capacity": 2}, {"table_number": 43, "capacity": 2},
+        {"table_number": 42, "capacity": 2}, {"table_number": 41, "capacity": 2},
+        {"table_number": 40, "capacity": 2},
+        # Left room column 2 — mixed shapes
+        {"table_number": 35, "capacity": 2}, {"table_number": 34, "capacity": 2},
+        {"table_number": 33, "capacity": 2}, {"table_number": 32, "capacity": 2},
+        {"table_number": 31, "capacity": 2}, {"table_number": 30, "capacity": 2},
+        # Transition column
+        {"table_number": 21, "capacity": 2}, {"table_number": 12, "capacity": 2},
+        {"table_number": 11, "capacity": 2},
+        # Main top row
+        {"table_number": 22, "capacity": 4}, {"table_number": 23, "capacity": 4},
+        {"table_number": 24, "capacity": 4}, {"table_number": 25, "capacity": 4},
+        {"table_number": 26, "capacity": 4},
+        # Booths A=101 / B=102 / C=103
+        {"table_number": 101, "capacity": 6}, {"table_number": 102, "capacity": 6},
+        {"table_number": 103, "capacity": 6},
+        # Middle row
+        {"table_number": 18, "capacity": 4}, {"table_number": 19, "capacity": 4},
+        {"table_number": 20, "capacity": 4},
+        # Diamonds
+        {"table_number": 13, "capacity": 2}, {"table_number": 14, "capacity": 2},
+        {"table_number": 15, "capacity": 2}, {"table_number": 16, "capacity": 2},
+        # Counter bar stools
+        {"table_number": 3,  "capacity": 2}, {"table_number": 4,  "capacity": 2},
+        {"table_number": 5,  "capacity": 2}, {"table_number": 6,  "capacity": 2},
+        {"table_number": 7,  "capacity": 2}, {"table_number": 8,  "capacity": 2},
+        {"table_number": 9,  "capacity": 2}, {"table_number": 10, "capacity": 2},
+    ]
+
+    # Southside Walnut Cafe — matches SOUTHSIDE_INDOOR_PLAN + SOUTHSIDE_OUTDOOR_PLAN
+    # Indoor: 1-34  |  Outdoor/patio: 35-55 (no 38; 51-55 are ex-30-34 renamed)
+    SOUTHSIDE_TABLES: list[dict] = [
+        # Indoor (1-34)
+        {"table_number": 1,  "capacity": 4}, {"table_number": 2,  "capacity": 4},
+        {"table_number": 3,  "capacity": 4}, {"table_number": 4,  "capacity": 4},
+        {"table_number": 5,  "capacity": 4}, {"table_number": 6,  "capacity": 4},
+        {"table_number": 7,  "capacity": 4}, {"table_number": 8,  "capacity": 4},
+        {"table_number": 9,  "capacity": 4}, {"table_number": 10, "capacity": 4},
+        {"table_number": 11, "capacity": 4}, {"table_number": 12, "capacity": 4},
+        {"table_number": 13, "capacity": 2}, {"table_number": 14, "capacity": 2},
+        {"table_number": 15, "capacity": 2}, {"table_number": 16, "capacity": 2},
+        {"table_number": 17, "capacity": 2}, {"table_number": 18, "capacity": 4},
+        {"table_number": 19, "capacity": 4}, {"table_number": 20, "capacity": 2},
+        {"table_number": 21, "capacity": 2}, {"table_number": 22, "capacity": 2},
+        {"table_number": 23, "capacity": 4}, {"table_number": 24, "capacity": 4},
+        {"table_number": 25, "capacity": 2}, {"table_number": 26, "capacity": 4},
+        {"table_number": 27, "capacity": 4}, {"table_number": 28, "capacity": 4},
+        {"table_number": 29, "capacity": 2}, {"table_number": 30, "capacity": 2},
+        {"table_number": 31, "capacity": 2}, {"table_number": 32, "capacity": 2},
+        {"table_number": 33, "capacity": 2}, {"table_number": 34, "capacity": 4},
+        # Outdoor patio (35-55, no 38; 51-55 are patio tables P4/P2/W1/W4/W5)
+        {"table_number": 35, "capacity": 2}, {"table_number": 36, "capacity": 2},
+        {"table_number": 37, "capacity": 2}, {"table_number": 39, "capacity": 2},
+        {"table_number": 40, "capacity": 2}, {"table_number": 41, "capacity": 2},
+        {"table_number": 42, "capacity": 2}, {"table_number": 43, "capacity": 2},
+        {"table_number": 44, "capacity": 2}, {"table_number": 45, "capacity": 4},
+        {"table_number": 46, "capacity": 4}, {"table_number": 47, "capacity": 2},
+        {"table_number": 48, "capacity": 2}, {"table_number": 49, "capacity": 2},
+        {"table_number": 50, "capacity": 2}, {"table_number": 51, "capacity": 2},
+        {"table_number": 52, "capacity": 2}, {"table_number": 53, "capacity": 2},
+        {"table_number": 54, "capacity": 2}, {"table_number": 55, "capacity": 2},
+    ]
+
+    TABLES_BY_RID = {
+        "0001cafe-0001-4000-8000-000000000001": ORIGINAL_TABLES,
+        "0002cafe-0001-4000-8000-000000000002": SOUTHSIDE_TABLES,
+    }
+
     for rest in WALNUT_RESTAURANTS:
         rid = rest["id"]
+        table_specs = TABLES_BY_RID.get(rid, [])
         try:
             if not supabase.table("restaurants").select("id").eq("id", rid).execute().data:
                 supabase.table("restaurants").insert({
@@ -137,19 +218,30 @@ def _ensure_walnut_restaurants():
                 }).execute()
                 print(f"[startup] Created restaurant: {rest['name']}")
             existing = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute().data or []
-            existing_nums = {row["table_number"] for row in existing}
+            # Cast to int — Supabase may return table_number as string depending on column type
+            existing_nums = {int(row["table_number"]) for row in existing}
             missing = [
-                {"restaurant_id": rid, "table_number": i + 1, "capacity": c, "status": "available"}
-                for i, c in enumerate(capacities)
-                if (i + 1) not in existing_nums
+                {"restaurant_id": rid, "table_number": spec["table_number"],
+                 "capacity": spec["capacity"], "status": "available"}
+                for spec in table_specs
+                if spec["table_number"] not in existing_nums
             ]
             if missing:
                 supabase.table("tables").insert(missing).execute()
                 print(f"[startup] Inserted {len(missing)} tables for {rest['name']}: {[m['table_number'] for m in missing]}")
+            else:
+                print(f"[startup] All tables already exist for {rest['name']} ({len(existing_nums)} rows)")
         except Exception as e:
             print(f"[startup] _ensure_walnut_restaurants failed for {rest['name']}: {e}")
 
 threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
+
+
+@app.post("/admin/reseed-walnut")
+def reseed_walnut():
+    """Re-run the Walnut table seeding on demand. Idempotent — safe to call anytime."""
+    _ensure_walnut_restaurants()
+    return {"status": "ok", "message": "Walnut table seeding complete"}
 
 def _rebuild_occupants_for_restaurant(rid: str) -> int:
     """Reconstruct in-memory occupants for a single restaurant from DB + seating_events.

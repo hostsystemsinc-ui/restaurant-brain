@@ -60,12 +60,11 @@ interface LocalOcc { name: string; party_size: number }
 
 // Shared floor-plan availability calculation (mirrors host view logic)
 function calcAvailable(tables: Table[], localOccupants: Map<number, LocalOcc>): number {
-  const occupied = Array.from({ length: 16 }, (_, i) => i + 1).filter(num => {
-    if (localOccupants.has(num)) return true
-    const t = tables.find(t => t.table_number === num)
-    return !!t && t.status !== "available"
+  const occupied = tables.filter(t => {
+    if (localOccupants.has(t.table_number)) return true
+    return t.status !== "available"
   }).length
-  return 16 - occupied
+  return tables.length - occupied
 }
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
@@ -343,7 +342,7 @@ function OverviewPage({
   }
 
   const available = calcAvailable(tables, localOccupants)
-  const occupied  = 16 - available
+  const occupied  = tables.length - available
   const active    = queue.filter(q => q.status === "waiting" || q.status === "ready")
   const avgWait   = insights?.avg_wait_estimate ?? 0
 
@@ -369,7 +368,7 @@ function OverviewPage({
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
         <KpiCard
           label="Tables Available"
-          value={`${available}/16`}
+          value={`${available}/${tables.length}`}
           sub="on the floor"
           color={available > 0 ? C.green : C.red}
         />
@@ -387,8 +386,8 @@ function OverviewPage({
         <KpiCard
           label="Tables Occupied"
           value={occupied}
-          sub={`${Math.round(occupied / 16 * 100)}% utilization`}
-          color={occupied > 12 ? C.red : C.text}
+          sub={tables.length > 0 ? `${Math.round(occupied / tables.length * 100)}% utilization` : ""}
+          color={tables.length > 0 && occupied > tables.length * 0.75 ? C.red : C.text}
         />
       </div>
 
@@ -473,7 +472,7 @@ function OverviewPage({
               {dragSource === null && (
                 <span style={{ fontSize: 11, color: C.muted }}>Hold an occupied table to move a guest</span>
               )}
-              <span style={{ fontSize: 12, color: C.muted }}>{available} of 16 available</span>
+              <span style={{ fontSize: 12, color: C.muted }}>{available} of {tables.length} available</span>
             </div>
           }
         />
@@ -482,9 +481,8 @@ function OverviewPage({
           onPointerUp={commitMove}
           onPointerLeave={cancelDrag}
         >
-          {Array.from({ length: 16 }, (_, i) => {
-            const num      = i + 1
-            const t        = tables.find(t => t.table_number === num)
+          {tables.slice().sort((a, b) => a.table_number - b.table_number).map(t => {
+            const num      = t.table_number
             const localOcc = localOccupants.get(num)
             const apiOccupied = !!t && t.status !== "available"
             const avail    = !apiOccupied && !localOcc
@@ -740,7 +738,7 @@ function AnalyticsPage() {
 
 function TablesPage({ tables, localOccupants }: { tables: Table[]; localOccupants: Map<number, LocalOcc> }) {
   const available = calcAvailable(tables, localOccupants)
-  const occupied  = 16 - available
+  const occupied  = tables.length - available
 
   return (
     <div>
@@ -750,10 +748,10 @@ function TablesPage({ tables, localOccupants }: { tables: Table[]; localOccupant
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
-        <KpiCard label="Total Tables"   value={16}        sub="on the floor"       />
-        <KpiCard label="Available Now"  value={available}  color={available > 0 ? C.green : C.red} />
-        <KpiCard label="Occupied Now"   value={occupied}   color={occupied > 12 ? C.red : C.text} />
-        <KpiCard label="Avg Capacity"   value="3.4p"       sub="per table"         />
+        <KpiCard label="Total Tables"   value={tables.length}  sub="on the floor"       />
+        <KpiCard label="Available Now"  value={available}       color={available > 0 ? C.green : C.red} />
+        <KpiCard label="Occupied Now"   value={occupied}        color={occupied > tables.length * 0.75 ? C.red : C.text} />
+        <KpiCard label="Avg Capacity"   value="3.4p"            sub="per table"         />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
