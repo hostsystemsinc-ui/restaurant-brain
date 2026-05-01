@@ -829,9 +829,10 @@ function DroppableFloorTable({
     : "var(--table-avail-border)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "diamond" ? 0 : pos.shape === "square" ? 11 : 10
-  const clipPath = pos.shape === "round"
-    ? "circle(50%)"
-    : pos.shape === "diamond"
+  // Diamonds need clipPath for the polygon; rounds use borderRadius only —
+  // adding clipPath:"circle(50%)" to a round also clips the border, causing a
+  // visible cutoff on the sides.
+  const clipPath = pos.shape === "diamond"
     ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
     : undefined
 
@@ -869,6 +870,10 @@ function DroppableFloorTable({
       onClick={
         isSelectTarget && onSeatFromSelect
           ? onSeatFromSelect
+          // Move mode: isSelectTarget is true but no onSeatFromSelect — route to onAvailableTap
+          // so the host can tap any green table to move the guest there.
+          : isSelectTarget && onAvailableTap
+          ? onAvailableTap
           : isOccupied && onClear
           ? onClear
           : !isOccupied && !hasLocalOccupant && !isSelectMode && onAvailableTap

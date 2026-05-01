@@ -921,11 +921,11 @@ export default function WalnutDashboard() {
   }
 
   function stats(d: RestaurantData, rid: string) {
-    // Use whichever is larger: the DB row count or our known floor-plan total.
-    // After the reseed deploy the DB count equals the floor-plan total; before it, the
-    // known total wins so stats don't show "3 of 16 available" for a 37-table restaurant.
+    // Use the known floor-plan total as authoritative; fall back to DB count only when
+    // no hard-coded total exists. Using Math.max caused the DB's extra stale rows to
+    // inflate the total (e.g. 38 instead of 37 for Original after a partial seed).
     const knownTotal = RESTAURANT_TABLE_TOTALS[rid] ?? FLOOR_PLAN.length
-    const total      = Math.max(d.tables.length, knownTotal)
+    const total      = knownTotal ?? d.tables.length
     const fromOccupants = d.occupants.size
     const fromTables    = d.tables.filter(t => t.status !== "available").length
     const occupied  = Math.max(fromOccupants, fromTables)
