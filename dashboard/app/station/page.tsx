@@ -296,6 +296,7 @@ interface HistoryEntry {
   quoted_wait: number | null
   phone: string | null
   notes: string | null
+  table_number?: number | null   // last table the guest was seated at (from seating_events)
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1655,12 +1656,13 @@ function HeaderLogo({ src, name }: { src: string; name: string }) {
 // ── Station History Drawer ─────────────────────────────────────────────────────
 
 function StationHistoryDrawer({
-  restaurantId, history, tables, localOccupants, onClose, onRestored,
+  restaurantId, history, tables, localOccupants, floorPlanTables, onClose, onRestored,
 }: {
   restaurantId: string
   history: HistoryEntry[]
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
+  floorPlanTables: FloorPos[]
   onClose: () => void
   onRestored: () => void
 }) {
@@ -1707,6 +1709,13 @@ function StationHistoryDrawer({
 
   // Suppress unused variable warning — restaurantId may be used in future
   void restaurantId
+
+  // Resolve a DB table_number → display label using the active floor plan
+  const tableDisplayLabel = (num: number | null | undefined): string | null => {
+    if (num == null) return null
+    const pos = floorPlanTables.find(t => t.number === num)
+    return pos?.label ?? String(num)
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }}>
@@ -1774,11 +1783,19 @@ function StationHistoryDrawer({
                         </div>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0, marginLeft: 8 }}>{fmtTime(e.arrival_time)}</span>
                       </div>
-                      {/* Party + wait */}
-                      <div style={{ fontSize: 11, color: "var(--text-warm)", display: "flex", gap: 6, marginLeft: 9, marginBottom: 8 }}>
+                      {/* Party + wait + table */}
+                      <div style={{ fontSize: 11, color: "var(--text-warm)", display: "flex", gap: 6, marginLeft: 9, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
                         <span>{e.party_size} {e.party_size === 1 ? "guest" : "guests"}</span>
                         {e.quoted_wait != null && <><span style={{ opacity: 0.4 }}>·</span><span>{e.quoted_wait}m quoted</span></>}
                         {e.notes && <><span style={{ opacity: 0.4 }}>·</span><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100 }}>{e.notes}</span></>}
+                        {e.status === "seated" && tableDisplayLabel(e.table_number) && (
+                          <><span style={{ opacity: 0.4 }}>·</span><span style={{
+                            fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase",
+                            padding: "1px 6px", borderRadius: 5,
+                            background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                            border: "1px solid rgba(34,197,94,0.28)",
+                          }}>Table {tableDisplayLabel(e.table_number)}</span></>
+                        )}
                       </div>
                       {/* Phone + actions */}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 9 }}>
@@ -2022,7 +2039,7 @@ export default function HostDashboard() {
 
   // Add a queue entry to local history when it's seated or removed.
   // This makes history work immediately and persists across refreshes even when server is down.
-  const addToLocalHistory = useCallback((entry: QueueEntry, finalStatus: "seated" | "removed") => {
+  const addToLocalHistory = useCallback((entry: QueueEntry, finalStatus: "seated" | "removed", tableNumber?: number) => {
     const histEntry: HistoryEntry = {
       id: entry.id,
       name: entry.name,
@@ -2032,6 +2049,7 @@ export default function HostDashboard() {
       quoted_wait: entry.quoted_wait,
       phone: entry.phone,
       notes: entry.notes,
+      table_number: tableNumber ?? null,
     }
     // Remove any previous entry with the same ID (e.g., if guest was restored then re-removed)
     localHistoryRef.current = [histEntry, ...localHistoryRef.current.filter(e => e.id !== entry.id)]
@@ -2292,7 +2310,7 @@ export default function HostDashboard() {
 
   const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
     setSeatPicker(null)
-    addToLocalHistory(entry, "seated")
+    addToLocalHistory(entry, "seated", tableNumber)
     // Cancel any pending-clear on this table — a new guest is being placed here
     pendingClearsRef.current.delete(tableNumber)
     // Drop forceAvailable immediately so the table color can turn red right away
@@ -2465,7 +2483,7 @@ export default function HostDashboard() {
     const entry = (data as { entry?: QueueEntry } | undefined)?.entry
     if (!entry) return
     if (localOccupants.has(targetTable)) return
-    addToLocalHistory(entry, "seated")
+    addToLocalHistory(entry, "seated", targetTable)
     // A new guest is being placed here — cancel any pending-clear protection on this table
     pendingClearsRef.current.delete(targetTable)
     // Drop forceAvailable so the table turns red, not stays green
@@ -3065,6 +3083,7 @@ export default function HostDashboard() {
             history={history}
             tables={tables}
             localOccupants={localOccupants}
+            floorPlanTables={seatPlan.tables}
             onClose={() => setShowHistory(false)}
             onRestored={refreshAll}
           />
@@ -3201,7 +3220,7 @@ export default function HostDashboard() {
               // Record in local history before refreshAll removes the guest from the queue
               if (occupant.entry_id) {
                 const histEntry = queueRef.current.find(e => e.id === occupant.entry_id)
-                if (histEntry) addToLocalHistory(histEntry, "seated")
+                if (histEntry) addToLocalHistory(histEntry, "seated", tableNumber)
               }
               setLocalOccupants(prev => new Map(prev).set(tableNumber, occupant))
               setTableTapModal(null)

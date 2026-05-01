@@ -20,7 +20,8 @@ interface HistoryEntry {
   quoted_wait: number | null
   phone: string | null
   notes: string | null
-  updated_at?: string  // when status changed (seated/removed) — used for actual wait
+  updated_at?: string     // when status changed — used for actual wait calculation
+  table_number?: number | null   // last table the guest was sat at
 }
 
 const API  = "https://restaurant-brain-production.up.railway.app"
@@ -551,7 +552,6 @@ function HistoryDrawer({
                   <button key={t.id} onClick={() => seatAtTable(seatPicker, t.id)} disabled={seating === seatPicker.id}
                     style={{ height: 56, borderRadius: 10, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, background: C.greenBg, border: `1px solid #BBF7D0`, cursor: "pointer", opacity: seating === seatPicker.id ? 0.5 : 1 }}>
                     <span style={{ fontSize: 18, fontWeight: 800, color: C.green }}>{t.table_number}</span>
-                    <span style={{ fontSize: 9, color: C.green, opacity: 0.7 }}>{t.capacity}p</span>
                   </button>
                 ))}
               </div>
@@ -568,6 +568,17 @@ function HistoryDrawer({
 }
 
 // ── Day History inline stat box ────────────────────────────────────────────────
+
+// Maps DB table_number → human label for Walnut tables.
+// Booths 101/102/103 are labeled A/B/C; everything else uses the raw number.
+// This covers both Original and Southside.
+function walnutTableLabel(num: number | null | undefined): string | null {
+  if (num == null) return null
+  if (num === 101) return "A"
+  if (num === 102) return "B"
+  if (num === 103) return "C"
+  return String(num)
+}
 
 function DayHistory({ history, restaurantColor }: { history: HistoryEntry[]; restaurantColor: string }) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -631,7 +642,7 @@ function DayHistory({ history, restaurantColor }: { history: HistoryEntry[]; res
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                {["Status", "Name", "Party", "Phone", "Added", "Quoted", "Waited"].map(h => (
+                {["Status", "Name", "Party", "Table", "Phone", "Added", "Quoted", "Waited"].map(h => (
                   <th key={h} style={{
                     padding: "6px 10px", textAlign: "left", fontSize: 10, fontWeight: 700,
                     color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em",
@@ -662,6 +673,15 @@ function DayHistory({ history, restaurantColor }: { history: HistoryEntry[]; res
                     </td>
                     <td style={{ padding: "9px 10px", color: C.text2, textAlign: "center" }}>
                       {e.party_size}
+                    </td>
+                    <td style={{ padding: "9px 10px", whiteSpace: "nowrap", textAlign: "center" }}>
+                      {isSeated && walnutTableLabel(e.table_number)
+                        ? <span style={{
+                            fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 6,
+                            background: C.greenBg, color: C.green, border: "1px solid #BBF7D0",
+                          }}>{walnutTableLabel(e.table_number)}</span>
+                        : <span style={{ color: C.muted }}>—</span>
+                      }
                     </td>
                     <td style={{ padding: "9px 10px", whiteSpace: "nowrap" }}>
                       {e.phone ? (
@@ -892,24 +912,32 @@ export default function WalnutDashboard() {
   if (!pinOk) return <PinScreen onSuccess={() => setPinOk(true)} />
 
   // ── Derived stats for both restaurants ───────────────────────────────────────
-  // Use FLOOR_PLAN.length (16) as the canonical total — the API may not have all
-  // tables seeded for a restaurant, and we always know there are 16 tables.
-  function stats(d: RestaurantData) {
-    const total     = FLOOR_PLAN.length  // always 16
-    // Use occupants map as the source of truth (since we removed the occupiedNums filter).
-    // Fall back to table status count for tables that have no occupant entry.
+  // Canonical table totals per restaurant (matches the floor plans in station/page.tsx).
+  // Used as fallback when the DB hasn't yet returned all rows — guarantees the denominator
+  // is always correct even before the reseed deploy has run.
+  const RESTAURANT_TABLE_TOTALS: Record<string, number> = {
+    "0001cafe-0001-4000-8000-000000000001": 37,  // Original: 37 tables on floor plan
+    "0002cafe-0001-4000-8000-000000000002": 54,  // Southside: 34 indoor + 20 outdoor
+  }
+
+  function stats(d: RestaurantData, rid: string) {
+    // Use whichever is larger: the DB row count or our known floor-plan total.
+    // After the reseed deploy the DB count equals the floor-plan total; before it, the
+    // known total wins so stats don't show "3 of 16 available" for a 37-table restaurant.
+    const knownTotal = RESTAURANT_TABLE_TOTALS[rid] ?? FLOOR_PLAN.length
+    const total      = Math.max(d.tables.length, knownTotal)
     const fromOccupants = d.occupants.size
     const fromTables    = d.tables.filter(t => t.status !== "available").length
     const occupied  = Math.max(fromOccupants, fromTables)
-    const available = total - occupied
+    const available = Math.max(0, total - occupied)
     const waiting   = d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
-    const occupancy = Math.round(occupied / total * 100)
+    const occupancy = total > 0 ? Math.round(occupied / total * 100) : 0
     return { total, available, occupied, waiting, occupancy, avgWait: d.dailyAvgWait ?? d.avgWait }
   }
 
   const restaurant = RESTAURANTS[activeTab]
   const d          = data[activeTab]
-  const s          = stats(d)
+  const s          = stats(d, restaurant.rid)
 
   const activeQueue    = d.queue.filter(e => e.status === "waiting" || e.status === "ready")
   const longestWait = activeQueue.length > 0
@@ -962,7 +990,7 @@ export default function WalnutDashboard() {
       <div style={{ padding: "24px 28px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
         {RESTAURANTS.map((r, i) => {
           const rd = data[i]
-          const rs = stats(rd)
+          const rs = stats(rd, r.rid)
           const isActive = activeTab === i
           return (
             <div key={r.key} style={{
@@ -1102,8 +1130,9 @@ export default function WalnutDashboard() {
         {clearState && (() => {
           const target = RESTAURANTS.find(x => x.key === clearState.key)
           if (!target) return null
-          const rd = data[RESTAURANTS.findIndex(x => x.key === clearState.key) as 0 | 1]
-          const rs = stats(rd)
+          const rdIdx = RESTAURANTS.findIndex(x => x.key === clearState.key) as 0 | 1
+          const rd = data[rdIdx]
+          const rs = stats(rd, RESTAURANTS[rdIdx].rid)
           const isClearing = clearState.phase === "clearing"
           return (
             <div style={{

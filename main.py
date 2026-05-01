@@ -1107,7 +1107,9 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
     """Returns seated/removed entries for today's business day only (3am cutoff).
     Registered BEFORE /queue/{entry_id} so 'history' isn't captured as a UUID param.
     Server-side date filter + 200-row cap prevents Supabase's 1000-row limit being hit
-    as volume grows, and cuts per-poll bandwidth by ~95%."""
+    as volume grows, and cuts per-poll bandwidth by ~95%.
+    Each seated entry includes table_number: the last table the guest was sat at
+    (uses seating_events so moves are captured — the final table wins)."""
     from datetime import timedelta
     rid = _rid(restaurant_id)
     now = datetime.now(timezone.utc)
@@ -1126,7 +1128,49 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
             .limit(200)
             .execute()
         )
-        return res.data or []
+        entries = res.data or []
+
+        # For each entry look up the last table it was seated at via seating_events.
+        # "Last" = highest created_at; handles move scenarios so the final table wins.
+        seated_ids = [e["id"] for e in entries if e.get("status") == "seated"]
+        table_num_map: dict = {}
+        if seated_ids:
+            # Fetch in chunks to stay under Supabase IN-clause limits
+            for i in range(0, len(seated_ids), 200):
+                chunk = seated_ids[i:i + 200]
+                ev_res = (
+                    supabase.table("seating_events")
+                    .select("queue_entry_id, table_id")
+                    .in_("queue_entry_id", chunk)
+                    .eq("action", "seated")
+                    .order("created_at", desc=True)
+                    .execute()
+                )
+                # First occurrence per entry_id = latest event (DESC order)
+                latest_table: dict = {}
+                for ev in (ev_res.data or []):
+                    eid = ev.get("queue_entry_id")
+                    if eid and eid not in latest_table:
+                        latest_table[eid] = ev["table_id"]
+
+                # Resolve table_ids → table_numbers in one batch
+                tids = list({v for v in latest_table.values() if v})
+                if tids:
+                    tbl_res = (
+                        supabase.table("tables")
+                        .select("id, table_number")
+                        .in_("id", tids)
+                        .execute()
+                    )
+                    tid_to_num = {t["id"]: int(t["table_number"]) for t in (tbl_res.data or [])}
+                    for eid, tid in latest_table.items():
+                        if tid in tid_to_num:
+                            table_num_map[eid] = tid_to_num[tid]
+
+        for e in entries:
+            e["table_number"] = table_num_map.get(e["id"])
+
+        return entries
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
