@@ -165,7 +165,9 @@ function FloorMap({ tables, occupants }: { tables: Table[]; occupants: Map<numbe
       {/* Tables */}
       {FLOOR_PLAN.map(pos => {
         const t       = byNumber.get(pos.number)
-        const isOcc   = occupants.has(pos.number) || (t ? t.status !== "available" : false)
+        // Trust occupants when memory has any data; fall back to DB status only
+        // when occupants is completely empty (server restart wiped in-memory state).
+        const isOcc   = occupants.has(pos.number) || (occupants.size === 0 && t ? t.status !== "available" : false)
         const occ     = occupants.get(pos.number)
         const isUnknown = !t
         const radius  = pos.shape === "round" ? "50%" : "11%"
@@ -926,11 +928,15 @@ export default function WalnutDashboard() {
     // inflate the total (e.g. 38 instead of 37 for Original after a partial seed).
     const knownTotal = RESTAURANT_TABLE_TOTALS[rid] ?? FLOOR_PLAN.length
     const total      = knownTotal ?? d.tables.length
-    // Trust the real-time occupants map — it's polled every cycle and cleared
-    // on guest removal. DB table.status can be stale (not updated after a crash
-    // or network drop), so Math.max(occupants, tables) inflated the count.
+    // Primary: in-memory occupants (polled every cycle, cleared on guest removal).
+    // Fallback: DB table.status, ONLY when the occupants map is completely empty —
+    // that means the server just restarted and wiped in-memory state, so DB is
+    // the best available signal until the seed thread repopulates memory.
+    // Math.max was wrong because it let a stale DB "occupied" row inflate the count
+    // even when occupants was authoritative (e.g. 1 real guest → max(1,2) = 2).
     const fromOccupants = d.occupants.size
-    const occupied  = fromOccupants
+    const fromTables    = d.tables.filter(t => t.status !== "available").length
+    const occupied  = fromOccupants > 0 ? fromOccupants : fromTables
     const available = Math.max(0, total - occupied)
     const waiting   = d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
     const occupancy = total > 0 ? Math.round(occupied / total * 100) : 0
