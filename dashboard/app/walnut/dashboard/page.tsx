@@ -51,6 +51,28 @@ const FLOOR_PLAN = [
   { number: 16, shape: "round",  x: 748, y: 330, w: 60,  h: 60,  section: "bar" },
 ] as const
 
+// ── Valid table numbers per restaurant ────────────────────────────────────────
+// Mirrors the floor plans in station/page.tsx — used to filter out stale DB rows
+// that have out-of-range table_numbers when computing the fallback occupied count.
+
+const ORIGINAL_VALID_NUMS = new Set([
+  3,4,5,6,7,8,9,10,11,12,13,14,15,16,
+  18,19,20,21,22,23,24,25,26,
+  30,31,32,33,34,35,
+  40,41,42,43,44,
+  101,102,103,
+])
+// Indoor: 1–34 · Outdoor: 35–37, 39–55  (no table 38 in either plan)
+const SOUTHSIDE_VALID_NUMS = new Set([
+  1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,
+  21,22,23,24,25,26,27,28,29,30,31,32,33,34,
+  35,36,37,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,
+])
+const RESTAURANT_VALID_NUMS: Record<string, Set<number>> = {
+  "0001cafe-0001-4000-8000-000000000001": ORIGINAL_VALID_NUMS,
+  "0002cafe-0001-4000-8000-000000000002": SOUTHSIDE_VALID_NUMS,
+}
+
 // ── Restaurant config ──────────────────────────────────────────────────────────
 
 const RESTAURANTS = [
@@ -935,7 +957,14 @@ export default function WalnutDashboard() {
     // Math.max was wrong because it let a stale DB "occupied" row inflate the count
     // even when occupants was authoritative (e.g. 1 real guest → max(1,2) = 2).
     const fromOccupants = d.occupants.size
-    const fromTables    = d.tables.filter(t => t.status !== "available").length
+    // Only count DB rows whose table_number belongs to this restaurant's actual floor plan.
+    // This prevents orphan / seed-error rows (e.g. a stale row for table #77 that never
+    // existed) from inflating the occupied count when the in-memory occupants map is empty
+    // (which happens right after a server restart before _rebuild_occupants runs).
+    const validNums  = RESTAURANT_VALID_NUMS[rid] ?? null
+    const fromTables = d.tables.filter(
+      t => t.status !== "available" && (validNums ? validNums.has(t.table_number) : true)
+    ).length
     const occupied  = fromOccupants > 0 ? fromOccupants : fromTables
     const available = Math.max(0, total - occupied)
     const waiting   = d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
