@@ -154,7 +154,7 @@ function configForRid(rid?: string): GuestConfig | null {
   if (rid === WALNUT_SOUTHSIDE_RID) return {
     ...WALNUT_BASE,
     restaurantName: "The Southside Walnut Cafe",
-    googleReviewsUrl: "https://www.google.com/maps/place/South+Side+Walnut+Cafe/@39.9830139,-105.2493306,17z/data=!3m1!4b1!4m6!3m5!1s0x876bed09855e15a1:0x100548c421560942!8m2!3d39.9830139!4d-105.2493306!16s%2Fg%2F1tf7smjx?entry=ttu",
+    googleReviewsUrl: "https://www.google.com/maps/place/South+Side+Walnut+Cafe/@39.9830139,-105.2493306,17z/data=!4m8!3m7!1s0x876bed09855e15a1:0x100548c421560942!8m2!3d39.9830139!4d-105.2493306!9m1!1b1!16s%2Fg%2F1tf7smjx?entry=ttu&g_ep=EgoyMDI2MDQyOS4wIKXMDSoASAFQAw%3D%3D",
     instagramUrl: WALNUT_INSTAGRAM_URL,
   }
   if (rid === WALTERS_RID)          return WALTERS_CONFIG
