@@ -237,12 +237,6 @@ def _ensure_walnut_restaurants():
 threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
 
 
-@app.post("/admin/reseed-walnut")
-def reseed_walnut():
-    """Re-run the Walnut table seeding on demand. Idempotent — safe to call anytime."""
-    _ensure_walnut_restaurants()
-    return {"status": "ok", "message": "Walnut table seeding complete"}
-
 def _rebuild_occupants_for_restaurant(rid: str) -> int:
     """Reconstruct in-memory occupants for a single restaurant from DB + seating_events.
     Returns the number of occupant entries that were seeded. Safe to call repeatedly —
@@ -365,6 +359,13 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Owner-Secret"],
 )
+
+@app.post("/admin/reseed-walnut")
+def reseed_walnut():
+    """Re-run the Walnut table seeding on demand. Idempotent — safe to call anytime."""
+    _ensure_walnut_restaurants()
+    return {"status": "ok", "message": "Walnut table seeding complete"}
+
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
