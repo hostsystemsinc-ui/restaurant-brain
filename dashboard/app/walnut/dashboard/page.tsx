@@ -956,12 +956,13 @@ export default function WalnutDashboard() {
     // the best available signal until the seed thread repopulates memory.
     // Math.max was wrong because it let a stale DB "occupied" row inflate the count
     // even when occupants was authoritative (e.g. 1 real guest → max(1,2) = 2).
-    const fromOccupants = d.occupants.size
-    // Only count DB rows whose table_number belongs to this restaurant's actual floor plan.
-    // This prevents orphan / seed-error rows (e.g. a stale row for table #77 that never
-    // existed) from inflating the occupied count when the in-memory occupants map is empty
-    // (which happens right after a server restart before _rebuild_occupants runs).
+    // Only count tables whose number belongs to this restaurant's actual floor plan.
+    // This prevents orphan entries (ghost occupants or stale DB rows for table numbers
+    // that don't exist in this restaurant's plan) from inflating the stats.
     const validNums  = RESTAURANT_VALID_NUMS[rid] ?? null
+    const fromOccupants = validNums
+      ? [...d.occupants.keys()].filter(n => validNums.has(n)).length
+      : d.occupants.size
     const fromTables = d.tables.filter(
       t => t.status !== "available" && (validNums ? validNums.has(t.table_number) : true)
     ).length
