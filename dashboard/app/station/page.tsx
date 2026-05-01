@@ -2603,19 +2603,11 @@ export default function HostDashboard() {
   }
 `}</style>
       <div data-host-theme={theme} style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--page-bg)" }}>
-      <div className="flex flex-col" style={{
-        width: `${(1 / zoom * 100).toFixed(6)}vw`,
-        height: `${(1 / zoom * 100).toFixed(6)}dvh`,
-        background: "var(--page-bg)",
-        transform: `scale(${zoom})`,
-        transformOrigin: "top left",
-        overflow: "hidden",
-      }}>
 
-        {/* ── Header ─────────────────────────────────────────────────── */}
+        {/* ── Header — sits OUTSIDE the zoom transform so it never moves ── */}
         <header
           className="flex items-center justify-between px-5 h-12 shrink-0"
-          style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)" }}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, height: 48, zIndex: 20, background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)" }}
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
             {/* Restaurant logo / name */}
@@ -2719,6 +2711,19 @@ export default function HostDashboard() {
             </button>
           </div>
         </header>
+
+        {/* ── Zoom area — clipped container starting below the fixed header ── */}
+        <div style={{ position: "absolute", top: 48, left: 0, right: 0, bottom: 0, overflow: "hidden" }}>
+        <div style={{
+          width: `${(1 / zoom * 100).toFixed(6)}vw`,
+          height: `calc(${(1 / zoom).toFixed(6)} * (100dvh - 48px))`,
+          background: "var(--page-bg)",
+          transform: `scale(${zoom})`,
+          transformOrigin: "top left",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}>
 
         {/* ── Body ───────────────────────────────────────────────────── */}
         <div className="flex flex-1 overflow-hidden">
@@ -3238,7 +3243,8 @@ export default function HostDashboard() {
             }}
           />
         )}
-      </div>
+        </div>{/* end zoom-scaled div */}
+        </div>{/* end clip-container */}
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null}>
