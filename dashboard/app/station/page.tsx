@@ -829,10 +829,12 @@ function DroppableFloorTable({
     : "var(--table-avail-border)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "diamond" ? 0 : pos.shape === "square" ? 11 : 10
-  // Diamonds need clipPath for the polygon; rounds use borderRadius only —
-  // adding clipPath:"circle(50%)" to a round also clips the border, causing a
-  // visible cutoff on the sides.
-  const clipPath = pos.shape === "diamond"
+  // circle(50%) caused border cutoff on the edges; undefined left the outer box-shadow
+  // rendering as a faint square ring. inset(0% round 50%) clips to exactly the
+  // border-radius shape — clean circle, no clipped border, no square shadow artifact.
+  const clipPath = pos.shape === "round"
+    ? "inset(0% round 50%)"
+    : pos.shape === "diamond"
     ? "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
     : undefined
 
@@ -2886,8 +2888,10 @@ export default function HostDashboard() {
           </div>
 
           {/* ── Floor map (desktop only) ───────────────────────────── */}
+          {/* Guard: don't render until restaurantId is resolved so the generic plan
+              never flashes before the restaurant-specific plan loads. */}
           <div className="flex-1 overflow-hidden hidden lg:flex">
-            <FloorMap
+            {restaurantId ? <FloorMap
               tables={tables}
               localOccupants={localOccupants}
               onClear={(tableId, tableNumber) => {
@@ -2931,7 +2935,7 @@ export default function HostDashboard() {
               floorPlan={displayPlan}
               southsideTab={isSouthside ? southsideTab : undefined}
               onSouthsideTabChange={isSouthside ? setSouthsideTab : undefined}
-            />
+            /> : null}
           </div>
 
           {/* ── Mobile: no floor map — full queue ─────────────────── */}

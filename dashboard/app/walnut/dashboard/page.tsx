@@ -926,9 +926,11 @@ export default function WalnutDashboard() {
     // inflate the total (e.g. 38 instead of 37 for Original after a partial seed).
     const knownTotal = RESTAURANT_TABLE_TOTALS[rid] ?? FLOOR_PLAN.length
     const total      = knownTotal ?? d.tables.length
+    // Trust the real-time occupants map — it's polled every cycle and cleared
+    // on guest removal. DB table.status can be stale (not updated after a crash
+    // or network drop), so Math.max(occupants, tables) inflated the count.
     const fromOccupants = d.occupants.size
-    const fromTables    = d.tables.filter(t => t.status !== "available").length
-    const occupied  = Math.max(fromOccupants, fromTables)
+    const occupied  = fromOccupants
     const available = Math.max(0, total - occupied)
     const waiting   = d.queue.filter(e => e.status === "waiting" || e.status === "ready").length
     const occupancy = total > 0 ? Math.round(occupied / total * 100) : 0
