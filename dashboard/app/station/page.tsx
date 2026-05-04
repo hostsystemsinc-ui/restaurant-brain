@@ -902,26 +902,55 @@ function DroppableFloorTable({
         }}>
           DROP
         </span>
-      ) : occupant ? (
-        <>
-          <span style={{ fontSize: 9, fontWeight: 700, color: "var(--text-warm)", letterSpacing: "0.1em" }}>
-            T{pos.label ?? pos.number}
-          </span>
-          <span style={{
-            fontSize: pos.shape === "rect" ? 11 : 10,
-            fontWeight: 700,
-            color: "var(--text-cream)",
-            textAlign: "center",
-            lineHeight: 1.2,
-            paddingInline: 4,
-          }}>
-            {occupant.name}
-          </span>
-          <span style={{ fontSize: 9, color: "var(--text-warm5)" }}>
-            {occupant.party_size}p
-          </span>
-        </>
-      ) : (
+      ) : occupant ? (() => {
+        // Scale font sizes relative to the table's canvas dimensions so tiny tables
+        // never overflow. Table 31 (110×58) is the tightest case — short and wide.
+        const shortTable = pos.h < 70   // e.g. rect booths, table 31
+        const narrowTable = pos.w < 80  // small squares, bar rounds
+        const tinyTable = pos.h < 55    // extremely short — combine label+name
+        const labelSz = shortTable ? 7 : narrowTable ? 7 : 9
+        const nameSz  = shortTable ? 9 : narrowTable ? 9 : (pos.shape === "rect" ? 11 : 10)
+        const partySz = shortTable ? 8 : 9
+        // For very short tables lay label + party inline with name to save vertical space
+        return tinyTable ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, width: "100%", overflow: "hidden", paddingInline: 3 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, width: "100%", justifyContent: "center" }}>
+              <span style={{ fontSize: labelSz, fontWeight: 700, color: "var(--text-warm)", letterSpacing: "0.08em", flexShrink: 0 }}>
+                T{pos.label ?? pos.number}
+              </span>
+              <span style={{ fontSize: nameSz, fontWeight: 700, color: "var(--text-cream)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                {occupant.name}
+              </span>
+              <span style={{ fontSize: labelSz, color: "var(--text-warm5)", flexShrink: 0 }}>
+                {occupant.party_size}p
+              </span>
+            </div>
+          </div>
+        ) : (
+          <>
+            <span style={{ fontSize: labelSz, fontWeight: 700, color: "var(--text-warm)", letterSpacing: "0.1em" }}>
+              T{pos.label ?? pos.number}
+            </span>
+            <span style={{
+              fontSize: nameSz,
+              fontWeight: 700,
+              color: "var(--text-cream)",
+              textAlign: "center",
+              lineHeight: 1.15,
+              paddingInline: 3,
+              maxWidth: "90%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
+              {occupant.name}
+            </span>
+            <span style={{ fontSize: partySz, color: "var(--text-warm5)" }}>
+              {occupant.party_size}p
+            </span>
+          </>
+        )
+      })() : (
         <span style={{
           fontSize: pos.shape === "rect" ? 17 : 14,
           fontWeight: 800,
@@ -2520,8 +2549,12 @@ export default function HostDashboard() {
   // "X available / Y occupied" header counts always match the colors on the floor map.
   const floorOccupied = seatPlan.tables.filter(pos => localOccupants.has(pos.number)).length
   const available   = seatPlan.tables.length - floorOccupied
-  const readyList      = queue.filter(q => q.status === "ready")
-  const waitingList    = queue.filter(q => q.status === "waiting")
+  // Always sort by arrival_time ascending (earliest joined = top of list) regardless of
+  // API response order — guarantees consistent ordering even on out-of-order fetches.
+  const byArrival = (a: QueueEntry, b: QueueEntry) =>
+    new Date(a.arrival_time).getTime() - new Date(b.arrival_time).getTime()
+  const readyList      = queue.filter(q => q.status === "ready").sort(byArrival)
+  const waitingList    = queue.filter(q => q.status === "waiting").sort(byArrival)
   const needsQuoteList = waitingList.filter(q => q.quoted_wait == null)
   const quotedWaiting  = waitingList.filter(q => q.quoted_wait != null)
 
@@ -2892,10 +2925,10 @@ export default function HostDashboard() {
             </div>
           </div>
 
-          {/* ── Floor map (desktop only) ───────────────────────────── */}
+          {/* ── Floor map ──────────────────────────────────────────── */}
           {/* Guard: don't render until restaurantId is resolved so the generic plan
               never flashes before the restaurant-specific plan loads. */}
-          <div className="flex-1 overflow-hidden hidden lg:flex">
+          <div className="flex-1 overflow-hidden flex">
             {restaurantId ? <FloorMap
               tables={tables}
               localOccupants={localOccupants}
@@ -2943,12 +2976,6 @@ export default function HostDashboard() {
             /> : null}
           </div>
 
-          {/* ── Mobile: no floor map — full queue ─────────────────── */}
-          <div className="flex-1 lg:hidden overflow-y-auto p-4 flex flex-col gap-4">
-            <p className="text-xs text-center py-8" style={{ color: "var(--text-muted2)" }}>
-              Floor map available on larger screens
-            </p>
-          </div>
         </div>
 
         {/* ── Add Guest FAB ─────────────────────────────────────────── */}
@@ -3244,7 +3271,7 @@ export default function HostDashboard() {
           />
         )}
         </div>{/* end zoom-scaled div */}
-        </div>{/* end clip-container */}
+        </div>{/* end clip-container (desktop) */}
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null}>

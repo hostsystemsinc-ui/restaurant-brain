@@ -179,10 +179,8 @@ export default function LoginsPage() {
   // Password change state per account
   const [origPw,     setOrigPw]     = useState("")
   const [sidePw,     setSidePw]     = useState("")
-  const [walnutPw,   setWalnutPw]   = useState("")
   const [origResult, setOrigResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [sideResult, setSideResult] = useState<{ ok: boolean; msg: string } | null>(null)
-  const [walnutResult, setWalnutResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving,     setSaving]     = useState<string | null>(null)
 
   // Check PIN cookie on mount
@@ -370,24 +368,6 @@ export default function LoginsPage() {
             {saving === "southside" ? "Saving…" : "Update Password"}
           </button>
           <ResultMsg result={sideResult} />
-        </Section>
-
-        {/* ── Walnut Owner Account ── */}
-        <Section
-          title="Walnut Owner Account"
-          subtitle={<>Login username: <strong style={{ color: C.text }}>walnut</strong> — used for the unified HOST station</> as unknown as string}
-        >
-          <div style={{ marginBottom: 4 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>New Password</label>
-            <PasswordField value={walnutPw} onChange={setWalnutPw} placeholder="Enter new password" />
-          </div>
-          <button
-            onClick={() => { setWalnutResult(null); savePassword("walnut", walnutPw, setWalnutResult) }}
-            disabled={!walnutPw.trim() || saving === "walnut"}
-            style={{ marginTop: 12, padding: "10px 20px", borderRadius: 10, background: walnutPw.trim() ? C.blue : C.bg, color: walnutPw.trim() ? "white" : C.muted, border: `1px solid ${walnutPw.trim() ? C.blue : C.border}`, fontWeight: 600, fontSize: 13, cursor: walnutPw.trim() ? "pointer" : "default", transition: "all 0.15s", opacity: saving === "walnut" ? 0.6 : 1 }}>
-            {saving === "walnut" ? "Saving…" : "Update Password"}
-          </button>
-          <ResultMsg result={walnutResult} />
         </Section>
 
         <div style={{ marginTop: 24, padding: "16px 20px", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 12 }}>
