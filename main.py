@@ -1225,17 +1225,19 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
         )
         entries = res.data or []
 
-        # For each entry look up the last table it was seated at via seating_events.
+        # For each entry look up the last seating event via seating_events.
         # "Last" = highest created_at; handles move scenarios so the final table wins.
+        # We fetch created_at here so we can compute actual_wait_min (arrival → seated).
         seated_ids = [e["id"] for e in entries if e.get("status") == "seated"]
-        table_num_map: dict = {}
+        table_num_map: dict  = {}
+        seated_at_map: dict  = {}
         if seated_ids:
             # Fetch in chunks to stay under Supabase IN-clause limits
             for i in range(0, len(seated_ids), 200):
                 chunk = seated_ids[i:i + 200]
                 ev_res = (
                     supabase.table("seating_events")
-                    .select("queue_entry_id, table_id")
+                    .select("queue_entry_id, table_id, created_at")
                     .in_("queue_entry_id", chunk)
                     .eq("action", "seated")
                     .order("created_at", desc=True)
@@ -1247,6 +1249,7 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
                     eid = ev.get("queue_entry_id")
                     if eid and eid not in latest_table:
                         latest_table[eid] = ev["table_id"]
+                        seated_at_map[eid] = ev["created_at"]
 
                 # Resolve table_ids → table_numbers in one batch
                 tids = list({v for v in latest_table.values() if v})
@@ -1264,6 +1267,18 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
 
         for e in entries:
             e["table_number"] = table_num_map.get(e["id"])
+            seated_at = seated_at_map.get(e["id"])
+            e["seated_at"] = seated_at
+            # Actual wait = minutes from arrival to being seated
+            if seated_at and e.get("arrival_time"):
+                try:
+                    arr = datetime.fromisoformat(e["arrival_time"].replace("Z", "+00:00"))
+                    sat = datetime.fromisoformat(seated_at.replace("Z", "+00:00"))
+                    e["actual_wait_min"] = max(0, int((sat - arr).total_seconds() / 60))
+                except Exception:
+                    e["actual_wait_min"] = None
+            else:
+                e["actual_wait_min"] = None
 
         return entries
     except Exception as e:

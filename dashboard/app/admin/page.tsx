@@ -37,6 +37,8 @@ interface QueueEntry {
   quoted_wait: number | null
   wait_estimate?: number
   arrival_time: string
+  seated_at?: string | null
+  actual_wait_min?: number | null
   position?: number
   phone: string | null
   notes: string | null
@@ -915,21 +917,61 @@ function TablesPage({ tables, localOccupants }: { tables: Table[]; localOccupant
 
 const STATUS_FILTERS = ["all","waiting","ready","seated","removed"] as const
 
-function GuestsPage({ queue }: { queue: QueueEntry[] }) {
+// Actual minutes waited: for seated entries use arrival→seated_at, for active use arrival→now
+function minutesWaited(e: QueueEntry): number | null {
+  if (e.actual_wait_min != null) return e.actual_wait_min
+  if (e.status === "waiting" || e.status === "ready") {
+    return Math.floor((Date.now() - new Date(e.arrival_time).getTime()) / 60_000)
+  }
+  return null
+}
+
+function GuestsPage({ queue, restaurantId }: { queue: QueueEntry[]; restaurantId: string }) {
   const [search,  setSearch]  = useState("")
   const [filter,  setFilter]  = useState<string>("all")
+  const [history, setHistory] = useState<QueueEntry[]>([])
+  const [now,     setNow]     = useState(() => Date.now())
 
-  const filtered = useMemo(() => queue.filter(e => {
+  // Fetch today's completed entries so we can show actual wait times for seated guests
+  useEffect(() => {
+    if (!restaurantId) return
+    const load = () =>
+      fetch(`${API}/queue/history?restaurant_id=${restaurantId}`)
+        .then(r => r.ok ? r.json() : [])
+        .then((data: QueueEntry[]) => setHistory(data))
+        .catch(() => {})
+    load()
+    const t = setInterval(load, 30_000)
+    return () => clearInterval(t)
+  }, [restaurantId])
+
+  // Tick every 30s so active-guest elapsed times stay fresh
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Active entries from live queue + today's completed from history (no duplicates)
+  const allEntries = useMemo(() => {
+    const activeIds = new Set(queue.map(e => e.id))
+    return [...queue, ...history.filter(e => !activeIds.has(e.id))]
+      .sort((a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime())
+  }, [queue, history])
+
+  const filtered = useMemo(() => allEntries.filter(e => {
     const matchName   = !search || (e.name ?? "").toLowerCase().includes(search.toLowerCase())
     const matchStatus = filter === "all" || e.status === filter
     return matchName && matchStatus
-  }), [queue, search, filter])
+  }), [allEntries, search, filter])
 
-  const seated = queue.filter(e => e.status === "seated").length
-  const active = queue.filter(e => e.status === "waiting" || e.status === "ready").length
-  const avgParty = queue.length > 0
-    ? (queue.reduce((s, e) => s + e.party_size, 0) / queue.length).toFixed(1)
+  const seated = allEntries.filter(e => e.status === "seated").length
+  const active = allEntries.filter(e => e.status === "waiting" || e.status === "ready").length
+  const avgParty = allEntries.length > 0
+    ? (allEntries.reduce((s, e) => s + e.party_size, 0) / allEntries.length).toFixed(1)
     : "—"
+
+  // Keep `now` in scope so minutesWaited re-evaluates on tick
+  void now
 
   return (
     <div>
@@ -943,14 +985,15 @@ function GuestsPage({ queue }: { queue: QueueEntry[] }) {
           variant="primary"
           onClick={() => exportSheet(
             filtered.map(e => ({
-              Name:              e.name || "Guest",
-              "Party Size":      e.party_size,
-              Status:            e.status,
-              Source:            e.source,
-              "Arrival Time":    new Date(e.arrival_time).toLocaleString(),
-              "Est. Wait (min)": e.wait_estimate ?? "",
-              Phone:             e.phone ?? "",
-              Notes:             e.notes ?? "",
+              Name:               e.name || "Guest",
+              "Party Size":       e.party_size,
+              Status:             e.status,
+              Source:             e.source,
+              "Arrival Time":     new Date(e.arrival_time).toLocaleString(),
+              "Waited (min)":     minutesWaited(e) ?? "",
+              "Quoted Wait (min)": e.quoted_wait ?? "",
+              Phone:              e.phone ?? "",
+              Notes:              e.notes ?? "",
             })),
             "walter303_guests",
           )}
@@ -1013,7 +1056,7 @@ function GuestsPage({ queue }: { queue: QueueEntry[] }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                {["Name","Party","Source","Status","Wait Est.","Arrived","Phone"].map(h => (
+                {["Name","Party","Source","Status","Waited","Arrived","Phone"].map(h => (
                   <th key={h} style={TH_STYLE}>{h}</th>
                 ))}
               </tr>
@@ -1029,7 +1072,9 @@ function GuestsPage({ queue }: { queue: QueueEntry[] }) {
                     </span>
                   </td>
                   <td style={TD_STYLE}><Badge status={e.status} /></td>
-                  <td style={TD_STYLE}>{e.wait_estimate ? `${e.wait_estimate}m` : "—"}</td>
+                  <td style={{ ...TD_STYLE, fontWeight: minutesWaited(e) != null ? 600 : 400, color: minutesWaited(e) != null ? C.text : C.muted }}>
+                    {minutesWaited(e) != null ? `${minutesWaited(e)}m` : "—"}
+                  </td>
                   <td style={{ ...TD_STYLE, fontSize: 12, color: C.muted }}>{timeAgo(e.arrival_time)}</td>
                   <td style={{ ...TD_STYLE, fontSize: 12, color: C.muted }}>{e.phone ?? "—"}</td>
                 </tr>
@@ -2637,7 +2682,7 @@ export default function AdminPage() {
         )}
         {page === "analytics" && <AnalyticsPage queue={queue} restaurantId={restaurantId} />}
         {page === "tables"    && <TablesPage tables={tables} localOccupants={localOccupants} />}
-        {page === "guests"    && <GuestsPage queue={queue} />}
+        {page === "guests"    && <GuestsPage queue={queue} restaurantId={restaurantId} />}
         {page === "schedule"  && <SchedulingPanel />}
         {page === "inputs"    && <InputsPage setPage={setPage} />}
         {page === "terms"     && <TermsPage />}
