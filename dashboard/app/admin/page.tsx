@@ -142,13 +142,7 @@ function makeWaitData(tf: TimeFrame) {
   })
 }
 
-const SOURCE_DATA = [
-  { name: "NFC Tap",    value: 142, fill: C.c1 },
-  { name: "Host Entry", value:  87, fill: C.c2 },
-  { name: "Web",        value:  34, fill: C.c3 },
-  { name: "Phone",      value:  23, fill: C.c4 },
-  { name: "App",        value:  12, fill: C.c5 },
-]
+// SOURCE_DATA is now computed dynamically in AnalyticsPage from real queue data
 
 const PARTY_SIZE_DATA = [
   { size: "1", count:  8 },
@@ -549,9 +543,47 @@ const TIME_FRAMES: { label: string; value: TimeFrame }[] = [
   { label: "3 Months", value: "90d"   },
 ]
 
-function AnalyticsPage() {
-  const [tf, setTf] = useState<TimeFrame>("7d")
-  const waitData = useMemo(() => makeWaitData(tf), [tf])
+// ── Source label mapping ───────────────────────────────────────────────────────
+function sourceLabel(src: string): string {
+  if (src === "nfc")  return "NFC Puck"
+  if (src === "qr")   return "QR Code"
+  if (src === "host") return "Host Entry"
+  return "Other"
+}
+
+function AnalyticsPage({ queue, restaurantId }: { queue: QueueEntry[]; restaurantId: string }) {
+  const [tf, setTf]           = useState<TimeFrame>("7d")
+  const waitData              = useMemo(() => makeWaitData(tf), [tf])
+  const [history, setHistory] = useState<QueueEntry[]>([])
+
+  // Fetch today's completed entries whenever restaurantId is ready
+  useEffect(() => {
+    if (!restaurantId) return
+    fetch(`${API}/queue/history?restaurant_id=${restaurantId}`)
+      .then(r => r.ok ? r.json() : [])
+      .then((data: QueueEntry[]) => setHistory(data))
+      .catch(() => {})
+  }, [restaurantId])
+
+  // Combine active + completed entries to get full-day source picture
+  const sourceData = useMemo(() => {
+    const counts: Record<string, number> = {}
+    const all = [...queue, ...history]
+    for (const e of all) {
+      const label = sourceLabel(e.source ?? "other")
+      counts[label] = (counts[label] ?? 0) + 1
+    }
+    const palette = [C.c1, C.c2, C.c3, C.c4, C.c5]
+    const order   = ["NFC Puck", "QR Code", "Host Entry", "Other"]
+    return order
+      .filter(k => counts[k])
+      .map((k, i) => ({ name: k, value: counts[k], fill: palette[i % palette.length] }))
+  }, [queue, history])
+
+  const nfc   = sourceData.find(d => d.name === "NFC Puck")?.value  ?? 0
+  const qr    = sourceData.find(d => d.name === "QR Code")?.value   ?? 0
+  const host  = sourceData.find(d => d.name === "Host Entry")?.value ?? 0
+  const total = sourceData.reduce((s, d) => s + d.value, 0)
 
   return (
     <div>
@@ -579,6 +611,43 @@ function AnalyticsPage() {
           ))}
         </div>
       </div>
+
+      {/* NFC vs QR headline card */}
+      <Card style={{ marginBottom: 16 }}>
+        <CardHeader title="NFC Puck vs QR Code — Today" />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 0 }}>
+          {/* NFC */}
+          <div style={{ padding: "20px 24px", borderRight: `1px solid ${C.border}` }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>NFC Puck Taps</p>
+            <p style={{ fontSize: 40, fontWeight: 800, color: C.c1, margin: "0 0 4px", lineHeight: 1 }}>{nfc}</p>
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+              {total > 0 ? `${Math.round((nfc / total) * 100)}% of joins` : "No data today"}
+            </p>
+          </div>
+          {/* QR */}
+          <div style={{ padding: "20px 24px", borderRight: `1px solid ${C.border}` }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>QR Code Scans</p>
+            <p style={{ fontSize: 40, fontWeight: 800, color: C.c2, margin: "0 0 4px", lineHeight: 1 }}>{qr}</p>
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+              {total > 0 ? `${Math.round((qr / total) * 100)}% of joins` : "No data today"}
+            </p>
+          </div>
+          {/* Host Entry */}
+          <div style={{ padding: "20px 24px", borderRight: `1px solid ${C.border}` }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>Host Added</p>
+            <p style={{ fontSize: 40, fontWeight: 800, color: C.c3, margin: "0 0 4px", lineHeight: 1 }}>{host}</p>
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+              {total > 0 ? `${Math.round((host / total) * 100)}% of joins` : "No data today"}
+            </p>
+          </div>
+          {/* Total */}
+          <div style={{ padding: "20px 24px" }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.05em", margin: "0 0 6px" }}>Total Joins Today</p>
+            <p style={{ fontSize: 40, fontWeight: 800, color: C.text, margin: "0 0 4px", lineHeight: 1 }}>{total}</p>
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>active + completed</p>
+          </div>
+        </div>
+      </Card>
 
       {/* Wait time trend */}
       <Card style={{ marginBottom: 16 }}>
@@ -622,7 +691,7 @@ function AnalyticsPage() {
         </ResponsiveContainer>
       </Card>
 
-      {/* Source + Party size — two columns */}
+      {/* Source chart + Party size — two columns */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
         {/* Source breakdown */}
         <Card>
@@ -633,7 +702,7 @@ function AnalyticsPage() {
                 icon={Download}
                 small
                 onClick={() => exportSheet(
-                  SOURCE_DATA.map(d => ({ Source: d.name, Guests: d.value })),
+                  sourceData.map(d => ({ Source: d.name, Guests: d.value })),
                   "source_breakdown",
                 )}
               >
@@ -641,38 +710,44 @@ function AnalyticsPage() {
               </Btn>
             }
           />
-          <ResponsiveContainer width="100%" height={230}>
-            <BarChart
-              data={SOURCE_DATA}
-              layout="vertical"
-              margin={{ top: 0, right: 24, left: 8, bottom: 0 }}
-            >
-              <CartesianGrid stroke={C.border} strokeDasharray="4 4" horizontal={false} />
-              <XAxis
-                type="number"
-                tick={{ fontSize: 11, fill: C.muted }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                tick={{ fontSize: 12, fill: C.text2 }}
-                tickLine={false}
-                axisLine={false}
-                width={82}
-              />
-              <Tooltip
-                contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, color: C.text }}
-                cursor={{ fill: `${C.border}60` }}
-              />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                {SOURCE_DATA.map((entry, i) => (
-                  <Cell key={i} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          {sourceData.length === 0 ? (
+            <div style={{ height: 230, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 13 }}>
+              No join data yet today
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart
+                data={sourceData}
+                layout="vertical"
+                margin={{ top: 0, right: 24, left: 8, bottom: 0 }}
+              >
+                <CartesianGrid stroke={C.border} strokeDasharray="4 4" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 11, fill: C.muted }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tick={{ fontSize: 12, fill: C.text2 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={88}
+                />
+                <Tooltip
+                  contentStyle={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, color: C.text }}
+                  cursor={{ fill: `${C.border}60` }}
+                />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+                  {sourceData.map((entry, i) => (
+                    <Cell key={i} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </Card>
 
         {/* Party size distribution */}
@@ -723,7 +798,7 @@ function AnalyticsPage() {
           variant="primary"
           onClick={() => exportMultiSheet([
             { name: "Wait Times",        data: waitData },
-            { name: "Source Breakdown",  data: SOURCE_DATA.map(d => ({ Source: d.name, Guests: d.value })) },
+            { name: "Source Breakdown",  data: sourceData.map(d => ({ Source: d.name, Guests: d.value })) },
             { name: "Party Sizes",       data: PARTY_SIZE_DATA.map(d => ({ "Party Size": `${d.size} guests`, Parties: d.count })) },
           ], "walter303_waitlist_analytics")}
         >
@@ -2560,7 +2635,7 @@ export default function AdminPage() {
             restaurantName={restaurantName} restaurantCity={restaurantCity} restaurantJoinUrl={restaurantJoinUrl}
           />
         )}
-        {page === "analytics" && <AnalyticsPage />}
+        {page === "analytics" && <AnalyticsPage queue={queue} restaurantId={restaurantId} />}
         {page === "tables"    && <TablesPage tables={tables} localOccupants={localOccupants} />}
         {page === "guests"    && <GuestsPage queue={queue} />}
         {page === "schedule"  && <SchedulingPanel />}

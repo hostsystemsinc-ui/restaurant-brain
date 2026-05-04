@@ -10,6 +10,20 @@ const nextConfig: NextConfig = {
         destination: "https://hostplatform.net/:path*",
         permanent: true,
       },
+      // ── NFC puck entry points ──────────────────────────────────────────────
+      // Program NFC pucks with these URLs. Guests land on the same join page
+      // as QR code users; the ?src=nfc param lets us track which method drove
+      // more joins in the admin analytics dashboard.
+      {
+        source:      "/walnut/original/puck",
+        destination: "/walnut/original/join?src=nfc",
+        permanent:   false,
+      },
+      {
+        source:      "/walnut/southside/puck",
+        destination: "/walnut/southside/join?src=nfc",
+        permanent:   false,
+      },
     ];
   },
   async rewrites() {

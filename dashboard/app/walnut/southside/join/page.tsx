@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, UtensilsCrossed, X } from "lucide-react"
 import { WALNUT_MENU } from "@/lib/walnut-menu"
@@ -21,6 +21,14 @@ const LOGO   = "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a6
 interface LiveInfo { available: number; waitMin: number | null; ahead: number }
 
 export default function SouthsideJoinPage() {
+  return (
+    <Suspense>
+      <SouthsideJoinInner />
+    </Suspense>
+  )
+}
+
+function SouthsideJoinInner() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   // "qr" = scanned the QR code  |  "nfc" = tapped the puck

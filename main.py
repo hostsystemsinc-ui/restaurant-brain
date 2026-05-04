@@ -367,6 +367,100 @@ def reseed_walnut():
     return {"status": "ok", "message": "Walnut table seeding complete"}
 
 
+# ── Client agreement signing ──────────────────────────────────────────────────
+
+class AgreementAcceptRequest(BaseModel):
+    business_name:      str
+    signer_name:        str
+    signer_email:       str
+    signer_title:       Optional[str] = None
+    phone:              Optional[str] = None
+    address:            Optional[str] = None
+    location_count:     int = Field(ge=1, le=50, default=1)
+    plan_type:          str                       # "single" | "multi"
+    monthly_fee:        float                     # dollars
+    agreement_version:  str
+    ip_address:         Optional[str] = None
+    user_agent:         Optional[str] = None
+
+@app.post("/agreements/accept")
+def accept_agreement(req: AgreementAcceptRequest):
+    """
+    Record a newly signed client agreement.
+
+    Called by the Host /signup onboarding page after a prospective client
+    scrolls through, checks the agreement box, and types their name.
+
+    Persists an immutable record to the client_agreements table in Supabase.
+    The record includes a timestamp, IP address, and user-agent for audit purposes.
+
+    Required Supabase table (run once via SQL editor):
+
+        CREATE TABLE IF NOT EXISTS client_agreements (
+            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            business_name       TEXT NOT NULL,
+            signer_name         TEXT NOT NULL,
+            signer_title        TEXT,
+            signer_email        TEXT NOT NULL,
+            phone               TEXT,
+            address             TEXT,
+            location_count      INTEGER NOT NULL DEFAULT 1,
+            plan_type           TEXT NOT NULL,
+            monthly_fee_cents   INTEGER NOT NULL,
+            trial_end_date      DATE NOT NULL,
+            agreement_version   TEXT NOT NULL,
+            signed_at           TIMESTAMPTZ NOT NULL,
+            ip_address          TEXT,
+            user_agent          TEXT,
+            status              TEXT NOT NULL DEFAULT 'trial',
+            stripe_customer_id  TEXT,
+            notes               TEXT
+        );
+    """
+    from datetime import timedelta
+    now            = datetime.now(timezone.utc)
+    trial_end_date = (now + timedelta(days=30)).date().isoformat()
+
+    try:
+        result = supabase.table("client_agreements").insert({
+            "business_name":     req.business_name,
+            "signer_name":       req.signer_name,
+            "signer_title":      req.signer_title,
+            "signer_email":      req.signer_email,
+            "phone":             req.phone,
+            "address":           req.address,
+            "location_count":    req.location_count,
+            "plan_type":         req.plan_type,
+            "monthly_fee_cents": int(round(req.monthly_fee * 100)),
+            "trial_end_date":    trial_end_date,
+            "agreement_version": req.agreement_version,
+            "signed_at":         now.isoformat(),
+            "ip_address":        req.ip_address,
+            "user_agent":        req.user_agent,
+            "status":            "trial",
+        }).execute()
+    except Exception as e:
+        print(f"[agreements/accept] DB insert failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to record agreement. Please contact support.")
+
+    record_id = result.data[0]["id"] if result.data else None
+    print(
+        f"[agreements/accept] NEW CLIENT SIGNED — "
+        f"business={req.business_name!r} signer={req.signer_name!r} "
+        f"email={req.signer_email!r} plan={req.plan_type} "
+        f"locations={req.location_count} fee=${req.monthly_fee}/mo "
+        f"trial_ends={trial_end_date} id={record_id}"
+    )
+
+    return {
+        "ok":             True,
+        "agreement_id":   record_id,
+        "trial_end_date": trial_end_date,
+        "message":        "Agreement recorded successfully.",
+    }
+
+
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
 class JoinQueueRequest(BaseModel):
@@ -1121,7 +1215,7 @@ def get_queue_history(restaurant_id: Optional[str] = None, date: Optional[str] =
     try:
         res = (
             supabase.table("queue_entries")
-            .select("id,name,party_size,status,arrival_time,quoted_wait,phone,notes,restaurant_id")
+            .select("id,name,party_size,status,source,arrival_time,quoted_wait,phone,notes,restaurant_id")
             .eq("restaurant_id", rid)
             .in_("status", ["seated", "removed"])
             .gte("arrival_time", bd_start.isoformat())
