@@ -461,6 +461,56 @@ def accept_agreement(req: AgreementAcceptRequest):
     }
 
 
+@app.get("/agreements/status")
+def agreements_status(business_name: Optional[str] = None):
+    """Check whether a signed agreement exists for a given business name."""
+    if not business_name:
+        raise HTTPException(status_code=400, detail="business_name is required")
+    try:
+        result = (
+            supabase.table("client_agreements")
+            .select("id, signed_at, signer_name, signer_email, signer_title, status, agreement_version, plan_type")
+            .eq("business_name", business_name)
+            .order("signed_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if result.data:
+            rec = result.data[0]
+            return {
+                "signed":            True,
+                "signed_at":         rec.get("signed_at"),
+                "signer_name":       rec.get("signer_name"),
+                "signer_email":      rec.get("signer_email"),
+                "signer_title":      rec.get("signer_title"),
+                "agreement_id":      rec.get("id"),
+                "agreement_version": rec.get("agreement_version"),
+                "plan_type":         rec.get("plan_type"),
+                "status":            rec.get("status"),
+            }
+        return {"signed": False}
+    except Exception as e:
+        print(f"[agreements/status] DB query failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check agreement status.")
+
+
+@app.get("/agreements/all")
+def agreements_all(secret: Optional[str] = None):
+    """Return all signed agreements — owner dashboard only."""
+    _check_owner_secret(secret)
+    try:
+        result = (
+            supabase.table("client_agreements")
+            .select("id, business_name, signer_name, signer_title, signer_email, plan_type, signed_at, ip_address, agreement_version, status, monthly_fee_cents, location_count")
+            .order("signed_at", desc=True)
+            .execute()
+        )
+        return {"agreements": result.data or []}
+    except Exception as e:
+        print(f"[agreements/all] DB query failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve agreements.")
+
+
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
 class JoinQueueRequest(BaseModel):
@@ -1176,19 +1226,10 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
         new_entry = entry.data[0]
         if req.quoted_wait is not None:
             _wait_set_at[new_entry["id"]] = _now()
-        # Fire link SMS synchronously for host/analog guests so we KNOW if it worked.
+        # No welcome SMS for host-added guests — they're standing right there.
+        # Only the "come to host stand" notify_ready SMS fires later when they're called.
         sms_sent = False
         sms_error = ""
-        if req.quoted_wait is not None and req.phone and req.source in ("host", "analog"):
-            rest_res  = supabase.table("restaurants").select("name").eq("id", rid).execute()
-            rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-            short_id  = new_entry["id"][:8]
-            print(f"[SMS] join_queue: firing SMS to {req.phone!r} entry={new_entry['id']}")
-            sms_sent, sms_error = _send_sms(
-                to_phone=req.phone,
-                body=f"Welcome to {rest_name}! You've been added to the waitlist. Your wait code is {short_id}. We'll text you when your table is ready. Reply STOP to opt out.",
-            )
-            print(f"[SMS] join_queue result: sent={sms_sent} err={sms_error!r}")
         return {"status": "joined", "entry": new_entry, "wait_estimate": wait_est, "position": ahead + 1, "sms_sent": sms_sent, "sms_error": sms_error}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1632,22 +1673,10 @@ def update_wait(entry_id: str, minutes: int):
         existing_set_at = _wait_set_at.get(entry_id) or entry.get("quoted_wait_set_at") or now
         _set_quoted_wait(entry_id, minutes, existing_set_at)
         # Do NOT update _wait_set_at — the original start time is the anchor
-    # Fire link SMS synchronously for host-added guests receiving their first quote
+    # No welcome SMS on quote — host-added guests are at the stand, not receiving texts.
+    # The notify_ready SMS fires separately when they're called to be seated.
     sms_sent = False
     sms_error = ""
-    phone  = entry.get("phone") or ""
-    source = entry.get("source") or ""
-    if was_unquoted and source in ("host", "analog") and phone:
-        rid_used = entry.get("restaurant_id") or RESTAURANT_ID
-        rest_res = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
-        rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-        short_id  = entry_id[:8]
-        print(f"[SMS] update_wait: firing SMS to {phone!r} entry={entry_id}")
-        sms_sent, sms_error = _send_sms(
-            to_phone=phone,
-            body=f"Welcome to {rest_name}! You've been added to the waitlist. Your wait code is {short_id}. We'll text you when your table is ready. Reply STOP to opt out.",
-        )
-        print(f"[SMS] update_wait result: sent={sms_sent} err={sms_error!r}")
     actual_set_at = now if was_unquoted else existing_set_at
     return {"status": "updated", "quoted_wait": minutes, "wait_set_at": actual_set_at, "sms_sent": sms_sent, "sms_error": sms_error}
 

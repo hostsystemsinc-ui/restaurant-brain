@@ -7,7 +7,7 @@ import {
   Download, Wifi, WifiOff, RefreshCw, Copy, Check,
   ExternalLink, Search, ArrowLeft, Sparkles,
   Settings2, CalendarDays, Camera, CreditCard, Loader2,
-  CalendarCheck, ScrollText,
+  CalendarCheck, ScrollText, FileCheck,
 } from "lucide-react"
 import SchedulingPanel from "./SchedulingPanel"
 import {
@@ -55,7 +55,7 @@ interface Insights {
   ai_insights: string | null
 }
 
-type Page = "overview" | "analytics" | "tables" | "guests" | "inputs" | "schedule" | "terms"
+type Page = "overview" | "analytics" | "tables" | "guests" | "inputs" | "schedule" | "terms" | "agreements"
 type TimeFrame = "today" | "7d" | "30d" | "90d"
 
 interface LocalOcc { name: string; party_size: number }
@@ -2029,6 +2029,127 @@ function InputsPage({ setPage }: { setPage?: (p: Page) => void }) {
   )
 }
 
+// ── Page: Signed Agreements ────────────────────────────────────────────────────
+
+interface Agreement {
+  id: string
+  business_name: string
+  signer_name: string
+  signer_title?: string
+  signer_email: string
+  plan_type: string
+  signed_at: string
+  ip_address?: string
+  agreement_version?: string
+  status?: string
+  monthly_fee_cents?: number
+  location_count?: number
+}
+
+function AgreementsPage() {
+  const [agreements, setAgreements] = useState<Agreement[]>([])
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState<string | null>(null)
+  const SECRET = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("secret") ?? "" : ""
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`${API}/agreements/all?secret=${encodeURIComponent(SECRET)}`)
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(d => { setAgreements(d.agreements ?? []); setLoading(false) })
+      .catch(() => { setError("Failed to load agreements. Check your owner secret."); setLoading(false) })
+  }, [SECRET])
+
+  const fmt = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit", timeZoneName: "short",
+      })
+    } catch { return iso }
+  }
+
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <FileCheck style={{ width: 20, height: 20, color: C.accent, flexShrink: 0 }} />
+        <h1 style={{ fontSize: 22, fontWeight: 800, color: C.text, margin: 0 }}>Signed Agreements</h1>
+      </div>
+      <p style={{ fontSize: 13, color: C.muted, margin: "0 0 28px" }}>
+        Legally binding partner agreements recorded with timestamp and IP.
+      </p>
+
+      {loading && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 13 }}>
+          <Loader2 style={{ width: 16, height: 16, animation: "spin 1s linear infinite" }} /> Loading…
+        </div>
+      )}
+
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: 8, background: "#FEF2F2", border: "1px solid #FECACA", fontSize: 13, color: "#DC2626" }}>
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && agreements.length === 0 && (
+        <div style={{ padding: "32px 0", textAlign: "center", color: C.muted, fontSize: 14 }}>
+          No signed agreements yet.
+        </div>
+      )}
+
+      {agreements.map(a => (
+        <div key={a.id} style={{
+          marginBottom: 16,
+          padding: "20px 24px",
+          background: C.surface,
+          border: `1px solid ${C.border}`,
+          borderRadius: 12,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+        }}>
+          {/* Header row */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14, gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 2 }}>{a.business_name}</div>
+              <div style={{ fontSize: 12, color: C.muted, fontFamily: "monospace" }}>
+                Agreement ID: {a.id}
+              </div>
+            </div>
+            <div style={{
+              padding: "4px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700,
+              background: a.plan_type === "free-partner" ? "#F0FDF4" : "#EFF6FF",
+              color:      a.plan_type === "free-partner" ? "#15803D"  : "#1D4ED8",
+              border:     `1px solid ${a.plan_type === "free-partner" ? "#BBF7D0" : "#BFDBFE"}`,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}>
+              {a.plan_type === "free-partner" ? "Free Partner" : a.plan_type}
+            </div>
+          </div>
+
+          {/* Detail grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px 24px" }}>
+            {[
+              ["Signer",    `${a.signer_name}${a.signer_title ? ` · ${a.signer_title}` : ""}`],
+              ["Email",     a.signer_email],
+              ["Signed",    fmt(a.signed_at)],
+              ["Locations", String(a.location_count ?? "—")],
+              ["Version",   a.agreement_version ?? "—"],
+              ["IP Address",a.ip_address ?? "not captured"],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted, marginBottom: 2 }}>
+                  {label}
+                </div>
+                <div style={{ fontSize: 13, color: C.text2, wordBreak: "break-all" }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Page: Terms & Conditions ───────────────────────────────────────────────────
 
 function TermsPage() {
@@ -2495,7 +2616,8 @@ const NAV: { label: string; page: Page; Icon: React.ElementType }[] = [
   { label: "Guests",    page: "guests",    Icon: Users            },
   { label: "Schedule",  page: "schedule",  Icon: CalendarCheck    },
   { label: "Inputs",    page: "inputs",    Icon: Settings2        },
-  { label: "Terms",     page: "terms",     Icon: ScrollText       },
+  { label: "Agreements", page: "agreements", Icon: FileCheck  },
+  { label: "Terms",      page: "terms",      Icon: ScrollText },
 ]
 
 function Sidebar({ active, onSelect, restaurantName, restaurantCity }: { active: Page; onSelect: (p: Page) => void; restaurantName: string; restaurantCity: string }) {
@@ -2685,6 +2807,7 @@ export default function AdminPage() {
         {page === "guests"    && <GuestsPage queue={queue} restaurantId={restaurantId} />}
         {page === "schedule"  && <SchedulingPanel />}
         {page === "inputs"    && <InputsPage setPage={setPage} />}
+        {page === "agreements" && <AgreementsPage />}
         {page === "terms"     && <TermsPage />}
       </main>
     </div>
