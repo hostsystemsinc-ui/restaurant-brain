@@ -29,7 +29,7 @@ const D = {
 const API      = "https://restaurant-brain-production.up.railway.app"
 const DEMO_RID = "dec0cafe-0000-4000-8000-000000000001"
 
-const TABS = ["Overview", "Clients", "SMS", "Customizer", "Analytics", "Prompts"]
+const TABS = ["Overview", "Clients", "SMS", "Customizer", "Analytics", "Agreements", "Prompts"]
 
 // ── Customizer editor types ────────────────────────────────────────────────────
 type SelectedEl =
@@ -122,6 +122,21 @@ interface AnalyticsEntry {
 interface CapacityData {
   supabase_rows: Record<string, number>
   server_time: string
+}
+
+interface AgreementRecord {
+  id: string
+  business_name: string
+  signer_name: string
+  signer_title?: string
+  signer_email: string
+  plan_type: string
+  signed_at: string
+  ip_address?: string
+  agreement_version?: string
+  status?: string
+  monthly_fee_cents?: number
+  location_count?: number
 }
 
 interface GuestConfig {
@@ -397,6 +412,12 @@ export default function OwnerPage() {
   // Capacity (Supabase row counts)
   const [capacityData,    setCapacityData]    = useState<CapacityData | null>(null)
   const [capacityLoading, setCapacityLoading] = useState(false)
+
+  // Agreements tab
+  const [agreements,        setAgreements]        = useState<AgreementRecord[]>([])
+  const [agreementsLoading, setAgreementsLoading] = useState(false)
+  const [agreementsFetched, setAgreementsFetched] = useState(false)
+  const [agreementsError,   setAgreementsError]   = useState<string | null>(null)
 
   // Secrets fetched server-side — never hardcoded in client
   const [ownerSecrets, setOwnerSecrets] = useState<{
@@ -2227,6 +2248,116 @@ export default function OwnerPage() {
         {/* ══════════════════════════════════════════════════════════ */}
         {/* TAB: PROMPTS                                               */}
         {/* ══════════════════════════════════════════════════════════ */}
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* TAB: AGREEMENTS                                            */}
+        {/* ══════════════════════════════════════════════════════════ */}
+        {activeTab === "Agreements" && (() => {
+          // Lazy-fetch once per session
+          if (!agreementsFetched && !agreementsLoading) {
+            setAgreementsLoading(true)
+            setAgreementsFetched(true)
+            const token = sessionStorage.getItem("host_owner_token") || ""
+            fetch(`${API}/agreements/all?secret=${encodeURIComponent(token)}`)
+              .then(r => r.ok ? r.json() : Promise.reject(r.status))
+              .then(d => { setAgreements(d.agreements ?? []); setAgreementsLoading(false) })
+              .catch(() => { setAgreementsError("Failed to load. Check owner token."); setAgreementsLoading(false) })
+          }
+
+          const fmtDate = (iso: string) => {
+            try {
+              return new Date(iso).toLocaleString("en-US", {
+                month: "short", day: "numeric", year: "numeric",
+                hour: "numeric", minute: "2-digit", timeZoneName: "short",
+              })
+            } catch { return iso }
+          }
+
+          return (
+            <>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: D.text, marginBottom: 4 }}>Signed Agreements</div>
+                  <div style={{ fontSize: 13, color: D.text2 }}>
+                    Partner agreements with timestamp, IP, and signer on record.
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setAgreementsFetched(false)
+                    setAgreementsError(null)
+                    setAgreements([])
+                  }}
+                  style={{
+                    padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    background: D.surface, border: `1px solid ${D.border}`,
+                    color: D.text2, cursor: "pointer",
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {agreementsLoading && (
+                <div style={{ color: D.text2, fontSize: 13 }}>Loading agreements…</div>
+              )}
+
+              {agreementsError && (
+                <div style={{ padding: "12px 16px", borderRadius: 8, background: D.redBg, border: `1px solid ${D.red}`, fontSize: 13, color: D.red }}>
+                  {agreementsError}
+                </div>
+              )}
+
+              {!agreementsLoading && !agreementsError && agreements.length === 0 && (
+                <div style={{ padding: "40px 0", textAlign: "center", color: D.muted, fontSize: 14 }}>
+                  No signed agreements on file yet.
+                </div>
+              )}
+
+              {agreements.map(a => (
+                <div key={a.id} style={{
+                  marginBottom: 16, padding: "20px 24px",
+                  background: D.surface,
+                  border: `1px solid ${D.border}`,
+                  borderRadius: 12,
+                }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 3 }}>{a.business_name}</div>
+                      <div style={{ fontSize: 11, color: D.muted, fontFamily: "monospace" }}>ID: {a.id}</div>
+                    </div>
+                    <div style={{
+                      padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, flexShrink: 0,
+                      background: a.plan_type === "free-partner" ? D.greenBg : D.blueBg,
+                      color:      a.plan_type === "free-partner" ? D.green   : D.blue,
+                      border:     `1px solid ${a.plan_type === "free-partner" ? D.greenBorder : "rgba(96,165,250,0.25)"}`,
+                    }}>
+                      {a.plan_type === "free-partner" ? "Free Partner" : a.plan_type}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 20px" }}>
+                    {([
+                      ["Signer",     `${a.signer_name}${a.signer_title ? ` · ${a.signer_title}` : ""}`],
+                      ["Email",      a.signer_email],
+                      ["Signed At",  fmtDate(a.signed_at)],
+                      ["Locations",  String(a.location_count ?? "—")],
+                      ["Version",    a.agreement_version ?? "—"],
+                      ["IP Address", a.ip_address ?? "not captured"],
+                    ] as [string, string][]).map(([label, value]) => (
+                      <div key={label}>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: D.muted, marginBottom: 3 }}>
+                          {label}
+                        </div>
+                        <div style={{ fontSize: 13, color: D.text2, wordBreak: "break-all" }}>{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </>
+          )
+        })()}
+
         {activeTab === "Prompts" && (
           <>
             <SectionLabel>Claude Prompts</SectionLabel>
