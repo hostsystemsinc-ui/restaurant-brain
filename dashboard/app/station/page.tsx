@@ -1303,6 +1303,7 @@ function TableGuestPicker({
   tableId,
   tableLabel,
   queue,
+  tables,
   restaurantId,
   onClose,
   onSeated,
@@ -1311,6 +1312,7 @@ function TableGuestPicker({
   tableId: string | undefined
   tableLabel: string
   queue: QueueEntry[]
+  tables: { id: string; table_number: number | string }[]
   restaurantId: string
   onClose: () => void
   onSeated: (tableNumber: number, occupant: LocalOccupant) => void
@@ -1350,10 +1352,17 @@ function TableGuestPicker({
     // success, or an inline error message telling the user what happened.
     setError(null)
     try {
-      if (tableId) {
+      // Re-resolve tableId at submit time in case the /tables fetch hadn't returned
+      // when the modal was first opened (race condition on page load).
+      const resolvedTableId = tableId ?? tables.find(t => {
+        const n = typeof t.table_number === "number" ? t.table_number : parseInt(String(t.table_number), 10)
+        return n === tableNumber
+      })?.id
+
+      if (resolvedTableId) {
         // Atomic server-side create+seat so there's no window between join and seat
         // where another refresh/poll could see an unseated entry and trigger auto-seat.
-        const r = await fetch(`${API}/queue/walkin-at-table/${tableId}`, {
+        const r = await fetch(`${API}/queue/walkin-at-table/${resolvedTableId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -3252,6 +3261,7 @@ export default function HostDashboard() {
             tableId={tableTapModal.tableId}
             tableLabel={tableTapModal.tableLabel}
             queue={queue}
+            tables={tables}
             restaurantId={restaurantId}
             onClose={() => setTableTapModal(null)}
             onSeated={(tableNumber, occupant) => {
