@@ -90,6 +90,16 @@ interface FloorTable {
   h:        number  // percent
 }
 
+interface FloorWall {
+  x1: number; y1: number; x2: number; y2: number  // all percent
+}
+
+interface FloorObject {
+  id: string; type: string
+  x: number; y: number; w: number; h: number       // all percent
+  label: string
+}
+
 interface AgreementRecord {
   id:               string
   business_name:    string
@@ -428,8 +438,10 @@ function DashboardView({ token }: { token: string }) {
 }
 
 // ── Table Designer ─────────────────────────────────────────────────────────────
-function TableDesigner({ tables, onChange, aspectRatio = 1.62 }: {
+function TableDesigner({ tables, walls, objects, onChange, aspectRatio = 1.62 }: {
   tables: FloorTable[]
+  walls?: FloorWall[]
+  objects?: FloorObject[]
   onChange: (tables: FloorTable[]) => void
   aspectRatio?: number
 }) {
@@ -503,21 +515,29 @@ function TableDesigner({ tables, onChange, aspectRatio = 1.62 }: {
     const base: React.CSSProperties = {
       position: "absolute", left: `${t.x}%`, top: `${t.y}%`,
       width: `${t.w}%`, height: `${t.h}%`,
-      background: isSel ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.10)",
-      border: `2px solid ${isSel ? D.blue : "rgba(255,255,255,0.20)"}`,
+      background: isSel ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.12)",
+      border: `2px solid ${isSel ? D.blue : "rgba(255,255,255,0.22)"}`,
       display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
       cursor: "grab", userSelect: "none", transition: "border-color 0.12s",
       boxSizing: "border-box",
     }
-    if (t.shape === "circle") base.borderRadius = "50%"
-    else if (t.shape === "diamond") base.transform = "rotate(45deg)"
-    else if (t.shape === "booth") base.borderRadius = "4px 4px 0 0"
-    else base.borderRadius = "6px"
+    if (t.shape === "circle") {
+      base.borderRadius = "50%"
+    } else if (t.shape === "diamond") {
+      // Use clipPath (same as station page) so the label stays upright and shape looks correct
+      base.clipPath = "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
+      base.borderRadius = 0
+      base.border = "none"
+      base.background = isSel ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.18)"
+    } else if (t.shape === "booth") {
+      base.borderRadius = "4px 4px 0 0"
+    } else {
+      base.borderRadius = "6px"
+    }
     return base
   }
 
-  const innerStyle = (t: FloorTable): React.CSSProperties =>
-    t.shape === "diamond" ? { transform: "rotate(-45deg)", textAlign: "center" } : {}
+  const innerStyle = (): React.CSSProperties => ({ textAlign: "center" })
 
   return (
     <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
@@ -585,20 +605,71 @@ function TableDesigner({ tables, onChange, aspectRatio = 1.62 }: {
 
       {/* Canvas — aspect-ratio matches the original floor plan canvas to prevent distortion */}
       <div ref={canvasRef} onClick={handleCanvasClick}
-        style={{ flex: 1, aspectRatio: String(aspectRatio), background: "rgba(0,0,0,0.4)",
+        style={{ flex: 1, aspectRatio: String(aspectRatio), background: "rgba(0,0,0,0.45)",
           border: `2px dashed ${adding ? D.blue : D.border}`,
           borderRadius: 12, position: "relative", overflow: "hidden", cursor: adding ? "crosshair" : "default",
           transition: "border-color 0.15s" }}>
-        {tables.length === 0 && !adding && (
+
+        {/* Walls — read-only structural lines */}
+        {(walls || []).map((w, i) => {
+          const isVertical = Math.abs(w.x2 - w.x1) < Math.abs(w.y2 - w.y1)
+          return (
+            <div key={`wall-${i}`} style={{
+              position: "absolute",
+              background: "rgba(255,185,100,0.45)",
+              pointerEvents: "none",
+              ...(isVertical ? {
+                left: `${w.x1}%`,
+                top:  `${Math.min(w.y1, w.y2)}%`,
+                width: "0.5%",
+                height: `${Math.abs(w.y2 - w.y1)}%`,
+              } : {
+                left:   `${Math.min(w.x1, w.x2)}%`,
+                top:    `${w.y1}%`,
+                width:  `${Math.abs(w.x2 - w.x1)}%`,
+                height: "0.8%",
+              }),
+            }} />
+          )
+        })}
+
+        {/* Objects — doors, counters, labels (read-only) */}
+        {(objects || []).map(obj => (
+          <div key={obj.id} style={{
+            position: "absolute",
+            left: `${obj.x}%`, top: `${obj.y}%`,
+            width: `${obj.w}%`, height: `${obj.h}%`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            pointerEvents: "none",
+            ...(obj.type === "door"    ? { background: "rgba(20,180,180,0.18)", border: "1px solid rgba(20,180,180,0.4)", borderRadius: 4 } :
+               obj.type === "counter" ? { background: "rgba(140,100,60,0.22)", border: "1px solid rgba(140,100,60,0.4)", borderRadius: 3 } :
+               obj.type === "window"  ? { background: "rgba(100,160,255,0.15)", border: "1px solid rgba(100,160,255,0.35)", borderRadius: 2 } :
+               { background: "transparent" }),
+          }}>
+            {obj.label && obj.type !== "label" && (
+              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                {obj.label}
+              </span>
+            )}
+            {obj.type === "label" && obj.label.trim() && (
+              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                {obj.label.trim()}
+              </span>
+            )}
+          </div>
+        ))}
+
+        {tables.length === 0 && !adding && (walls || []).length === 0 && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>🗺</div>
             <div style={{ color: D.muted, fontSize: 14 }}>Click &quot;+ Add Table&quot; then click here to place tables</div>
           </div>
         )}
+
         {tables.map(t => (
           <div key={t.id} data-table="1" style={shapeStyle(t, t.id === selected)}
             onMouseDown={e => startDrag(e, t.id)}>
-            <div style={innerStyle(t)}>
+            <div style={innerStyle()}>
               <div style={{ fontSize: Math.max(9, Math.min(13, t.w * 1.2)), fontWeight: 700, color: D.text, lineHeight: 1 }}>
                 {t.label || t.number}
               </div>
@@ -608,6 +679,7 @@ function TableDesigner({ tables, onChange, aspectRatio = 1.62 }: {
             </div>
           </div>
         ))}
+
         {adding && (
           <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
             background: D.blueBg, border: `1px solid ${D.blueBorder}`, borderRadius: 20,
@@ -1276,7 +1348,9 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   const [configLoaded, setConfigLoaded] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
   const [saveStatus, setSaveStatus] = useState<""|"saving"|"saved"|"error">("")
-  const [floorTables, setFloorTables] = useState<FloorTable[]>([])
+  const [floorTables,  setFloorTables]  = useState<FloorTable[]>([])
+  const [floorWalls,   setFloorWalls]   = useState<FloorWall[]>([])
+  const [floorObjects, setFloorObjects] = useState<FloorObject[]>([])
   const [canvasAspect, setCanvasAspect] = useState<number>(1.62)
   const [menuSections, setMenuSections] = useState<MenuSection[]>([])
   const [agreements, setAgreements] = useState<AgreementRecord[]>([])
@@ -1294,9 +1368,11 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
           const fp = d.floor_plan
           const fpTables: FloorTable[] = []
           if (fp && !Array.isArray(fp) && typeof fp === "object") {
-            const fpObj = fp as { tables?: FloorTable[]; canvasAspect?: number }
+            const fpObj = fp as { tables?: FloorTable[]; walls?: FloorWall[]; objects?: FloorObject[]; canvasAspect?: number }
             if (fpObj.canvasAspect) setCanvasAspect(fpObj.canvasAspect)
-            if (Array.isArray(fpObj.tables) && fpObj.tables.length > 0) fpTables.push(...fpObj.tables)
+            if (Array.isArray(fpObj.tables)  && fpObj.tables.length > 0)  fpTables.push(...fpObj.tables)
+            if (Array.isArray(fpObj.walls))   setFloorWalls(fpObj.walls)
+            if (Array.isArray(fpObj.objects)) setFloorObjects(fpObj.objects)
           } else if (Array.isArray(fp) && fp.length > 0) {
             fpTables.push(...fp)
           }
@@ -1449,9 +1525,9 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
             <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>
           ) : (
             <>
-              <TableDesigner tables={floorTables} onChange={t => setFloorTables(t)} aspectRatio={canvasAspect} />
+              <TableDesigner tables={floorTables} walls={floorWalls} objects={floorObjects} onChange={t => setFloorTables(t)} aspectRatio={canvasAspect} />
               <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-                <button onClick={() => saveConfig({ floor_plan: { tables: floorTables, canvasAspect } as unknown as FloorTable[] })} disabled={savingConfig}
+                <button onClick={() => saveConfig({ floor_plan: { tables: floorTables, walls: floorWalls, objects: floorObjects, canvasAspect } as unknown as FloorTable[] })} disabled={savingConfig}
                   style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   {savingConfig ? "Saving…" : "Save Floor Map"}
                 </button>
@@ -1467,7 +1543,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
         <div>
           {!configLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
             <GuestPageEditor
-              initial={(config?.guest_config || { restaurantName: client.name, bgColor: "#000", accentColor: "#22c55e", tagline: "Powered by HOST", waitMessages: [], seatedMessage: "", finalButtons: [] }) as unknown as GuestPageConfig}
+              initial={(config?.guest_config || { restaurantName: client.name, bgColor: "#EDE8DF", darkColor: "#2C2416", accentColor: "#22c55e", buttonTextColor: "#fff", tagline: "Powered by HOST", logoUrl: "", waitMessages: [], seatedMessage: "", finalButtons: [] }) as unknown as GuestPageConfig}
               onSave={gc => saveConfig({ guest_config: gc as unknown as Record<string,unknown> })}
               saving={savingConfig}
             />
@@ -1543,61 +1619,111 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
 
 // ── Guest Page Editor ──────────────────────────────────────────────────────────
 interface GuestPageConfig {
-  bgColor: string; accentColor: string; buttonTextColor: string
-  restaurantName: string; tagline: string
-  waitMessages: string[]; seatedMessage: string
-  finalButtons: Array<{ id: string; label: string; url: string; color: string }>
+  bgColor:         string
+  darkColor:       string   // main text + button bg color
+  accentColor:     string   // legacy field (kept for compat)
+  buttonTextColor: string
+  restaurantName:  string
+  tagline?:        string
+  logoUrl?:        string   // restaurant logo image URL
+  waitMessages:    string[]
+  seatedMessage:   string
+  finalButtons:    Array<{ id: string; label: string; url: string; color: string }>
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const h = hex.replace("#", "")
+  const r = parseInt(h.slice(0, 2), 16) || 0
+  const g = parseInt(h.slice(2, 4), 16) || 0
+  const b = parseInt(h.slice(4, 6), 16) || 0
+  return `rgba(${r},${g},${b},${alpha})`
 }
 
 function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig; onSave: (c: GuestPageConfig) => void; saving: boolean }) {
-  const [cfg, setCfg] = useState<GuestPageConfig>(initial)
-  const [waitText, setWaitText] = useState(initial.waitMessages.join("\n"))
+  const [cfg,      setCfg]     = useState<GuestPageConfig>(initial)
+  const [waitText, setWaitText] = useState((initial.waitMessages || []).join("\n"))
 
   function save() {
     onSave({ ...cfg, waitMessages: waitText.split("\n").map(s => s.trim()).filter(Boolean) })
   }
 
+  const bg    = cfg.bgColor   || "#EDE8DF"
+  const dark  = cfg.darkColor || cfg.accentColor || "#2C2416"
+  const dark2 = hexToRgba(dark, 0.55)
+  const dark3 = hexToRgba(dark, 0.30)
+  const dark4 = hexToRgba(dark, 0.08)
+  const dark5 = hexToRgba(dark, 0.12)
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-      <div>
+      <div style={{ gridColumn: "1/-1" }}>
         <FieldLabel>Restaurant Name</FieldLabel>
         <Input value={cfg.restaurantName} onChange={v => setCfg(p => ({ ...p, restaurantName: v }))} placeholder="My Restaurant" />
       </div>
       <div>
-        <FieldLabel>Tagline</FieldLabel>
-        <Input value={cfg.tagline} onChange={v => setCfg(p => ({ ...p, tagline: v }))} placeholder="Powered by HOST" />
-      </div>
-      <div>
         <FieldLabel>Background Color</FieldLabel>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="color" value={cfg.bgColor} onChange={e => setCfg(p => ({ ...p, bgColor: e.target.value }))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="color" value={cfg.bgColor || "#EDE8DF"} onChange={e => setCfg(p => ({ ...p, bgColor: e.target.value }))}
             style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
-          <Input value={cfg.bgColor} onChange={v => setCfg(p => ({ ...p, bgColor: v }))} />
+          <Input value={cfg.bgColor || ""} onChange={v => setCfg(p => ({ ...p, bgColor: v }))} placeholder="#EDE8DF" />
         </div>
       </div>
       <div>
-        <FieldLabel>Accent Color</FieldLabel>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input type="color" value={cfg.accentColor} onChange={e => setCfg(p => ({ ...p, accentColor: e.target.value }))}
+        <FieldLabel>Text &amp; Button Color</FieldLabel>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="color" value={cfg.darkColor || cfg.accentColor || "#2C2416"} onChange={e => setCfg(p => ({ ...p, darkColor: e.target.value }))}
             style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
-          <Input value={cfg.accentColor} onChange={v => setCfg(p => ({ ...p, accentColor: v }))} />
+          <Input value={cfg.darkColor || ""} onChange={v => setCfg(p => ({ ...p, darkColor: v }))} placeholder="#2C2416" />
         </div>
       </div>
       <div style={{ gridColumn: "1/-1" }}>
-        <FieldLabel>Wait Messages (one per line)</FieldLabel>
+        <FieldLabel>Logo URL</FieldLabel>
+        <Input value={cfg.logoUrl || ""} onChange={v => setCfg(p => ({ ...p, logoUrl: v }))} placeholder="https://…" />
+        <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Direct image URL for your restaurant logo (PNG, JPG, or SVG)</div>
+      </div>
+      <div style={{ gridColumn: "1/-1" }}>
+        <FieldLabel>Wait Messages (one per line — shown on the waiting page)</FieldLabel>
         <textarea value={waitText} onChange={e => setWaitText(e.target.value)} rows={4}
           style={{ ...inputFull, resize: "vertical" } as React.CSSProperties} />
       </div>
       <div style={{ gridColumn: "1/-1" }}>
-        <FieldLabel>Seated Message</FieldLabel>
-        <Input value={cfg.seatedMessage} onChange={v => setCfg(p => ({ ...p, seatedMessage: v }))} />
+        <FieldLabel>Seated / Thank You Message</FieldLabel>
+        <Input value={cfg.seatedMessage} onChange={v => setCfg(p => ({ ...p, seatedMessage: v }))} placeholder="Thanks for dining with us!" />
       </div>
-      {/* Preview */}
-      <div style={{ gridColumn: "1/-1", padding: 20, borderRadius: 12, background: cfg.bgColor, border: `1px solid ${D.border}`, textAlign: "center" }}>
-        <div style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>{cfg.restaurantName}</div>
-        <div style={{ color: cfg.accentColor, fontSize: 12, marginTop: 4 }}>{cfg.tagline}</div>
-        <div style={{ marginTop: 10, padding: "7px 18px", background: cfg.accentColor, borderRadius: 20, display: "inline-block", color: cfg.buttonTextColor, fontSize: 12, fontWeight: 700 }}>Join Waitlist</div>
+
+      {/* Live preview — matches actual guest join page layout */}
+      <div style={{ gridColumn: "1/-1", borderRadius: 14, overflow: "hidden", border: `1px solid ${D.border}` }}>
+        <div style={{ padding: "8px 14px", background: D.surface2, borderBottom: `1px solid ${D.border}`, fontSize: 11, color: D.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          Live Preview — Guest Join Page
+        </div>
+        <div style={{ background: bg, padding: "20px 24px", fontFamily: "system-ui, sans-serif" }}>
+          {/* HOST wordmark */}
+          <div style={{ textAlign: "center", marginBottom: 10 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.08em", color: dark, lineHeight: 1 }}>HOST</div>
+            <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color: dark3, marginTop: 3 }}>Restaurant Operating System</div>
+          </div>
+          {/* Logo */}
+          {cfg.logoUrl && (
+            <div style={{ textAlign: "center", marginBottom: 8 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cfg.logoUrl} alt={cfg.restaurantName} style={{ height: 52, objectFit: "contain" }} />
+            </div>
+          )}
+          {/* Restaurant badge */}
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
+            <div style={{ display: "inline-block", padding: "5px 16px", border: `1px solid ${dark5}`, borderRadius: 10, background: dark4 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: dark }}>{cfg.restaurantName.toUpperCase()}</div>
+            </div>
+          </div>
+          {/* Join button */}
+          <div style={{ padding: "8px 0 4px" }}>
+            <div style={{ width: "100%", height: 42, borderRadius: 14, background: dark, color: bg, fontWeight: 800, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              Join Waitlist
+            </div>
+          </div>
+        </div>
       </div>
+
       <div style={{ gridColumn: "1/-1" }}>
         <button onClick={save} disabled={saving}
           style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>

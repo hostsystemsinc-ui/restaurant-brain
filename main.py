@@ -2561,6 +2561,29 @@ def delete_credential(restaurant_id: str, credential_id: str, secret: Optional[s
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/public/guest-config/{restaurant_id}")
+def get_public_guest_config(restaurant_id: str):
+    """Public endpoint — returns only guest_config for a restaurant (no auth required)."""
+    try:
+        result = (
+            supabase.table("restaurant_configs")
+            .select("guest_config")
+            .eq("restaurant_id", restaurant_id)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return {"guest_config": None}
+        row = result.data[0]
+        gc = row.get("guest_config")
+        if isinstance(gc, str):
+            try:   gc = _json.loads(gc)
+            except: gc = None
+        return {"guest_config": gc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/owner/clients/{restaurant_id}/config")
 def get_client_config(restaurant_id: str, secret: Optional[str] = None):
     _check_owner_secret(secret)
