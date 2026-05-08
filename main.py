@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from supabase import create_client
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Optional, Any
 from datetime import datetime, timezone
 
 # ── Environment ─────────────────────────────────────────────────────────────
@@ -509,6 +509,17 @@ def agreements_all(secret: Optional[str] = None):
     except Exception as e:
         print(f"[agreements/all] DB query failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve agreements.")
+
+
+@app.delete("/owner/agreements/{agreement_id}")
+def delete_agreement(agreement_id: str, secret: Optional[str] = None):
+    """Permanently delete a signed agreement record — owner only."""
+    _check_owner_secret(secret)
+    try:
+        supabase.table("client_agreements").delete().eq("id", agreement_id).execute()
+        return {"deleted": agreement_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
@@ -2322,7 +2333,7 @@ class CredentialUpdateRequest(BaseModel):
 class ClientConfigRequest(BaseModel):
     guest_config:  Optional[dict] = None
     menu_config:   Optional[dict] = None
-    floor_plan:    Optional[list] = None
+    floor_plan:    Optional[Any]  = None   # list (old) or {tables, canvasAspect} dict (new)
     display_name:  Optional[str]  = None
     nfc_url:       Optional[str]  = None
     settings:      Optional[dict] = None
@@ -2394,21 +2405,23 @@ def owner_clients_list(secret: Optional[str] = None):
                     agreement = a
                     break
             clients.append({
-                "id":           rid,
-                "name":         name,
-                "slug":         slug,
-                "city":         settings.get("city"),
-                "display_name": cfg.get("display_name") or name,
-                "join_url":     cfg.get("nfc_url") or f"https://hostplatform.net/client/{slug}/join",
-                "station_url":  f"https://hostplatform.net/client/{slug}/station",
-                "plan_type":    (agreement or {}).get("plan_type", "standard"),
-                "status":       (agreement or {}).get("status", "active"),
+                "id":             rid,
+                "name":           name,
+                "slug":           slug,
+                "city":           settings.get("city"),
+                "display_name":   cfg.get("display_name") or name,
+                "join_url":       cfg.get("nfc_url") or f"https://hostplatform.net/client/{slug}/join",
+                "station_url":    f"https://hostplatform.net/client/{slug}/station",
+                "plan_type":      (agreement or {}).get("plan_type", "standard"),
+                "status":         (agreement or {}).get("status", "active"),
                 "monthly_fee_cents": (agreement or {}).get("monthly_fee_cents"),
                 "location_count":    settings.get("location_count", 1),
-                "signed_at":    (agreement or {}).get("signed_at"),
-                "signer_name":  (agreement or {}).get("signer_name"),
-                "signer_email": (agreement or {}).get("signer_email"),
-                "created_at":   r.get("created_at"),
+                "signed_at":      (agreement or {}).get("signed_at"),
+                "signer_name":    (agreement or {}).get("signer_name"),
+                "signer_email":   (agreement or {}).get("signer_email"),
+                "created_at":     r.get("created_at"),
+                "location_group": settings.get("location_group"),
+                "location_name":  settings.get("location_name"),
             })
         return {"clients": clients}
     except Exception as e:

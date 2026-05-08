@@ -35,21 +35,23 @@ const DEMO_RID = "dec0cafe-0000-4000-8000-000000000001"
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Client {
-  id:            string
-  name:          string
-  slug:          string
-  city?:         string
-  display_name:  string
-  join_url:      string
-  station_url:   string
-  plan_type:     string
-  status:        string
+  id:             string
+  name:           string
+  slug:           string
+  city?:          string
+  display_name:   string
+  join_url:       string
+  station_url:    string
+  plan_type:      string
+  status:         string
   monthly_fee_cents?: number
   location_count?: number
-  signed_at?:    string
-  signer_name?:  string
-  signer_email?: string
-  created_at?:   string
+  signed_at?:     string
+  signer_name?:   string
+  signer_email?:  string
+  created_at?:    string
+  location_group?: string
+  location_name?:  string
 }
 
 interface Credential {
@@ -426,9 +428,10 @@ function DashboardView({ token }: { token: string }) {
 }
 
 // ── Table Designer ─────────────────────────────────────────────────────────────
-function TableDesigner({ tables, onChange }: {
+function TableDesigner({ tables, onChange, aspectRatio = 1.62 }: {
   tables: FloorTable[]
   onChange: (tables: FloorTable[]) => void
+  aspectRatio?: number
 }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [adding,   setAdding]   = useState(false)
@@ -517,7 +520,7 @@ function TableDesigner({ tables, onChange }: {
     t.shape === "diamond" ? { transform: "rotate(-45deg)", textAlign: "center" } : {}
 
   return (
-    <div style={{ display: "flex", gap: 16, height: 520 }}>
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
       {/* Controls panel */}
       <div style={{ width: 200, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Add table */}
@@ -580,9 +583,10 @@ function TableDesigner({ tables, onChange }: {
         )}
       </div>
 
-      {/* Canvas */}
+      {/* Canvas — aspect-ratio matches the original floor plan canvas to prevent distortion */}
       <div ref={canvasRef} onClick={handleCanvasClick}
-        style={{ flex: 1, background: "rgba(0,0,0,0.4)", border: `2px dashed ${adding ? D.blue : D.border}`,
+        style={{ flex: 1, aspectRatio: String(aspectRatio), background: "rgba(0,0,0,0.4)",
+          border: `2px dashed ${adding ? D.blue : D.border}`,
           borderRadius: 12, position: "relative", overflow: "hidden", cursor: adding ? "crosshair" : "default",
           transition: "border-color 0.15s" }}>
         {tables.length === 0 && !adding && (
@@ -1273,6 +1277,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   const [savingConfig, setSavingConfig] = useState(false)
   const [saveStatus, setSaveStatus] = useState<""|"saving"|"saved"|"error">("")
   const [floorTables, setFloorTables] = useState<FloorTable[]>([])
+  const [canvasAspect, setCanvasAspect] = useState<number>(1.62)
   const [menuSections, setMenuSections] = useState<MenuSection[]>([])
   const [agreements, setAgreements] = useState<AgreementRecord[]>([])
   const [agreementsLoaded, setAgreementsLoaded] = useState(false)
@@ -1285,9 +1290,18 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
           setConfig(d)
           const mc = d.menu_config as { sections?: MenuSection[] } | null
           setMenuSections(mc?.sections || [])
-          // If floor_plan exists in config, use it; otherwise fall back to live /tables API
-          if (Array.isArray(d.floor_plan) && d.floor_plan.length > 0) {
-            setFloorTables(d.floor_plan)
+          // Handle floor_plan: new format = { tables, canvasAspect } | old format = array
+          const fp = d.floor_plan
+          const fpTables: FloorTable[] = []
+          if (fp && !Array.isArray(fp) && typeof fp === "object") {
+            const fpObj = fp as { tables?: FloorTable[]; canvasAspect?: number }
+            if (fpObj.canvasAspect) setCanvasAspect(fpObj.canvasAspect)
+            if (Array.isArray(fpObj.tables) && fpObj.tables.length > 0) fpTables.push(...fpObj.tables)
+          } else if (Array.isArray(fp) && fp.length > 0) {
+            fpTables.push(...fp)
+          }
+          if (fpTables.length > 0) {
+            setFloorTables(fpTables)
           } else {
             // Load real tables from DB and auto-layout them in a grid
             try {
@@ -1435,9 +1449,9 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
             <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>
           ) : (
             <>
-              <TableDesigner tables={floorTables} onChange={t => setFloorTables(t)} />
+              <TableDesigner tables={floorTables} onChange={t => setFloorTables(t)} aspectRatio={canvasAspect} />
               <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-                <button onClick={() => saveConfig({ floor_plan: floorTables })} disabled={savingConfig}
+                <button onClick={() => saveConfig({ floor_plan: { tables: floorTables, canvasAspect } as unknown as FloorTable[] })} disabled={savingConfig}
                   style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
                   {savingConfig ? "Saving…" : "Save Floor Map"}
                 </button>
@@ -1621,6 +1635,28 @@ function ClientsView({ token, onSelectClient, onAddNew }: {
     !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.city || "").toLowerCase().includes(search.toLowerCase())
   )
 
+  // Group clients by location_group; ungrouped = individual cards
+  function formatGroupName(key: string) {
+    return key.replace(/-/g, " ").replace(/\b\w/g, ch => ch.toUpperCase())
+  }
+  const groupMap = new Map<string, Client[]>()
+  const ungrouped: Client[] = []
+  for (const c of filtered) {
+    if (c.location_group) {
+      const list = groupMap.get(c.location_group) || []
+      list.push(c)
+      groupMap.set(c.location_group, list)
+    } else {
+      ungrouped.push(c)
+    }
+  }
+  // Render groups first (multi-location), then single-location clients
+  type CardItem = { type: "group"; groupKey: string; groupName: string; locs: Client[] } | { type: "single"; client: Client }
+  const cards: CardItem[] = [
+    ...Array.from(groupMap.entries()).map(([k, locs]) => ({ type: "group" as const, groupKey: k, groupName: formatGroupName(k), locs })),
+    ...ungrouped.map(c => ({ type: "single" as const, client: c })),
+  ]
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
@@ -1649,7 +1685,7 @@ function ClientsView({ token, onSelectClient, onAddNew }: {
       {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading clients…</div>}
       {error && <div style={{ color: D.red, fontSize: 14 }}>{error}</div>}
 
-      {!loading && filtered.length === 0 && (
+      {!loading && cards.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>🏢</div>
           <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>No clients yet</div>
@@ -1658,37 +1694,80 @@ function ClientsView({ token, onSelectClient, onAddNew }: {
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
-        {filtered.map(c => (
-          <div key={c.id} onClick={() => onSelectClient(c)}
-            style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "20px 20px",
-              cursor: "pointer", transition: "all 0.12s" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D.surfaceHover; (e.currentTarget as HTMLElement).style.borderColor = D.borderStrong }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = D.surface; (e.currentTarget as HTMLElement).style.borderColor = D.border }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: D.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                🏢
-              </div>
-              {planBadge(c.plan_type, c.status)}
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 4 }}>{c.display_name}</div>
-            <div style={{ fontSize: 13, color: D.text2, marginBottom: 12 }}>{c.city || "No city set"}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <div style={{ fontSize: 12, color: D.muted }}>
-                🔗 <span style={{ color: D.blue }}>/{c.slug}</span>
-              </div>
-              {c.signed_at && (
-                <div style={{ fontSize: 12, color: D.muted }}>
-                  ✍️ Signed {fmtTime(c.signed_at)}
+        {cards.map(card => {
+          if (card.type === "group") {
+            // Multi-location client card
+            const { groupKey, groupName, locs } = card
+            const rep = locs[0] // representative for plan/status
+            return (
+              <div key={groupKey}
+                style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "20px 20px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 10, background: D.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                    🏢
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", borderRadius: 20, padding: "2px 10px",
+                      color: D.blue, background: D.blueBg, border: `1px solid ${D.blueBorder}`, whiteSpace: "nowrap" }}>
+                      {locs.length} Locations
+                    </span>
+                    {planBadge(rep.plan_type, rep.status)}
+                  </div>
                 </div>
-              )}
-              {c.monthly_fee_cents != null && c.monthly_fee_cents > 0 && (
-                <div style={{ fontSize: 12, color: D.muted }}>
-                  💳 ${(c.monthly_fee_cents/100).toFixed(2)}/mo
+                <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 4 }}>{groupName}</div>
+                <div style={{ fontSize: 13, color: D.text2, marginBottom: 12 }}>{rep.city || "No city set"}</div>
+                {/* Location buttons */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                  {locs.map(loc => (
+                    <button key={loc.id} onClick={() => onSelectClient(loc)}
+                      style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${D.borderStrong}`,
+                        background: D.surface2, color: D.text, fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
+                      {loc.location_name || loc.name}
+                    </button>
+                  ))}
                 </div>
-              )}
+                {rep.monthly_fee_cents != null && rep.monthly_fee_cents > 0 && (
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    💳 ${(rep.monthly_fee_cents/100).toFixed(2)}/mo per location
+                  </div>
+                )}
+              </div>
+            )
+          }
+          // Single-location client card
+          const c = card.client
+          return (
+            <div key={c.id} onClick={() => onSelectClient(c)}
+              style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "20px 20px",
+                cursor: "pointer", transition: "all 0.12s" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D.surfaceHover; (e.currentTarget as HTMLElement).style.borderColor = D.borderStrong }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = D.surface; (e.currentTarget as HTMLElement).style.borderColor = D.border }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div style={{ width: 42, height: 42, borderRadius: 10, background: D.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                  🏢
+                </div>
+                {planBadge(c.plan_type, c.status)}
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 4 }}>{c.display_name}</div>
+              <div style={{ fontSize: 13, color: D.text2, marginBottom: 12 }}>{c.city || "No city set"}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontSize: 12, color: D.muted }}>
+                  🔗 <span style={{ color: D.blue }}>/{c.slug}</span>
+                </div>
+                {c.signed_at && (
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    ✍️ Signed {fmtTime(c.signed_at)}
+                  </div>
+                )}
+                {c.monthly_fee_cents != null && c.monthly_fee_cents > 0 && (
+                  <div style={{ fontSize: 12, color: D.muted }}>
+                    💳 ${(c.monthly_fee_cents/100).toFixed(2)}/mo
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -1762,25 +1841,70 @@ function BillingView({ token }: { token: string }) {
   )
 }
 
+// ── Restaurant ID → name map (used by analytics) ──────────────────────────────
+const RID_NAMES: Record<string, string> = {
+  "0001cafe-0001-4000-8000-000000000001": "Walnut Original",
+  "0002cafe-0001-4000-8000-000000000002": "Walnut Southside",
+  "dec0cafe-0000-4000-8000-000000000001": "Demo",
+}
+
 // ── Analytics View ─────────────────────────────────────────────────────────────
 function AnalyticsView({ token }: { token: string }) {
-  const [data,    setData]    = useState<AnalyticsEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [fetched, setFetched] = useState(false)
-  const [page,    setPage]    = useState(0)
+  const [data,      setData]      = useState<AnalyticsEntry[]>([])
+  const [loading,   setLoading]   = useState(false)
+  const [fetched,   setFetched]   = useState(false)
+  const [page,      setPage]      = useState(0)
+  const [restFilter, setRestFilter] = useState<string>("all")
+  const [sortKey,   setSortKey]   = useState<string>("arrival_time")
+  const [sortDir,   setSortDir]   = useState<"asc"|"desc">("desc")
   const PAGE_SIZE = 50
 
   function load() {
     setLoading(true)
     fetch(`${API}/owner/analytics?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
       .then(r => r.json())
-      .then(d => { setData(d.entries || []); setFetched(true) })
+      .then(d => { setData(d.entries || []); setFetched(true); setPage(0) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  const slice = data.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-  const totalPages = Math.ceil(data.length / PAGE_SIZE)
+  // Build restaurant list from data
+  const restaurants = Array.from(new Set(data.map(e => e.restaurant_id).filter((x): x is string => x !== null)))
+  const filtered = data.filter(e => restFilter === "all" || e.restaurant_id === restFilter)
+
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    const va = (a as unknown as Record<string,unknown>)[sortKey] ?? ""
+    const vb = (b as unknown as Record<string,unknown>)[sortKey] ?? ""
+    const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true })
+    return sortDir === "asc" ? cmp : -cmp
+  })
+
+  const slice = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = Math.ceil(sorted.length / PAGE_SIZE)
+
+  function toggleSort(key: string) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc")
+    else { setSortKey(key); setSortDir("desc") }
+    setPage(0)
+  }
+
+  function exportCSV() {
+    const cols = ["name","party_size","restaurant","source","status","arrival_time","quoted_wait","actual_wait","notes"]
+    const header = cols.join(",")
+    const rows = sorted.map(e => cols.map(c => {
+      const v = c === "restaurant"
+        ? (RID_NAMES[e.restaurant_id || ""] || e.restaurant_id || "")
+        : (e as unknown as Record<string,unknown>)[c]
+      const str = v == null ? "" : String(v)
+      return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g,'""')}"` : str
+    }).join(","))
+    const csv = [header, ...rows].join("\n")
+    const a = document.createElement("a")
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }))
+    a.download = `host-analytics-${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+  }
 
   function sourceStyle(s: string): React.CSSProperties {
     const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px", border: "1px solid", whiteSpace: "nowrap" }
@@ -1800,21 +1924,32 @@ function AnalyticsView({ token }: { token: string }) {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Analytics</h1>
-          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>{data.length.toLocaleString()} guest records</p>
+          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>{sorted.length.toLocaleString()} records{restFilter !== "all" ? ` (filtered)` : ` total`}</p>
         </div>
-        <button onClick={load} disabled={loading}
-          style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
-          {loading ? "Loading…" : fetched ? "↺ Refresh" : "Load Analytics"}
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select value={restFilter} onChange={e => { setRestFilter(e.target.value); setPage(0) }}
+            style={{ padding: "7px 10px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text2, fontSize: 13, cursor: "pointer" }}>
+            <option value="all">All Restaurants</option>
+            {restaurants.map(rid => <option key={rid} value={rid}>{RID_NAMES[rid] || rid?.slice(0,8)}</option>)}
+          </select>
+          {fetched && <button onClick={exportCSV}
+            style={{ padding: "7px 16px", borderRadius: 7, border: `1px solid ${D.greenBorder}`, background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            ↓ Export CSV
+          </button>}
+          <button onClick={load} disabled={loading}
+            style={{ padding: "7px 16px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+            {loading ? "Loading…" : fetched ? "↺ Refresh" : "Load Data"}
+          </button>
+        </div>
       </div>
 
       {!fetched && !loading && (
         <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
-          <div style={{ fontSize: 14 }}>Click &quot;Load Analytics&quot; to fetch guest data</div>
+          <div style={{ fontSize: 14 }}>Click &quot;Load Data&quot; to fetch guest records</div>
         </div>
       )}
 
@@ -1826,8 +1961,17 @@ function AnalyticsView({ token }: { token: string }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${D.border}` }}>
-                  {["Name","Party","Source","Status","Arrival","Quoted","Actual Wait","Notes"].map(h => (
-                    <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: D.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.07em", whiteSpace: "nowrap" }}>{h}</th>
+                  {([
+                    ["name","Name"],["party_size","Party"],["restaurant_id","Restaurant"],
+                    ["source","Source"],["status","Status"],["arrival_time","Arrival"],
+                    ["quoted_wait","Quoted"],["actual_wait","Actual Wait"],["notes","Notes"]
+                  ] as [string,string][]).map(([key, label]) => (
+                    <th key={key} onClick={() => toggleSort(key)}
+                      style={{ padding: "10px 14px", textAlign: "left", color: sortKey === key ? D.blue : D.muted,
+                        fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.07em",
+                        whiteSpace: "nowrap", cursor: "pointer", userSelect: "none" }}>
+                      {label}{sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -1836,12 +1980,13 @@ function AnalyticsView({ token }: { token: string }) {
                   <tr key={e.id} style={{ borderBottom: i < slice.length - 1 ? `1px solid ${D.border}` : "none" }}>
                     <td style={{ padding: "10px 14px", color: D.text, fontWeight: 500 }}>{e.name}</td>
                     <td style={{ padding: "10px 14px", color: D.text2 }}>{e.party_size}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2, fontSize: 12 }}>{RID_NAMES[e.restaurant_id || ""] || (e.restaurant_id?.slice(0,8) || "—")}</td>
                     <td style={{ padding: "10px 14px" }}><span style={sourceStyle(e.source)}>{e.source.toUpperCase()}</span></td>
                     <td style={{ padding: "10px 14px" }}><span style={statusStyle(e.status)}>{e.status}</span></td>
                     <td style={{ padding: "10px 14px", color: D.text2, whiteSpace: "nowrap" }}>{e.arrival_time ? new Date(e.arrival_time).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—"}</td>
                     <td style={{ padding: "10px 14px", color: D.text2 }}>{e.quoted_wait != null ? `${e.quoted_wait}m` : "—"}</td>
                     <td style={{ padding: "10px 14px", color: D.text2 }}>{e.actual_wait != null ? `${e.actual_wait}m` : "—"}</td>
-                    <td style={{ padding: "10px 14px", color: D.text2, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{e.notes || "—"}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.notes || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1868,6 +2013,7 @@ function AgreementsView({ token }: { token: string }) {
   const [loading,    setLoading]    = useState(false)
   const [fetched,    setFetched]    = useState(false)
   const [error,      setError]      = useState<string|null>(null)
+  const [deleting,   setDeleting]   = useState<string|null>(null)
 
   function load() {
     setLoading(true); setError(null)
@@ -1876,6 +2022,70 @@ function AgreementsView({ token }: { token: string }) {
       .then(d => { setAgreements(d.agreements || []); setFetched(true) })
       .catch(() => setError("Failed to load agreements"))
       .finally(() => setLoading(false))
+  }
+
+  async function deleteAgreement(id: string) {
+    if (!confirm("Permanently delete this agreement? This cannot be undone.")) return
+    setDeleting(id)
+    try {
+      await fetch(`${API}/owner/agreements/${id}?secret=${encodeURIComponent(token)}`, { method: "DELETE" })
+      setAgreements(prev => prev.filter(a => a.id !== id))
+    } catch { setError("Delete failed") }
+    finally { setDeleting(null) }
+  }
+
+  function downloadPDF(a: AgreementRecord) {
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>HOST Agreement — ${a.business_name}</title>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 32px;color:#1a1a1a;font-size:14px;line-height:1.6}
+  h1{font-size:22px;font-weight:700;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:24px}
+  h2{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin:28px 0 8px}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:16px 32px;margin-bottom:24px}
+  .field{background:#f8f8f8;border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px}
+  .field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#888;margin-bottom:4px}
+  .field-value{font-size:14px;font-weight:500}
+  .stamp{background:#f0f7ff;border:1px solid #b3d4f5;border-radius:6px;padding:12px 16px;margin:24px 0;font-size:12px;color:#1a4a7a}
+  .sig{border:2px solid #000;border-radius:6px;padding:16px 20px;margin-top:24px;font-size:13px}
+  .sig strong{display:block;font-size:16px;margin-bottom:4px}
+  .legal{font-size:11px;color:#888;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:16px}
+  @media print{body{margin:20px auto}}
+</style>
+</head><body>
+<h1>HOST Platform — Service Agreement</h1>
+<div class="stamp">
+  🔐 Signed: ${new Date(a.signed_at).toLocaleString("en-US",{dateStyle:"full",timeStyle:"long"})} &nbsp;|&nbsp;
+  IP Address: ${a.ip_address || "not recorded"} &nbsp;|&nbsp;
+  Version: ${a.agreement_version || "v1"}
+</div>
+<h2>Business Information</h2>
+<div class="meta">
+  <div class="field"><div class="field-label">Business Name</div><div class="field-value">${a.business_name}</div></div>
+  <div class="field"><div class="field-label">Plan</div><div class="field-value">${a.plan_type}</div></div>
+  <div class="field"><div class="field-label">Monthly Fee</div><div class="field-value">${a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"}</div></div>
+  <div class="field"><div class="field-label">Locations</div><div class="field-value">${a.location_count || 1}</div></div>
+</div>
+<h2>Signer</h2>
+<div class="meta">
+  <div class="field"><div class="field-label">Name</div><div class="field-value">${a.signer_name}</div></div>
+  ${a.signer_title ? `<div class="field"><div class="field-label">Title</div><div class="field-value">${a.signer_title}</div></div>` : ""}
+  <div class="field"><div class="field-label">Email</div><div class="field-value">${a.signer_email}</div></div>
+</div>
+<div class="sig">
+  <strong>${a.signer_name}</strong>
+  ${a.signer_title ? a.signer_title + "<br/>" : ""}${a.business_name}<br/>
+  <span style="font-size:12px;color:#555">Signed electronically on ${new Date(a.signed_at).toLocaleString("en-US",{dateStyle:"long",timeStyle:"short"})} from IP ${a.ip_address || "unknown"}</span>
+</div>
+<div class="legal">
+  This document is a record of an electronically signed service agreement between HOST Systems Inc. and the signatory above.
+  Agreement ID: ${a.id} · Generated: ${new Date().toISOString()}
+</div>
+</body></html>`
+    const w = window.open("", "_blank", "width=800,height=900")
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    setTimeout(() => w.print(), 400)
   }
 
   return (
@@ -1911,19 +2121,30 @@ function AgreementsView({ token }: { token: string }) {
                 {a.signer_name}{a.signer_title ? ` · ${a.signer_title}` : ""} · {a.signer_email}
               </div>
             </div>
-            {planBadge(a.plan_type, a.status || "active")}
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {planBadge(a.plan_type, a.status || "active")}
+              <button onClick={() => downloadPDF(a)}
+                style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                ↓ PDF
+              </button>
+              <button onClick={() => deleteAgreement(a.id)} disabled={deleting === a.id}
+                style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
+                {deleting === a.id ? "…" : "✕"}
+              </button>
+            </div>
           </div>
           <div style={{ display: "flex", gap: 28, flexWrap: "wrap" as const }}>
             {[
               ["Signed", fmtTime(a.signed_at)],
               ["Version", a.agreement_version || "—"],
-              ["IP", a.ip_address || "—"],
+              ["IP Address", a.ip_address || "—"],
               ["Fee", a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"],
               ["Locations", String(a.location_count || 1)],
+              ["Agreement ID", a.id.slice(0,8) + "…"],
             ].map(([k, v]) => (
               <div key={k}>
                 <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
-                <div style={{ fontSize: 13, color: D.text, marginTop: 2 }}>{v}</div>
+                <div style={{ fontSize: 13, color: D.text, marginTop: 2, fontFamily: k === "Agreement ID" ? "monospace" : "inherit" }}>{v}</div>
               </div>
             ))}
           </div>
