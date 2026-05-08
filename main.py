@@ -354,7 +354,7 @@ app = FastAPI(title="Restaurant Brain API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://hostplatform.net", "http://localhost:3000"],
+    allow_origins=["https://hostplatform.net", "http://localhost:3000", "http://localhost:3005"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Owner-Secret"],

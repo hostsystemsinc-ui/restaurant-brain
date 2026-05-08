@@ -197,54 +197,218 @@ function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => vo
 }
 
 // ── Dashboard View ─────────────────────────────────────────────────────────────
+interface ServiceStatus { label: string; status: "checking"|"up"|"degraded"|"down"; detail: string }
+interface RestaurantLive { id: string; name: string; queueNow: number; tablesOccupied: number; tablesTotal: number; avgWait: number|null; utilization: number }
+
+const KNOWN_RESTAURANTS = [
+  { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original" },
+  { id: "0002cafe-0001-4000-8000-000000000002", name: "Walnut Southside" },
+  { id: DEMO_RID,                               name: "Demo"            },
+]
+
 function DashboardView({ token }: { token: string }) {
-  const [status, setStatus] = useState<"checking"|"up"|"degraded"|"down">("checking")
-  const [latency, setLatency] = useState<number|null>(null)
-  const [clients, setClients] = useState<Client[]>([])
+  const [services,  setServices]  = useState<ServiceStatus[]>([
+    { label: "Railway API", status: "checking", detail: "—" },
+    { label: "Supabase DB", status: "checking", detail: "—" },
+    { label: "GitHub",      status: "checking", detail: "—" },
+    { label: "Textbelt",    status: "checking", detail: "—" },
+  ])
+  const [clients,   setClients]   = useState<Client[]>([])
+  const [liveStats, setLiveStats] = useState<RestaurantLive[]>([])
+  const [lastCheck, setLastCheck] = useState<Date|null>(null)
+
+  const runChecks = useCallback(async () => {
+    // ── Railway + Supabase (inferred from API response)
+    const railwayStart = Date.now()
+    let railwaySt: ServiceStatus["status"] = "down"
+    let railwayDetail = "No response"
+    let supabaseSt: ServiceStatus["status"] = "down"
+    let supabaseDetail = "inferred from API"
+    try {
+      const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RID}`, { cache: "no-store" })
+      const ms = Date.now() - railwayStart
+      if (r.ok) {
+        railwaySt = ms < 600 ? "up" : "degraded"
+        railwayDetail = `${ms}ms`
+        supabaseSt = "up"
+        supabaseDetail = "responding"
+      } else {
+        railwaySt = "degraded"
+        railwayDetail = `HTTP ${r.status}`
+        supabaseSt = "degraded"
+        supabaseDetail = `HTTP ${r.status}`
+      }
+    } catch {
+      railwayDetail = "Timeout"
+    }
+
+    // ── GitHub
+    let githubSt: ServiceStatus["status"] = "down"
+    let githubDetail = "—"
+    try {
+      const g = await fetch("https://www.githubstatus.com/api/v2/status.json", { cache: "no-store" })
+      if (g.ok) {
+        const gj = await g.json() as { status: { indicator: string; description: string } }
+        const ind = gj.status?.indicator
+        githubSt = ind === "none" ? "up" : ind === "minor" ? "degraded" : "down"
+        githubDetail = gj.status?.description || ind
+      }
+    } catch {
+      githubDetail = "Unreachable"
+    }
+
+    // ── Textbelt
+    let textbeltSt: ServiceStatus["status"] = "down"
+    let textbeltDetail = "—"
+    try {
+      const tb = await fetch(`/api/textbelt`, { cache: "no-store" })
+      if (tb.ok) {
+        const tj = await tb.json() as { quotaRemaining?: number; success?: boolean }
+        if (tj.quotaRemaining != null) {
+          textbeltSt = tj.quotaRemaining > 5 ? "up" : "degraded"
+          textbeltDetail = `${tj.quotaRemaining} credits`
+        } else {
+          textbeltSt = "degraded"
+          textbeltDetail = "Unknown quota"
+        }
+      }
+    } catch {
+      textbeltDetail = "Unreachable"
+    }
+
+    setServices([
+      { label: "Railway API", status: railwaySt,   detail: railwayDetail   },
+      { label: "Supabase DB", status: supabaseSt,  detail: supabaseDetail  },
+      { label: "GitHub",      status: githubSt,    detail: githubDetail    },
+      { label: "Textbelt",    status: textbeltSt,  detail: textbeltDetail  },
+    ])
+    setLastCheck(new Date())
+
+    // ── Per-restaurant live stats
+    const stats = await Promise.all(KNOWN_RESTAURANTS.map(async r => {
+      try {
+        const iRes = await fetch(`${API}/insights?restaurant_id=${r.id}`, { cache: "no-store" })
+        const ins = iRes.ok ? (await iRes.json() as {
+          parties_waiting?: number; parties_ready?: number;
+          avg_wait_estimate?: number; tables_occupied?: number;
+          tables_total?: number; capacity_utilization?: number
+        }) : null
+        return {
+          id:             r.id,
+          name:           r.name,
+          queueNow:       (ins?.parties_waiting ?? 0) + (ins?.parties_ready ?? 0),
+          tablesOccupied: ins?.tables_occupied  ?? 0,
+          tablesTotal:    ins?.tables_total     ?? 0,
+          avgWait:        (ins?.avg_wait_estimate && ins.avg_wait_estimate > 0) ? ins.avg_wait_estimate : null,
+          utilization:    ins?.capacity_utilization ?? 0,
+        }
+      } catch {
+        return { id: r.id, name: r.name, queueNow: 0, tablesOccupied: 0, tablesTotal: 0, avgWait: null, utilization: 0 }
+      }
+    }))
+    setLiveStats(stats)
+  }, [])
 
   useEffect(() => {
-    const t = Date.now()
-    fetch(`${API}/queue?restaurant_id=${DEMO_RID}`, { cache: "no-store" })
-      .then(r => { setStatus(r.ok ? "up" : "down"); setLatency(Date.now() - t) })
-      .catch(() => setStatus("down"))
+    // Load clients list
     fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
       .then(r => r.json())
       .then(d => setClients(d.clients || []))
       .catch(() => {})
-  }, [token])
+    // Run health checks
+    runChecks()
+    const interval = setInterval(runChecks, 60_000)
+    return () => clearInterval(interval)
+  }, [token, runChecks])
 
-  const dotColor = status === "up" ? D.green : status === "degraded" ? D.orange : status === "checking" ? D.muted : D.red
-  const activeClients = clients.filter(c => c.status === "active" || !c.signed_at).length
+  const activeClients = clients.filter(c => c.status === "active").length
   const trialClients  = clients.filter(c => c.status === "trial").length
+  const totalMRR      = clients.reduce((s, c) => s + (c.monthly_fee_cents || 0), 0)
+
+  function svcDot(st: ServiceStatus["status"]) {
+    return st === "up" ? D.green : st === "degraded" ? D.orange : st === "checking" ? D.muted : D.red
+  }
 
   return (
     <div style={{ padding: 32 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 8px" }}>Dashboard</h1>
-      <p style={{ color: D.text2, fontSize: 14, margin: "0 0 32px" }}>HOST platform health and quick stats</p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: 0 }}>Dashboard</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {lastCheck && <span style={{ fontSize: 11, color: D.muted }}>Checked {lastCheck.toLocaleTimeString()}</span>}
+          <button onClick={runChecks}
+            style={{ padding: "6px 14px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+      <p style={{ color: D.text2, fontSize: 14, margin: "0 0 28px" }}>Live platform health and restaurant stats</p>
 
-      {/* Status cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
+      {/* Business summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
         {[
-          { label: "Railway API", value: status === "checking" ? "Checking…" : status === "up" ? `Up · ${latency}ms` : "Down", dot: dotColor },
-          { label: "Total Clients", value: String(clients.length), dot: D.blue },
-          { label: "Active", value: String(activeClients), dot: D.green },
-          { label: "Trial", value: String(trialClients), dot: D.orange },
+          { label: "Total Clients", value: String(clients.length), color: D.blue    },
+          { label: "Active",        value: String(activeClients),   color: D.green   },
+          { label: "Trial",         value: String(trialClients),    color: D.orange  },
+          { label: "Monthly MRR",   value: `$${(totalMRR/100).toFixed(0)}`, color: D.purple },
         ].map(card => (
-          <div key={card.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "20px 20px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: card.dot, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>{card.label}</span>
+          <div key={card.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "18px 20px" }}>
+            <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{card.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: card.color }}>{card.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Service health */}
+      <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.07em" }}>Service Health</h2>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 32 }}>
+        {services.map(svc => (
+          <div key={svc.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "16px 18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: svcDot(svc.status), flexShrink: 0,
+                boxShadow: svc.status !== "checking" ? `0 0 6px ${svcDot(svc.status)}80` : "none" }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: D.text }}>{svc.label}</span>
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: D.text }}>{card.value}</div>
+            <div style={{ fontSize: 11, color: svc.status === "up" ? D.green : svc.status === "degraded" ? D.orange : svc.status === "checking" ? D.muted : D.red }}>
+              {svc.status === "checking" ? "Checking…" : svc.status === "up" ? `● Operational · ${svc.detail}` : svc.status === "degraded" ? `⚠ Degraded · ${svc.detail}` : `✕ Down · ${svc.detail}`}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-restaurant live stats */}
+      <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.07em" }}>Live Restaurant Stats</h2>
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px 80px 90px", padding: "10px 20px",
+          borderBottom: `1px solid ${D.border}`, fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          <span>Restaurant</span><span style={{ textAlign: "center" }}>Queue</span>
+          <span style={{ textAlign: "center" }}>Tables Occupied</span><span style={{ textAlign: "center" }}>Avg Wait</span>
+          <span style={{ textAlign: "center" }}>Utilization</span>
+        </div>
+        {liveStats.length === 0 ? (
+          <div style={{ padding: "24px 20px", color: D.muted, fontSize: 13 }}>Loading live data…</div>
+        ) : liveStats.map((r, i) => (
+          <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px 80px 90px",
+            padding: "14px 20px", borderBottom: i < liveStats.length - 1 ? `1px solid ${D.border}` : "none",
+            alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{r.name}</div>
+              <div style={{ fontSize: 10, color: D.muted, fontFamily: "monospace", marginTop: 1 }}>{r.id.slice(0,8)}…</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <span style={{ fontSize: 18, fontWeight: 700, color: r.queueNow > 0 ? D.orange : D.green }}>{r.queueNow}</span>
+            </div>
+            <div style={{ textAlign: "center", fontSize: 15, fontWeight: 600, color: D.text }}>{r.tablesOccupied}<span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>/{r.tablesTotal}</span></div>
+            <div style={{ textAlign: "center", fontSize: 13, color: D.text2 }}>{r.avgWait ? `~${Math.round(r.avgWait)}m` : "—"}</div>
+            <div style={{ textAlign: "center", fontSize: 14, fontWeight: 600, color: r.utilization > 70 ? D.orange : D.green }}>{r.utilization}%</div>
           </div>
         ))}
       </div>
 
       {/* Recent clients */}
-      <h2 style={{ fontSize: 16, fontWeight: 600, color: D.text, margin: "0 0 16px" }}>Recent Clients</h2>
+      <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.07em" }}>Recent Clients</h2>
       <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
-        {clients.slice(0, 5).map((c, i) => (
-          <div key={c.id} style={{ padding: "14px 20px", borderBottom: i < Math.min(4, clients.length - 1) ? `1px solid ${D.border}` : "none",
+        {clients.slice(0, 6).map((c, i) => (
+          <div key={c.id} style={{ padding: "13px 20px", borderBottom: i < Math.min(5, clients.length - 1) ? `1px solid ${D.border}` : "none",
             display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{c.display_name}</div>
@@ -1117,11 +1281,39 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
     if ((tab === "floor-map" || tab === "guest-page" || tab === "menu") && !configLoaded) {
       fetch(`${API}/owner/clients/${client.id}/config?secret=${encodeURIComponent(token)}`)
         .then(r => r.json())
-        .then(d => {
+        .then(async d => {
           setConfig(d)
-          setFloorTables(Array.isArray(d.floor_plan) ? d.floor_plan : [])
           const mc = d.menu_config as { sections?: MenuSection[] } | null
           setMenuSections(mc?.sections || [])
+          // If floor_plan exists in config, use it; otherwise fall back to live /tables API
+          if (Array.isArray(d.floor_plan) && d.floor_plan.length > 0) {
+            setFloorTables(d.floor_plan)
+          } else {
+            // Load real tables from DB and auto-layout them in a grid
+            try {
+              const tr = await fetch(`${API}/tables?restaurant_id=${client.id}`, { cache: "no-store" })
+              if (tr.ok) {
+                const dbTables = await tr.json() as Array<{ id: string; table_number: number; capacity: number; status: string }>
+                if (Array.isArray(dbTables) && dbTables.length > 0) {
+                  const COLS = 5
+                  const colW = 16, rowH = 22
+                  const startX = 4, startY = 6
+                  const laid = dbTables.map((t, i) => ({
+                    id:       t.id,
+                    number:   t.table_number,
+                    label:    `T${t.table_number}`,
+                    capacity: t.capacity,
+                    shape:    "rect" as const,
+                    x:        startX + (i % COLS) * colW,
+                    y:        startY + Math.floor(i / COLS) * rowH,
+                    w:        12,
+                    h:        16,
+                  }))
+                  setFloorTables(laid)
+                }
+              }
+            } catch { /* non-critical — leave empty */ }
+          }
           setConfigLoaded(true)
         })
         .catch(() => setConfigLoaded(true))

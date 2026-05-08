@@ -33,6 +33,7 @@ const RESERVED = new Set([
   "station",
   "wait",
   "join",
+  "client",   // Generic /client/[slug]/join pages
   "reservations",
   "_next",
   "favicon.ico",
