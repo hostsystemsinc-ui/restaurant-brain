@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback, useRef } from "react"
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const D = {
   bg:           "#080C10",
+  sidebar:      "#0C1118",
   surface:      "rgba(255,255,255,0.035)",
   surfaceHover: "rgba(255,255,255,0.055)",
+  surface2:     "rgba(255,255,255,0.06)",
   border:       "rgba(255,255,255,0.08)",
   borderStrong: "rgba(255,255,255,0.14)",
   text:         "#FFFFFF",
@@ -23,2658 +24,1939 @@ const D = {
   redBg:        "rgba(239,68,68,0.10)",
   blue:         "#60A5FA",
   blueBg:       "rgba(96,165,250,0.10)",
+  blueBorder:   "rgba(96,165,250,0.20)",
   yellow:       "#FBBF24",
+  purple:       "#A78BFA",
+  purpleBg:     "rgba(167,139,250,0.10)",
 }
 
-const API      = "https://restaurant-brain-production.up.railway.app"
+const API  = "https://restaurant-brain-production.up.railway.app"
 const DEMO_RID = "dec0cafe-0000-4000-8000-000000000001"
 
-const TABS = ["Overview", "Clients", "SMS", "Customizer", "Analytics", "Agreements", "Prompts"]
-
-// ── Customizer editor types ────────────────────────────────────────────────────
-type SelectedEl =
-  | { type: "background" }
-  | { type: "restaurantName" }
-  | { type: "tagline" }
-  | { type: "partySize" }
-  | { type: "joinButton" }
-  | { type: "waitMessage" }
-  | { type: "progressBar" }
-  | { type: "seatedMessage" }
-  | { type: "finalButton"; index: number }
-  | null
-
-const EDITOR_LAYERS: Record<"Join" | "Waiting" | "Seated", { type: string; icon: string; label: string }[]> = {
-  Join: [
-    { type: "background",     icon: "🎨", label: "Background" },
-    { type: "restaurantName", icon: "🏷️",  label: "Restaurant Name" },
-    { type: "partySize",      icon: "👥", label: "Party Size" },
-  ],
-  Waiting: [
-    { type: "background",  icon: "🎨", label: "Background" },
-    { type: "progressBar", icon: "📊", label: "Progress Bar" },
-    { type: "waitMessage", icon: "💬", label: "Wait Messages" },
-  ],
-  Seated: [
-    { type: "background",   icon: "🎨", label: "Background" },
-    { type: "seatedMessage", icon: "💬", label: "Seated Message" },
-    { type: "finalButton",  icon: "🔘", label: "Final Buttons" },
-  ],
-}
-
-function elLabel(el: NonNullable<SelectedEl>): string {
-  if (el.type === "background")     return "Background"
-  if (el.type === "restaurantName") return "Restaurant Name"
-  if (el.type === "tagline")        return "Tagline"
-  if (el.type === "partySize")      return "Party Size"
-  if (el.type === "joinButton")     return "Join Button"
-  if (el.type === "waitMessage")    return "Wait Messages"
-  if (el.type === "progressBar")    return "Progress Bar"
-  if (el.type === "seatedMessage")  return "Seated Message"
-  if (el.type === "finalButton")    return `Button ${(el as { type: "finalButton"; index: number }).index + 1}`
-  return "Properties"
-}
-
 // ── Types ──────────────────────────────────────────────────────────────────────
-type SvcStatus = "up" | "degraded" | "down" | "checking"
-
-interface Svc {
-  status:  SvcStatus
-  detail:  string
-  latency?: number
+interface Client {
+  id:            string
+  name:          string
+  slug:          string
+  city?:         string
+  display_name:  string
+  join_url:      string
+  station_url:   string
+  plan_type:     string
+  status:        string
+  monthly_fee_cents?: number
+  location_count?: number
+  signed_at?:    string
+  signer_name?:  string
+  signer_email?: string
+  created_at?:   string
 }
 
-interface RestLive {
-  queueNow:       number
-  seatedToday:    number
-  avgWait:        number
-  coversThisWeek: number
-  loading:        boolean
-  error:          boolean
+interface Credential {
+  id:              string
+  restaurant_id:   string
+  credential_type: string
+  label:           string
+  value:           string
+  notes?:          string
+  updated_at?:     string
 }
 
-interface DemoReq {
+interface MenuSection {
+  id:    string
+  title: string
+  items: MenuItem[]
+}
+
+interface MenuItem {
   id:          string
   name:        string
-  restaurant:  string
-  email:       string
-  phone:       string
-  city:        string
-  type:        string
-  submittedAt: string
+  description: string
+  price:       string
+  tags:        string[]
 }
 
-interface AnalyticsEntry {
-  id: string
-  name: string
-  party_size: number
-  phone: string | null
-  source: string
-  status: string
-  arrival_time: string | null
-  quoted_wait: number | null
-  seated_at: string | null
-  actual_wait: number | null
-  notes: string | null
-  restaurant_id: string | null
-}
-
-interface CapacityData {
-  supabase_rows: Record<string, number>
-  server_time: string
+interface FloorTable {
+  id:       string
+  number:   number
+  label:    string
+  capacity: number
+  shape:    "rect" | "circle" | "booth" | "diamond"
+  x:        number  // percent of canvas width
+  y:        number  // percent of canvas height
+  w:        number  // percent
+  h:        number  // percent
 }
 
 interface AgreementRecord {
-  id: string
-  business_name: string
-  signer_name: string
-  signer_title?: string
-  signer_email: string
-  plan_type: string
-  signed_at: string
-  ip_address?: string
+  id:               string
+  business_name:    string
+  signer_name:      string
+  signer_title?:    string
+  signer_email:     string
+  plan_type:        string
+  signed_at:        string
+  ip_address?:      string
   agreement_version?: string
-  status?: string
+  status?:          string
   monthly_fee_cents?: number
-  location_count?: number
+  location_count?:  number
 }
 
-interface GuestConfig {
-  bgColor:         string
-  accentColor:     string
-  buttonTextColor: string
-  restaurantName:  string
-  tagline:         string
-  waitMessages:    string[]
-  seatedMessage:   string
-  finalButtons:    Array<{ id: string; label: string; url: string; color: string }>
+interface AnalyticsEntry {
+  id:           string
+  name:         string
+  party_size:   number
+  phone:        string | null
+  source:       string
+  status:       string
+  arrival_time: string | null
+  quoted_wait:  number | null
+  seated_at:    string | null
+  actual_wait:  number | null
+  notes:        string | null
+  restaurant_id: string | null
 }
 
-// ── Restaurants ────────────────────────────────────────────────────────────────
-const WALNUT_ORIGINAL_RID  = "0001cafe-0001-4000-8000-000000000001"
-const WALNUT_SOUTHSIDE_RID = "0002cafe-0001-4000-8000-000000000002"
-
-const RESTS = [
-  { id: "walters",   name: "Walter's 303",             city: "Denver, CO",  rid: null,                  dashUrl: "/station",      joinUrl: "https://hostplatform.net/join",                    analogUrl: "/analog",       label: "Active" },
-  { id: "demo",      name: "Demo Restaurant",           city: "Denver, CO",  rid: DEMO_RID,              dashUrl: "/demo/station", joinUrl: "https://hostplatform.net/demo/join",               analogUrl: "/demo/analog",  label: "Demo"   },
-  { id: "original",  name: "The Original Walnut Cafe",  city: "Boulder, CO", rid: WALNUT_ORIGINAL_RID,   dashUrl: "/station",      joinUrl: "https://hostplatform.net/walnut/original/join",    analogUrl: "/station",      label: "Active" },
-  { id: "southside", name: "The Southside Walnut Cafe", city: "Boulder, CO", rid: WALNUT_SOUTHSIDE_RID,  dashUrl: "/station",      joinUrl: "https://hostplatform.net/walnut/southside/join",   analogUrl: "/station",      label: "Active" },
-]
-
-// ── Default guest config ───────────────────────────────────────────────────────
-const defaultGuestConfig: GuestConfig = {
-  bgColor:         "#000000",
-  accentColor:     "#22c55e",
-  buttonTextColor: "#ffffff",
-  restaurantName:  "Demo Restaurant",
-  tagline:         "Powered by HOST",
-  waitMessages: [
-    "Your spot is saved — feel free to step out.",
-    "We'll let you know the moment your table is ready.",
-    "Sit tight, we're moving quickly.",
-    "Your table is being prepared.",
-    "You can leave and come back — we've got your spot.",
-  ],
-  seatedMessage: "Thanks for dining with us! We hope to see you again soon.",
-  finalButtons:  [],
-}
-
-// ── Prompt data ────────────────────────────────────────────────────────────────
-interface PromptCard {
-  category:    string
-  title:       string
-  description: string
-  prompt:      string
-  risk:        "Safe" | "Moderate" | "Careful"
-}
-
-const PROMPTS: PromptCard[] = [
-  {
-    category: "Infrastructure",
-    title: "Add New Restaurant Client",
-    description: "Creates a full restaurant entry in Supabase, sets up their NFC join URL, and adds them to the owner dashboard RESTS array.",
-    prompt: `Add a new restaurant client named [Restaurant Name] in [City] to the HOST system. Create their restaurant entry in Supabase with 16 tables, set up their NFC join URL as hostplatform.net/join, and add them to the RESTS array in the owner dashboard.`,
-    risk: "Safe",
-  },
-  {
-    category: "Infrastructure",
-    title: "Check System Status",
-    description: "Verifies Railway deployment health, checks recent deploy logs, and confirms the backend API is responding.",
-    prompt: `Check the current Textbelt quota and Railway deployment status. Show me the last 5 Railway deploy logs and confirm the backend is responding correctly.`,
-    risk: "Safe",
-  },
-  {
-    category: "Infrastructure",
-    title: "Rotate Password / API Key",
-    description: "Updates the owner console password and the Textbelt API key in Railway environment variables.",
-    prompt: `Update the PASS constant in /owner/page.tsx to a new password: [NEW_PASSWORD]. Also update the TEXTBELT_KEY environment variable in Railway to [NEW_KEY].`,
-    risk: "Moderate",
-  },
-  {
-    category: "Guest Experience",
-    title: "Change Join SMS Message",
-    description: "Updates the SMS message sent to guests when they join the waitlist across all restaurants.",
-    prompt: `Change the join SMS message for all restaurants to: [YOUR MESSAGE]. Make sure it still includes the STOP opt-out. Update _send_join_sms in main.py.`,
-    risk: "Safe",
-  },
-  {
-    category: "Guest Experience",
-    title: "Update Demo Restaurant Menu",
-    description: "Replaces the menu content on the guest join page for the demo restaurant.",
-    prompt: `Update the demo restaurant menu on the guest join page (/demo/join/page.tsx). Change the menu sections to: [paste menu here]. Keep the same visual format.`,
-    risk: "Safe",
-  },
-  {
-    category: "Guest Experience",
-    title: "Add Tables to Floor Plan",
-    description: "Adds more tables to the demo restaurant floor plan in HOST standard and updates Supabase to match.",
-    prompt: `Add [N] more tables to the Demo Restaurant floor plan in HOST standard. Update the FLOOR_PLAN array in /demo/station/page.tsx and also add the matching table entries to Supabase.`,
-    risk: "Safe",
-  },
-  {
-    category: "Guest Experience",
-    title: "Customize Guest Waiting Page",
-    description: "Changes the visual theme and final page buttons on the guest waiting page for a specific restaurant.",
-    prompt: `Customize the guest waiting page (/wait/[id]/page.tsx) for [Restaurant Name] so that the background color is [COLOR], the accent color is [COLOR], and the final page shows these buttons: [BUTTON LABEL → URL].`,
-    risk: "Moderate",
-  },
-  {
-    category: "Features",
-    title: "CSV Export for Guest History",
-    description: "Adds a download button to the HOST standard history page that exports the day's guest log as a CSV.",
-    prompt: `Add a CSV export button to the HOST standard history page that downloads the guest log for the current business day with columns: Name, Party Size, Quoted Wait, Actual Wait, Seated At, Phone.`,
-    risk: "Safe",
-  },
-  {
-    category: "Features",
-    title: "Reservation Import Tool",
-    description: "Builds an OpenTable/Resy CSV importer for a restaurant's reservations tab in HOST standard.",
-    prompt: `Build a reservation import tool for [Restaurant Name] that accepts a CSV export from OpenTable/Resy with columns: name, party_size, time, notes. Add it as a button in HOST standard reservations tab.`,
-    risk: "Moderate",
-  },
-  {
-    category: "Features",
-    title: "Per-Restaurant Analytics Dashboard",
-    description: "Adds an analytics view to the owner console with daily covers trend, avg wait trend, peak hour heatmap, and SMS delivery rate.",
-    prompt: `Add a per-restaurant analytics dashboard to the owner console showing: daily covers trend (7 days), avg wait trend, peak hour heatmap, and SMS delivery rate.`,
-    risk: "Moderate",
-  },
-  {
-    category: "Fixes",
-    title: "Debug Guest Join Page Error",
-    description: "Investigates and fixes errors on the guest join page by checking the Railway backend and recent deploy logs.",
-    prompt: `The guest join page at hostplatform.net/demo/join is showing an error. Check the /queue/join endpoint on Railway, look at the recent deploy logs, and fix whatever is causing the error.`,
-    risk: "Safe",
-  },
-  {
-    category: "Fixes",
-    title: "Debug SMS Not Delivering",
-    description: "Checks Textbelt quota, verifies the API key is set, and inspects the SMS sending function for errors.",
-    prompt: `SMS texts aren't being delivered. Check the Textbelt quota, verify the TEXTBELT_KEY is set in Railway environment variables, and check the _send_sms function in main.py for errors.`,
-    risk: "Safe",
-  },
-  {
-    category: "Fixes",
-    title: "Fix Timer Discrepancy",
-    description: "Debugs why HOST analog and HOST standard show different wait times for the same guest, focusing on timestamp and timezone handling.",
-    prompt: `The timer countdown on HOST analog and HOST standard are showing different times for the same guest. Debug the wait_set_at timestamp handling, check for timezone parsing issues, and fix the discrepancy.`,
-    risk: "Careful",
-  },
-  {
-    category: "Fixes",
-    title: "Fix Table Sync Between Views",
-    description: "Investigates why tables show different occupancy states in analog vs standard views and fixes the /tables endpoint or normalizeTables function.",
-    prompt: `Tables aren't syncing correctly between HOST analog and HOST standard views. One shows a table as occupied, the other shows it as empty. Debug the /tables endpoint and the normalizeTables function in station/page.tsx.`,
-    risk: "Safe",
-  },
-]
+type NavView = "dashboard" | "clients" | "client-detail" | "new-client" | "billing" | "analytics" | "agreements" | "settings"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function svcDot(s: SvcStatus) {
-  if (s === "up")       return D.green
-  if (s === "degraded") return D.yellow
-  if (s === "down")     return D.red
-  return D.muted
-}
-function svcLabel(s: SvcStatus) {
-  if (s === "up")       return "Operational"
-  if (s === "degraded") return "Degraded"
-  if (s === "down")     return "Down"
-  return "Checking…"
-}
 function fmtTime(iso: string) {
   const d = new Date(iso)
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
     " · " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
 }
-function fmtRefresh(d: Date | null) {
-  if (!d) return "Never"
-  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })
+
+function planBadge(plan: string, status: string) {
+  const color = status === "trial" ? D.orange : status === "active" ? D.green : D.muted
+  const bg    = status === "trial" ? D.orangeBg : status === "active" ? D.greenBg : D.surface
+  return (
+    <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" as const,
+      borderRadius: 20, padding: "2px 10px", color, background: bg, border: `1px solid ${color}40`, whiteSpace: "nowrap" as const }}>
+      {status === "trial" ? "Trial" : plan}
+    </span>
+  )
 }
 
-function sourceLabel(s: string) {
-  return s === "nfc" ? "NFC" : s === "host" ? "Manual" : s === "analog" ? "Analog" : s === "web" ? "Web" : s
-}
-function sourceStyle(s: string): React.CSSProperties {
-  const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px", letterSpacing: "0.05em", border: "1px solid", whiteSpace: "nowrap" as const }
-  if (s === "nfc")    return { ...base, color: "#60A5FA", background: "rgba(96,165,250,0.12)",  borderColor: "rgba(96,165,250,0.25)"  }
-  if (s === "host")   return { ...base, color: "#22C55E", background: "rgba(34,197,94,0.10)",   borderColor: "rgba(34,197,94,0.22)"   }
-  if (s === "analog") return { ...base, color: "#F59E0B", background: "rgba(245,158,11,0.10)",  borderColor: "rgba(245,158,11,0.25)"  }
-  if (s === "web")    return { ...base, color: "#A78BFA", background: "rgba(167,139,250,0.10)", borderColor: "rgba(167,139,250,0.25)" }
-  return { ...base, color: D.muted, background: D.surface, borderColor: D.border }
-}
-function statusStyle(s: string): React.CSSProperties {
-  const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px", border: "1px solid", whiteSpace: "nowrap" as const }
-  if (s === "seated")  return { ...base, color: "#22C55E", background: "rgba(34,197,94,0.10)",  borderColor: "rgba(34,197,94,0.22)"  }
-  if (s === "removed") return { ...base, color: "#EF4444", background: "rgba(239,68,68,0.10)",  borderColor: "rgba(239,68,68,0.22)"  }
-  if (s === "ready")   return { ...base, color: "#FBBF24", background: "rgba(251,191,36,0.10)", borderColor: "rgba(251,191,36,0.25)" }
-  return { ...base, color: "#60A5FA", background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.25)" }
+function nanoid() {
+  return Math.random().toString(36).slice(2, 9)
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
-export default function OwnerPage() {
-  const router = useRouter()
-  const [authed,      setAuthed]      = useState(false)
-  const [passInput,   setPassInput]   = useState("")
-  const [passErr,     setPassErr]     = useState(false)
-  const [showPass,    setShowPass]    = useState(false)
-
-  // Tab state
-  const [activeTab, setActiveTab] = useState("Overview")
-
-  // Service states
-  const [railway,    setRailway]    = useState<Svc>({ status: "checking", detail: "" })
-  const [github,     setGithub]     = useState<Svc>({ status: "checking", detail: "" })
-  const [textbelt,   setTextbelt]   = useState<Svc>({ status: "checking", detail: "" })
-  const [db,         setDb]         = useState<Svc>({ status: "checking", detail: "" })
-
-  // Per-restaurant live data
-  const [liveData, setLiveData] = useState<Record<string, RestLive>>({
-    walters:   { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
-    demo:      { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
-    original:  { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
-    southside: { queueNow: 0, seatedToday: 0, avgWait: 0, coversThisWeek: 0, loading: true, error: false },
-  })
-
-  // Demo requests
-  const [demoReqs, setDemoReqs] = useState<DemoReq[]>(() => {
-    try {
-      const cached = localStorage.getItem("host_owner_demo_reqs")
-      return cached ? JSON.parse(cached) : []
-    } catch { return [] }
-  })
-  const [demoLoading,   setDemoLoading]   = useState(false)
-  const [lastRefresh,   setLastRefresh]   = useState<Date | null>(null)
-  const [refreshing,    setRefreshing]    = useState(false)
-
-  // Client tab: localStorage edit fields per restaurant
-  const [clientEdits, setClientEdits] = useState<Record<string, { name: string; nfcUrl: string; notes: string }>>(() => {
-    try {
-      const s = localStorage.getItem("host_client_edits")
-      return s ? JSON.parse(s) : {}
-    } catch { return {} }
-  })
-  // Client creds: owner-saved overrides from localStorage; defaults come from server via ownerSecrets
-  const [clientCreds, setClientCreds] = useState<Record<string, { username: string; password: string }>>(() => {
-    try {
-      const s = localStorage.getItem("host_client_creds")
-      return s ? JSON.parse(s) : {}
-    } catch { return {} }
-  })
-  const [credSaved,   setCredSaved]   = useState<string | null>(null)
-
-  // Customizer state
-  const [guestConfig, setGuestConfig] = useState<GuestConfig>(() => {
-    try {
-      const s = localStorage.getItem(`host_guest_config_${RESTS[0].id}`)
-      return s ? { ...defaultGuestConfig, ...JSON.parse(s) } : defaultGuestConfig
-    } catch { return defaultGuestConfig }
-  })
-  const [configSaved,       setConfigSaved]       = useState(false)
-  const [customizerPreview, setCustomizerPreview] = useState<"Join" | "Waiting" | "Seated">("Join")
-  const [customizerRestId,  setCustomizerRestId]  = useState<string>(RESTS[0].id)
-  const [selectedEl,        setSelectedEl]        = useState<SelectedEl>(null)
-  const [dragIdx,           setDragIdx]           = useState<number | null>(null)
-  const [dragOverIdx,       setDragOverIdx]       = useState<number | null>(null)
-
-  // SMS tab: quota from textbelt state
-  const [textbeltQuota, setTextbeltQuota] = useState<number | null>(null)
-
-  // Analytics tab
-  const [analyticsData,     setAnalyticsData]     = useState<AnalyticsEntry[]>([])
-  const [analyticsLoading,  setAnalyticsLoading]  = useState(false)
-  const [analyticsFetched,  setAnalyticsFetched]  = useState(false)
-  const [showClearConfirm,  setShowClearConfirm]  = useState(false)
-  const [analyticsClearing, setAnalyticsClearing] = useState(false)
-  const [analyticsPage,     setAnalyticsPage]     = useState(0)
-  const analyticsPageSize = 50
-
-  // Capacity (Supabase row counts)
-  const [capacityData,    setCapacityData]    = useState<CapacityData | null>(null)
-  const [capacityLoading, setCapacityLoading] = useState(false)
-
-  // Agreements tab
-  const [agreements,        setAgreements]        = useState<AgreementRecord[]>([])
-  const [agreementsLoading, setAgreementsLoading] = useState(false)
-  const [agreementsFetched, setAgreementsFetched] = useState(false)
-  const [agreementsError,   setAgreementsError]   = useState<string | null>(null)
-
-  // Secrets fetched server-side — never hardcoded in client
-  const [ownerSecrets, setOwnerSecrets] = useState<{
-    textbeltKey: string
-    textbeltPurchaseUrl: string
-    textbeltWhitelistUrl: string
-    clientCreds?: Record<string, { username: string; password: string }>
-  } | null>(null)
-
-  async function fetchSecrets(token: string) {
-    try {
-      const r = await fetch("/api/owner/secrets", {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      })
-      if (r.ok) {
-        const data = await r.json()
-        setOwnerSecrets(data)
-        // Merge server-provided defaults with any locally-saved overrides
-        if (data.clientCreds) {
-          setClientCreds(prev => ({ ...data.clientCreds, ...prev }))
-        }
-      }
-    } catch { /* non-critical */ }
-  }
-
-  useEffect(() => {
-    if (sessionStorage.getItem("host_owner_authed") === "1") {
-      setAuthed(true)
-      const token = sessionStorage.getItem("host_owner_token") || ""
-      if (token) fetchSecrets(token)
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem(`host_guest_config_${customizerRestId}`)
-      setGuestConfig(s ? { ...defaultGuestConfig, ...JSON.parse(s) } : defaultGuestConfig)
-    } catch { setGuestConfig(defaultGuestConfig) }
-  }, [customizerRestId])
-
-  // ── Fetch all data ────────────────────────────────────────────────────────────
-  const fetchAll = useCallback(async () => {
-    setRefreshing(true)
-
-    const t0 = Date.now()
-    const [railwayResult, githubResult, textbeltResult] = await Promise.allSettled([
-      (async () => {
-        const t = Date.now()
-        const r = await fetch(`${API}/queue?restaurant_id=${DEMO_RID}`, { cache: "no-store" })
-        const ms = Date.now() - t
-        return { ok: r.ok, ms }
-      })(),
-      (async () => {
-        const r = await fetch("https://www.githubstatus.com/api/v2/status.json", { cache: "no-store" })
-        return await r.json()
-      })(),
-      (async () => {
-        const r = await fetch("/api/textbelt", { cache: "no-store" })
-        return await r.json()
-      })(),
-    ])
-
-    if (railwayResult.status === "fulfilled") {
-      const { ok, ms } = railwayResult.value
-      setRailway({ status: ok ? (ms > 3000 ? "degraded" : "up") : "down", detail: ok ? `${ms}ms response` : "No response", latency: ms })
-      setDb({ status: ok ? "up" : "down", detail: ok ? "Connected" : "Unreachable" })
-    } else {
-      setRailway({ status: "down", detail: "Request failed" })
-      setDb({ status: "down", detail: "Unreachable" })
-    }
-
-    if (githubResult.status === "fulfilled") {
-      const d = githubResult.value
-      const ind: string = d?.status?.indicator ?? "none"
-      setGithub({ status: ind === "none" ? "up" : ind === "minor" ? "degraded" : "down", detail: d?.status?.description ?? "" })
-    } else {
-      setGithub({ status: "down", detail: "Status unavailable" })
-    }
-
-    if (textbeltResult.status === "fulfilled") {
-      const d = textbeltResult.value
-      // Always capture quota if Textbelt returned a number, regardless of other errors
-      const quota: number | null = typeof d.quotaRemaining === "number" ? d.quotaRemaining : null
-      if (d.error === "TEXTBELT_KEY not configured") {
-        // Key not set in dashboard Railway env — user needs to add it there
-        setTextbelt({ status: "degraded", detail: "TEXTBELT_KEY not set in dashboard env" })
-        setTextbeltQuota(null)
-      } else if (quota !== null) {
-        setTextbelt({
-          status: quota > 0 ? "up" : "down",
-          detail: `${quota.toLocaleString()} texts remaining`,
-        })
-        setTextbeltQuota(quota)
-      } else {
-        // API reachable but unexpected response — key may be missing in Railway dashboard env
-        setTextbelt({ status: "degraded", detail: "TEXTBELT_KEY missing from dashboard Railway env" })
-        setTextbeltQuota(null)
-      }
-    } else {
-      setTextbelt({ status: "down", detail: "Quota check failed" })
-      setTextbeltQuota(null)
-    }
-
-    void t0
-
-    await Promise.all(RESTS.map(async (rest) => {
-      setLiveData(prev => ({ ...prev, [rest.id]: { ...prev[rest.id], loading: true, error: false } }))
-      try {
-        const ridParam = rest.rid ? `?restaurant_id=${rest.rid}` : ""
-        const [insRes, qRes] = await Promise.all([
-          fetch(`${API}/insights${ridParam}`, { cache: "no-store" }),
-          fetch(`${API}/queue${ridParam}`,    { cache: "no-store" }),
-        ])
-        const ins = insRes.ok ? await insRes.json() : null
-        const q   = qRes.ok  ? await qRes.json()   : []
-
-        setLiveData(prev => ({
-          ...prev,
-          [rest.id]: {
-            queueNow:       Array.isArray(q) ? q.filter((e: { status: string }) => ["waiting","ready"].includes(e.status)).length : 0,
-            seatedToday:    ins?.parties_seated_today ?? 0,
-            avgWait:        Math.round(ins?.avg_wait_estimate ?? 0),
-            coversThisWeek: ins?.covers_this_week ?? 0,
-            loading:        false,
-            error:          false,
-          }
-        }))
-      } catch {
-        setLiveData(prev => ({ ...prev, [rest.id]: { ...prev[rest.id], loading: false, error: true } }))
-      }
-    }))
-
-    setDemoLoading(true)
-    try {
-      const token = sessionStorage.getItem("host_owner_token") || ""
-      const r = await fetch(`/api/demo?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
-      if (r.ok) {
-        const fresh: DemoReq[] = await r.json()
-        setDemoReqs(prev => {
-          const map = new Map<string, DemoReq>()
-          for (const req of prev)   map.set(req.id, req)
-          for (const req of fresh)  map.set(req.id, req)
-          const merged = Array.from(map.values()).sort(
-            (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
-          )
-          try { localStorage.setItem("host_owner_demo_reqs", JSON.stringify(merged)) } catch {}
-          return merged
-        })
-      }
-    } catch { /* ignore */ }
-    setDemoLoading(false)
-
-    setLastRefresh(new Date())
-    setRefreshing(false)
-  }, [])
-
-  useEffect(() => {
-    if (authed) { fetchAll(); fetchCapacity() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authed])
-
-  useEffect(() => {
-    if (!authed) return
-    const t = setInterval(fetchAll, 5 * 60_000)
-    return () => clearInterval(t)
-  }, [authed, fetchAll])
-
-  async function tryLogin() {
-    const token = passInput.trim()
-    try {
-      const res = await fetch("/api/owner/auth", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: token }),
-      })
-      if (res.ok) {
-        sessionStorage.setItem("host_owner_authed", "1")
-        sessionStorage.setItem("host_owner_token", token)
-        setAuthed(true)
-        setPassErr(false)
-        fetchSecrets(token)
-      } else {
-        setPassErr(true)
-      }
-    } catch {
-      setPassErr(true)
-    }
-  }
-  async function logout() {
-    await fetch("/api/owner/auth", { method: "DELETE" }).catch(() => {})
-    sessionStorage.removeItem("host_owner_authed")
-    sessionStorage.removeItem("host_owner_token")
-    setAuthed(false); setPassInput("")
-    router.push("/")
-  }
-
-  function saveGuestConfig() {
-    localStorage.setItem(`host_guest_config_${customizerRestId}`, JSON.stringify(guestConfig))
-    setConfigSaved(true)
-    setTimeout(() => setConfigSaved(false), 2000)
-  }
-
-  function saveClientEdits(id: string, edits: { name: string; nfcUrl: string; notes: string }) {
-    const next = { ...clientEdits, [id]: edits }
-    setClientEdits(next)
-    try { localStorage.setItem("host_client_edits", JSON.stringify(next)) } catch {}
-  }
-
-  function getClientEdit(id: string) {
-    return clientEdits[id] ?? { name: "", nfcUrl: "", notes: "" }
-  }
-
-  function saveClientCred(id: string, cred: { username: string; password: string }) {
-    const next = { ...clientCreds, [id]: cred }
-    setClientCreds(next)
-    try { localStorage.setItem("host_client_creds", JSON.stringify(next)) } catch {}
-    setCredSaved(id)
-    setTimeout(() => setCredSaved(null), 2000)
-  }
-
-  function getClientCred(id: string) {
-    return clientCreds[id] ?? { username: id, password: "" }
-  }
-
-  async function fetchAnalytics() {
-    setAnalyticsLoading(true)
-    const token = sessionStorage.getItem("host_owner_token") || ""
-    const rids  = [WALNUT_ORIGINAL_RID, WALNUT_SOUTHSIDE_RID, DEMO_RID].join(",")
-    try {
-      const r = await fetch(
-        `${API}/owner/analytics?restaurant_ids=${encodeURIComponent(rids)}&secret=${encodeURIComponent(token)}`,
-        { cache: "no-store" }
-      )
-      if (r.ok) {
-        const d = await r.json()
-        setAnalyticsData(d.entries || [])
-        setAnalyticsFetched(true)
-        setAnalyticsPage(0)
-      }
-    } catch { /* ignore */ }
-    setAnalyticsLoading(false)
-  }
-
-  async function fetchCapacity() {
-    setCapacityLoading(true)
-    const token = sessionStorage.getItem("host_owner_token") || ""
-    try {
-      const r = await fetch(`${API}/owner/capacity?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
-      if (r.ok) setCapacityData(await r.json())
-    } catch { /* ignore */ }
-    setCapacityLoading(false)
-  }
-
-  function exportCSV() {
-    const restName = (rid: string | null) => RESTS.find(r => r.rid === rid)?.name || rid || "Unknown"
-    const fmtDate  = (iso: string | null) => iso ? new Date(iso).toLocaleString() : ""
-    const headers  = ["Name","Party","Phone","Source","Status","Arrived","Quoted Wait (min)","Seated At","Actual Wait (min)","Notes","Restaurant"]
-    const rows = analyticsData.map(e => [
-      e.name, e.party_size, e.phone || "", sourceLabel(e.source), e.status,
-      fmtDate(e.arrival_time), e.quoted_wait ?? "", fmtDate(e.seated_at),
-      e.actual_wait ?? "", e.notes || "", restName(e.restaurant_id),
-    ])
-    const csv = [headers, ...rows].map(row =>
-      row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")
-    ).join("\n")
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }))
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `host-analytics-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  async function clearAnalytics() {
-    setAnalyticsClearing(true)
-    const token = sessionStorage.getItem("host_owner_token") || ""
-    const rids  = [WALNUT_ORIGINAL_RID, WALNUT_SOUTHSIDE_RID, DEMO_RID].join(",")
-    try {
-      const r = await fetch(
-        `${API}/owner/analytics/clear?restaurant_ids=${encodeURIComponent(rids)}&secret=${encodeURIComponent(token)}`,
-        { method: "DELETE", cache: "no-store" }
-      )
-      if (r.ok) {
-        setAnalyticsData([])
-        setAnalyticsFetched(false)
-        setShowClearConfirm(false)
-        fetchCapacity()
-      }
-    } catch { /* ignore */ }
-    setAnalyticsClearing(false)
-  }
-
-  const font = "'Inter', system-ui, -apple-system, sans-serif"
-
-  // ── LOGIN GATE ────────────────────────────────────────────────────────────────
-  if (!authed) return (
-    <div style={{
-      minHeight: "100vh", background: D.bg,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: font, color: D.text,
-    }}>
-      <div style={{
-        width: 380, maxWidth: "92vw",
-        background: D.surface,
-        border: `1px solid ${D.border}`,
-        borderRadius: 10,
-        padding: "40px 36px",
-      }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <div style={{ fontSize: 32, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1 }}>HOST</div>
-          <div style={{ fontSize: 10, fontWeight: 600, color: D.muted, letterSpacing: "0.2em", textTransform: "uppercase", marginTop: 8 }}>
-            Owner Console
-          </div>
+// ── Sidebar ────────────────────────────────────────────────────────────────────
+function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => void }) {
+  const items: { id: NavView; label: string; icon: string }[] = [
+    { id: "dashboard",   label: "Dashboard",   icon: "⬡" },
+    { id: "clients",     label: "Clients",     icon: "🏢" },
+    { id: "billing",     label: "Billing",     icon: "💳" },
+    { id: "analytics",   label: "Analytics",   icon: "📊" },
+    { id: "agreements",  label: "Agreements",  icon: "📄" },
+    { id: "settings",    label: "Settings",    icon: "⚙️" },
+  ]
+  const active = (view === "client-detail" || view === "new-client") ? "clients" : view
+  return (
+    <div style={{ width: 220, minHeight: "100dvh", background: D.sidebar, borderRight: `1px solid ${D.border}`,
+      display: "flex", flexDirection: "column", flexShrink: 0, padding: "20px 0" }}>
+      {/* Logo */}
+      <div style={{ padding: "0 20px 24px", borderBottom: `1px solid ${D.border}` }}>
+        <div style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.02em", color: D.text }}>
+          HOST
         </div>
-
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, color: D.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>
-            Password
-          </div>
-          <div style={{ position: "relative" }}>
-            <input
-              type={showPass ? "text" : "password"}
-              value={passInput}
-              onChange={e => { setPassInput(e.target.value); setPassErr(false) }}
-              onKeyDown={e => e.key === "Enter" && tryLogin()}
-              placeholder="Enter password…"
-              autoFocus
-              style={{
-                width: "100%", boxSizing: "border-box",
-                padding: "11px 42px 11px 14px",
-                background: "rgba(255,255,255,0.05)",
-                border: `1px solid ${passErr ? "rgba(239,68,68,0.5)" : D.border}`,
-                borderRadius: 8, outline: "none",
-                color: D.text, fontSize: 14, fontFamily: "monospace",
-              }}
-            />
-            <button
-              onClick={() => setShowPass(v => !v)}
-              style={{
-                position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                background: "none", border: "none", cursor: "pointer", padding: 0,
-                color: D.muted, fontSize: 11, lineHeight: 1,
-              }}
-            >
-              {showPass ? "HIDE" : "SHOW"}
-            </button>
-          </div>
-          {passErr && (
-            <div style={{ fontSize: 12, color: D.red, marginTop: 6 }}>Incorrect password.</div>
-          )}
+        <div style={{ fontSize: 10, color: D.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 2 }}>
+          Owner Console
         </div>
-
-        <button
-          onClick={tryLogin}
-          style={{
-            width: "100%", padding: "12px", borderRadius: 8,
-            background: D.accent, border: "none", color: "#fff",
-            fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 8,
-          }}
-        >
-          Sign In
-        </button>
-
-        <div style={{ textAlign: "center", marginTop: 20 }}>
-          <a href="/" style={{ fontSize: 12, color: D.muted, textDecoration: "none" }}>← Back to HOST</a>
-        </div>
+      </div>
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: "16px 12px", display: "flex", flexDirection: "column", gap: 2 }}>
+        {items.map(item => (
+          <button
+            key={item.id}
+            onClick={() => setView(item.id as NavView)}
+            style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "9px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+              background: active === item.id ? D.surface2 : "transparent",
+              color: active === item.id ? D.text : D.text2,
+              fontSize: 14, fontWeight: active === item.id ? 600 : 400,
+              textAlign: "left", width: "100%",
+              transition: "all 0.12s",
+            }}
+          >
+            <span style={{ fontSize: 16, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
+            {item.label}
+            {active === item.id && (
+              <div style={{ marginLeft: "auto", width: 4, height: 4, borderRadius: 2, background: D.accent }} />
+            )}
+          </button>
+        ))}
+      </nav>
+      <div style={{ padding: "16px 20px", borderTop: `1px solid ${D.border}` }}>
+        <div style={{ fontSize: 10, color: D.muted }}>v2.0 · HOST Platform</div>
       </div>
     </div>
   )
+}
 
-  // ── DASHBOARD ─────────────────────────────────────────────────────────────────
+// ── Dashboard View ─────────────────────────────────────────────────────────────
+function DashboardView({ token }: { token: string }) {
+  const [status, setStatus] = useState<"checking"|"up"|"degraded"|"down">("checking")
+  const [latency, setLatency] = useState<number|null>(null)
+  const [clients, setClients] = useState<Client[]>([])
+
+  useEffect(() => {
+    const t = Date.now()
+    fetch(`${API}/queue?restaurant_id=${DEMO_RID}`, { cache: "no-store" })
+      .then(r => { setStatus(r.ok ? "up" : "down"); setLatency(Date.now() - t) })
+      .catch(() => setStatus("down"))
+    fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => setClients(d.clients || []))
+      .catch(() => {})
+  }, [token])
+
+  const dotColor = status === "up" ? D.green : status === "degraded" ? D.orange : status === "checking" ? D.muted : D.red
+  const activeClients = clients.filter(c => c.status === "active" || !c.signed_at).length
+  const trialClients  = clients.filter(c => c.status === "trial").length
+
   return (
-    <div style={{ minHeight: "100vh", background: D.bg, fontFamily: font, color: D.text }}>
+    <div style={{ padding: 32 }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 8px" }}>Dashboard</h1>
+      <p style={{ color: D.text2, fontSize: 14, margin: "0 0 32px" }}>HOST platform health and quick stats</p>
 
-      {/* ── Nav ── */}
-      <div style={{
-        position: "sticky", top: 0, zIndex: 50,
-        background: "rgba(8,12,16,0.95)",
-        backdropFilter: "blur(16px)",
-        borderBottom: `1px solid ${D.border}`,
-      }}>
-        {/* Top bar */}
-        <div style={{
-          height: 56, padding: "0 28px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-0.04em" }}>HOST</div>
-            <div style={{ width: 1, height: 18, background: D.border }} />
-            <div style={{ fontSize: 12, fontWeight: 500, color: D.muted, letterSpacing: "0.06em" }}>Owner Console</div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ fontSize: 11, color: D.muted }}>
-              Refreshed {fmtRefresh(lastRefresh)}
+      {/* Status cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
+        {[
+          { label: "Railway API", value: status === "checking" ? "Checking…" : status === "up" ? `Up · ${latency}ms` : "Down", dot: dotColor },
+          { label: "Total Clients", value: String(clients.length), dot: D.blue },
+          { label: "Active", value: String(activeClients), dot: D.green },
+          { label: "Trial", value: String(trialClients), dot: D.orange },
+        ].map(card => (
+          <div key={card.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "20px 20px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: card.dot, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>{card.label}</span>
             </div>
-            <button
-              onClick={fetchAll}
-              disabled={refreshing}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 7,
-                background: D.surface, border: `1px solid ${D.border}`,
-                color: D.text2, fontSize: 12, fontWeight: 500,
-                cursor: refreshing ? "not-allowed" : "pointer", opacity: refreshing ? 0.5 : 1,
-              }}
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }}>
-                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-              </svg>
-              Refresh
-            </button>
-            <button
-              onClick={logout}
-              style={{
-                padding: "7px 14px", borderRadius: 7,
-                background: "none", border: `1px solid ${D.border}`,
-                color: D.muted, fontSize: 12, fontWeight: 500, cursor: "pointer",
-              }}
-            >
-              Sign Out
+            <div style={{ fontSize: 28, fontWeight: 700, color: D.text }}>{card.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Recent clients */}
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: D.text, margin: "0 0 16px" }}>Recent Clients</h2>
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+        {clients.slice(0, 5).map((c, i) => (
+          <div key={c.id} style={{ padding: "14px 20px", borderBottom: i < Math.min(4, clients.length - 1) ? `1px solid ${D.border}` : "none",
+            display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{c.display_name}</div>
+              <div style={{ fontSize: 12, color: D.muted }}>{c.city || "—"}</div>
+            </div>
+            {planBadge(c.plan_type, c.status)}
+          </div>
+        ))}
+        {clients.length === 0 && (
+          <div style={{ padding: 32, textAlign: "center", color: D.muted, fontSize: 14 }}>No clients yet. Add your first client!</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Table Designer ─────────────────────────────────────────────────────────────
+function TableDesigner({ tables, onChange }: {
+  tables: FloorTable[]
+  onChange: (tables: FloorTable[]) => void
+}) {
+  const [selected, setSelected] = useState<string | null>(null)
+  const [adding,   setAdding]   = useState(false)
+  const [newTbl,   setNewTbl]   = useState({ number: "", capacity: "4", shape: "rect" as FloorTable["shape"], label: "" })
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ id: string; startX: number; startY: number; ox: number; oy: number } | null>(null)
+
+  const selectedTable = tables.find(t => t.id === selected)
+
+  function handleCanvasClick(e: React.MouseEvent) {
+    if (drag.current) return
+    if ((e.target as HTMLElement).closest("[data-table]")) return
+    setSelected(null)
+    if (adding) {
+      const rect = canvasRef.current!.getBoundingClientRect()
+      const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1)
+      const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1)
+      const num = parseInt(newTbl.number) || (tables.length ? Math.max(...tables.map(t => t.number)) + 1 : 1)
+      const isSmall = newTbl.shape === "circle" || newTbl.shape === "diamond"
+      const w = isSmall ? 6 : newTbl.shape === "booth" ? 14 : 8
+      const h = isSmall ? 6 : newTbl.shape === "booth" ? 5 : 8
+      const t: FloorTable = {
+        id: nanoid(), number: num, label: newTbl.label || String(num),
+        capacity: parseInt(newTbl.capacity) || 4, shape: newTbl.shape,
+        x: Math.max(0, Math.min(92, parseFloat(x) - w / 2)),
+        y: Math.max(0, Math.min(92, parseFloat(y) - h / 2)),
+        w, h,
+      }
+      onChange([...tables, t])
+      setNewTbl(prev => ({ ...prev, number: String(num + 1), label: "" }))
+    }
+  }
+
+  function startDrag(e: React.MouseEvent, id: string) {
+    e.stopPropagation()
+    const tbl = tables.find(t => t.id === id)!
+    const rect = canvasRef.current!.getBoundingClientRect()
+    drag.current = {
+      id,
+      startX: e.clientX, startY: e.clientY,
+      ox: tbl.x, oy: tbl.y,
+    }
+    setSelected(id)
+    const onMove = (me: MouseEvent) => {
+      if (!drag.current) return
+      const rect2 = canvasRef.current!.getBoundingClientRect()
+      const dx = (me.clientX - drag.current.startX) / rect2.width * 100
+      const dy = (me.clientY - drag.current.startY) / rect2.height * 100
+      onChange(tables.map(t => t.id === drag.current!.id
+        ? { ...t, x: Math.max(0, Math.min(90, drag.current!.ox + dx)), y: Math.max(0, Math.min(90, drag.current!.oy + dy)) }
+        : t
+      ))
+    }
+    const onUp = () => { drag.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp) }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+  }
+
+  function deleteSelected() {
+    onChange(tables.filter(t => t.id !== selected))
+    setSelected(null)
+  }
+
+  function updateSelected(patch: Partial<FloorTable>) {
+    onChange(tables.map(t => t.id === selected ? { ...t, ...patch } : t))
+  }
+
+  const shapeStyle = (t: FloorTable, isSel: boolean): React.CSSProperties => {
+    const base: React.CSSProperties = {
+      position: "absolute", left: `${t.x}%`, top: `${t.y}%`,
+      width: `${t.w}%`, height: `${t.h}%`,
+      background: isSel ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.10)",
+      border: `2px solid ${isSel ? D.blue : "rgba(255,255,255,0.20)"}`,
+      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
+      cursor: "grab", userSelect: "none", transition: "border-color 0.12s",
+      boxSizing: "border-box",
+    }
+    if (t.shape === "circle") base.borderRadius = "50%"
+    else if (t.shape === "diamond") base.transform = "rotate(45deg)"
+    else if (t.shape === "booth") base.borderRadius = "4px 4px 0 0"
+    else base.borderRadius = "6px"
+    return base
+  }
+
+  const innerStyle = (t: FloorTable): React.CSSProperties =>
+    t.shape === "diamond" ? { transform: "rotate(-45deg)", textAlign: "center" } : {}
+
+  return (
+    <div style={{ display: "flex", gap: 16, height: 520 }}>
+      {/* Controls panel */}
+      <div style={{ width: 200, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* Add table */}
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Add Table</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input placeholder="Table #" value={newTbl.number} onChange={e => setNewTbl(p => ({ ...p, number: e.target.value }))}
+              style={inputSm} />
+            <input placeholder="Label (opt)" value={newTbl.label} onChange={e => setNewTbl(p => ({ ...p, label: e.target.value }))}
+              style={inputSm} />
+            <select value={newTbl.capacity} onChange={e => setNewTbl(p => ({ ...p, capacity: e.target.value }))} style={inputSm}>
+              {[1,2,3,4,5,6,7,8,10,12].map(n => <option key={n} value={n}>{n} guests</option>)}
+            </select>
+            <select value={newTbl.shape} onChange={e => setNewTbl(p => ({ ...p, shape: e.target.value as FloorTable["shape"] }))} style={inputSm}>
+              <option value="rect">Square</option>
+              <option value="circle">Round</option>
+              <option value="booth">Booth</option>
+              <option value="diamond">Diamond</option>
+            </select>
+            <button onClick={() => setAdding(a => !a)}
+              style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${adding ? D.blue : D.border}`,
+                background: adding ? D.blueBg : "transparent", color: adding ? D.blue : D.text2,
+                fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              {adding ? "🖱 Click canvas to place" : "+ Add Table"}
             </button>
           </div>
         </div>
 
-        {/* Tab nav bar */}
-        <div style={{
-          padding: "0 28px",
-          display: "flex", alignItems: "center", gap: 4,
-          height: 44,
-        }}>
-          {TABS.map(tab => {
-            const active = tab === activeTab
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: "6px 16px", borderRadius: 20,
-                  background: active ? "rgba(255,255,255,0.10)" : "transparent",
-                  border: active ? `1px solid ${D.borderStrong}` : "1px solid transparent",
-                  color: active ? D.text : D.text2,
-                  fontSize: 13, fontWeight: active ? 600 : 400,
-                  cursor: "pointer",
-                  transition: "background 0.12s, color 0.12s, border-color 0.12s",
-                }}
-              >
-                {tab}
+        {/* Selected table edit */}
+        {selectedTable && (
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: 14, flex: 1 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Edit Table</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <input placeholder="Number" value={selectedTable.number} type="number"
+                onChange={e => updateSelected({ number: parseInt(e.target.value) || 0 })} style={inputSm} />
+              <input placeholder="Label" value={selectedTable.label}
+                onChange={e => updateSelected({ label: e.target.value })} style={inputSm} />
+              <select value={selectedTable.capacity} onChange={e => updateSelected({ capacity: parseInt(e.target.value) })} style={inputSm}>
+                {[1,2,3,4,5,6,7,8,10,12].map(n => <option key={n} value={n}>{n} guests</option>)}
+              </select>
+              <select value={selectedTable.shape} onChange={e => updateSelected({ shape: e.target.value as FloorTable["shape"] })} style={inputSm}>
+                <option value="rect">Square</option>
+                <option value="circle">Round</option>
+                <option value="booth">Booth</option>
+                <option value="diamond">Diamond</option>
+              </select>
+              <button onClick={deleteSelected}
+                style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${D.red}40`,
+                  background: D.redBg, color: D.red, fontSize: 12, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
+                🗑 Delete Table
               </button>
-            )
-          })}
+            </div>
+          </div>
+        )}
+
+        {!selectedTable && (
+          <div style={{ color: D.muted, fontSize: 12, padding: "8px 4px" }}>
+            Click a table to edit · Drag to move
+          </div>
+        )}
+      </div>
+
+      {/* Canvas */}
+      <div ref={canvasRef} onClick={handleCanvasClick}
+        style={{ flex: 1, background: "rgba(0,0,0,0.4)", border: `2px dashed ${adding ? D.blue : D.border}`,
+          borderRadius: 12, position: "relative", overflow: "hidden", cursor: adding ? "crosshair" : "default",
+          transition: "border-color 0.15s" }}>
+        {tables.length === 0 && !adding && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>🗺</div>
+            <div style={{ color: D.muted, fontSize: 14 }}>Click &quot;+ Add Table&quot; then click here to place tables</div>
+          </div>
+        )}
+        {tables.map(t => (
+          <div key={t.id} data-table="1" style={shapeStyle(t, t.id === selected)}
+            onMouseDown={e => startDrag(e, t.id)}>
+            <div style={innerStyle(t)}>
+              <div style={{ fontSize: Math.max(9, Math.min(13, t.w * 1.2)), fontWeight: 700, color: D.text, lineHeight: 1 }}>
+                {t.label || t.number}
+              </div>
+              <div style={{ fontSize: Math.max(8, Math.min(10, t.w)), color: D.muted, lineHeight: 1 }}>
+                {t.capacity}p
+              </div>
+            </div>
+          </div>
+        ))}
+        {adding && (
+          <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
+            background: D.blueBg, border: `1px solid ${D.blueBorder}`, borderRadius: 20,
+            padding: "4px 14px", fontSize: 11, color: D.blue, fontWeight: 600, pointerEvents: "none" }}>
+            Click to place table #{newTbl.number || (tables.length + 1)}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const inputSm: React.CSSProperties = {
+  background: "rgba(255,255,255,0.06)", border: `1px solid ${D.border}`, borderRadius: 6,
+  color: D.text, padding: "6px 10px", fontSize: 12, width: "100%", boxSizing: "border-box",
+  outline: "none",
+}
+
+// ── Menu Builder ───────────────────────────────────────────────────────────────
+function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange: (s: MenuSection[]) => void }) {
+  const [editing, setEditing] = useState<{sectionId: string; itemId?: string} | null>(null)
+  const [newSection, setNewSection] = useState("")
+
+  function addSection() {
+    if (!newSection.trim()) return
+    onChange([...sections, { id: nanoid(), title: newSection.trim(), items: [] }])
+    setNewSection("")
+  }
+
+  function addItem(sectionId: string) {
+    onChange(sections.map(s => s.id === sectionId
+      ? { ...s, items: [...s.items, { id: nanoid(), name: "New Item", description: "", price: "", tags: [] }] }
+      : s
+    ))
+  }
+
+  function updateItem(sectionId: string, itemId: string, patch: Partial<MenuItem>) {
+    onChange(sections.map(s => s.id === sectionId
+      ? { ...s, items: s.items.map(i => i.id === itemId ? { ...i, ...patch } : i) }
+      : s
+    ))
+  }
+
+  function deleteItem(sectionId: string, itemId: string) {
+    onChange(sections.map(s => s.id === sectionId ? { ...s, items: s.items.filter(i => i.id !== itemId) } : s))
+  }
+
+  function deleteSection(sectionId: string) {
+    onChange(sections.filter(s => s.id !== sectionId))
+  }
+
+  function updateSectionTitle(sectionId: string, title: string) {
+    onChange(sections.map(s => s.id === sectionId ? { ...s, title } : s))
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Add section */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input placeholder="New section (e.g. Breakfast, Lunch, Drinks)"
+          value={newSection} onChange={e => setNewSection(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && addSection()}
+          style={{ ...inputSm, flex: 1, padding: "9px 12px", fontSize: 13 }} />
+        <button onClick={addSection}
+          style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${D.green}40`,
+            background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+          + Section
+        </button>
+      </div>
+
+      {sections.length === 0 && (
+        <div style={{ textAlign: "center", color: D.muted, fontSize: 13, padding: "24px 0" }}>
+          Add sections to build your menu (e.g. Breakfast, Lunch, Beverages)
+        </div>
+      )}
+
+      {sections.map(section => (
+        <div key={section.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+          {/* Section header */}
+          <div style={{ display: "flex", alignItems: "center", padding: "12px 16px", borderBottom: `1px solid ${D.border}`, gap: 10 }}>
+            <input value={section.title} onChange={e => updateSectionTitle(section.id, e.target.value)}
+              style={{ ...inputSm, flex: 1, fontWeight: 700, fontSize: 14, padding: "4px 8px" }} />
+            <button onClick={() => addItem(section.id)}
+              style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.border}`,
+                background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+              + Item
+            </button>
+            <button onClick={() => deleteSection(section.id)}
+              style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.red}30`,
+                background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
+              ✕
+            </button>
+          </div>
+
+          {/* Items */}
+          {section.items.map(item => (
+            <div key={item.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${D.border}` }}>
+              {editing?.sectionId === section.id && editing?.itemId === item.id ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input placeholder="Item name" value={item.name} onChange={e => updateItem(section.id, item.id, { name: e.target.value })} style={{ ...inputSm, flex: 2 }} />
+                    <input placeholder="Price" value={item.price} onChange={e => updateItem(section.id, item.id, { price: e.target.value })} style={{ ...inputSm, flex: 1 }} />
+                  </div>
+                  <input placeholder="Description" value={item.description} onChange={e => updateItem(section.id, item.id, { description: e.target.value })} style={inputSm} />
+                  <input placeholder="Tags (comma-separated: GF, Vegan, Spicy)" value={item.tags.join(", ")}
+                    onChange={e => updateItem(section.id, item.id, { tags: e.target.value.split(",").map(t => t.trim()).filter(Boolean) })}
+                    style={inputSm} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => setEditing(null)}
+                      style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.green}40`,
+                        background: D.greenBg, color: D.green, fontSize: 12, cursor: "pointer" }}>
+                      Done
+                    </button>
+                    <button onClick={() => { deleteItem(section.id, item.id); setEditing(null) }}
+                      style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.red}30`,
+                        background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+                  onClick={() => setEditing({ sectionId: section.id, itemId: item.id })}>
+                  <div>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: D.text }}>{item.name}</span>
+                    {item.description && <span style={{ fontSize: 12, color: D.text2, marginLeft: 8 }}>{item.description}</span>}
+                    {item.tags.map(tag => (
+                      <span key={tag} style={{ marginLeft: 6, fontSize: 10, color: D.orange, background: D.orangeBg, borderRadius: 10, padding: "1px 7px" }}>{tag}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    {item.price && <span style={{ fontSize: 13, fontWeight: 700, color: D.text }}>{item.price}</span>}
+                    <span style={{ fontSize: 11, color: D.muted }}>Edit</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {section.items.length === 0 && (
+            <div style={{ padding: "12px 16px", color: D.muted, fontSize: 12 }}>No items — click &quot;+ Item&quot; to add</div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── New Client Wizard ──────────────────────────────────────────────────────────
+function NewClientWizard({ token, onDone, onCancel }: {
+  token: string
+  onDone: (client: { id: string; name: string; slug: string; join_url: string; station_url: string }) => void
+  onCancel: () => void
+}) {
+  const [step, setStep] = useState(1)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  // Step 1 — Basic info
+  const [name,         setName]         = useState("")
+  const [slug,         setSlug]         = useState("")
+  const [city,         setCity]         = useState("")
+  const [address,      setAddress]      = useState("")
+  const [contactName,  setContactName]  = useState("")
+  const [contactEmail, setContactEmail] = useState("")
+  const [planType,     setPlanType]     = useState("standard")
+  const [monthlyFee,   setMonthlyFee]   = useState("0")
+  const [locationCount, setLocationCount] = useState("1")
+
+  // Step 2 — Table layout
+  const [floorTables, setFloorTables] = useState<FloorTable[]>([])
+
+  // Step 3 — Guest page
+  const [bgColor,      setBgColor]      = useState("#000000")
+  const [accentColor,  setAccentColor]  = useState("#22c55e")
+  const [tagline,      setTagline]      = useState("Powered by HOST")
+  const [seatedMsg,    setSeatedMsg]    = useState("Thanks for dining with us!")
+  const [waitMessages, setWaitMessages] = useState("Your spot is saved — feel free to step out.\nWe'll let you know the moment your table is ready.\nSit tight, we're moving quickly.")
+
+  // Step 4 — Menu
+  const [menuSections, setMenuSections] = useState<MenuSection[]>([])
+
+  // Step 5 — Credentials
+  const [stationPin,  setStationPin]  = useState("")
+  const [managerPin,  setManagerPin]  = useState("")
+  const [wifiName,    setWifiName]    = useState("")
+  const [wifiPass,    setWifiPass]    = useState("")
+
+  // Auto-generate slug from name
+  function autoSlug(n: string) {
+    return n.toLowerCase().replace(/[''']/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+  }
+  function handleNameChange(v: string) {
+    setName(v)
+    if (!slug || slug === autoSlug(name)) setSlug(autoSlug(v))
+  }
+
+  async function create() {
+    setSaving(true); setError("")
+    try {
+      const r = await fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name, slug, city, address, contact_name: contactName, contact_email: contactEmail,
+          plan_type: planType, monthly_fee: parseFloat(monthlyFee) || 0,
+          location_count: parseInt(locationCount) || 1,
+          initial_tables: 0,  // we'll batch them ourselves
+        }),
+      })
+      if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed to create client"); }
+      const { restaurant_id, slug: finalSlug, join_url, station_url } = await r.json()
+
+      // Batch-save tables if any
+      if (floorTables.length > 0) {
+        await fetch(`${API}/owner/clients/${restaurant_id}/tables/batch?secret=${encodeURIComponent(token)}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tables: floorTables.map(t => ({ table_number: t.number, capacity: t.capacity, shape: t.shape, label: t.label })) }),
+        })
+      }
+
+      // Save config (guest page + menu + floor plan)
+      const guestConfig = {
+        bgColor, accentColor, buttonTextColor: "#ffffff",
+        restaurantName: name, tagline,
+        waitMessages: waitMessages.split("\n").map(s => s.trim()).filter(Boolean),
+        seatedMessage: seatedMsg, finalButtons: [],
+      }
+      await fetch(`${API}/owner/clients/${restaurant_id}/config?secret=${encodeURIComponent(token)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guest_config: guestConfig,
+          menu_config: { sections: menuSections },
+          floor_plan: floorTables,
+          settings: { city, address, contact_name: contactName, contact_email: contactEmail, location_count: parseInt(locationCount) || 1, plan_type: planType, monthly_fee: parseFloat(monthlyFee) || 0 },
+        }),
+      })
+
+      // Save credentials
+      const creds = [
+        stationPin  && { credential_type: "station_pin",  label: "Station PIN",       value: stationPin },
+        managerPin  && { credential_type: "manager_pin",  label: "Manager PIN",       value: managerPin },
+        wifiName    && { credential_type: "wifi",          label: `WiFi: ${wifiName}`, value: wifiPass || "" },
+      ].filter(Boolean) as { credential_type: string; label: string; value: string }[]
+      for (const c of creds) {
+        await fetch(`${API}/owner/clients/${restaurant_id}/credentials?secret=${encodeURIComponent(token)}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(c),
+        })
+      }
+
+      onDone({ id: restaurant_id, name, slug: finalSlug, join_url, station_url })
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const stepLabels = ["Info", "Floor Map", "Guest Page", "Menu", "Credentials"]
+
+  return (
+    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 32 }}>
+        <button onClick={onCancel}
+          style={{ background: "none", border: "none", color: D.text2, cursor: "pointer", fontSize: 14, padding: "4px 0" }}>
+          ← Cancel
+        </button>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: D.text, margin: 0 }}>New Client</h1>
+          <p style={{ fontSize: 13, color: D.muted, margin: "4px 0 0" }}>Set up a new restaurant from scratch</p>
         </div>
       </div>
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Steps */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 32, background: D.surface, borderRadius: 10, padding: "4px", border: `1px solid ${D.border}` }}>
+        {stepLabels.map((label, i) => {
+          const n = i + 1
+          const active = step === n
+          const done   = step > n
+          return (
+            <button key={n} onClick={() => n < step && setStep(n)}
+              style={{ flex: 1, padding: "8px 4px", borderRadius: 8, border: "none",
+                background: active ? D.surface2 : "transparent",
+                color: active ? D.text : done ? D.green : D.muted,
+                fontSize: 12, fontWeight: active ? 700 : 400, cursor: n < step ? "pointer" : "default" }}>
+              {done ? "✓ " : ""}{label}
+            </button>
+          )
+        })}
+      </div>
 
-      {/* ── Main content ── */}
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 28px 60px" }}>
+      {/* Step content */}
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: 28, marginBottom: 20 }}>
 
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* TAB: OVERVIEW                                              */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {activeTab === "Overview" && (
-          <>
-            {/* Service Status */}
-            <SectionLabel>Service Status</SectionLabel>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, 1fr)",
-              gap: 12,
-              marginBottom: 36,
-            }}>
-              <SvcCard name="HOST API (Railway)" svc={railway} icon={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-              } extra={railway.latency != null ? `${railway.latency}ms` : undefined} />
-
-              <SvcCard name="GitHub" svc={github} icon={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
-              } />
-
-              <SvcCard name="Textbelt SMS" svc={textbelt} icon={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              } />
-
-              <SvcCard name="Backend DB" svc={db} icon={
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-              } />
-            </div>
-
-            {/* System Capacity */}
-            <SectionLabel>System Capacity</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 36 }}>
-              {/* TextBelt */}
-              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: D.muted }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>TextBelt SMS</span>
-                </div>
-                {textbeltQuota != null ? (
-                  <>
-                    <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: textbeltQuota > 500 ? D.green : textbeltQuota >= 100 ? D.yellow : D.red, marginBottom: 6 }}>
-                      {textbeltQuota.toLocaleString()}
-                      <span style={{ fontSize: 12, fontWeight: 400, color: D.muted, marginLeft: 6 }}>texts left</span>
-                    </div>
-                    <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 100, height: 5, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${Math.min(100, (textbeltQuota / 2000) * 100)}%`, background: textbeltQuota > 500 ? D.green : textbeltQuota >= 100 ? D.yellow : D.red, borderRadius: 100 }} />
-                    </div>
-                    <div style={{ fontSize: 11, color: D.muted, marginTop: 6 }}>{textbeltQuota > 500 ? "Healthy" : textbeltQuota >= 100 ? "Running low" : "Critical — buy now"}</div>
-                  </>
-                ) : (
-                  <div style={{ fontSize: 13, color: D.muted }}>{textbelt.status === "degraded" ? "Key not configured" : "Checking…"}</div>
-                )}
+        {/* Step 1 — Basic Info */}
+        {step === 1 && (
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 20px" }}>Restaurant Information</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={{ gridColumn: "1/-1" }}>
+                <FieldLabel>Restaurant Name *</FieldLabel>
+                <Input value={name} onChange={handleNameChange} placeholder="The Walnut Cafe" />
               </div>
-
-              {/* Supabase rows */}
-              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: D.muted }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Supabase (Free 500MB)</span>
-                </div>
-                {capacityLoading && !capacityData ? (
-                  <div style={{ fontSize: 13, color: D.muted }}>Checking…</div>
-                ) : capacityData ? (
-                  <>
-                    <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: D.text, marginBottom: 6 }}>
-                      {((capacityData.supabase_rows.queue_entries || 0) + (capacityData.supabase_rows.seating_events || 0)).toLocaleString()}
-                      <span style={{ fontSize: 12, fontWeight: 400, color: D.muted, marginLeft: 6 }}>rows</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                      {[
-                        { label: "Guest entries", val: capacityData.supabase_rows.queue_entries },
-                        { label: "Seating events", val: capacityData.supabase_rows.seating_events },
-                      ].map(row => (
-                        <div key={row.label} style={{ fontSize: 11, color: D.muted }}>
-                          <span style={{ color: D.text2, fontWeight: 600 }}>{row.val?.toLocaleString() ?? "—"}</span> {row.label}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ fontSize: 13, color: D.muted }}>—</div>
-                )}
+              <div>
+                <FieldLabel>URL Slug *</FieldLabel>
+                <Input value={slug} onChange={setSlug} placeholder="walnut-cafe" />
+                {slug && <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>hostplatform.net/client/<strong style={{color:D.blue}}>{slug}</strong>/join</div>}
               </div>
-
-              {/* Railway latency */}
-              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "18px 20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, color: D.muted }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-                  <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>Railway API</span>
-                </div>
-                <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: railway.status === "up" ? D.green : railway.status === "degraded" ? D.yellow : D.red, marginBottom: 6 }}>
-                  {railway.latency != null ? `${railway.latency}` : "—"}
-                  {railway.latency != null && <span style={{ fontSize: 12, fontWeight: 400, color: D.muted, marginLeft: 4 }}>ms</span>}
-                </div>
-                <div style={{ fontSize: 11, color: D.muted }}>
-                  {railway.status === "up" ? "Operational" : railway.status === "degraded" ? "Slow response" : "Down"}
-                  {railway.latency != null && ` · ${railway.latency < 800 ? "fast" : railway.latency < 2000 ? "normal" : "slow"}`}
-                </div>
+              <div>
+                <FieldLabel>City</FieldLabel>
+                <Input value={city} onChange={setCity} placeholder="Boulder, CO" />
               </div>
-            </div>
-
-            {/* Restaurants */}
-            <SectionLabel>Restaurants</SectionLabel>
-            <div style={{
-              border: `1px solid ${D.border}`,
-              borderRadius: 10,
-              overflow: "hidden",
-              marginBottom: 36,
-            }}>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 90px 90px 100px 120px 140px",
-                padding: "11px 20px",
-                background: D.surface,
-                borderBottom: `1px solid ${D.border}`,
-              }}>
-                {["Restaurant","Status","In Queue","Seated Today","Avg Wait",""].map((h, i) => (
-                  <div key={i} style={{ fontSize: 11, fontWeight: 600, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", textAlign: i >= 2 ? "center" : "left" }}>
-                    {h}
-                  </div>
-                ))}
+              <div style={{ gridColumn: "1/-1" }}>
+                <FieldLabel>Address</FieldLabel>
+                <Input value={address} onChange={setAddress} placeholder="3073 Walnut St, Boulder, CO 80301" />
               </div>
-
-              {RESTS.map((rest, idx) => {
-                const live = liveData[rest.id]
-                return (
-                  <div
-                    key={rest.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 90px 90px 100px 120px 140px",
-                      padding: "16px 20px",
-                      borderBottom: idx < RESTS.length - 1 ? `1px solid ${D.border}` : "none",
-                      alignItems: "center",
-                      background: "transparent",
-                      transition: "background 0.12s",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = D.surfaceHover)}
-                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{rest.name}</div>
-                      <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>{rest.city}</div>
-                    </div>
-
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{
-                        width: 7, height: 7, borderRadius: "50%",
-                        background: rest.label === "Active" ? D.green : D.orange,
-                        flexShrink: 0,
-                      }} />
-                      <span style={{ fontSize: 12, color: rest.label === "Active" ? D.green : D.orange, fontWeight: 500 }}>
-                        {rest.label}
-                      </span>
-                    </div>
-
-                    <LiveNum live={live} value={live.queueNow} />
-                    <LiveNum live={live} value={live.seatedToday} />
-
-                    <div style={{ textAlign: "center" }}>
-                      {live.loading ? (
-                        <span style={{ fontSize: 13, color: D.muted }}>—</span>
-                      ) : live.error ? (
-                        <span style={{ fontSize: 13, color: D.red }}>Error</span>
-                      ) : (
-                        <span style={{ fontSize: 14, fontWeight: 600, color: live.avgWait > 0 ? D.text : D.muted }}>
-                          {live.avgWait > 0 ? `${live.avgWait}m` : "—"}
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ textAlign: "right" }}>
-                      <a
-                        href={rest.dashUrl}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          fontSize: 12, fontWeight: 600, color: D.text2,
-                          textDecoration: "none",
-                          padding: "7px 12px", borderRadius: 7,
-                          border: `1px solid ${D.border}`,
-                          background: D.surface,
-                          transition: "border-color 0.12s, color 0.12s",
-                        }}
-                        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = D.borderStrong; (e.currentTarget as HTMLElement).style.color = D.text }}
-                        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = D.border; (e.currentTarget as HTMLElement).style.color = D.text2 }}
-                      >
-                        Open Dashboard
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
-                      </a>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Demo Requests */}
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                Demo Requests
+              <div>
+                <FieldLabel>Contact Name</FieldLabel>
+                <Input value={contactName} onChange={setContactName} placeholder="Jane Smith" />
               </div>
-              {demoReqs.length > 0 && (
-                <div style={{
-                  fontSize: 11, fontWeight: 700, color: D.text,
-                  background: D.accent, borderRadius: 100,
-                  padding: "2px 8px", lineHeight: 1.5,
-                }}>
-                  {demoReqs.length}
-                </div>
-              )}
-            </div>
-
-            {demoLoading ? (
-              <div style={{ fontSize: 13, color: D.muted, padding: "24px 0" }}>Loading…</div>
-            ) : demoReqs.length === 0 ? (
-              <div style={{
-                border: `1px solid ${D.border}`, borderRadius: 10,
-                padding: "32px 20px", textAlign: "center",
-                color: D.muted, fontSize: 13,
-              }}>
-                No demo requests yet. Submissions from hostplatform.net will appear here.
+              <div>
+                <FieldLabel>Contact Email</FieldLabel>
+                <Input value={contactEmail} onChange={setContactEmail} placeholder="jane@restaurant.com" type="email" />
               </div>
-            ) : (
-              <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden" }}>
-                <div style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1.2fr 100px 100px 100px 170px",
-                  padding: "11px 20px",
-                  background: D.surface,
-                  borderBottom: `1px solid ${D.border}`,
-                }}>
-                  {["Name","Restaurant","Email","Phone","City","Type","Submitted"].map((h, i) => (
-                    <div key={i} style={{ fontSize: 11, fontWeight: 600, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                      {h}
-                    </div>
-                  ))}
-                </div>
-
-                {demoReqs.map((req, idx) => (
-                  <div
-                    key={req.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1.2fr 100px 100px 100px 170px",
-                      padding: "14px 20px",
-                      borderBottom: idx < demoReqs.length - 1 ? `1px solid ${D.border}` : "none",
-                      alignItems: "center",
-                      background: "transparent",
-                      transition: "background 0.12s",
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = D.surfaceHover)}
-                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <Cell>{req.name}</Cell>
-                    <Cell>{req.restaurant}</Cell>
-                    <Cell>
-                      <a href={`mailto:${req.email}`} style={{ color: D.blue, textDecoration: "none", fontSize: 13 }}>
-                        {req.email}
-                      </a>
-                    </Cell>
-                    <Cell muted={!req.phone}>{req.phone || "—"}</Cell>
-                    <Cell muted={!req.city}>{req.city || "—"}</Cell>
-                    <Cell muted={!req.type}>{req.type || "—"}</Cell>
-                    <div style={{ fontSize: 12, color: D.muted }}>{fmtTime(req.submittedAt)}</div>
-                  </div>
-                ))}
+              <div>
+                <FieldLabel>Plan</FieldLabel>
+                <select value={planType} onChange={e => setPlanType(e.target.value)} style={selectStyle}>
+                  <option value="free-partner">Free Partner</option>
+                  <option value="standard">Standard</option>
+                  <option value="multi">Multi-Location</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
               </div>
-            )}
-          </>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* TAB: CLIENTS                                               */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {activeTab === "Clients" && (
-          <>
-            <SectionLabel>Client Restaurants</SectionLabel>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, 1fr)",
-              gap: 18,
-            }}>
-              {RESTS.map(rest => {
-                const live = liveData[rest.id]
-                const edit = getClientEdit(rest.id)
-                const isDemo = rest.id === "demo"
-
-                return (
-                  <div
-                    key={rest.id}
-                    style={{
-                      background: D.surface,
-                      border: `1px solid ${D.border}`,
-                      borderRadius: 10,
-                      padding: "24px",
-                    }}
-                  >
-                    {/* Header */}
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 18 }}>
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{rest.name}</div>
-                        <div style={{ fontSize: 12, color: D.muted, marginTop: 3 }}>{rest.city}</div>
-                      </div>
-                      <div style={{
-                        fontSize: 11, fontWeight: 600,
-                        color: rest.label === "Active" ? D.green : D.orange,
-                        background: rest.label === "Active" ? D.greenBg : D.orangeBg,
-                        border: `1px solid ${rest.label === "Active" ? D.greenBorder : "rgba(245,158,11,0.25)"}`,
-                        borderRadius: 20, padding: "4px 10px",
-                      }}>
-                        {rest.label}
-                      </div>
-                    </div>
-
-                    {/* Live stats */}
-                    <div style={{
-                      display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
-                      gap: 10, marginBottom: 20,
-                    }}>
-                      {[
-                        { label: "Queue Now",      value: live.loading ? "—" : live.error ? "Err" : String(live.queueNow) },
-                        { label: "Seated Today",   value: live.loading ? "—" : live.error ? "Err" : String(live.seatedToday) },
-                        { label: "Avg Wait",       value: live.loading ? "—" : live.error ? "Err" : live.avgWait > 0 ? `${live.avgWait}m` : "—" },
-                        { label: "Covers / Week",  value: live.loading ? "—" : live.error ? "Err" : String(live.coversThisWeek) },
-                      ].map(stat => (
-                        <div key={stat.label} style={{
-                          background: "rgba(255,255,255,0.03)",
-                          border: `1px solid ${D.border}`,
-                          borderRadius: 8, padding: "12px 10px", textAlign: "center",
-                        }}>
-                          <div style={{ fontSize: 18, fontWeight: 700, color: D.text }}>{stat.value}</div>
-                          <div style={{ fontSize: 10, color: D.muted, marginTop: 3, letterSpacing: "0.04em" }}>{stat.label}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* SMS status chip */}
-                    <div style={{ marginBottom: 18 }}>
-                      <div style={{
-                        display: "inline-flex", alignItems: "center", gap: 6,
-                        fontSize: 11, fontWeight: 600,
-                        color: textbelt.status === "up" ? D.green : D.yellow,
-                        background: textbelt.status === "up" ? D.greenBg : D.orangeBg,
-                        border: `1px solid ${textbelt.status === "up" ? D.greenBorder : "rgba(245,158,11,0.25)"}`,
-                        borderRadius: 20, padding: "4px 10px",
-                      }}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                        SMS {textbelt.status === "up" ? "Active" : "Degraded"}
-                        {textbeltQuota != null && ` · ${textbeltQuota.toLocaleString()} left`}
-                      </div>
-                    </div>
-
-                    {/* Action buttons */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 22 }}>
-                      <a
-                        href={rest.dashUrl}
-                        style={{
-                          flex: 1, textAlign: "center", textDecoration: "none",
-                          padding: "9px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
-                          background: D.accent, color: "#fff", border: "none",
-                        }}
-                      >
-                        HOST Standard
-                      </a>
-                      <a
-                        href={rest.analogUrl}
-                        style={{
-                          flex: 1, textAlign: "center", textDecoration: "none",
-                          padding: "9px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
-                          background: D.surface, color: D.text2,
-                          border: `1px solid ${D.border}`,
-                        }}
-                      >
-                        Analog
-                      </a>
-                      <a
-                        href={rest.joinUrl}
-                        target="_blank" rel="noreferrer"
-                        style={{
-                          flex: 1, textAlign: "center", textDecoration: "none",
-                          padding: "9px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600,
-                          background: D.surface, color: D.text2,
-                          border: `1px solid ${D.border}`,
-                        }}
-                      >
-                        Guest Join ↗
-                      </a>
-                    </div>
-
-                    {/* Edit section */}
-                    <div style={{ borderTop: `1px solid ${D.border}`, paddingTop: 18 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 12 }}>
-                        Details
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <div>
-                          <label style={{ fontSize: 11, color: D.muted, display: "block", marginBottom: 5 }}>Restaurant Name</label>
-                          <input
-                            type="text"
-                            value={edit.name}
-                            placeholder={rest.name}
-                            onChange={e => saveClientEdits(rest.id, { ...edit, name: e.target.value })}
-                            style={inputStyle}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, color: D.muted, display: "block", marginBottom: 5 }}>NFC / QR Join URL</label>
-                          <input
-                            type="text"
-                            value={edit.nfcUrl || rest.joinUrl}
-                            onChange={e => saveClientEdits(rest.id, { ...edit, nfcUrl: e.target.value })}
-                            style={{ ...inputStyle, fontFamily: "monospace", fontSize: 11 }}
-                          />
-                          <div style={{ fontSize: 10, color: D.muted, marginTop: 4 }}>This is the URL guests scan/tap to join the waitlist.</div>
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, color: D.muted, display: "block", marginBottom: 5 }}>Notes</label>
-                          <textarea
-                            value={edit.notes}
-                            placeholder="Internal notes…"
-                            onChange={e => saveClientEdits(rest.id, { ...edit, notes: e.target.value })}
-                            rows={2}
-                            style={{ ...inputStyle, resize: "vertical", fontFamily: font }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Credentials section */}
-                    <div style={{ borderTop: `1px solid ${D.border}`, paddingTop: 18, marginTop: 14 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>
-                        Login Credentials
-                      </div>
-                      <div style={{ fontSize: 11, color: D.muted, marginBottom: 12 }}>
-                        Used at <span style={{ fontFamily: "monospace", color: D.text2 }}>hostplatform.net/login/client</span>
-                      </div>
-                      <CredentialsEditor
-                        id={rest.id}
-                        cred={getClientCred(rest.id)}
-                        saved={credSaved === rest.id}
-                        onSave={cred => saveClientCred(rest.id, cred)}
-                        inputStyle={inputStyle}
-                        D={D}
-                        font={font}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* TAB: SMS                                                   */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {activeTab === "SMS" && (
-          <>
-            <SectionLabel>SMS Management</SectionLabel>
-
-            {/* Quota display */}
-            <div style={{
-              background: D.surface,
-              border: `1px solid ${D.border}`,
-              borderRadius: 10,
-              padding: "32px 28px",
-              marginBottom: 20,
-            }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: D.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 16 }}>
-                Textbelt Quota
+              <div>
+                <FieldLabel>Monthly Fee ($)</FieldLabel>
+                <Input value={monthlyFee} onChange={setMonthlyFee} placeholder="0" type="number" />
               </div>
-
-              {textbeltQuota != null ? (
-                <>
-                  <div style={{ fontSize: 48, fontWeight: 900, letterSpacing: "-0.03em", color: textbeltQuota > 500 ? D.green : textbeltQuota >= 100 ? D.yellow : D.red, marginBottom: 6 }}>
-                    {textbeltQuota.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: 14, color: D.text2, marginBottom: 20 }}>
-                    texts remaining
-                  </div>
-                  {/* Progress bar — assume 2000 as full */}
-                  <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 100, height: 8, overflow: "hidden" }}>
-                    <div style={{
-                      height: "100%",
-                      width: `${Math.min(100, (textbeltQuota / 2000) * 100)}%`,
-                      background: textbeltQuota > 500 ? D.green : textbeltQuota >= 100 ? D.yellow : D.red,
-                      borderRadius: 100,
-                      transition: "width 0.4s ease",
-                    }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: D.muted, marginTop: 8 }}>
-                    {textbeltQuota > 500 ? "Healthy — plenty of quota remaining" :
-                     textbeltQuota >= 100 ? "Low — consider purchasing more credits soon" :
-                     "Critical — purchase credits immediately"}
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <div style={{ fontSize: 14, color: D.muted, marginBottom: 12 }}>
-                    {textbelt.detail || "Quota unavailable — check API key configuration"}
-                  </div>
-                  {/* Show degraded reason clearly */}
-                  {textbelt.status === "degraded" && (
-                    <div style={{ fontSize: 12, color: D.orange, background: D.orangeBg, border: `1px solid rgba(245,158,11,0.2)`, borderRadius: 8, padding: "10px 14px", lineHeight: 1.6 }}>
-                      <strong>Why degraded?</strong> The dashboard's Railway project needs <code style={{ background: "rgba(255,255,255,0.08)", padding: "1px 5px", borderRadius: 4 }}>TEXTBELT_KEY</code> added as an environment variable. This is separate from the Python backend env — add it in the Next.js service on Railway.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* API Key reference */}
-            <ApiKeyRow apiKey={ownerSecrets?.textbeltKey ?? "••••••••••••••••••••"} />
-
-            {/* Action buttons */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 20 }}>
-              <a
-                href={ownerSecrets?.textbeltPurchaseUrl ?? "#"}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  padding: "18px 24px", borderRadius: 10, textDecoration: "none",
-                  background: D.green, color: "#000",
-                  fontSize: 14, fontWeight: 700,
-                }}
-              >
-                Purchase More Credits
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
-              </a>
-              <a
-                href={ownerSecrets?.textbeltWhitelistUrl ?? "#"}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  padding: "18px 24px", borderRadius: 10, textDecoration: "none",
-                  background: D.surface, color: D.text2,
-                  border: `1px solid ${D.border}`,
-                  fontSize: 14, fontWeight: 600,
-                }}
-              >
-                Request URL Whitelist
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
-              </a>
-            </div>
-
-            {/* URL approval status card */}
-            <div style={{
-              background: D.orangeBg,
-              border: `1px solid rgba(245,158,11,0.25)`,
-              borderRadius: 10,
-              padding: "20px 24px",
-              marginBottom: 20,
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: D.yellow }} />
-                <div style={{ fontSize: 13, fontWeight: 700, color: D.yellow }}>URL Whitelist: Pending Approval</div>
-              </div>
-              <div style={{ fontSize: 13, color: D.text2, lineHeight: 1.6 }}>
-                Textbelt URL whitelisting is pending. This only affects whether <em>links</em> inside SMS texts are delivered — sending plain texts already works fine. Once approved, guests will receive clickable progress-tracking links in their texts.
-              </div>
-            </div>
-
-            {/* Info card */}
-            <div style={{
-              background: D.surface,
-              border: `1px solid ${D.border}`,
-              borderRadius: 10,
-              padding: "20px 24px",
-              marginBottom: 24,
-            }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: D.text, marginBottom: 8 }}>What happens when approved?</div>
-              <div style={{ fontSize: 13, color: D.text2, lineHeight: 1.7 }}>
-                After whitelist approval, SMS messages sent through HOST will include your hostplatform.net join and status links as clickable URLs. Guests can tap the link to check their position in line or confirm their table. Without approval, links may be stripped or blocked by carrier spam filters.
-              </div>
-            </div>
-
-            {/* Claude prompt for SMS changes */}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 12 }}>
-                Claude Prompt — Modify SMS Messages
-              </div>
-              <div style={{
-                background: "rgba(0,0,0,0.4)",
-                border: `1px solid ${D.border}`,
-                borderRadius: 10,
-                padding: "18px 20px",
-                fontFamily: "monospace",
-                fontSize: 13,
-                color: D.text2,
-                lineHeight: 1.7,
-                whiteSpace: "pre-wrap",
-              }}>
-{`Change the join SMS message for all restaurants to: [YOUR MESSAGE HERE]. Make sure it still includes the STOP opt-out line at the end. Update the _send_join_sms function in main.py with the new message text.`}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* TAB: CUSTOMIZER                                            */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {activeTab === "Customizer" && (
-          <div
-            onClick={() => setSelectedEl(null)}
-            style={{
-              display: "flex",
-              height: "calc(100vh - 108px)",
-              margin: "0 -28px -60px",
-              borderTop: `1px solid ${D.border}`,
-              overflow: "hidden",
-            }}
-          >
-            {/* ── LAYERS PANEL ─────────────────────────────────────── */}
-            <div style={{
-              width: 196, flexShrink: 0,
-              borderRight: `1px solid ${D.border}`,
-              background: "#060A0D",
-              display: "flex", flexDirection: "column",
-              overflow: "hidden",
-            }}>
-              {/* Restaurant */}
-              <div style={{ padding: "14px 12px 10px", borderBottom: `1px solid ${D.border}` }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Restaurant</div>
-                {RESTS.map(r => (
-                  <button key={r.id} onClick={e => { e.stopPropagation(); setCustomizerRestId(r.id); setSelectedEl(null) }} style={{
-                    display: "block", width: "100%", textAlign: "left",
-                    padding: "6px 10px", borderRadius: 6, marginBottom: 3,
-                    background: customizerRestId === r.id ? "rgba(255,255,255,0.07)" : "transparent",
-                    border: customizerRestId === r.id ? `1px solid ${D.border}` : "1px solid transparent",
-                    color: customizerRestId === r.id ? D.text : D.text2,
-                    fontSize: 12, cursor: "pointer", fontFamily: font,
-                  }}>{r.name}</button>
-                ))}
-              </div>
-
-              {/* Screen */}
-              <div style={{ padding: "12px 12px 8px", borderBottom: `1px solid ${D.border}` }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Screen</div>
-                {(["Join", "Waiting", "Seated"] as const).map(s => (
-                  <button key={s} onClick={e => { e.stopPropagation(); setCustomizerPreview(s); setSelectedEl(null) }} style={{
-                    display: "flex", alignItems: "center", gap: 7, width: "100%", textAlign: "left",
-                    padding: "6px 10px", borderRadius: 6, marginBottom: 3,
-                    background: customizerPreview === s ? "rgba(255,255,255,0.07)" : "transparent",
-                    border: customizerPreview === s ? `1px solid ${D.border}` : "1px solid transparent",
-                    color: customizerPreview === s ? D.text : D.text2,
-                    fontSize: 12, cursor: "pointer", fontFamily: font,
-                  }}>
-                    <span style={{ fontSize: 13 }}>{s === "Join" ? "📱" : s === "Waiting" ? "⏳" : "✅"}</span> {s}
-                  </button>
-                ))}
-              </div>
-
-              {/* Layers */}
-              <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>Layers</div>
-                {EDITOR_LAYERS[customizerPreview].map(layer => {
-                  const isSel = layer.type !== "finalButton"
-                    ? selectedEl?.type === layer.type
-                    : selectedEl?.type === "finalButton"
-                  return (
-                    <button key={layer.type} onClick={e => { e.stopPropagation(); setSelectedEl(layer.type === "finalButton" ? { type: "finalButton", index: 0 } : { type: layer.type } as NonNullable<SelectedEl>) }} style={{
-                      display: "flex", alignItems: "center", gap: 7,
-                      width: "100%", textAlign: "left",
-                      padding: "6px 10px", borderRadius: 6, marginBottom: 2,
-                      background: isSel ? "rgba(59,130,246,0.10)" : "transparent",
-                      border: isSel ? "1px solid rgba(59,130,246,0.25)" : "1px solid transparent",
-                      color: isSel ? "#93c5fd" : D.text2,
-                      fontSize: 12, cursor: "pointer", fontFamily: font,
-                    }}>
-                      <span style={{ fontSize: 12 }}>{layer.icon}</span> {layer.label}
-                    </button>
-                  )
-                })}
-                {/* Final button sub-layers */}
-                {customizerPreview === "Seated" && guestConfig.finalButtons.map((btn, i) => (
-                  <button key={btn.id} onClick={e => { e.stopPropagation(); setSelectedEl({ type: "finalButton", index: i }) }} style={{
-                    display: "flex", alignItems: "center", gap: 7,
-                    width: "100%", textAlign: "left",
-                    padding: "5px 10px 5px 28px", borderRadius: 6, marginBottom: 2,
-                    background: selectedEl?.type === "finalButton" && (selectedEl as { type: "finalButton"; index: number }).index === i ? "rgba(59,130,246,0.10)" : "transparent",
-                    border: selectedEl?.type === "finalButton" && (selectedEl as { type: "finalButton"; index: number }).index === i ? "1px solid rgba(59,130,246,0.25)" : "1px solid transparent",
-                    color: selectedEl?.type === "finalButton" && (selectedEl as { type: "finalButton"; index: number }).index === i ? "#93c5fd" : D.text2,
-                    fontSize: 11, cursor: "pointer", fontFamily: font,
-                  }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 2, background: btn.color, flexShrink: 0 }} />
-                    {btn.label || `Button ${i + 1}`}
-                  </button>
-                ))}
-              </div>
-
-              {/* Save */}
-              <div style={{ padding: "12px", borderTop: `1px solid ${D.border}` }}>
-                <button onClick={e => { e.stopPropagation(); saveGuestConfig() }} style={{
-                  width: "100%", padding: "10px 0", borderRadius: 8,
-                  background: configSaved ? D.green : D.accent,
-                  border: "none", color: "#fff",
-                  fontSize: 13, fontWeight: 700, cursor: "pointer",
-                  transition: "background 0.2s", fontFamily: font,
-                }}>
-                  {configSaved ? "✓ Saved" : "Save Changes"}
-                </button>
-              </div>
-            </div>
-
-            {/* ── PHONE CANVAS ─────────────────────────────────────── */}
-            <div
-              style={{
-                flex: 1, overflowY: "auto",
-                background: "#07090B",
-                backgroundImage: "radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px)",
-                backgroundSize: "18px 18px",
-                display: "flex", alignItems: "flex-start", justifyContent: "center",
-                padding: "52px 24px 80px",
-              }}
-            >
-              {/* Phone frame */}
-              <div style={{
-                width: 335, flexShrink: 0,
-                background: "#1C1C1E",
-                border: "10px solid #2A2A2C",
-                borderRadius: 54,
-                position: "relative",
-                boxShadow: "0 40px 100px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(255,255,255,0.07)",
-              }}>
-                {/* Dynamic Island */}
-                <div style={{ position: "absolute", top: 14, left: "50%", transform: "translateX(-50%)", width: 96, height: 30, background: "#000", borderRadius: 15, zIndex: 20, pointerEvents: "none" }} />
-                {/* Side buttons */}
-                <div style={{ position: "absolute", right: -13, top: 110, width: 3, height: 60, background: "#3A3A3C", borderRadius: 2 }} />
-                <div style={{ position: "absolute", left: -13, top: 100, width: 3, height: 38, background: "#3A3A3C", borderRadius: 2 }} />
-                <div style={{ position: "absolute", left: -13, top: 148, width: 3, height: 38, background: "#3A3A3C", borderRadius: 2 }} />
-                <div style={{ position: "absolute", left: -13, top: 76, width: 3, height: 20, background: "#3A3A3C", borderRadius: 2 }} />
-
-                {/* Screen */}
-                <div
-                  onClick={e => { e.stopPropagation(); setSelectedEl({ type: "background" }) }}
-                  style={{
-                    minHeight: 720,
-                    background: guestConfig.bgColor,
-                    borderRadius: 44,
-                    overflow: "hidden",
-                    display: "flex", flexDirection: "column",
-                    cursor: "pointer",
-                    position: "relative",
-                    boxShadow: selectedEl?.type === "background" ? "inset 0 0 0 2px #3b82f6" : undefined,
-                  }}
-                >
-                  {/* Status bar */}
-                  <div style={{ height: 54, flexShrink: 0, pointerEvents: "none" }} />
-
-                  {/* ── JOIN SCREEN ── */}
-                  {customizerPreview === "Join" && (
-                    <>
-                      {/* HOST wordmark */}
-                      <div style={{ textAlign: "center", flexShrink: 0, pointerEvents: "none" }}>
-                        <div style={{ fontSize: "clamp(1.6rem,5vw,2rem)", fontWeight: 900, letterSpacing: "0.08em", color: "#fff", lineHeight: 1 }}>HOST</div>
-                        <div style={{ fontSize: ".42rem", fontWeight: 700, letterSpacing: ".28em", textTransform: "uppercase", color: "rgba(255,255,255,0.22)", marginTop: 4 }}>Restaurant Operating System</div>
-                      </div>
-
-                      {/* Restaurant chip */}
-                      <div
-                        onClick={e => { e.stopPropagation(); setSelectedEl({ type: "restaurantName" }) }}
-                        title="Click to edit"
-                        style={{
-                          textAlign: "center", padding: "12px 20px 0", flexShrink: 0, cursor: "pointer",
-                          borderRadius: 6,
-                          boxShadow: selectedEl?.type === "restaurantName" ? "0 0 0 2px #3b82f6" : undefined,
-                        }}
-                      >
-                        <div style={{
-                          display: "inline-block", padding: "6px 18px",
-                          border: "1px solid rgba(255,255,255,0.11)", borderRadius: 10,
-                          background: "rgba(255,255,255,0.04)",
-                        }}>
-                          <div style={{ fontSize: ".72rem", fontWeight: 800, letterSpacing: "0.14em", color: "rgba(255,255,255,0.85)" }}>
-                            {(guestConfig.restaurantName || "Demo Restaurant").toUpperCase()}
-                          </div>
-                        </div>
-                        {guestConfig.tagline && (
-                          <div style={{ marginTop: 5, fontSize: ".6rem", color: "rgba(255,255,255,0.42)" }}>{guestConfig.tagline}</div>
-                        )}
-                        <div style={{ marginTop: 5, fontSize: ".62rem", color: "rgba(255,255,255,0.42)" }}>2 parties ahead · ~18m wait</div>
-                      </div>
-
-                      {/* Form */}
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 9, padding: "14px 18px 0", overflow: "hidden" }}>
-                        {/* Party size */}
-                        <div
-                          onClick={e => { e.stopPropagation(); setSelectedEl({ type: "partySize" }) }}
-                          title="Click to edit"
-                          style={{
-                            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)",
-                            borderRadius: 14, padding: "11px 14px 13px", flexShrink: 0, cursor: "pointer",
-                            boxShadow: selectedEl?.type === "partySize" ? "0 0 0 2px #3b82f6" : undefined,
-                          }}
-                        >
-                          <div style={{ fontSize: ".48rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: "rgba(255,255,255,0.32)", marginBottom: 7 }}>Party Size</div>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.11)", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)", fontSize: 18 }}>−</div>
-                            <span style={{ fontSize: "2.4rem", fontWeight: 300, color: "#fff" }}>2</span>
-                            <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(255,255,255,0.07)", border: "1.5px solid rgba(255,255,255,0.11)", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(255,255,255,0.5)", fontSize: 18 }}>+</div>
-                          </div>
-                        </div>
-                        {/* Name */}
-                        <div style={{ flexShrink: 0, pointerEvents: "none" }}>
-                          <div style={{ fontSize: ".5rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: "rgba(255,255,255,0.32)", marginBottom: 5 }}>Name</div>
-                          <div style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 11, padding: "10px 12px", color: "rgba(255,255,255,0.22)", fontSize: ".72rem" }}>Your name</div>
-                        </div>
-                        {/* Phone */}
-                        <div style={{ flexShrink: 0, pointerEvents: "none" }}>
-                          <div style={{ fontSize: ".5rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: "rgba(255,255,255,0.32)", marginBottom: 5 }}>
-                            Phone <span style={{ fontWeight: 400, color: "rgba(255,255,255,0.16)" }}>— optional</span>
-                          </div>
-                          <div style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 11, padding: "10px 12px", color: "rgba(255,255,255,0.22)", fontSize: ".72rem" }}>(555) 000-0000</div>
-                        </div>
-                      </div>
-
-                      {/* CTA */}
-                      <div style={{ padding: "14px 18px 28px", flexShrink: 0 }}>
-                        <div
-                          style={{
-                            width: "100%", height: 56, borderRadius: 16,
-                            background: "#fff", color: "#000",
-                            fontWeight: 800, fontSize: ".82rem", letterSpacing: ".12em", textTransform: "uppercase",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          Join Waitlist
-                        </div>
-                        <div style={{
-                          width: "100%", height: 44, marginTop: 8, borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.10)", background: "transparent",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          color: "rgba(255,255,255,0.38)", fontSize: ".72rem", fontWeight: 600,
-                          pointerEvents: "none",
-                        }}>
-                          View Menu
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* ── WAITING SCREEN ── */}
-                  {customizerPreview === "Waiting" && (
-                    <>
-                      <div style={{ textAlign: "center", flexShrink: 0, pointerEvents: "none" }}>
-                        <div style={{ fontSize: "1.5rem", fontWeight: 900, letterSpacing: "0.08em", color: "#fff" }}>HOST</div>
-                      </div>
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 22px", gap: 12 }}>
-                        <div style={{ fontSize: ".58rem", letterSpacing: ".2em", textTransform: "uppercase", color: "rgba(255,255,255,0.38)", pointerEvents: "none" }}>Your wait time</div>
-                        <div style={{ fontSize: "3.8rem", fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1, pointerEvents: "none" }}>
-                          12<span style={{ fontSize: "1.3rem", fontWeight: 300, color: "rgba(255,255,255,0.38)" }}>m</span>
-                        </div>
-                        {/* Progress bar */}
-                        <div
-                          onClick={e => { e.stopPropagation(); setSelectedEl({ type: "progressBar" }) }}
-                          title="Click to edit"
-                          style={{
-                            width: "100%", background: "rgba(255,255,255,0.08)", borderRadius: 100, height: 8, overflow: "hidden",
-                            cursor: "pointer",
-                            boxShadow: selectedEl?.type === "progressBar" ? "0 0 0 2px #3b82f6" : undefined,
-                          }}
-                        >
-                          <div style={{ width: "65%", height: "100%", background: `linear-gradient(90deg, ${guestConfig.accentColor}, ${guestConfig.accentColor}88)`, borderRadius: 100 }} />
-                        </div>
-                        {/* Wait message */}
-                        <div
-                          onClick={e => { e.stopPropagation(); setSelectedEl({ type: "waitMessage" }) }}
-                          title="Click to edit"
-                          style={{
-                            fontSize: ".72rem", color: "rgba(255,255,255,0.5)", textAlign: "center", lineHeight: 1.65,
-                            cursor: "pointer", borderRadius: 6, padding: "6px 8px",
-                            boxShadow: selectedEl?.type === "waitMessage" ? "0 0 0 2px #3b82f6" : undefined,
-                          }}
-                        >
-                          {guestConfig.waitMessages[0] ?? "Your spot is saved — feel free to step out."}
-                        </div>
-                        <div style={{
-                          width: "100%", height: 46, borderRadius: 12,
-                          background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          color: "rgba(255,255,255,0.45)", fontSize: ".72rem", fontWeight: 600,
-                          pointerEvents: "none",
-                        }}>View Menu</div>
-                      </div>
-                    </>
-                  )}
-
-                  {/* ── SEATED SCREEN ── */}
-                  {customizerPreview === "Seated" && (
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "28px 22px" }}>
-                      <div style={{
-                        width: 76, height: 76, borderRadius: "50%",
-                        border: `2.5px solid ${guestConfig.accentColor}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 34, color: guestConfig.accentColor, marginBottom: 18,
-                        pointerEvents: "none",
-                      }}>✓</div>
-                      <div style={{ fontSize: "1.05rem", fontWeight: 700, color: guestConfig.accentColor, textAlign: "center", marginBottom: 10, pointerEvents: "none" }}>
-                        Your table is ready!
-                      </div>
-                      {/* Seated message */}
-                      <div
-                        onClick={e => { e.stopPropagation(); setSelectedEl({ type: "seatedMessage" }) }}
-                        title="Click to edit"
-                        style={{
-                          fontSize: ".72rem", color: "rgba(255,255,255,0.45)", textAlign: "center", lineHeight: 1.7,
-                          marginBottom: 28, cursor: "pointer", borderRadius: 6, padding: "6px 8px",
-                          boxShadow: selectedEl?.type === "seatedMessage" ? "0 0 0 2px #3b82f6" : undefined,
-                        }}
-                      >
-                        {guestConfig.seatedMessage}
-                      </div>
-                      {/* Final buttons — draggable */}
-                      <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 9 }}>
-                        {guestConfig.finalButtons.map((btn, i) => (
-                          <div
-                            key={btn.id}
-                            draggable
-                            onDragStart={() => setDragIdx(i)}
-                            onDragOver={e => { e.preventDefault(); setDragOverIdx(i) }}
-                            onDrop={e => {
-                              e.preventDefault()
-                              if (dragIdx === null || dragIdx === i) { setDragIdx(null); setDragOverIdx(null); return }
-                              const btns = [...guestConfig.finalButtons]
-                              const [moved] = btns.splice(dragIdx, 1)
-                              btns.splice(i, 0, moved)
-                              setGuestConfig(c => ({ ...c, finalButtons: btns }))
-                              setSelectedEl({ type: "finalButton", index: i })
-                              setDragIdx(null); setDragOverIdx(null)
-                            }}
-                            onDragEnd={() => { setDragIdx(null); setDragOverIdx(null) }}
-                            onClick={e => { e.stopPropagation(); setSelectedEl({ type: "finalButton", index: i }) }}
-                            style={{
-                              width: "100%", padding: "14px 0", borderRadius: 14,
-                              background: btn.color, color: guestConfig.buttonTextColor,
-                              textAlign: "center", fontSize: ".78rem", fontWeight: 700,
-                              cursor: "grab", userSelect: "none",
-                              boxShadow: (selectedEl?.type === "finalButton" && (selectedEl as { type: "finalButton"; index: number }).index === i)
-                                ? "0 0 0 2px #3b82f6"
-                                : dragOverIdx === i ? "0 0 0 2px rgba(59,130,246,0.5)" : undefined,
-                              opacity: dragIdx === i ? 0.45 : 1,
-                              transition: "opacity 0.15s",
-                            }}
-                          >
-                            {btn.label || "Button"}
-                          </div>
-                        ))}
-                        {guestConfig.finalButtons.length === 0 && (
-                          <div style={{ fontSize: ".65rem", color: "rgba(255,255,255,0.2)", textAlign: "center", padding: "20px 0", pointerEvents: "none" }}>
-                            No buttons · Add in Properties →
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* ── PROPERTIES PANEL ─────────────────────────────────── */}
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{
-                width: 272, flexShrink: 0,
-                borderLeft: `1px solid ${D.border}`,
-                background: "#060A0D",
-                overflow: "auto",
-                display: "flex", flexDirection: "column",
-              }}
-            >
-              {/* Header */}
-              <div style={{ padding: "16px 16px 12px", borderBottom: `1px solid ${D.border}`, flexShrink: 0 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase" }}>
-                  {selectedEl ? elLabel(selectedEl) : "Properties"}
-                </div>
-                {!selectedEl && (
-                  <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Click any element to edit it</div>
-                )}
-              </div>
-
-              <div style={{ flex: 1, padding: "16px 16px 32px", overflowY: "auto" }}>
-
-                {/* Nothing selected → global */}
-                {!selectedEl && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <ColorField label="Background Color" value={guestConfig.bgColor} onChange={v => setGuestConfig(c => ({ ...c, bgColor: v }))} />
-                    <ColorField label="Accent Color" value={guestConfig.accentColor} onChange={v => setGuestConfig(c => ({ ...c, accentColor: v }))} />
-                    <ColorField label="Button Text Color" value={guestConfig.buttonTextColor} onChange={v => setGuestConfig(c => ({ ...c, buttonTextColor: v }))} />
-                    <PropField label="Restaurant Name">
-                      <input type="text" value={guestConfig.restaurantName} onChange={e => setGuestConfig(c => ({ ...c, restaurantName: e.target.value }))} style={inputStyle} />
-                    </PropField>
-                    <PropField label="Tagline">
-                      <input type="text" value={guestConfig.tagline} placeholder="e.g. Fine dining in Denver" onChange={e => setGuestConfig(c => ({ ...c, tagline: e.target.value }))} style={inputStyle} />
-                    </PropField>
-                  </div>
-                )}
-
-                {selectedEl?.type === "background" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <ColorField label="Background Color" value={guestConfig.bgColor} onChange={v => setGuestConfig(c => ({ ...c, bgColor: v }))} />
-                    <ColorField label="Accent Color" value={guestConfig.accentColor} onChange={v => setGuestConfig(c => ({ ...c, accentColor: v }))} />
-                    <ColorField label="Button Text Color" value={guestConfig.buttonTextColor} onChange={v => setGuestConfig(c => ({ ...c, buttonTextColor: v }))} />
-                  </div>
-                )}
-
-                {selectedEl?.type === "restaurantName" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <PropField label="Restaurant Name">
-                      <input type="text" value={guestConfig.restaurantName} onChange={e => setGuestConfig(c => ({ ...c, restaurantName: e.target.value }))} style={inputStyle} />
-                    </PropField>
-                    <PropField label="Tagline">
-                      <input type="text" value={guestConfig.tagline} placeholder="e.g. Fine dining in Denver" onChange={e => setGuestConfig(c => ({ ...c, tagline: e.target.value }))} style={inputStyle} />
-                    </PropField>
-                  </div>
-                )}
-
-                {selectedEl?.type === "partySize" && (
-                  <div style={{ fontSize: 12, color: D.muted, lineHeight: 1.6 }}>
-                    Party size control lets guests select 1–20 people. Styling follows the accent color.
-                    <div style={{ marginTop: 14 }}>
-                      <ColorField label="Accent Color" value={guestConfig.accentColor} onChange={v => setGuestConfig(c => ({ ...c, accentColor: v }))} />
-                    </div>
-                  </div>
-                )}
-
-                {selectedEl?.type === "joinButton" && (
-                  <div style={{ fontSize: 12, color: D.muted, lineHeight: 1.6, padding: "4px 0" }}>
-                    The "Join Waitlist" button is always white with black text — this is HOST&apos;s standard brand style for the join screen.
-                    <div style={{ marginTop: 14, padding: "12px 0", borderRadius: 10, background: "#fff", color: "#000", textAlign: "center", fontSize: 12, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase" }}>
-                      Join Waitlist
-                    </div>
-                  </div>
-                )}
-
-                {selectedEl?.type === "progressBar" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                    <ColorField label="Bar Color (Accent)" value={guestConfig.accentColor} onChange={v => setGuestConfig(c => ({ ...c, accentColor: v }))} />
-                    <div style={{ padding: "12px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: `1px solid ${D.border}` }}>
-                      <div style={{ fontSize: 11, color: D.muted, marginBottom: 8 }}>Preview</div>
-                      <div style={{ width: "100%", background: "rgba(255,255,255,0.08)", borderRadius: 100, height: 8, overflow: "hidden" }}>
-                        <div style={{ width: "65%", height: "100%", background: `linear-gradient(90deg, ${guestConfig.accentColor}, ${guestConfig.accentColor}88)`, borderRadius: 100 }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {selectedEl?.type === "waitMessage" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ fontSize: 11, color: D.muted, lineHeight: 1.6 }}>One message per line. These rotate on the guest waiting screen.</div>
-                    <textarea
-                      value={guestConfig.waitMessages.join("\n")}
-                      onChange={e => setGuestConfig(c => ({ ...c, waitMessages: e.target.value.split("\n") }))}
-                      rows={7}
-                      style={{ ...inputStyle, resize: "vertical", fontFamily: font, lineHeight: 1.7 }}
-                    />
-                  </div>
-                )}
-
-                {selectedEl?.type === "seatedMessage" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ fontSize: 11, color: D.muted }}>Shown when the guest is seated.</div>
-                    <textarea
-                      value={guestConfig.seatedMessage}
-                      onChange={e => setGuestConfig(c => ({ ...c, seatedMessage: e.target.value }))}
-                      rows={4}
-                      style={{ ...inputStyle, resize: "vertical", fontFamily: font, lineHeight: 1.7 }}
-                    />
-                  </div>
-                )}
-
-                {selectedEl?.type === "finalButton" && (() => {
-                  const idx = (selectedEl as { type: "finalButton"; index: number }).index
-                  const btn = guestConfig.finalButtons[idx]
-                  if (!btn) return <div style={{ fontSize: 12, color: D.muted }}>Button not found.</div>
-                  return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                      <PropField label="Label">
-                        <input type="text" value={btn.label} placeholder="e.g. Leave a Review" onChange={e => setGuestConfig(c => ({ ...c, finalButtons: c.finalButtons.map((b, j) => j === idx ? { ...b, label: e.target.value } : b) }))} style={inputStyle} />
-                      </PropField>
-                      <PropField label="URL">
-                        <input type="url" value={btn.url} placeholder="https://…" onChange={e => setGuestConfig(c => ({ ...c, finalButtons: c.finalButtons.map((b, j) => j === idx ? { ...b, url: e.target.value } : b) }))} style={{ ...inputStyle, fontFamily: "monospace", fontSize: 11 }} />
-                      </PropField>
-                      <ColorField label="Button Color" value={btn.color} onChange={v => setGuestConfig(c => ({ ...c, finalButtons: c.finalButtons.map((b, j) => j === idx ? { ...b, color: v } : b) }))} />
-                      <div style={{ padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 8, border: `1px solid ${D.border}` }}>
-                        <div style={{ fontSize: 11, color: D.muted, marginBottom: 6 }}>Preview</div>
-                        <div style={{ padding: "12px 0", borderRadius: 10, background: btn.color, color: guestConfig.buttonTextColor, textAlign: "center", fontSize: 12, fontWeight: 700 }}>
-                          {btn.label || "Button"}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 10, color: D.muted, textAlign: "center" }}>Drag on canvas to reorder</div>
-                      <button
-                        onClick={() => { setGuestConfig(c => ({ ...c, finalButtons: c.finalButtons.filter((_, j) => j !== idx) })); setSelectedEl(null) }}
-                        style={{ padding: "9px 0", borderRadius: 7, background: D.redBg, border: `1px solid rgba(239,68,68,0.2)`, color: D.red, cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}
-                      >Delete Button</button>
-                    </div>
-                  )
-                })()}
-
-                {/* Add button — always visible on Seated screen */}
-                {customizerPreview === "Seated" && guestConfig.finalButtons.length < 4 && (
-                  <button
-                    onClick={() => {
-                      const newIdx = guestConfig.finalButtons.length
-                      setGuestConfig(c => ({ ...c, finalButtons: [...c.finalButtons, { id: Date.now().toString(), label: "Leave a Review", url: "", color: "#3b82f6" }] }))
-                      setSelectedEl({ type: "finalButton", index: newIdx })
-                    }}
-                    style={{
-                      marginTop: selectedEl?.type === "finalButton" ? 8 : 0,
-                      width: "100%", padding: "10px 0", borderRadius: 7,
-                      background: "transparent", border: `1px dashed ${D.border}`,
-                      color: D.text2, fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: font,
-                    }}
-                  >+ Add Button</button>
-                )}
+              <div>
+                <FieldLabel>Number of Locations</FieldLabel>
+                <Input value={locationCount} onChange={setLocationCount} placeholder="1" type="number" />
               </div>
             </div>
           </div>
         )}
 
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* TAB: ANALYTICS                                             */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {activeTab === "Analytics" && (() => {
-          const seated  = analyticsData.filter(e => e.status === "seated")
-          const removed = analyticsData.filter(e => e.status === "removed")
-          const waits   = analyticsData.map(e => e.actual_wait).filter((w): w is number => w != null)
-          const avgWait = waits.length ? Math.round(waits.reduce((a, b) => a + b, 0) / waits.length) : null
-          const avgParty = analyticsData.length
-            ? (analyticsData.reduce((a, e) => a + (e.party_size || 0), 0) / analyticsData.length).toFixed(1)
-            : null
-          const pageStart = analyticsPage * analyticsPageSize
-          const pageRows  = analyticsFetched ? analyticsData.slice(pageStart, pageStart + analyticsPageSize) : []
-          const totalPages = Math.ceil(analyticsData.length / analyticsPageSize)
+        {/* Step 2 — Floor Map */}
+        {step === 2 && (
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Floor Map</h2>
+            <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Design the table layout. Drag tables to position them. You can skip this and set it up later.</p>
+            <TableDesigner tables={floorTables} onChange={setFloorTables} />
+          </div>
+        )}
 
-          return (
-            <>
-              {/* Header row: action buttons + capacity chips */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <button
-                    onClick={fetchAnalytics}
-                    disabled={analyticsLoading}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 7,
-                      padding: "9px 16px", borderRadius: 8,
-                      background: D.surface, border: `1px solid ${D.border}`,
-                      color: D.text2, fontSize: 13, fontWeight: 600,
-                      cursor: analyticsLoading ? "not-allowed" : "pointer", opacity: analyticsLoading ? 0.5 : 1,
-                    }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: analyticsLoading ? "spin 1s linear infinite" : "none" }}>
-                      <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-                    </svg>
-                    {analyticsLoading ? "Loading…" : analyticsFetched ? "Refresh Data" : "Load Analytics"}
-                  </button>
-
-                  {analyticsFetched && analyticsData.length > 0 && (
-                    <button
-                      onClick={exportCSV}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 7,
-                        padding: "9px 16px", borderRadius: 8,
-                        background: D.greenBg, border: `1px solid ${D.greenBorder}`,
-                        color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer",
-                      }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                      Export CSV
-                    </button>
-                  )}
-
-                  {analyticsFetched && (
-                    <button
-                      onClick={() => setShowClearConfirm(true)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 7,
-                        padding: "9px 16px", borderRadius: 8,
-                        background: D.redBg, border: `1px solid rgba(239,68,68,0.25)`,
-                        color: D.red, fontSize: 13, fontWeight: 600, cursor: "pointer",
-                      }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                      Clear All Data
-                    </button>
-                  )}
+        {/* Step 3 — Guest Page */}
+        {step === 3 && (
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 20px" }}>Guest Page</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div>
+                <FieldLabel>Background Color</FieldLabel>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)}
+                    style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2, background: "none" }} />
+                  <Input value={bgColor} onChange={setBgColor} placeholder="#000000" />
                 </div>
-
-                {/* Supabase row count chip */}
-                {capacityData && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: D.muted }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                    <span><strong style={{ color: D.text2 }}>{((capacityData.supabase_rows.queue_entries || 0) + (capacityData.supabase_rows.seating_events || 0)).toLocaleString()}</strong> Supabase rows stored</span>
-                  </div>
-                )}
               </div>
-
-              {/* Summary stats */}
-              {analyticsFetched && analyticsData.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 24 }}>
-                  {[
-                    { label: "Total Guests",   value: analyticsData.length.toLocaleString(), color: D.text },
-                    { label: "Seated",         value: seated.length.toLocaleString(),         color: D.green },
-                    { label: "Removed / Left", value: removed.length.toLocaleString(),        color: D.muted },
-                    { label: "Avg Actual Wait",value: avgWait != null ? `${avgWait}m` : "—",  color: D.text },
-                    { label: "Avg Party Size", value: avgParty ?? "—",                        color: D.text },
-                  ].map(stat => (
-                    <div key={stat.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px", textAlign: "center" }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: stat.color, letterSpacing: "-0.02em" }}>{stat.value}</div>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: D.muted, marginTop: 4, letterSpacing: "0.06em", textTransform: "uppercase" }}>{stat.label}</div>
-                    </div>
-                  ))}
+              <div>
+                <FieldLabel>Accent Color</FieldLabel>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)}
+                    style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2, background: "none" }} />
+                  <Input value={accentColor} onChange={setAccentColor} placeholder="#22c55e" />
                 </div>
-              )}
+              </div>
+              <div style={{ gridColumn: "1/-1" }}>
+                <FieldLabel>Tagline</FieldLabel>
+                <Input value={tagline} onChange={setTagline} placeholder="Powered by HOST" />
+              </div>
+              <div style={{ gridColumn: "1/-1" }}>
+                <FieldLabel>Wait Messages (one per line)</FieldLabel>
+                <textarea value={waitMessages} onChange={e => setWaitMessages(e.target.value)} rows={4}
+                  style={{ ...inputFull, resize: "vertical" } as React.CSSProperties}
+                  placeholder="Your spot is saved — feel free to step out." />
+              </div>
+              <div style={{ gridColumn: "1/-1" }}>
+                <FieldLabel>Seated / Thank You Message</FieldLabel>
+                <Input value={seatedMsg} onChange={setSeatedMsg} placeholder="Thanks for dining with us!" />
+              </div>
+            </div>
+            {/* Preview chip */}
+            <div style={{ marginTop: 20, padding: 20, borderRadius: 12, background: bgColor, border: `1px solid ${D.border}`, textAlign: "center" }}>
+              <div style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>{name || "Restaurant"}</div>
+              <div style={{ color: accentColor, fontSize: 13, marginTop: 4 }}>{tagline}</div>
+              <div style={{ marginTop: 12, padding: "8px 20px", background: accentColor, borderRadius: 20, display: "inline-block", color: "#fff", fontSize: 13, fontWeight: 700 }}>Join Waitlist</div>
+            </div>
+          </div>
+        )}
 
-              {/* Empty / loading states */}
-              {!analyticsFetched && !analyticsLoading && (
-                <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, padding: "60px 24px", textAlign: "center" }}>
-                  <div style={{ fontSize: 13, color: D.muted, marginBottom: 8 }}>Click "Load Analytics" to fetch all guest data.</div>
-                  <div style={{ fontSize: 12, color: D.muted, opacity: 0.6 }}>Data is stored indefinitely and cleared only when you press Clear All Data.</div>
+        {/* Step 4 — Menu */}
+        {step === 4 && (
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Menu</h2>
+            <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Optional — add menu sections and items for the guest join page. You can set this up later.</p>
+            <MenuBuilder sections={menuSections} onChange={setMenuSections} />
+          </div>
+        )}
+
+        {/* Step 5 — Credentials */}
+        {step === 5 && (
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Access Credentials</h2>
+            <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Set up initial PINs and access codes. These are stored securely in the owner console.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div>
+                <FieldLabel>Station PIN</FieldLabel>
+                <Input value={stationPin} onChange={setStationPin} placeholder="4-digit PIN" type="text" />
+                <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>For host tablet login</div>
+              </div>
+              <div>
+                <FieldLabel>Manager PIN</FieldLabel>
+                <Input value={managerPin} onChange={setManagerPin} placeholder="4-digit PIN" type="text" />
+                <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>For manager access</div>
+              </div>
+              <div>
+                <FieldLabel>WiFi Network</FieldLabel>
+                <Input value={wifiName} onChange={setWifiName} placeholder="Network name" />
+              </div>
+              <div>
+                <FieldLabel>WiFi Password</FieldLabel>
+                <Input value={wifiPass} onChange={setWifiPass} placeholder="Password" type="text" />
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div style={{ marginTop: 24, padding: 20, background: D.surface2, borderRadius: 12, border: `1px solid ${D.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Summary</div>
+              {[
+                ["Name", name],
+                ["URL", `hostplatform.net/client/${slug}/join`],
+                ["City", city || "—"],
+                ["Plan", planType],
+                ["Monthly Fee", monthlyFee ? `$${monthlyFee}/mo` : "Free"],
+                ["Locations", locationCount],
+                ["Tables designed", String(floorTables.length)],
+                ["Menu sections", String(menuSections.length)],
+              ].map(([k, v]) => (
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: D.text2, marginBottom: 6 }}>
+                  <span>{k}</span>
+                  <span style={{ color: D.text, fontWeight: 500 }}>{v}</span>
                 </div>
-              )}
+              ))}
+            </div>
 
-              {analyticsLoading && (
-                <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, padding: "60px 24px", textAlign: "center", color: D.muted, fontSize: 13 }}>
-                  Loading guest data…
+            {error && (
+              <div style={{ marginTop: 16, padding: "10px 14px", background: D.redBg, border: `1px solid ${D.red}30`, borderRadius: 8, color: D.red, fontSize: 13 }}>
+                {error}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <button onClick={() => step > 1 ? setStep(s => s - 1) : onCancel()}
+          style={{ padding: "10px 20px", borderRadius: 8, border: `1px solid ${D.border}`,
+            background: "transparent", color: D.text2, fontSize: 14, cursor: "pointer" }}>
+          {step === 1 ? "Cancel" : "← Back"}
+        </button>
+        {step < 5 ? (
+          <button onClick={() => setStep(s => s + 1)}
+            disabled={step === 1 && (!name.trim() || !slug.trim())}
+            style={{ padding: "10px 24px", borderRadius: 8, border: "none",
+              background: (step === 1 && (!name.trim() || !slug.trim())) ? D.muted : D.accent,
+              color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+            {step === 4 ? "Next: Credentials" : "Next →"}
+          </button>
+        ) : (
+          <button onClick={create} disabled={saving}
+            style={{ padding: "10px 28px", borderRadius: 8, border: "none",
+              background: saving ? D.muted : D.green, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            {saving ? "Creating…" : "🚀 Create Restaurant"}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 12, fontWeight: 600, color: D.text2, marginBottom: 6 }}>{children}</div>
+}
+
+function Input({ value, onChange, placeholder, type }: { value: string; onChange: (v: string) => void; placeholder?: string; type?: string }) {
+  return (
+    <input type={type || "text"} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+      style={inputFull} />
+  )
+}
+
+const inputFull: React.CSSProperties = {
+  width: "100%", boxSizing: "border-box",
+  background: "rgba(255,255,255,0.06)", border: `1px solid ${D.border}`, borderRadius: 8,
+  color: D.text, padding: "9px 12px", fontSize: 13, outline: "none",
+}
+
+const selectStyle: React.CSSProperties = {
+  ...inputFull, cursor: "pointer",
+}
+
+// ── Credentials Tab ────────────────────────────────────────────────────────────
+function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: string }) {
+  const [creds,   setCreds]   = useState<Credential[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding,  setAdding]  = useState(false)
+  const [editing, setEditing] = useState<string | null>(null)
+  const [form, setForm] = useState({ credential_type: "other", label: "", value: "", notes: "" })
+  const [saving, setSaving] = useState(false)
+  const [revealed, setRevealed] = useState<Set<string>>(new Set())
+
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch(`${API}/owner/clients/${restaurantId}/credentials?secret=${encodeURIComponent(token)}`)
+      .then(r => r.json())
+      .then(d => setCreds(d.credentials || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [restaurantId, token])
+
+  useEffect(() => { load() }, [load])
+
+  async function save() {
+    setSaving(true)
+    const url = editing
+      ? `${API}/owner/clients/${restaurantId}/credentials/${editing}?secret=${encodeURIComponent(token)}`
+      : `${API}/owner/clients/${restaurantId}/credentials?secret=${encodeURIComponent(token)}`
+    const method = editing ? "PATCH" : "POST"
+    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
+    setForm({ credential_type: "other", label: "", value: "", notes: "" })
+    setAdding(false); setEditing(null); setSaving(false)
+    load()
+  }
+
+  async function del(id: string) {
+    if (!confirm("Delete this credential?")) return
+    await fetch(`${API}/owner/clients/${restaurantId}/credentials/${id}?secret=${encodeURIComponent(token)}`, { method: "DELETE" })
+    load()
+  }
+
+  function toggleReveal(id: string) {
+    setRevealed(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  const typeIcon: Record<string, string> = {
+    station_pin: "🔐", manager_pin: "🔑", wifi: "📶", other: "🗝",
+  }
+
+  if (loading) return <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 14, color: D.text2 }}>
+          {creds.length} credential{creds.length !== 1 ? "s" : ""} on file
+        </div>
+        <button onClick={() => { setAdding(true); setEditing(null); setForm({ credential_type: "other", label: "", value: "", notes: "" }) }}
+          style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${D.green}40`, background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          + Add Credential
+        </button>
+      </div>
+
+      {/* Add / edit form */}
+      {(adding || editing) && (
+        <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: D.text, marginBottom: 14 }}>
+            {editing ? "Edit Credential" : "New Credential"}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <FieldLabel>Type</FieldLabel>
+              <select value={form.credential_type} onChange={e => setForm(p => ({ ...p, credential_type: e.target.value }))} style={selectStyle}>
+                <option value="station_pin">Station PIN</option>
+                <option value="manager_pin">Manager PIN</option>
+                <option value="wifi">WiFi</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <FieldLabel>Label</FieldLabel>
+              <Input value={form.label} onChange={v => setForm(p => ({ ...p, label: v }))} placeholder="e.g. Host iPad PIN" />
+            </div>
+            <div>
+              <FieldLabel>Value / Password</FieldLabel>
+              <Input value={form.value} onChange={v => setForm(p => ({ ...p, value: v }))} placeholder="Enter the credential" />
+            </div>
+            <div>
+              <FieldLabel>Notes (optional)</FieldLabel>
+              <Input value={form.notes} onChange={v => setForm(p => ({ ...p, notes: v }))} placeholder="Any notes" />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button onClick={save} disabled={saving}
+              style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => { setAdding(false); setEditing(null) }}
+              style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Credential list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {creds.map(c => (
+          <div key={c.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 22 }}>{typeIcon[c.credential_type] || "🗝"}</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{c.label}</div>
+                <div style={{ fontSize: 13, color: D.text2, marginTop: 2, fontFamily: "monospace" }}>
+                  {revealed.has(c.id) ? c.value : "••••••••"}
                 </div>
+                {c.notes && <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>{c.notes}</div>}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button onClick={() => toggleReveal(c.id)}
+                style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+                {revealed.has(c.id) ? "Hide" : "Show"}
+              </button>
+              <button onClick={() => { setEditing(c.id); setAdding(false); setForm({ credential_type: c.credential_type, label: c.label, value: c.value, notes: c.notes || "" }) }}
+                style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+                Edit
+              </button>
+              <button onClick={() => del(c.id)}
+                style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
+                ✕
+              </button>
+            </div>
+          </div>
+        ))}
+        {creds.length === 0 && !adding && (
+          <div style={{ color: D.muted, fontSize: 13, textAlign: "center", padding: "24px 0" }}>
+            No credentials saved. Click &quot;+ Add Credential&quot; to store PINs, passwords, and access codes.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Client Detail View ─────────────────────────────────────────────────────────
+function ClientDetailView({ client, token, onBack, onUpdated }: {
+  client: Client
+  token: string
+  onBack: () => void
+  onUpdated: () => void
+}) {
+  const [tab, setTab] = useState<"overview"|"credentials"|"floor-map"|"guest-page"|"menu"|"documents">("overview")
+  const [config, setConfig] = useState<{ guest_config?: Record<string,unknown>; menu_config?: { sections: MenuSection[] }; floor_plan?: FloorTable[]; settings?: Record<string,unknown> } | null>(null)
+  const [configLoaded, setConfigLoaded] = useState(false)
+  const [savingConfig, setSavingConfig] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<""|"saving"|"saved"|"error">("")
+  const [floorTables, setFloorTables] = useState<FloorTable[]>([])
+  const [menuSections, setMenuSections] = useState<MenuSection[]>([])
+  const [agreements, setAgreements] = useState<AgreementRecord[]>([])
+  const [agreementsLoaded, setAgreementsLoaded] = useState(false)
+
+  useEffect(() => {
+    if ((tab === "floor-map" || tab === "guest-page" || tab === "menu") && !configLoaded) {
+      fetch(`${API}/owner/clients/${client.id}/config?secret=${encodeURIComponent(token)}`)
+        .then(r => r.json())
+        .then(d => {
+          setConfig(d)
+          setFloorTables(Array.isArray(d.floor_plan) ? d.floor_plan : [])
+          const mc = d.menu_config as { sections?: MenuSection[] } | null
+          setMenuSections(mc?.sections || [])
+          setConfigLoaded(true)
+        })
+        .catch(() => setConfigLoaded(true))
+    }
+    if (tab === "documents" && !agreementsLoaded) {
+      fetch(`${API}/agreements/all?secret=${encodeURIComponent(token)}`)
+        .then(r => r.json())
+        .then(d => {
+          const all: AgreementRecord[] = d.agreements || []
+          setAgreements(all.filter(a => a.business_name?.toLowerCase().includes(client.name.toLowerCase()) || client.name.toLowerCase().includes(a.business_name?.toLowerCase())))
+          setAgreementsLoaded(true)
+        })
+        .catch(() => setAgreementsLoaded(true))
+    }
+  }, [tab, configLoaded, agreementsLoaded, client.id, client.name, token])
+
+  async function saveConfig(patch: { floor_plan?: FloorTable[]; menu_config?: { sections: MenuSection[] }; guest_config?: Record<string,unknown> }) {
+    setSavingConfig(true); setSaveStatus("saving")
+    try {
+      await fetch(`${API}/owner/clients/${client.id}/config?secret=${encodeURIComponent(token)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      })
+      setSaveStatus("saved")
+      setTimeout(() => setSaveStatus(""), 2500)
+    } catch {
+      setSaveStatus("error")
+    } finally {
+      setSavingConfig(false)
+    }
+  }
+
+  const tabs: { id: typeof tab; label: string }[] = [
+    { id: "overview",    label: "Overview"    },
+    { id: "credentials", label: "Credentials" },
+    { id: "floor-map",   label: "Floor Map"   },
+    { id: "guest-page",  label: "Guest Page"  },
+    { id: "menu",        label: "Menu"        },
+    { id: "documents",   label: "Documents"   },
+  ]
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button onClick={onBack}
+            style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 8, color: D.text2, cursor: "pointer", fontSize: 13, padding: "6px 12px" }}>
+            ← Clients
+          </button>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: D.text, margin: 0 }}>{client.display_name}</h1>
+            <div style={{ fontSize: 13, color: D.muted, marginTop: 2 }}>{client.city || "—"} · slug: <span style={{ color: D.blue }}>{client.slug}</span></div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {planBadge(client.plan_type, client.status)}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 2, marginBottom: 24, background: D.surface, borderRadius: 10, padding: 4, border: `1px solid ${D.border}`, overflowX: "auto" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ flex: "none", padding: "7px 16px", borderRadius: 8, border: "none",
+              background: tab === t.id ? D.surface2 : "transparent",
+              color: tab === t.id ? D.text : D.text2,
+              fontSize: 13, fontWeight: tab === t.id ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap" }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Save status */}
+      {saveStatus && (
+        <div style={{ marginBottom: 16, padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+          background: saveStatus === "saved" ? D.greenBg : saveStatus === "error" ? D.redBg : D.blueBg,
+          color: saveStatus === "saved" ? D.green : saveStatus === "error" ? D.red : D.blue,
+          border: `1px solid ${saveStatus === "saved" ? D.greenBorder : saveStatus === "error" ? D.red + "40" : D.blueBorder}` }}>
+          {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved" : "Error saving"}
+        </div>
+      )}
+
+      {/* Overview tab */}
+      {tab === "overview" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {[
+            { label: "Join URL",         value: client.join_url,    link: true  },
+            { label: "Station URL",      value: client.station_url, link: true  },
+            { label: "Plan",             value: client.plan_type              },
+            { label: "Status",           value: client.status                 },
+            { label: "Monthly Fee",      value: client.monthly_fee_cents != null ? `$${(client.monthly_fee_cents/100).toFixed(2)}/mo` : "Free" },
+            { label: "Locations",        value: String(client.location_count || 1) },
+            { label: "Signed",           value: client.signed_at ? fmtTime(client.signed_at) : "Not signed" },
+            { label: "Signer",           value: client.signer_name || "—"     },
+            { label: "Signer Email",     value: client.signer_email || "—"    },
+            { label: "Client ID",        value: client.id                     },
+          ].map(({ label, value, link }) => (
+            <div key={label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px" }}>
+              <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
+              {link ? (
+                <a href={value} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 13, color: D.blue, wordBreak: "break-all" as const }}>{value}</a>
+              ) : (
+                <div style={{ fontSize: 13, color: D.text, wordBreak: "break-all" as const }}>{value}</div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
 
-              {/* Data table */}
-              {analyticsFetched && !analyticsLoading && (
-                <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden" }}>
-                  {/* Table header */}
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
-                      <thead>
-                        <tr style={{ background: D.surface, borderBottom: `1px solid ${D.border}` }}>
-                          {["Name","Party","Source","Arrived","Quoted","Actual","Status","Restaurant","Phone","Notes"].map((h, i) => (
-                            <th key={h} style={{
-                              padding: "10px 14px", textAlign: "left",
-                              fontSize: 10, fontWeight: 700, color: D.muted,
-                              letterSpacing: "0.08em", textTransform: "uppercase",
-                              whiteSpace: "nowrap",
-                              borderRight: i < 9 ? `1px solid ${D.border}` : "none",
-                            }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pageRows.length === 0 ? (
-                          <tr>
-                            <td colSpan={10} style={{ padding: "32px 20px", textAlign: "center", color: D.muted, fontSize: 13 }}>
-                              No records found.
-                            </td>
-                          </tr>
-                        ) : pageRows.map((entry, idx) => {
-                          const restName = RESTS.find(r => r.rid === entry.restaurant_id)?.name
-                            ?? (entry.restaurant_id ? entry.restaurant_id.slice(0, 8) + "…" : "—")
-                          return (
-                            <tr
-                              key={entry.id}
-                              style={{
-                                borderBottom: idx < pageRows.length - 1 ? `1px solid ${D.border}` : "none",
-                                background: "transparent", transition: "background 0.1s",
-                              }}
-                              onMouseEnter={e => (e.currentTarget.style.background = D.surfaceHover)}
-                              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-                            >
-                              <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 600, color: D.text, whiteSpace: "nowrap", borderRight: `1px solid ${D.border}` }}>{entry.name}</td>
-                              <td style={{ padding: "11px 14px", fontSize: 13, color: D.text2, textAlign: "center", borderRight: `1px solid ${D.border}` }}>{entry.party_size}</td>
-                              <td style={{ padding: "11px 14px", borderRight: `1px solid ${D.border}` }}>
-                                <span style={sourceStyle(entry.source)}>{sourceLabel(entry.source)}</span>
-                              </td>
-                              <td style={{ padding: "11px 14px", fontSize: 12, color: D.text2, whiteSpace: "nowrap", borderRight: `1px solid ${D.border}` }}>
-                                {entry.arrival_time ? new Date(entry.arrival_time).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—"}
-                              </td>
-                              <td style={{ padding: "11px 14px", fontSize: 13, color: D.text2, textAlign: "center", borderRight: `1px solid ${D.border}` }}>
-                                {entry.quoted_wait != null ? `${entry.quoted_wait}m` : "—"}
-                              </td>
-                              <td style={{ padding: "11px 14px", fontSize: 13, color: entry.actual_wait != null ? D.text : D.muted, textAlign: "center", fontWeight: entry.actual_wait != null ? 600 : 400, borderRight: `1px solid ${D.border}` }}>
-                                {entry.actual_wait != null ? `${entry.actual_wait}m` : "—"}
-                              </td>
-                              <td style={{ padding: "11px 14px", borderRight: `1px solid ${D.border}` }}>
-                                <span style={statusStyle(entry.status)}>{entry.status}</span>
-                              </td>
-                              <td style={{ padding: "11px 14px", fontSize: 11, color: D.muted, whiteSpace: "nowrap", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", borderRight: `1px solid ${D.border}` }}>
-                                {restName}
-                              </td>
-                              <td style={{ padding: "11px 14px", fontSize: 12, color: D.text2, whiteSpace: "nowrap", borderRight: `1px solid ${D.border}` }}>
-                                {entry.phone || "—"}
-                              </td>
-                              <td style={{ padding: "11px 14px", fontSize: 12, color: D.muted, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {entry.notes || "—"}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+      {/* Credentials tab */}
+      {tab === "credentials" && <CredentialsTab restaurantId={client.id} token={token} />}
 
-                  {/* Pagination footer */}
-                  {totalPages > 1 && (
-                    <div style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "12px 16px",
-                      borderTop: `1px solid ${D.border}`,
-                      background: D.surface,
-                    }}>
-                      <div style={{ fontSize: 12, color: D.muted }}>
-                        Showing {pageStart + 1}–{Math.min(pageStart + analyticsPageSize, analyticsData.length)} of {analyticsData.length.toLocaleString()} records
-                      </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          onClick={() => setAnalyticsPage(p => Math.max(0, p - 1))}
-                          disabled={analyticsPage === 0}
-                          style={{ padding: "6px 12px", borderRadius: 6, background: D.surface, border: `1px solid ${D.border}`, color: analyticsPage === 0 ? D.muted : D.text2, fontSize: 12, cursor: analyticsPage === 0 ? "default" : "pointer", opacity: analyticsPage === 0 ? 0.4 : 1 }}
-                        >← Prev</button>
-                        <span style={{ padding: "6px 12px", fontSize: 12, color: D.muted }}>Page {analyticsPage + 1} / {totalPages}</span>
-                        <button
-                          onClick={() => setAnalyticsPage(p => Math.min(totalPages - 1, p + 1))}
-                          disabled={analyticsPage >= totalPages - 1}
-                          style={{ padding: "6px 12px", borderRadius: 6, background: D.surface, border: `1px solid ${D.border}`, color: analyticsPage >= totalPages - 1 ? D.muted : D.text2, fontSize: 12, cursor: analyticsPage >= totalPages - 1 ? "default" : "pointer", opacity: analyticsPage >= totalPages - 1 ? 0.4 : 1 }}
-                        >Next →</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Clear confirm modal */}
-              {showClearConfirm && (
-                <div
-                  onClick={() => !analyticsClearing && setShowClearConfirm(false)}
-                  style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <div
-                    onClick={e => e.stopPropagation()}
-                    style={{ width: 440, maxWidth: "92vw", background: "#0D1117", border: `1px solid rgba(239,68,68,0.35)`, borderRadius: 12, padding: "32px 28px" }}
-                  >
-                    <div style={{ fontSize: 18, fontWeight: 800, color: D.red, marginBottom: 8 }}>Clear All Analytics Data</div>
-                    <div style={{ fontSize: 13, color: D.text2, lineHeight: 1.7, marginBottom: 20 }}>
-                      This will permanently <strong style={{ color: D.text }}>DELETE</strong> all {analyticsData.length.toLocaleString()} guest records and seating events from Supabase, freeing storage immediately.
-                      <br /><br />
-                      <strong style={{ color: D.yellow }}>Export CSV first</strong> — this action cannot be undone.
-                    </div>
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <button
-                        onClick={() => setShowClearConfirm(false)}
-                        disabled={analyticsClearing}
-                        style={{ flex: 1, padding: "11px 0", borderRadius: 8, background: D.surface, border: `1px solid ${D.border}`, color: D.text2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                      >Cancel</button>
-                      <button
-                        onClick={clearAnalytics}
-                        disabled={analyticsClearing}
-                        style={{ flex: 1, padding: "11px 0", borderRadius: 8, background: D.red, border: "none", color: "#fff", fontSize: 13, fontWeight: 700, cursor: analyticsClearing ? "not-allowed" : "pointer", opacity: analyticsClearing ? 0.6 : 1 }}
-                      >{analyticsClearing ? "Clearing…" : "Clear All Data"}</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )
-        })()}
-
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* TAB: PROMPTS                                               */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {/* TAB: AGREEMENTS                                            */}
-        {/* ══════════════════════════════════════════════════════════ */}
-        {activeTab === "Agreements" && (() => {
-          // Lazy-fetch once per session
-          if (!agreementsFetched && !agreementsLoading) {
-            setAgreementsLoading(true)
-            setAgreementsFetched(true)
-            const token = sessionStorage.getItem("host_owner_token") || ""
-            fetch(`${API}/agreements/all?secret=${encodeURIComponent(token)}`)
-              .then(r => r.ok ? r.json() : Promise.reject(r.status))
-              .then(d => { setAgreements(d.agreements ?? []); setAgreementsLoading(false) })
-              .catch(() => { setAgreementsError("Failed to load. Check owner token."); setAgreementsLoading(false) })
-          }
-
-          const fmtDate = (iso: string) => {
-            try {
-              return new Date(iso).toLocaleString("en-US", {
-                month: "short", day: "numeric", year: "numeric",
-                hour: "numeric", minute: "2-digit", timeZoneName: "short",
-              })
-            } catch { return iso }
-          }
-
-          return (
+      {/* Floor Map tab */}
+      {tab === "floor-map" && (
+        <div>
+          {!configLoaded ? (
+            <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>
+          ) : (
             <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: D.text, marginBottom: 4 }}>Signed Agreements</div>
-                  <div style={{ fontSize: 13, color: D.text2 }}>
-                    Partner agreements with timestamp, IP, and signer on record.
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setAgreementsFetched(false)
-                    setAgreementsError(null)
-                    setAgreements([])
-                  }}
-                  style={{
-                    padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                    background: D.surface, border: `1px solid ${D.border}`,
-                    color: D.text2, cursor: "pointer",
-                  }}
-                >
-                  Refresh
+              <TableDesigner tables={floorTables} onChange={t => setFloorTables(t)} />
+              <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
+                <button onClick={() => saveConfig({ floor_plan: floorTables })} disabled={savingConfig}
+                  style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                  {savingConfig ? "Saving…" : "Save Floor Map"}
+                </button>
+                <div style={{ color: D.muted, fontSize: 12, alignSelf: "center" }}>{floorTables.length} tables</div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Guest Page tab */}
+      {tab === "guest-page" && (
+        <div>
+          {!configLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
+            <GuestPageEditor
+              initial={(config?.guest_config || { restaurantName: client.name, bgColor: "#000", accentColor: "#22c55e", tagline: "Powered by HOST", waitMessages: [], seatedMessage: "", finalButtons: [] }) as unknown as GuestPageConfig}
+              onSave={gc => saveConfig({ guest_config: gc as unknown as Record<string,unknown> })}
+              saving={savingConfig}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Menu tab */}
+      {tab === "menu" && (
+        <div>
+          {!configLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
+            <>
+              <MenuBuilder sections={menuSections} onChange={setMenuSections} />
+              <div style={{ marginTop: 16 }}>
+                <button onClick={() => saveConfig({ menu_config: { sections: menuSections } })} disabled={savingConfig}
+                  style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                  {savingConfig ? "Saving…" : "Save Menu"}
                 </button>
               </div>
+            </>
+          )}
+        </div>
+      )}
 
-              {agreementsLoading && (
-                <div style={{ color: D.text2, fontSize: 13 }}>Loading agreements…</div>
-              )}
-
-              {agreementsError && (
-                <div style={{ padding: "12px 16px", borderRadius: 8, background: D.redBg, border: `1px solid ${D.red}`, fontSize: 13, color: D.red }}>
-                  {agreementsError}
+      {/* Documents tab */}
+      {tab === "documents" && (
+        <div>
+          {!agreementsLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
+            <>
+              <div style={{ fontSize: 14, color: D.text2, marginBottom: 16 }}>
+                {agreements.length} signed agreement{agreements.length !== 1 ? "s" : ""}
+              </div>
+              {agreements.length === 0 && (
+                <div style={{ color: D.muted, fontSize: 13, padding: "24px 0" }}>
+                  No signed agreements found for this client.
                 </div>
               )}
-
-              {!agreementsLoading && !agreementsError && agreements.length === 0 && (
-                <div style={{ padding: "40px 0", textAlign: "center", color: D.muted, fontSize: 14 }}>
-                  No signed agreements on file yet.
-                </div>
-              )}
-
               {agreements.map(a => (
-                <div key={a.id} style={{
-                  marginBottom: 16, padding: "20px 24px",
-                  background: D.surface,
-                  border: `1px solid ${D.border}`,
-                  borderRadius: 12,
-                }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16, gap: 12 }}>
+                <div key={a.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "16px 20px", marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 3 }}>{a.business_name}</div>
-                      <div style={{ fontSize: 11, color: D.muted, fontFamily: "monospace" }}>ID: {a.id}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: D.text }}>{a.business_name}</div>
+                      <div style={{ fontSize: 13, color: D.text2, marginTop: 2 }}>
+                        Signed by <strong>{a.signer_name}</strong>
+                        {a.signer_title && ` · ${a.signer_title}`} · {a.signer_email}
+                      </div>
                     </div>
-                    <div style={{
-                      padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, flexShrink: 0,
-                      background: a.plan_type === "free-partner" ? D.greenBg : D.blueBg,
-                      color:      a.plan_type === "free-partner" ? D.green   : D.blue,
-                      border:     `1px solid ${a.plan_type === "free-partner" ? D.greenBorder : "rgba(96,165,250,0.25)"}`,
-                    }}>
-                      {a.plan_type === "free-partner" ? "Free Partner" : a.plan_type}
-                    </div>
+                    {planBadge(a.plan_type, a.status || "active")}
                   </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px 20px" }}>
-                    {([
-                      ["Signer",     `${a.signer_name}${a.signer_title ? ` · ${a.signer_title}` : ""}`],
-                      ["Email",      a.signer_email],
-                      ["Signed At",  fmtDate(a.signed_at)],
-                      ["Locations",  String(a.location_count ?? "—")],
-                      ["Version",    a.agreement_version ?? "—"],
-                      ["IP Address", a.ip_address ?? "not captured"],
-                    ] as [string, string][]).map(([label, value]) => (
-                      <div key={label}>
-                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: D.muted, marginBottom: 3 }}>
-                          {label}
-                        </div>
-                        <div style={{ fontSize: 13, color: D.text2, wordBreak: "break-all" }}>{value}</div>
+                  <div style={{ display: "flex", gap: 24, marginTop: 12, flexWrap: "wrap" as const }}>
+                    {[
+                      ["Signed", fmtTime(a.signed_at)],
+                      ["Version", a.agreement_version || "—"],
+                      ["IP", a.ip_address || "—"],
+                      ["Fee", a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"],
+                      ["Locations", String(a.location_count || 1)],
+                    ].map(([k, v]) => (
+                      <div key={k}>
+                        <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
+                        <div style={{ fontSize: 12, color: D.text, marginTop: 2 }}>{v}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               ))}
             </>
-          )
-        })()}
-
-        {activeTab === "Prompts" && (
-          <>
-            <SectionLabel>Claude Prompts</SectionLabel>
-            <div style={{ fontSize: 13, color: D.text2, marginBottom: 24, lineHeight: 1.6 }}>
-              Ready-to-use prompts for making changes to HOST via Claude. Copy and paste into any Claude session.
-            </div>
-
-            {/* Group by category */}
-            {(["Infrastructure", "Guest Experience", "Features", "Fixes"] as const).map(category => {
-              const cards = PROMPTS.filter(p => p.category === category)
-              return (
-                <div key={category} style={{ marginBottom: 32 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14 }}>
-                    {category}
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-                    {cards.map((card, i) => (
-                      <PromptCardComponent key={i} card={card} />
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </>
-        )}
-
-      </div>
-    </div>
-  )
-}
-
-// ── Shared input style ─────────────────────────────────────────────────────────
-const inputStyle: React.CSSProperties = {
-  width: "100%", boxSizing: "border-box",
-  padding: "8px 12px",
-  background: "rgba(255,255,255,0.04)",
-  border: `1px solid rgba(255,255,255,0.08)`,
-  borderRadius: 7, outline: "none",
-  color: "#FFFFFF", fontSize: 13,
-}
-
-// ── CredentialsEditor ──────────────────────────────────────────────────────────
-function CredentialsEditor({
-  id, cred, saved, onSave, inputStyle, D, font,
-}: {
-  id: string
-  cred: { username: string; password: string }
-  saved: boolean
-  onSave: (c: { username: string; password: string }) => void
-  inputStyle: React.CSSProperties
-  D: Record<string, string>
-  font: string
-}) {
-  const [u, setU] = useState(cred.username)
-  const [p, setP] = useState(cred.password)
-  const [show, setShow] = useState(false)
-  void id
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div>
-        <label style={{ fontSize: 11, color: D.muted, display: "block", marginBottom: 5 }}>Username</label>
-        <input
-          type="text"
-          value={u}
-          onChange={e => setU(e.target.value)}
-          autoComplete="off"
-          style={{ ...inputStyle, fontFamily: "monospace" }}
-        />
-      </div>
-      <div>
-        <label style={{ fontSize: 11, color: D.muted, display: "block", marginBottom: 5 }}>Password</label>
-        <div style={{ display: "flex", gap: 6 }}>
-          <input
-            type={show ? "text" : "password"}
-            value={p}
-            onChange={e => setP(e.target.value)}
-            autoComplete="new-password"
-            style={{ ...inputStyle, flex: 1, fontFamily: "monospace" }}
-          />
-          <button
-            onClick={() => setShow(s => !s)}
-            style={{
-              flexShrink: 0, padding: "0 10px", borderRadius: 7,
-              background: "rgba(255,255,255,0.05)", border: `1px solid rgba(255,255,255,0.08)`,
-              color: D.text2, cursor: "pointer", fontSize: 12, fontFamily: font,
-            }}
-          >{show ? "Hide" : "Show"}</button>
+          )}
         </div>
-      </div>
-      <button
-        onClick={() => onSave({ username: u.trim(), password: p })}
-        style={{
-          padding: "9px 0", borderRadius: 7,
-          background: saved ? D.greenBg : "rgba(255,255,255,0.06)",
-          border: `1px solid ${saved ? D.greenBorder : "rgba(255,255,255,0.10)"}`,
-          color: saved ? D.green : D.text2,
-          fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: font,
-          transition: "all 0.2s",
-        }}
-      >{saved ? "✓ Credentials Saved" : "Save Credentials"}</button>
+      )}
     </div>
   )
 }
 
-// ── ApiKeyRow ──────────────────────────────────────────────────────────────────
-function ApiKeyRow({ apiKey }: { apiKey: string }) {
-  const [copied, setCopied] = useState(false)
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10,
-      background: "rgba(255,255,255,0.03)",
-      border: `1px solid rgba(255,255,255,0.07)`,
-      borderRadius: 10, padding: "12px 16px",
-      marginBottom: 16,
-    }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.28)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4 }}>Your API Key</div>
-        <div style={{ fontFamily: "monospace", fontSize: 11, color: "rgba(255,255,255,0.55)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{apiKey}</div>
-      </div>
-      <button
-        onClick={() => { navigator.clipboard.writeText(apiKey).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }) }}
-        style={{
-          flexShrink: 0, padding: "7px 14px", borderRadius: 7,
-          background: copied ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.07)",
-          border: `1px solid ${copied ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.10)"}`,
-          color: copied ? "#22C55E" : "rgba(255,255,255,0.6)",
-          fontSize: 12, fontWeight: 600, cursor: "pointer",
-          transition: "all 0.15s",
-        }}
-      >{copied ? "Copied!" : "Copy"}</button>
-    </div>
-  )
+// ── Guest Page Editor ──────────────────────────────────────────────────────────
+interface GuestPageConfig {
+  bgColor: string; accentColor: string; buttonTextColor: string
+  restaurantName: string; tagline: string
+  waitMessages: string[]; seatedMessage: string
+  finalButtons: Array<{ id: string; label: string; url: string; color: string }>
 }
 
-// ── PropField ──────────────────────────────────────────────────────────────────
-function PropField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.28)", letterSpacing: "0.08em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>{label}</label>
-      {children}
-    </div>
-  )
-}
+function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig; onSave: (c: GuestPageConfig) => void; saving: boolean }) {
+  const [cfg, setCfg] = useState<GuestPageConfig>(initial)
+  const [waitText, setWaitText] = useState(initial.waitMessages.join("\n"))
 
-// ── ColorField ─────────────────────────────────────────────────────────────────
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div>
-      <label style={{ fontSize: 11, color: "rgba(255,255,255,0.28)", display: "block", marginBottom: 6 }}>{label}</label>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <input
-          type="color"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          style={{
-            width: 40, height: 36, flexShrink: 0,
-            border: `1px solid rgba(255,255,255,0.08)`,
-            borderRadius: 7, background: "none", cursor: "pointer", padding: 3,
-          }}
-        />
-        <input
-          type="text"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          style={{ ...inputStyle, fontFamily: "monospace", width: "auto", flex: 1 }}
-        />
-      </div>
-    </div>
-  )
-}
-
-// ── PromptCardComponent ────────────────────────────────────────────────────────
-function PromptCardComponent({ card }: { card: PromptCard }) {
-  const [copied, setCopied] = useState(false)
-
-  function copy() {
-    navigator.clipboard.writeText(card.prompt).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    })
+  function save() {
+    onSave({ ...cfg, waitMessages: waitText.split("\n").map(s => s.trim()).filter(Boolean) })
   }
 
-  const riskColor = card.risk === "Safe" ? "#22C55E" : card.risk === "Moderate" ? "#F59E0B" : "#EF4444"
-  const riskBg    = card.risk === "Safe" ? "rgba(34,197,94,0.10)" : card.risk === "Moderate" ? "rgba(245,158,11,0.10)" : "rgba(239,68,68,0.10)"
-  const riskBorder = card.risk === "Safe" ? "rgba(34,197,94,0.20)" : card.risk === "Moderate" ? "rgba(245,158,11,0.25)" : "rgba(239,68,68,0.25)"
-
   return (
-    <div style={{
-      background: "rgba(255,255,255,0.035)",
-      border: "1px solid rgba(255,255,255,0.08)",
-      borderRadius: 10,
-      padding: "20px",
-      display: "flex", flexDirection: "column", gap: 12,
-    }}>
-      {/* Header row */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#FFFFFF", marginBottom: 4 }}>{card.title}</div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.50)", lineHeight: 1.5 }}>{card.description}</div>
-        </div>
-        <div style={{
-          fontSize: 10, fontWeight: 700,
-          color: riskColor, background: riskBg, border: `1px solid ${riskBorder}`,
-          borderRadius: 20, padding: "3px 9px", flexShrink: 0, letterSpacing: "0.05em",
-        }}>
-          {card.risk}
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div>
+        <FieldLabel>Restaurant Name</FieldLabel>
+        <Input value={cfg.restaurantName} onChange={v => setCfg(p => ({ ...p, restaurantName: v }))} placeholder="My Restaurant" />
+      </div>
+      <div>
+        <FieldLabel>Tagline</FieldLabel>
+        <Input value={cfg.tagline} onChange={v => setCfg(p => ({ ...p, tagline: v }))} placeholder="Powered by HOST" />
+      </div>
+      <div>
+        <FieldLabel>Background Color</FieldLabel>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="color" value={cfg.bgColor} onChange={e => setCfg(p => ({ ...p, bgColor: e.target.value }))}
+            style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
+          <Input value={cfg.bgColor} onChange={v => setCfg(p => ({ ...p, bgColor: v }))} />
         </div>
       </div>
-
-      {/* Prompt block */}
-      <pre style={{
-        margin: 0, padding: "12px 14px",
-        background: "rgba(0,0,0,0.35)",
-        border: "1px solid rgba(255,255,255,0.07)",
-        borderRadius: 8,
-        fontSize: 11.5, fontFamily: "monospace",
-        color: "rgba(255,255,255,0.75)",
-        lineHeight: 1.65,
-        whiteSpace: "pre-wrap", wordBreak: "break-word",
-        overflow: "hidden",
-      }}>
-        {card.prompt}
-      </pre>
-
-      {/* Footer */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{
-          fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.35)",
-          letterSpacing: "0.08em", textTransform: "uppercase",
-        }}>
-          {card.category}
+      <div>
+        <FieldLabel>Accent Color</FieldLabel>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input type="color" value={cfg.accentColor} onChange={e => setCfg(p => ({ ...p, accentColor: e.target.value }))}
+            style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
+          <Input value={cfg.accentColor} onChange={v => setCfg(p => ({ ...p, accentColor: v }))} />
         </div>
-        <button
-          onClick={copy}
-          style={{
-            padding: "6px 14px", borderRadius: 7, fontSize: 12, fontWeight: 600,
-            background: copied ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.07)",
-            border: `1px solid ${copied ? "rgba(34,197,94,0.3)" : "rgba(255,255,255,0.1)"}`,
-            color: copied ? "#22C55E" : "rgba(255,255,255,0.7)",
-            cursor: "pointer", transition: "all 0.15s",
-          }}
-        >
-          {copied ? "Copied!" : "Copy"}
+      </div>
+      <div style={{ gridColumn: "1/-1" }}>
+        <FieldLabel>Wait Messages (one per line)</FieldLabel>
+        <textarea value={waitText} onChange={e => setWaitText(e.target.value)} rows={4}
+          style={{ ...inputFull, resize: "vertical" } as React.CSSProperties} />
+      </div>
+      <div style={{ gridColumn: "1/-1" }}>
+        <FieldLabel>Seated Message</FieldLabel>
+        <Input value={cfg.seatedMessage} onChange={v => setCfg(p => ({ ...p, seatedMessage: v }))} />
+      </div>
+      {/* Preview */}
+      <div style={{ gridColumn: "1/-1", padding: 20, borderRadius: 12, background: cfg.bgColor, border: `1px solid ${D.border}`, textAlign: "center" }}>
+        <div style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>{cfg.restaurantName}</div>
+        <div style={{ color: cfg.accentColor, fontSize: 12, marginTop: 4 }}>{cfg.tagline}</div>
+        <div style={{ marginTop: 10, padding: "7px 18px", background: cfg.accentColor, borderRadius: 20, display: "inline-block", color: cfg.buttonTextColor, fontSize: 12, fontWeight: 700 }}>Join Waitlist</div>
+      </div>
+      <div style={{ gridColumn: "1/-1" }}>
+        <button onClick={save} disabled={saving}
+          style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+          {saving ? "Saving…" : "Save Guest Page"}
         </button>
       </div>
     </div>
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── Clients View ───────────────────────────────────────────────────────────────
+function ClientsView({ token, onSelectClient, onAddNew }: {
+  token: string
+  onSelectClient: (c: Client) => void
+  onAddNew: () => void
+}) {
+  const [clients,  setClients]  = useState<Client[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState("")
+  const [search,   setSearch]   = useState("")
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+  const load = useCallback(() => {
+    setLoading(true)
+    fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { setClients(d.clients || []); setLastRefresh(new Date()) })
+      .catch(() => setError("Failed to load clients"))
+      .finally(() => setLoading(false))
+  }, [token])
+
+  useEffect(() => { load() }, [load])
+
+  const filtered = clients.filter(c =>
+    !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.city || "").toLowerCase().includes(search.toLowerCase())
+  )
+
   return (
-    <div style={{
-      fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.28)",
-      letterSpacing: "0.12em", textTransform: "uppercase",
-      marginBottom: 14,
-    }}>
-      {children}
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Clients</h1>
+          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>
+            {clients.length} restaurant{clients.length !== 1 ? "s" : ""}
+            {lastRefresh && ` · Updated ${lastRefresh.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={load}
+            style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+            ↺ Refresh
+          </button>
+          <button onClick={onAddNew}
+            style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+            + Add Client
+          </button>
+        </div>
+      </div>
+
+      <input placeholder="Search clients…" value={search} onChange={e => setSearch(e.target.value)}
+        style={{ ...inputFull, marginBottom: 20, fontSize: 14 }} />
+
+      {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading clients…</div>}
+      {error && <div style={{ color: D.red, fontSize: 14 }}>{error}</div>}
+
+      {!loading && filtered.length === 0 && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🏢</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>No clients yet</div>
+          <div style={{ fontSize: 13 }}>Click &quot;+ Add Client&quot; to onboard your first restaurant</div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+        {filtered.map(c => (
+          <div key={c.id} onClick={() => onSelectClient(c)}
+            style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "20px 20px",
+              cursor: "pointer", transition: "all 0.12s" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D.surfaceHover; (e.currentTarget as HTMLElement).style.borderColor = D.borderStrong }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = D.surface; (e.currentTarget as HTMLElement).style.borderColor = D.border }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div style={{ width: 42, height: 42, borderRadius: 10, background: D.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                🏢
+              </div>
+              {planBadge(c.plan_type, c.status)}
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 4 }}>{c.display_name}</div>
+            <div style={{ fontSize: 13, color: D.text2, marginBottom: 12 }}>{c.city || "No city set"}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 12, color: D.muted }}>
+                🔗 <span style={{ color: D.blue }}>/{c.slug}</span>
+              </div>
+              {c.signed_at && (
+                <div style={{ fontSize: 12, color: D.muted }}>
+                  ✍️ Signed {fmtTime(c.signed_at)}
+                </div>
+              )}
+              {c.monthly_fee_cents != null && c.monthly_fee_cents > 0 && (
+                <div style={{ fontSize: 12, color: D.muted }}>
+                  💳 ${(c.monthly_fee_cents/100).toFixed(2)}/mo
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-function SvcCard({ name, svc, icon, extra }: { name: string; svc: Svc; icon: React.ReactNode; extra?: string }) {
-  const dot = svcDot(svc.status)
+// ── Billing View ───────────────────────────────────────────────────────────────
+function BillingView({ token }: { token: string }) {
+  const [clients, setClients] = useState<Client[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => setClients(d.clients || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [token])
+
+  const paying   = clients.filter(c => (c.monthly_fee_cents || 0) > 0)
+  const free     = clients.filter(c => !c.monthly_fee_cents || c.monthly_fee_cents === 0)
+  const totalMRR = paying.reduce((s, c) => s + (c.monthly_fee_cents || 0), 0)
+
   return (
-    <div style={{
-      background: "rgba(255,255,255,0.03)",
-      border: `1px solid rgba(255,255,255,0.08)`,
-      borderRadius: 10,
-      padding: "18px 20px",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, color: "rgba(255,255,255,0.40)" }}>
-        {icon}
-        <span style={{ fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.50)", letterSpacing: "0.01em" }}>{name}</span>
+    <div>
+      <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 8px" }}>Billing</h1>
+      <p style={{ color: D.text2, fontSize: 14, margin: "0 0 32px" }}>Monthly recurring revenue and plan overview</p>
+
+      {/* MRR summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16, marginBottom: 32 }}>
+        {[
+          { label: "Monthly Revenue", value: `$${(totalMRR / 100).toFixed(2)}`, color: D.green },
+          { label: "Paying Clients",  value: String(paying.length),  color: D.blue  },
+          { label: "Free/Partner",    value: String(free.length),    color: D.muted },
+          { label: "Annual Revenue",  value: `$${(totalMRR * 12 / 100).toFixed(2)}`, color: D.orange },
+        ].map(card => (
+          <div key={card.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: 20 }}>
+            <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{card.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: card.color }}>{card.value}</div>
+          </div>
+        ))}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
-        <div style={{
-          width: 8, height: 8, borderRadius: "50%", background: dot, flexShrink: 0,
-          boxShadow: svc.status === "up" ? `0 0 6px ${dot}` : "none",
-        }} />
-        <span style={{ fontSize: 14, fontWeight: 700, color: dot }}>
-          {svcLabel(svc.status)}
-        </span>
-        {extra && (
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.30)", marginLeft: 2 }}>{extra}</span>
-        )}
-      </div>
+      {loading && <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>}
 
-      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.4 }}>
-        {svc.detail || (svc.status === "checking" ? "Checking…" : "")}
-      </div>
-    </div>
-  )
-}
-
-function LiveNum({ live, value }: { live: RestLive; value: number }) {
-  return (
-    <div style={{ textAlign: "center" }}>
-      {live.loading ? (
-        <span style={{ fontSize: 13, color: "rgba(255,255,255,0.28)" }}>—</span>
-      ) : live.error ? (
-        <span style={{ fontSize: 13, color: "#EF4444" }}>Error</span>
-      ) : (
-        <span style={{ fontSize: 14, fontWeight: 600, color: value > 0 ? "#FFFFFF" : "rgba(255,255,255,0.28)" }}>
-          {value}
-        </span>
+      {!loading && (
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${D.border}`, display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: 12, fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+            <span>Client</span><span>Plan</span><span>Status</span><span>Locations</span><span>Monthly</span>
+          </div>
+          {clients.map((c, i) => (
+            <div key={c.id} style={{ padding: "14px 20px", borderBottom: i < clients.length - 1 ? `1px solid ${D.border}` : "none",
+              display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: 12, alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{c.display_name}</div>
+                <div style={{ fontSize: 12, color: D.muted }}>{c.city || "—"}</div>
+              </div>
+              <span style={{ fontSize: 13, color: D.text2, textTransform: "capitalize" }}>{c.plan_type}</span>
+              {planBadge(c.plan_type, c.status)}
+              <span style={{ fontSize: 13, color: D.text2 }}>{c.location_count || 1}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: (c.monthly_fee_cents || 0) > 0 ? D.green : D.muted }}>
+                {(c.monthly_fee_cents || 0) > 0 ? `$${(c.monthly_fee_cents! / 100).toFixed(2)}` : "Free"}
+              </span>
+            </div>
+          ))}
+          {clients.length === 0 && (
+            <div style={{ padding: "32px 20px", textAlign: "center", color: D.muted, fontSize: 14 }}>No clients yet</div>
+          )}
+        </div>
       )}
     </div>
   )
 }
 
-function Cell({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
+// ── Analytics View ─────────────────────────────────────────────────────────────
+function AnalyticsView({ token }: { token: string }) {
+  const [data,    setData]    = useState<AnalyticsEntry[]>([])
+  const [loading, setLoading] = useState(false)
+  const [fetched, setFetched] = useState(false)
+  const [page,    setPage]    = useState(0)
+  const PAGE_SIZE = 50
+
+  function load() {
+    setLoading(true)
+    fetch(`${API}/owner/analytics?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { setData(d.entries || []); setFetched(true) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  const slice = data.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+  const totalPages = Math.ceil(data.length / PAGE_SIZE)
+
+  function sourceStyle(s: string): React.CSSProperties {
+    const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px", border: "1px solid", whiteSpace: "nowrap" }
+    if (s === "nfc")    return { ...base, color: "#60A5FA", background: "rgba(96,165,250,0.12)",  borderColor: "rgba(96,165,250,0.25)"  }
+    if (s === "host")   return { ...base, color: "#22C55E", background: "rgba(34,197,94,0.10)",   borderColor: "rgba(34,197,94,0.22)"   }
+    if (s === "analog") return { ...base, color: "#F59E0B", background: "rgba(245,158,11,0.10)",  borderColor: "rgba(245,158,11,0.25)"  }
+    return { ...base, color: D.muted, background: D.surface, borderColor: D.border }
+  }
+
+  function statusStyle(s: string): React.CSSProperties {
+    const base: React.CSSProperties = { fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px", border: "1px solid", whiteSpace: "nowrap" }
+    if (s === "seated")  return { ...base, color: "#22C55E", background: "rgba(34,197,94,0.10)",  borderColor: "rgba(34,197,94,0.22)" }
+    if (s === "removed") return { ...base, color: "#EF4444", background: "rgba(239,68,68,0.10)",  borderColor: "rgba(239,68,68,0.22)" }
+    if (s === "ready")   return { ...base, color: "#FBBF24", background: "rgba(251,191,36,0.10)", borderColor: "rgba(251,191,36,0.25)" }
+    return { ...base, color: "#60A5FA", background: "rgba(96,165,250,0.10)", borderColor: "rgba(96,165,250,0.25)" }
+  }
+
   return (
-    <div style={{ fontSize: 13, color: muted ? "rgba(255,255,255,0.28)" : "rgba(255,255,255,0.80)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 12 }}>
-      {children}
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Analytics</h1>
+          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>{data.length.toLocaleString()} guest records</p>
+        </div>
+        <button onClick={load} disabled={loading}
+          style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+          {loading ? "Loading…" : fetched ? "↺ Refresh" : "Load Analytics"}
+        </button>
+      </div>
+
+      {!fetched && !loading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
+          <div style={{ fontSize: 14 }}>Click &quot;Load Analytics&quot; to fetch guest data</div>
+        </div>
+      )}
+
+      {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading analytics…</div>}
+
+      {fetched && !loading && (
+        <>
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${D.border}` }}>
+                  {["Name","Party","Source","Status","Arrival","Quoted","Actual Wait","Notes"].map(h => (
+                    <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: D.muted, fontWeight: 600, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.07em", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {slice.map((e, i) => (
+                  <tr key={e.id} style={{ borderBottom: i < slice.length - 1 ? `1px solid ${D.border}` : "none" }}>
+                    <td style={{ padding: "10px 14px", color: D.text, fontWeight: 500 }}>{e.name}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2 }}>{e.party_size}</td>
+                    <td style={{ padding: "10px 14px" }}><span style={sourceStyle(e.source)}>{e.source.toUpperCase()}</span></td>
+                    <td style={{ padding: "10px 14px" }}><span style={statusStyle(e.status)}>{e.status}</span></td>
+                    <td style={{ padding: "10px 14px", color: D.text2, whiteSpace: "nowrap" }}>{e.arrival_time ? new Date(e.arrival_time).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—"}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2 }}>{e.quoted_wait != null ? `${e.quoted_wait}m` : "—"}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2 }}>{e.actual_wait != null ? `${e.actual_wait}m` : "—"}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{e.notes || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setPage(p => Math.max(0, p-1))} disabled={page === 0}
+                style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, cursor: "pointer" }}>← Prev</button>
+              <span style={{ color: D.text2, fontSize: 13, alignSelf: "center" }}>{page+1} / {totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages-1, p+1))} disabled={page === totalPages-1}
+                style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, cursor: "pointer" }}>Next →</button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Agreements View ────────────────────────────────────────────────────────────
+function AgreementsView({ token }: { token: string }) {
+  const [agreements, setAgreements] = useState<AgreementRecord[]>([])
+  const [loading,    setLoading]    = useState(false)
+  const [fetched,    setFetched]    = useState(false)
+  const [error,      setError]      = useState<string|null>(null)
+
+  function load() {
+    setLoading(true); setError(null)
+    fetch(`${API}/agreements/all?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { setAgreements(d.agreements || []); setFetched(true) })
+      .catch(() => setError("Failed to load agreements"))
+      .finally(() => setLoading(false))
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Agreements</h1>
+          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>{agreements.length} signed agreement{agreements.length !== 1 ? "s" : ""}</p>
+        </div>
+        <button onClick={load} disabled={loading}
+          style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+          {loading ? "Loading…" : fetched ? "↺ Refresh" : "Load Agreements"}
+        </button>
+      </div>
+
+      {error && <div style={{ color: D.red, fontSize: 14, marginBottom: 16 }}>{error}</div>}
+
+      {!fetched && !loading && (
+        <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
+          <div style={{ fontSize: 14 }}>Click &quot;Load Agreements&quot; to view signed contracts</div>
+        </div>
+      )}
+
+      {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading…</div>}
+
+      {fetched && !loading && agreements.map(a => (
+        <div key={a.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{a.business_name}</div>
+              <div style={{ fontSize: 13, color: D.text2, marginTop: 2 }}>
+                {a.signer_name}{a.signer_title ? ` · ${a.signer_title}` : ""} · {a.signer_email}
+              </div>
+            </div>
+            {planBadge(a.plan_type, a.status || "active")}
+          </div>
+          <div style={{ display: "flex", gap: 28, flexWrap: "wrap" as const }}>
+            {[
+              ["Signed", fmtTime(a.signed_at)],
+              ["Version", a.agreement_version || "—"],
+              ["IP", a.ip_address || "—"],
+              ["Fee", a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"],
+              ["Locations", String(a.location_count || 1)],
+            ].map(([k, v]) => (
+              <div key={k}>
+                <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
+                <div style={{ fontSize: 13, color: D.text, marginTop: 2 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+      {fetched && agreements.length === 0 && (
+        <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No signed agreements found</div>
+      )}
+    </div>
+  )
+}
+
+// ── Settings View ──────────────────────────────────────────────────────────────
+function SettingsView({ token }: { token: string }) {
+  const [textbeltKey,      setTextbeltKey]      = useState("")
+  const [smsQuota,         setSmsQuota]         = useState<number|null>(null)
+  const [smsStatus,        setSmsStatus]        = useState<"checking"|"up"|"down">("checking")
+
+  useEffect(() => {
+    fetch("/api/textbelt", { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => {
+        setSmsQuota(typeof d.quotaRemaining === "number" ? d.quotaRemaining : null)
+        setSmsStatus(d.quotaRemaining > 0 ? "up" : "down")
+      })
+      .catch(() => setSmsStatus("down"))
+  }, [token])
+
+  const prompts = [
+    { category: "Infrastructure", title: "Add New Restaurant Client", risk: "Safe",
+      prompt: "Add a new restaurant client named [Restaurant Name] in [City] to the HOST system." },
+    { category: "Infrastructure", title: "Check System Status", risk: "Safe",
+      prompt: "Check the current Textbelt quota and Railway deployment status." },
+    { category: "Infrastructure", title: "Rotate Password / API Key", risk: "Moderate",
+      prompt: "Update the PASS constant in /owner/page.tsx to a new password: [NEW_PASSWORD]." },
+    { category: "Guest Experience", title: "Change Join SMS Message", risk: "Safe",
+      prompt: "Change the join SMS message for all restaurants to: [YOUR MESSAGE]." },
+    { category: "Guest Experience", title: "Update Demo Restaurant Menu", risk: "Safe",
+      prompt: "Update the demo restaurant menu on the guest join page (/demo/join/page.tsx)." },
+    { category: "Features", title: "CSV Export for Guest History", risk: "Safe",
+      prompt: "Add a CSV export button to the HOST standard history page." },
+    { category: "Fixes", title: "Debug Guest Join Page Error", risk: "Safe",
+      prompt: "The guest join page is showing an error. Check the /queue/join endpoint on Railway." },
+    { category: "Fixes", title: "Debug SMS Not Delivering", risk: "Safe",
+      prompt: "SMS texts aren't being delivered. Check the Textbelt quota and TEXTBELT_KEY." },
+  ]
+
+  const riskColor = (r: string) => r === "Safe" ? D.green : r === "Moderate" ? D.orange : D.red
+  const riskBg    = (r: string) => r === "Safe" ? D.greenBg : r === "Moderate" ? D.orangeBg : D.redBg
+
+  return (
+    <div>
+      <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 32px" }}>Settings</h1>
+
+      {/* SMS status */}
+      <section style={{ marginBottom: 36 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 16px" }}>SMS / Textbelt</h2>
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: smsStatus === "up" ? D.green : smsStatus === "down" ? D.red : D.muted }} />
+            <span style={{ fontSize: 14, color: D.text }}>
+              {smsStatus === "checking" ? "Checking…" : smsQuota != null ? `${smsQuota.toLocaleString()} texts remaining` : "Not configured"}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input placeholder="Textbelt API key" value={textbeltKey} onChange={e => setTextbeltKey(e.target.value)}
+              type="password" style={{ ...inputFull, flex: 1 }} />
+            <a href="https://textbelt.com" target="_blank" rel="noopener noreferrer"
+              style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, textDecoration: "none", display: "flex", alignItems: "center", flexShrink: 0 }}>
+              Buy Credits ↗
+            </a>
+          </div>
+          <p style={{ fontSize: 12, color: D.muted, margin: "10px 0 0" }}>
+            API key is managed via Railway environment variable TEXTBELT_KEY.
+          </p>
+        </div>
+      </section>
+
+      {/* Claude prompts */}
+      <section>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 16px" }}>Claude Prompts</h2>
+        <p style={{ fontSize: 13, color: D.text2, margin: "0 0 16px" }}>Ready-to-use prompts for common HOST maintenance tasks.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {prompts.map(p => (
+            <div key={p.title} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                <div>
+                  <span style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginRight: 8 }}>{p.category}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{p.title}</span>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: riskColor(p.risk), background: riskBg(p.risk), borderRadius: 20, padding: "2px 10px", flexShrink: 0 }}>{p.risk}</span>
+              </div>
+              <div style={{ fontSize: 12, color: D.text2, fontFamily: "monospace", background: "rgba(0,0,0,0.3)", padding: "8px 12px", borderRadius: 6, wordBreak: "break-all" as const }}>
+                {p.prompt}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+// ── Main OwnerPage ─────────────────────────────────────────────────────────────
+const PASS = process.env.NEXT_PUBLIC_OWNER_PASS || "host2024"
+
+export default function OwnerPage() {
+  const [authed,    setAuthed]    = useState(false)
+  const [passInput, setPassInput] = useState("")
+  const [passErr,   setPassErr]   = useState(false)
+  const [showPass,  setShowPass]  = useState(false)
+  const [token,     setToken]     = useState("")
+
+  // Navigation
+  const [view,             setView]             = useState<NavView>("dashboard")
+  const [selectedClient,   setSelectedClient]   = useState<Client | null>(null)
+  const [wizardDone,       setWizardDone]       = useState<{ id:string; name:string; slug:string; join_url:string; station_url:string } | null>(null)
+  const [clientListKey,    setClientListKey]    = useState(0)
+
+  useEffect(() => {
+    if (sessionStorage.getItem("host_owner_authed") === "1") {
+      const t = sessionStorage.getItem("host_owner_token") || PASS
+      setToken(t); setAuthed(true)
+    }
+  }, [])
+
+  function login() {
+    if (passInput === PASS) {
+      sessionStorage.setItem("host_owner_authed", "1")
+      sessionStorage.setItem("host_owner_token", passInput)
+      setToken(passInput); setAuthed(true); setPassErr(false)
+    } else { setPassErr(true); setPassInput("") }
+  }
+
+  function handleSetView(v: NavView) {
+    setView(v)
+    if (v !== "client-detail" && v !== "new-client") {
+      setSelectedClient(null)
+      setWizardDone(null)
+    }
+  }
+
+  function handleSelectClient(c: Client) {
+    setSelectedClient(c)
+    setView("client-detail")
+  }
+
+  function handleAddNew() {
+    setWizardDone(null)
+    setView("new-client")
+  }
+
+  function handleWizardDone(result: { id:string; name:string; slug:string; join_url:string; station_url:string }) {
+    setWizardDone(result)
+    setClientListKey(k => k + 1)
+    setView("clients")
+  }
+
+  // ── Auth screen ──────────────────────────────────────────────────────────────
+  if (!authed) {
+    return (
+      <div style={{ minHeight: "100dvh", background: D.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-geist), system-ui, sans-serif" }}>
+        <div style={{ width: "100%", maxWidth: 380, padding: "40px 32px", background: "rgba(255,255,255,0.04)", borderRadius: 20, border: `1px solid ${D.border}` }}>
+          <div style={{ marginBottom: 32, textAlign: "center" }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: D.text, letterSpacing: "-0.02em" }}>HOST</div>
+            <div style={{ fontSize: 12, color: D.muted, marginTop: 4, letterSpacing: "0.1em", textTransform: "uppercase" }}>Owner Console</div>
+          </div>
+          <div style={{ marginBottom: 16, position: "relative" }}>
+            <input
+              type={showPass ? "text" : "password"}
+              placeholder="Password"
+              value={passInput}
+              onChange={e => setPassInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && login()}
+              style={{ width: "100%", boxSizing: "border-box", padding: "12px 44px 12px 16px", borderRadius: 10, border: `1px solid ${passErr ? D.red : D.border}`, background: D.surface, color: D.text, fontSize: 15, outline: "none" }}
+            />
+            <button onClick={() => setShowPass(s => !s)}
+              style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 14, padding: "4px" }}>
+              {showPass ? "Hide" : "Show"}
+            </button>
+          </div>
+          {passErr && <div style={{ color: D.red, fontSize: 13, marginBottom: 12, textAlign: "center" }}>Incorrect password</div>}
+          <button onClick={login}
+            style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: D.accent, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+            Sign In
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Main layout ──────────────────────────────────────────────────────────────
+  return (
+    <div style={{ minHeight: "100dvh", background: D.bg, display: "flex", fontFamily: "var(--font-geist), system-ui, sans-serif", color: D.text }}>
+      <Sidebar view={view} setView={handleSetView} />
+      <main style={{ flex: 1, overflow: "auto", padding: 32, minWidth: 0 }}>
+
+        {/* Success toast after wizard */}
+        {wizardDone && (
+          <div style={{ marginBottom: 24, padding: "14px 20px", background: D.greenBg, border: `1px solid ${D.greenBorder}`, borderRadius: 10,
+            display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <span style={{ color: D.green, fontWeight: 700 }}>✓ {wizardDone.name} created!</span>
+              <span style={{ color: D.text2, fontSize: 13, marginLeft: 12 }}>
+                Join: <a href={wizardDone.join_url} target="_blank" rel="noopener noreferrer" style={{ color: D.blue }}>{wizardDone.join_url}</a>
+              </span>
+            </div>
+            <button onClick={() => setWizardDone(null)}
+              style={{ background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 18 }}>✕</button>
+          </div>
+        )}
+
+        {view === "dashboard"    && <DashboardView token={token} />}
+        {view === "clients"      && <ClientsView key={clientListKey} token={token} onSelectClient={handleSelectClient} onAddNew={handleAddNew} />}
+        {view === "client-detail" && selectedClient && (
+          <ClientDetailView client={selectedClient} token={token} onBack={() => setView("clients")} onUpdated={() => {}} />
+        )}
+        {view === "new-client"   && (
+          <NewClientWizard token={token} onDone={handleWizardDone} onCancel={() => setView("clients")} />
+        )}
+        {view === "billing"      && <BillingView token={token} />}
+        {view === "analytics"    && <AnalyticsView token={token} />}
+        {view === "agreements"   && <AgreementsView token={token} />}
+        {view === "settings"     && <SettingsView token={token} />}
+      </main>
     </div>
   )
 }

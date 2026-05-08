@@ -2265,3 +2265,387 @@ def owner_capacity(secret: Optional[str] = None):
             row_counts[tbl] = -1
             print(f"[owner/capacity] row count failed for {tbl}: {ex}")
     return {"supabase_rows": row_counts, "server_time": _now()}
+
+
+# ── Client management (owner-only) ─────────────────────────────────────────────
+#
+# Required Supabase tables (run once via SQL editor):
+#
+#   CREATE TABLE IF NOT EXISTS client_credentials (
+#       id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+#       restaurant_id    TEXT NOT NULL,
+#       credential_type  TEXT NOT NULL,   -- "station_pin" | "manager_pin" | "wifi" | "other"
+#       label            TEXT NOT NULL,
+#       value            TEXT NOT NULL,
+#       notes            TEXT,
+#       updated_at       TIMESTAMPTZ DEFAULT NOW()
+#   );
+#
+#   CREATE TABLE IF NOT EXISTS restaurant_configs (
+#       id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+#       restaurant_id   TEXT UNIQUE NOT NULL,
+#       display_name    TEXT,
+#       nfc_url         TEXT,
+#       guest_config    TEXT,   -- JSON string
+#       menu_config     TEXT,   -- JSON string
+#       floor_plan      TEXT,   -- JSON string  [{number,label,capacity,shape,x,y,w,h}]
+#       settings        TEXT,   -- JSON string  {city,address,contact_name,contact_email,...}
+#       created_at      TIMESTAMPTZ DEFAULT NOW(),
+#       updated_at      TIMESTAMPTZ DEFAULT NOW()
+#   );
+#
+
+class CreateClientRequest(BaseModel):
+    name:          str
+    slug:          str
+    city:          Optional[str]  = None
+    address:       Optional[str]  = None
+    contact_name:  Optional[str]  = None
+    contact_email: Optional[str]  = None
+    plan_type:     str            = "standard"
+    location_count: int           = Field(ge=1, le=50, default=1)
+    monthly_fee:   float          = 0.0
+    initial_tables: int           = Field(ge=0, le=100, default=16)
+
+class CredentialRequest(BaseModel):
+    credential_type: str              # "station_pin" | "manager_pin" | "wifi" | "other"
+    label:           str
+    value:           str
+    notes:           Optional[str] = None
+
+class CredentialUpdateRequest(BaseModel):
+    label:           Optional[str] = None
+    value:           Optional[str] = None
+    notes:           Optional[str] = None
+    credential_type: Optional[str] = None
+
+class ClientConfigRequest(BaseModel):
+    guest_config:  Optional[dict] = None
+    menu_config:   Optional[dict] = None
+    floor_plan:    Optional[list] = None
+    display_name:  Optional[str]  = None
+    nfc_url:       Optional[str]  = None
+    settings:      Optional[dict] = None
+
+class BatchTablesRequest(BaseModel):
+    tables: list  # [{table_number, capacity, shape?, x?, y?, w?, h?, label?}]
+
+
+def _slugify(name: str) -> str:
+    import re as _re
+    s = name.lower().strip()
+    s = _re.sub(r"['’]", "", s)
+    s = _re.sub(r"[^a-z0-9]+", "-", s)
+    return s.strip("-")
+
+
+@app.get("/owner/clients")
+def owner_clients_list(secret: Optional[str] = None):
+    """List all restaurants with their agreement status and config metadata."""
+    _check_owner_secret(secret)
+    try:
+        restaurants = (
+            supabase.table("restaurants")
+            .select("id, name, slug, created_at")
+            .order("created_at", desc=True)
+            .execute()
+            .data or []
+        )
+        # Agreements — keyed by business_name (best match)
+        agreements = (
+            supabase.table("client_agreements")
+            .select("business_name, signer_name, signer_email, plan_type, status, signed_at, monthly_fee_cents, location_count")
+            .order("signed_at", desc=True)
+            .execute()
+            .data or []
+        )
+        agreement_map: dict = {}
+        for a in agreements:
+            bn = (a.get("business_name") or "").lower()
+            if bn not in agreement_map:
+                agreement_map[bn] = a
+        # Configs
+        try:
+            cfgs = (
+                supabase.table("restaurant_configs")
+                .select("restaurant_id, display_name, nfc_url, settings, updated_at")
+                .execute()
+                .data or []
+            )
+            cfg_map = {c["restaurant_id"]: c for c in cfgs}
+        except Exception:
+            cfg_map = {}
+
+        clients = []
+        for r in restaurants:
+            rid  = r["id"]
+            name = r.get("name", "")
+            slug = r.get("slug", "")
+            cfg  = cfg_map.get(rid, {})
+            # Parse settings JSON if stored as string
+            settings = cfg.get("settings") or {}
+            if isinstance(settings, str):
+                try: settings = _json.loads(settings)
+                except: settings = {}
+            # Best-match agreement by name
+            agreement = None
+            for bn, a in agreement_map.items():
+                if bn and (bn in name.lower() or name.lower() in bn):
+                    agreement = a
+                    break
+            clients.append({
+                "id":           rid,
+                "name":         name,
+                "slug":         slug,
+                "city":         settings.get("city"),
+                "display_name": cfg.get("display_name") or name,
+                "join_url":     cfg.get("nfc_url") or f"https://hostplatform.net/client/{slug}/join",
+                "station_url":  f"https://hostplatform.net/client/{slug}/station",
+                "plan_type":    (agreement or {}).get("plan_type", "standard"),
+                "status":       (agreement or {}).get("status", "active"),
+                "monthly_fee_cents": (agreement or {}).get("monthly_fee_cents"),
+                "location_count":    settings.get("location_count", 1),
+                "signed_at":    (agreement or {}).get("signed_at"),
+                "signer_name":  (agreement or {}).get("signer_name"),
+                "signer_email": (agreement or {}).get("signer_email"),
+                "created_at":   r.get("created_at"),
+            })
+        return {"clients": clients}
+    except Exception as e:
+        print(f"[owner/clients GET] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/owner/clients")
+def owner_create_client(req: CreateClientRequest, secret: Optional[str] = None):
+    """Create a new restaurant client — restaurants row + tables + config."""
+    _check_owner_secret(secret)
+    slug = _slugify(req.slug or req.name)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Could not derive a valid slug")
+    try:
+        existing = supabase.table("restaurants").select("id").eq("slug", slug).execute().data
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Slug '{slug}' is already in use")
+        rid = str(_uuid.uuid4())
+        supabase.table("restaurants").insert({"id": rid, "name": req.name, "slug": slug}).execute()
+        # Default tables
+        n = min(req.initial_tables, 100)
+        if n > 0:
+            rows = [
+                {
+                    "restaurant_id": rid,
+                    "table_number":  i + 1,
+                    "capacity":      4 if (i % 3 == 0) else 2,
+                    "status":        "available",
+                }
+                for i in range(n)
+            ]
+            supabase.table("tables").insert(rows).execute()
+        # Initial config
+        settings = {
+            k: v for k, v in {
+                "city":          req.city,
+                "address":       req.address,
+                "contact_name":  req.contact_name,
+                "contact_email": req.contact_email,
+                "location_count": req.location_count,
+                "plan_type":     req.plan_type,
+                "monthly_fee":   req.monthly_fee,
+            }.items() if v is not None
+        }
+        join_url = f"https://hostplatform.net/client/{slug}/join"
+        default_guest = {
+            "bgColor": "#000000", "accentColor": "#22c55e", "buttonTextColor": "#ffffff",
+            "restaurantName": req.name, "tagline": "Powered by HOST",
+            "waitMessages": [
+                "Your spot is saved — feel free to step out.",
+                "We'll let you know the moment your table is ready.",
+                "Sit tight, we're moving quickly.",
+            ],
+            "seatedMessage": "Thanks for dining with us!",
+            "finalButtons": [],
+        }
+        supabase.table("restaurant_configs").insert({
+            "restaurant_id": rid,
+            "display_name":  req.name,
+            "nfc_url":       join_url,
+            "settings":      _json.dumps(settings),
+            "guest_config":  _json.dumps(default_guest),
+            "menu_config":   _json.dumps({"sections": []}),
+            "floor_plan":    _json.dumps([]),
+        }).execute()
+        print(f"[owner/clients POST] Created restaurant '{req.name}' slug='{slug}' id={rid}")
+        return {
+            "ok":            True,
+            "restaurant_id": rid,
+            "slug":          slug,
+            "join_url":      join_url,
+            "station_url":   f"https://hostplatform.net/client/{slug}/station",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[owner/clients POST] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/owner/clients/{restaurant_id}/credentials")
+def get_credentials(restaurant_id: str, secret: Optional[str] = None):
+    _check_owner_secret(secret)
+    try:
+        result = (
+            supabase.table("client_credentials")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .order("credential_type")
+            .execute()
+        )
+        return {"credentials": result.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/owner/clients/{restaurant_id}/credentials")
+def add_credential(restaurant_id: str, req: CredentialRequest, secret: Optional[str] = None):
+    _check_owner_secret(secret)
+    try:
+        result = supabase.table("client_credentials").insert({
+            "restaurant_id":   restaurant_id,
+            "credential_type": req.credential_type,
+            "label":           req.label,
+            "value":           req.value,
+            "notes":           req.notes,
+            "updated_at":      datetime.now(timezone.utc).isoformat(),
+        }).execute()
+        return {"ok": True, "credential": result.data[0] if result.data else None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/owner/clients/{restaurant_id}/credentials/{credential_id}")
+def update_credential(restaurant_id: str, credential_id: str, req: CredentialUpdateRequest, secret: Optional[str] = None):
+    _check_owner_secret(secret)
+    try:
+        data = {"updated_at": datetime.now(timezone.utc).isoformat()}
+        if req.label           is not None: data["label"]           = req.label
+        if req.value           is not None: data["value"]           = req.value
+        if req.notes           is not None: data["notes"]           = req.notes
+        if req.credential_type is not None: data["credential_type"] = req.credential_type
+        supabase.table("client_credentials").update(data).eq("id", credential_id).eq("restaurant_id", restaurant_id).execute()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/owner/clients/{restaurant_id}/credentials/{credential_id}")
+def delete_credential(restaurant_id: str, credential_id: str, secret: Optional[str] = None):
+    _check_owner_secret(secret)
+    try:
+        supabase.table("client_credentials").delete().eq("id", credential_id).eq("restaurant_id", restaurant_id).execute()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/owner/clients/{restaurant_id}/config")
+def get_client_config(restaurant_id: str, secret: Optional[str] = None):
+    _check_owner_secret(secret)
+    try:
+        result = (
+            supabase.table("restaurant_configs")
+            .select("*")
+            .eq("restaurant_id", restaurant_id)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return {"restaurant_id": restaurant_id, "guest_config": None, "menu_config": None, "floor_plan": [], "settings": {}}
+        row = result.data[0]
+        for field in ("guest_config", "menu_config", "floor_plan", "settings"):
+            if isinstance(row.get(field), str):
+                try:   row[field] = _json.loads(row[field])
+                except: pass
+        return row
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/owner/clients/{restaurant_id}/config")
+def save_client_config(restaurant_id: str, req: ClientConfigRequest, secret: Optional[str] = None):
+    _check_owner_secret(secret)
+    try:
+        existing = supabase.table("restaurant_configs").select("id").eq("restaurant_id", restaurant_id).limit(1).execute()
+        data: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+        if req.guest_config  is not None: data["guest_config"]  = _json.dumps(req.guest_config)
+        if req.menu_config   is not None: data["menu_config"]   = _json.dumps(req.menu_config)
+        if req.floor_plan    is not None: data["floor_plan"]    = _json.dumps(req.floor_plan)
+        if req.display_name  is not None: data["display_name"]  = req.display_name
+        if req.nfc_url       is not None: data["nfc_url"]       = req.nfc_url
+        if req.settings      is not None: data["settings"]      = _json.dumps(req.settings)
+        if existing.data:
+            supabase.table("restaurant_configs").update(data).eq("restaurant_id", restaurant_id).execute()
+        else:
+            data["restaurant_id"] = restaurant_id
+            supabase.table("restaurant_configs").insert(data).execute()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/owner/clients/{restaurant_id}/tables/batch")
+def batch_save_tables(restaurant_id: str, req: BatchTablesRequest, secret: Optional[str] = None):
+    """Replace the entire table list for a restaurant. Called by the table designer."""
+    _check_owner_secret(secret)
+    try:
+        supabase.table("tables").delete().eq("restaurant_id", restaurant_id).execute()
+        rows = []
+        for t in req.tables:
+            if not t.get("table_number"):
+                continue
+            row: dict = {
+                "restaurant_id": restaurant_id,
+                "table_number":  int(t["table_number"]),
+                "capacity":      int(t.get("capacity", 2)),
+                "status":        "available",
+            }
+            for f in ("shape", "label"):
+                if f in t: row[f] = t[f]
+            rows.append(row)
+        if rows:
+            supabase.table("tables").insert(rows).execute()
+        return {"ok": True, "count": len(rows)}
+    except Exception as e:
+        print(f"[tables/batch] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/client/{slug}/config")
+def get_client_config_by_slug(slug: str):
+    """Public endpoint — returns guest_config and menu for the generic join/wait pages."""
+    try:
+        rest = supabase.table("restaurants").select("id, name").eq("slug", slug).limit(1).execute()
+        if not rest.data:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        rid  = rest.data[0]["id"]
+        name = rest.data[0]["name"]
+        cfg_res = supabase.table("restaurant_configs").select("guest_config, menu_config, display_name, nfc_url").eq("restaurant_id", rid).limit(1).execute()
+        cfg = cfg_res.data[0] if cfg_res.data else {}
+        gc = cfg.get("guest_config")
+        mc = cfg.get("menu_config")
+        if isinstance(gc, str):
+            try: gc = _json.loads(gc)
+            except: gc = None
+        if isinstance(mc, str):
+            try: mc = _json.loads(mc)
+            except: mc = None
+        return {
+            "restaurant_id":  rid,
+            "name":           cfg.get("display_name") or name,
+            "guest_config":   gc,
+            "menu_config":    mc,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
