@@ -1200,6 +1200,8 @@ function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: 
   const [editing, setEditing] = useState<string | null>(null)
   const [form, setForm] = useState({ credential_type: "other", label: "", value: "", notes: "" })
   const [saving, setSaving] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<""|"ok"|"error">("")
+  const [saveError, setSaveError] = useState("")
   const [revealed, setRevealed] = useState<Set<string>>(new Set())
 
   const load = useCallback(() => {
@@ -1214,15 +1216,31 @@ function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: 
   useEffect(() => { load() }, [load])
 
   async function save() {
-    setSaving(true)
-    const url = editing
-      ? `${API}/owner/clients/${restaurantId}/credentials/${editing}?secret=${encodeURIComponent(token)}`
-      : `${API}/owner/clients/${restaurantId}/credentials?secret=${encodeURIComponent(token)}`
-    const method = editing ? "PATCH" : "POST"
-    await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
-    setForm({ credential_type: "other", label: "", value: "", notes: "" })
-    setAdding(false); setEditing(null); setSaving(false)
-    load()
+    if (!form.label.trim() || !form.value.trim()) {
+      setSaveStatus("error"); setSaveError("Label and Value are required."); return
+    }
+    setSaving(true); setSaveStatus(""); setSaveError("")
+    try {
+      const url = editing
+        ? `${API}/owner/clients/${restaurantId}/credentials/${editing}?secret=${encodeURIComponent(token)}`
+        : `${API}/owner/clients/${restaurantId}/credentials?secret=${encodeURIComponent(token)}`
+      const method = editing ? "PATCH" : "POST"
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        setSaveStatus("error"); setSaveError(err.error || `Server error ${res.status}`)
+        return
+      }
+      setForm({ credential_type: "other", label: "", value: "", notes: "" })
+      setAdding(false); setEditing(null)
+      setSaveStatus("ok")
+      load()
+      setTimeout(() => setSaveStatus(""), 3000)
+    } catch {
+      setSaveStatus("error"); setSaveError("Network error — check connection.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function del(id: string) {
@@ -1236,7 +1254,7 @@ function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: 
   }
 
   const typeIcon: Record<string, string> = {
-    station_pin: "🔐", manager_pin: "🔑", wifi: "📶", other: "🗝",
+    admin_pin: "🔐", station_pin: "🔐", manager_pin: "🔑", login: "🖥️", wifi: "📶", other: "🗝",
   }
 
   if (loading) return <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>
@@ -1246,8 +1264,9 @@ function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div style={{ fontSize: 14, color: D.text2 }}>
           {creds.length} credential{creds.length !== 1 ? "s" : ""} on file
+          {saveStatus === "ok" && !adding && !editing && <span style={{ marginLeft: 10, color: D.green, fontWeight: 600, fontSize: 13 }}>✓ Saved</span>}
         </div>
-        <button onClick={() => { setAdding(true); setEditing(null); setForm({ credential_type: "other", label: "", value: "", notes: "" }) }}
+        <button onClick={() => { setAdding(true); setEditing(null); setForm({ credential_type: "other", label: "", value: "", notes: "" }); setSaveStatus(""); setSaveError("") }}
           style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${D.green}40`, background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
           + Add Credential
         </button>
@@ -1263,6 +1282,8 @@ function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: 
             <div>
               <FieldLabel>Type</FieldLabel>
               <select value={form.credential_type} onChange={e => setForm(p => ({ ...p, credential_type: e.target.value }))} style={selectStyle}>
+                <option value="login">Login / Password</option>
+                <option value="admin_pin">Admin PIN</option>
                 <option value="station_pin">Station PIN</option>
                 <option value="manager_pin">Manager PIN</option>
                 <option value="wifi">WiFi</option>
@@ -1282,15 +1303,17 @@ function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: 
               <Input value={form.notes} onChange={v => setForm(p => ({ ...p, notes: v }))} placeholder="Any notes" />
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center" }}>
             <button onClick={save} disabled={saving}
               style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
               {saving ? "Saving…" : "Save"}
             </button>
-            <button onClick={() => { setAdding(false); setEditing(null) }}
+            <button onClick={() => { setAdding(false); setEditing(null); setSaveStatus(""); setSaveError("") }}
               style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
               Cancel
             </button>
+            {saveStatus === "ok" && <span style={{ fontSize: 13, color: D.green, fontWeight: 600 }}>✓ Saved</span>}
+            {saveStatus === "error" && <span style={{ fontSize: 13, color: D.red }}>{saveError}</span>}
           </div>
         </div>
       )}
@@ -2174,6 +2197,12 @@ function AgreementsView({ token }: { token: string }) {
   .stamp{background:#f0f7ff;border:1px solid #b3d4f5;border-radius:6px;padding:12px 16px;margin:24px 0;font-size:12px;color:#1a4a7a}
   .sig{border:2px solid #000;border-radius:6px;padding:16px 20px;margin-top:24px;font-size:13px}
   .sig strong{display:block;font-size:16px;margin-bottom:4px}
+  .terms{margin-top:40px;border-top:3px solid #000;padding-top:24px}
+  .terms-title{font-size:16px;font-weight:700;margin-bottom:4px}
+  .terms-sub{font-size:11px;color:#888;margin-bottom:20px}
+  .terms-section{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;margin:20px 0 6px;color:#333}
+  .terms p{font-size:12px;line-height:1.7;margin:0 0 12px;color:#222}
+  .terms .warning{font-weight:700;color:#000}
   .legal{font-size:11px;color:#888;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:16px}
   @media print{body{margin:20px auto}}
 </style>
@@ -2202,6 +2231,56 @@ function AgreementsView({ token }: { token: string }) {
   ${a.signer_title ? a.signer_title + "<br/>" : ""}${a.business_name}<br/>
   <span style="font-size:12px;color:#555">Signed electronically on ${new Date(a.signed_at).toLocaleString("en-US",{dateStyle:"long",timeStyle:"short"})} from IP ${a.ip_address || "unknown"}</span>
 </div>
+
+<div class="terms">
+  <div class="terms-title">HOST SYSTEMS LLC — MASTER SUBSCRIPTION AGREEMENT</div>
+  <div class="terms-sub">Version 1.0 · Full text available at hostplatform.net/legal/terms</div>
+
+  <p>This Master Subscription Agreement ("Agreement") governs your access to and use of the Host restaurant
+  management platform ("Services") provided by Host Systems LLC, a Colorado limited liability company.
+  By completing this onboarding, you agree to all terms of this Agreement.</p>
+
+  <div class="terms-section">Free Trial (Article 2)</div>
+  <p>You receive a 30-day free trial beginning today. No charge during the trial. On Day 31, your subscription
+  converts automatically to the paid plan you select. You'll receive reminder emails at 7 days and 3 days
+  before billing begins. Cancel anytime before Day 31 at no charge. One trial per business entity.</p>
+
+  <div class="terms-section">Subscription &amp; Payment (Articles 3–4)</div>
+  <p>Monthly subscription billed in advance via Stripe. Auto-renews monthly. Price adjustments require
+  30 days' notice. Late payments accrue interest at 1.5%/month. Accounts suspended after 10 days
+  of non-payment; terminated after 30 days. All fees are non-refundable except as stated in the Agreement.</p>
+
+  <div class="terms-section">Your Data (Article 6)</div>
+  <p>You own your guest data. We process it only to provide the Services and never sell it or use it
+  for advertising. We maintain reasonable security measures. You are responsible for obtaining
+  guest consent to receive SMS messages under the TCPA.</p>
+
+  <div class="terms-section">SMS Compliance (Article 7)</div>
+  <p>You are solely responsible for TCPA compliance, including obtaining prior express written consent
+  from every guest before texting them. Host Systems is not liable for your SMS practices.</p>
+
+  <div class="terms-section">Intellectual Property (Article 8)</div>
+  <p>Host Systems owns the platform and all related software. You retain your guest data and brand assets.</p>
+
+  <div class="terms-section">Limitation of Liability (Article 11)</div>
+  <p><span class="warning">IMPORTANT: HOST SYSTEMS' TOTAL LIABILITY IS CAPPED AT ONE MONTH'S SUBSCRIPTION FEES.
+  NEITHER PARTY IS LIABLE FOR INDIRECT, CONSEQUENTIAL, OR PUNITIVE DAMAGES.</span> These limitations
+  are a fundamental part of the agreement.</p>
+
+  <div class="terms-section">Termination (Article 5)</div>
+  <p>Cancel anytime with 15 days' written notice (after the trial). No long-term contract, no cancellation fees.
+  Termination for cause (non-payment or material breach) requires 30 days' cure notice.</p>
+
+  <div class="terms-section">Governing Law &amp; Arbitration (Article 13)</div>
+  <p>Colorado law governs this Agreement. Disputes are resolved by binding JAMS arbitration in Denver,
+  Colorado. <span class="warning">You waive your right to a jury trial and to participate in class actions.</span></p>
+
+  <div class="terms-section">Electronic Signature (Exhibit C)</div>
+  <p>By signing below, you confirm that you have read this Agreement, are authorized to bind your
+  business, and agree to be bound by all its terms. This signature is legally binding under the
+  ESIGN Act (15 U.S.C. § 7001) and the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101).</p>
+</div>
+
 <div class="legal">
   This document is a record of an electronically signed service agreement between HOST Systems Inc. and the signatory above.
   Agreement ID: ${a.id} · Generated: ${new Date().toISOString()}
