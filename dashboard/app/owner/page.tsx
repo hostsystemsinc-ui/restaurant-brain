@@ -437,6 +437,90 @@ function DashboardView({ token }: { token: string }) {
   )
 }
 
+// ── Floor Viewer (read-only) ───────────────────────────────────────────────────
+function FloorViewer({ tables, walls, objects, aspectRatio = 1.62 }: {
+  tables: FloorTable[]
+  walls?: FloorWall[]
+  objects?: FloorObject[]
+  aspectRatio?: number
+}) {
+  return (
+    <div style={{
+      width: "100%", aspectRatio: String(aspectRatio),
+      background: "#08090b", borderRadius: 12,
+      border: "1px solid rgba(255,255,255,0.08)",
+      position: "relative", overflow: "hidden",
+    }}>
+      {/* Walls */}
+      {(walls || []).map((w, i) => {
+        const isV = Math.abs(w.x2 - w.x1) < Math.abs(w.y2 - w.y1)
+        return (
+          <div key={i} style={{
+            position: "absolute", background: "rgba(255,185,100,0.55)", pointerEvents: "none",
+            ...(isV ? {
+              left: `${w.x1}%`, top: `${Math.min(w.y1, w.y2)}%`,
+              width: "0.4%", height: `${Math.abs(w.y2 - w.y1)}%`,
+            } : {
+              left: `${Math.min(w.x1, w.x2)}%`, top: `${w.y1}%`,
+              width: `${Math.abs(w.x2 - w.x1)}%`, height: "0.5%",
+            }),
+          }} />
+        )
+      })}
+      {/* Objects */}
+      {(objects || []).map(obj => (
+        <div key={obj.id} style={{
+          position: "absolute",
+          left: `${obj.x}%`, top: `${obj.y}%`,
+          width: `${obj.w}%`, height: `${obj.h}%`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          pointerEvents: "none",
+          ...(obj.type === "window" ? { background: "rgba(100,160,255,0.1)", border: "1px solid rgba(100,160,255,0.25)", borderRadius: 2 } :
+             obj.type === "counter" ? { background: "rgba(140,100,60,0.18)", border: "1px solid rgba(140,100,60,0.35)", borderRadius: 3 } :
+             { background: "transparent" }),
+        }}>
+          {obj.label?.trim() && (
+            <span style={{ fontSize: "clamp(7px,1.1%,11px)", color: "rgba(255,255,255,0.32)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
+              {obj.label.trim()}
+            </span>
+          )}
+        </div>
+      ))}
+      {/* Tables */}
+      {tables.map(t => {
+        const baseStyle: React.CSSProperties = {
+          position: "absolute",
+          left: `${t.x - t.w / 2}%`, top: `${t.y - t.h / 2}%`,
+          width: `${t.w}%`, height: `${t.h}%`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexDirection: "column", boxSizing: "border-box",
+          background: "rgba(34,197,94,0.08)",
+          border: "1px solid rgba(34,197,94,0.3)",
+          borderRadius: t.shape === "circle" ? "50%" : t.shape === "booth" ? "4px 4px 0 0" : "5px",
+        }
+        if (t.shape === "diamond") {
+          baseStyle.clipPath = "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
+          baseStyle.borderRadius = 0
+          baseStyle.border = "none"
+          baseStyle.background = "rgba(34,197,94,0.12)"
+        }
+        return (
+          <div key={t.id} style={baseStyle}>
+            <div style={{ fontSize: "clamp(7px,1.3%,12px)", fontWeight: 700, color: "rgba(255,255,255,0.85)", lineHeight: 1, textAlign: "center" }}>
+              {t.label || t.number}
+            </div>
+          </div>
+        )
+      })}
+      {tables.length === 0 && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ color: "rgba(255,255,255,0.18)", fontSize: 13 }}>No floor plan configured</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Table Designer ─────────────────────────────────────────────────────────────
 function TableDesigner({ tables, walls, objects, onChange, aspectRatio = 1.62 }: {
   tables: FloorTable[]
@@ -468,8 +552,8 @@ function TableDesigner({ tables, walls, objects, onChange, aspectRatio = 1.62 }:
       const t: FloorTable = {
         id: nanoid(), number: num, label: newTbl.label || String(num),
         capacity: parseInt(newTbl.capacity) || 4, shape: newTbl.shape,
-        x: Math.max(0, Math.min(92, parseFloat(x) - w / 2)),
-        y: Math.max(0, Math.min(92, parseFloat(y) - h / 2)),
+        x: Math.max(w/2, Math.min(100 - w/2, parseFloat(x))),
+        y: Math.max(h/2, Math.min(100 - h/2, parseFloat(y))),
         w, h,
       }
       onChange([...tables, t])
@@ -502,10 +586,21 @@ function TableDesigner({ tables, walls, objects, onChange, aspectRatio = 1.62 }:
     window.addEventListener("mouseup", onUp)
   }
 
-  function deleteSelected() {
+  const deleteSelected = useCallback(() => {
     onChange(tables.filter(t => t.id !== selected))
     setSelected(null)
-  }
+  }, [onChange, tables, selected])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && selected && !((e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA|SELECT/i))) {
+        deleteSelected()
+      }
+      if (e.key === "Escape") { setSelected(null); setAdding(false) }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [selected, deleteSelected])
 
   function updateSelected(patch: Partial<FloorTable>) {
     onChange(tables.map(t => t.id === selected ? { ...t, ...patch } : t))
@@ -513,7 +608,7 @@ function TableDesigner({ tables, walls, objects, onChange, aspectRatio = 1.62 }:
 
   const shapeStyle = (t: FloorTable, isSel: boolean): React.CSSProperties => {
     const base: React.CSSProperties = {
-      position: "absolute", left: `${t.x}%`, top: `${t.y}%`,
+      position: "absolute", left: `${t.x - t.w / 2}%`, top: `${t.y - t.h / 2}%`,
       width: `${t.w}%`, height: `${t.h}%`,
       background: isSel ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.12)",
       border: `2px solid ${isSel ? D.blue : "rgba(255,255,255,0.22)"}`,
@@ -1376,11 +1471,12 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   const [floorObjects, setFloorObjects] = useState<FloorObject[]>([])
   const [canvasAspect, setCanvasAspect] = useState<number>(1.62)
   const [menuSections, setMenuSections] = useState<MenuSection[]>([])
-  const [agreements, setAgreements] = useState<AgreementRecord[]>([])
+  const [clientAgreements, setClientAgreements] = useState<AgreementRecord[]>([])
   const [agreementsLoaded, setAgreementsLoaded] = useState(false)
+  const [floorEditMode, setFloorEditMode] = useState(false)
 
   useEffect(() => {
-    if ((tab === "floor-map" || tab === "guest-page" || tab === "menu") && !configLoaded) {
+    if ((tab === "overview" || tab === "floor-map" || tab === "guest-page" || tab === "menu") && !configLoaded) {
       fetch(`${API}/owner/clients/${client.id}/config?secret=${encodeURIComponent(token)}`)
         .then(r => r.json())
         .then(async d => {
@@ -1436,7 +1532,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
         .then(r => r.json())
         .then(d => {
           const all: AgreementRecord[] = d.agreements || []
-          setAgreements(all.filter(a => a.business_name?.toLowerCase().includes(client.name.toLowerCase()) || client.name.toLowerCase().includes(a.business_name?.toLowerCase())))
+          setClientAgreements(all.filter(a => a.business_name?.toLowerCase().includes(client.name.toLowerCase()) || client.name.toLowerCase().includes(a.business_name?.toLowerCase())))
           setAgreementsLoaded(true)
         })
         .catch(() => setAgreementsLoaded(true))
@@ -1459,13 +1555,13 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
     }
   }
 
-  const tabs: { id: typeof tab; label: string }[] = [
-    { id: "overview",    label: "Overview"    },
-    { id: "credentials", label: "Credentials" },
-    { id: "floor-map",   label: "Floor Map"   },
-    { id: "guest-page",  label: "Guest Page"  },
-    { id: "menu",        label: "Menu"        },
-    { id: "documents",   label: "Documents"   },
+  const tabs: { id: typeof tab; label: string; icon: string }[] = [
+    { id: "overview",    label: "Overview",    icon: "⊞" },
+    { id: "credentials", label: "Credentials", icon: "🔑" },
+    { id: "floor-map",   label: "Floor Map",   icon: "🗺" },
+    { id: "guest-page",  label: "Guest Page",  icon: "📱" },
+    { id: "menu",        label: "Menu",        icon: "🍽" },
+    { id: "documents",   label: "Documents",   icon: "📄" },
   ]
 
   return (
@@ -1495,7 +1591,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
               background: tab === t.id ? D.surface2 : "transparent",
               color: tab === t.id ? D.text : D.text2,
               fontSize: 13, fontWeight: tab === t.id ? 600 : 400, cursor: "pointer", whiteSpace: "nowrap" }}>
-            {t.label}
+            {t.icon} {t.label}
           </button>
         ))}
       </div>
@@ -1512,29 +1608,39 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
 
       {/* Overview tab */}
       {tab === "overview" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-          {[
-            { label: "Join URL",         value: client.join_url,    link: true  },
-            { label: "Station URL",      value: client.station_url, link: true  },
-            { label: "Plan",             value: client.plan_type              },
-            { label: "Status",           value: client.status                 },
-            { label: "Monthly Fee",      value: client.monthly_fee_cents != null ? `$${(client.monthly_fee_cents/100).toFixed(2)}/mo` : "Free" },
-            { label: "Locations",        value: String(client.location_count || 1) },
-            { label: "Signed",           value: client.signed_at ? fmtTime(client.signed_at) : "Not signed" },
-            { label: "Signer",           value: client.signer_name || "—"     },
-            { label: "Signer Email",     value: client.signer_email || "—"    },
-            { label: "Client ID",        value: client.id                     },
-          ].map(({ label, value, link }) => (
-            <div key={label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px" }}>
-              <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
-              {link ? (
-                <a href={value} target="_blank" rel="noopener noreferrer"
-                  style={{ fontSize: 13, color: D.blue, wordBreak: "break-all" as const }}>{value}</a>
-              ) : (
-                <div style={{ fontSize: 13, color: D.text, wordBreak: "break-all" as const }}>{value}</div>
-              )}
+        <div style={{ display: "flex", gap: 20, flexDirection: "column" }}>
+          {/* Info grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {[
+              { label: "Join URL",         value: client.join_url,    link: true  },
+              { label: "Station URL",      value: client.station_url, link: true  },
+              { label: "Plan",             value: client.plan_type              },
+              { label: "Status",           value: client.status                 },
+              { label: "Monthly Fee",      value: client.monthly_fee_cents != null ? `$${(client.monthly_fee_cents/100).toFixed(2)}/mo` : "Free" },
+              { label: "Locations",        value: String(client.location_count || 1) },
+              { label: "Signed",           value: client.signed_at ? fmtTime(client.signed_at) : "Not signed" },
+              { label: "Signer",           value: client.signer_name || "—"     },
+              { label: "Signer Email",     value: client.signer_email || "—"    },
+              { label: "Client ID",        value: client.id                     },
+            ].map(({ label, value, link }) => (
+              <div key={label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
+                {link ? (
+                  <a href={value} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 13, color: D.blue, wordBreak: "break-all" as const }}>{value}</a>
+                ) : (
+                  <div style={{ fontSize: 13, color: D.text, wordBreak: "break-all" as const }}>{value}</div>
+                )}
+              </div>
+            ))}
+          </div>
+          {/* Mini floor map preview */}
+          {configLoaded && floorTables.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Floor Plan Preview</div>
+              <FloorViewer tables={floorTables} walls={floorWalls} objects={floorObjects} aspectRatio={canvasAspect} />
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -1548,14 +1654,27 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
             <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>
           ) : (
             <>
-              <TableDesigner tables={floorTables} walls={floorWalls} objects={floorObjects} onChange={t => setFloorTables(t)} aspectRatio={canvasAspect} />
-              <div style={{ marginTop: 16, display: "flex", gap: 10 }}>
-                <button onClick={() => saveConfig({ floor_plan: { tables: floorTables, walls: floorWalls, objects: floorObjects, canvasAspect } as unknown as FloorTable[] })} disabled={savingConfig}
-                  style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-                  {savingConfig ? "Saving…" : "Save Floor Map"}
-                </button>
-                <div style={{ color: D.muted, fontSize: 12, alignSelf: "center" }}>{floorTables.length} tables</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ fontSize: 13, color: D.muted }}>{floorTables.length} tables · {floorWalls.length} walls</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => setFloorEditMode(m => !m)}
+                    style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${floorEditMode ? D.blue : D.border}`,
+                      background: floorEditMode ? D.blueBg : "transparent", color: floorEditMode ? D.blue : D.text2,
+                      fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    {floorEditMode ? "✏ Editing" : "✏ Edit"}
+                  </button>
+                  {floorEditMode && (
+                    <button onClick={() => saveConfig({ floor_plan: { tables: floorTables, walls: floorWalls, objects: floorObjects, canvasAspect } as unknown as FloorTable[] })} disabled={savingConfig}
+                      style={{ padding: "7px 20px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                      {savingConfig ? "Saving…" : "Save"}
+                    </button>
+                  )}
+                </div>
               </div>
+              {floorEditMode
+                ? <TableDesigner tables={floorTables} walls={floorWalls} objects={floorObjects} onChange={t => setFloorTables(t)} aspectRatio={canvasAspect} />
+                : <FloorViewer tables={floorTables} walls={floorWalls} objects={floorObjects} aspectRatio={canvasAspect} />
+              }
             </>
           )}
         </div>
@@ -1597,14 +1716,14 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
           {!agreementsLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
             <>
               <div style={{ fontSize: 14, color: D.text2, marginBottom: 16 }}>
-                {agreements.length} signed agreement{agreements.length !== 1 ? "s" : ""}
+                {clientAgreements.length} signed agreement{clientAgreements.length !== 1 ? "s" : ""}
               </div>
-              {agreements.length === 0 && (
+              {clientAgreements.length === 0 && (
                 <div style={{ color: D.muted, fontSize: 13, padding: "24px 0" }}>
                   No signed agreements found for this client.
                 </div>
               )}
-              {agreements.map(a => (
+              {clientAgreements.map(a => (
                 <div key={a.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "16px 20px", marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div>
