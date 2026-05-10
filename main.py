@@ -2352,6 +2352,16 @@ class ClientConfigRequest(BaseModel):
     nfc_url:       Optional[str]  = None
     settings:      Optional[dict] = None
 
+class ClientUpdateRequest(BaseModel):
+    """Patch editable fields on the restaurants row and/or its config."""
+    name:          Optional[str]  = None   # restaurants.name (shown in DB / legacy)
+    display_name:  Optional[str]  = None   # restaurant_configs.display_name (shown in owner console)
+    city:          Optional[str]  = None   # stored in restaurant_configs.settings
+    plan_type:     Optional[str]  = None   # stored in restaurant_configs.settings
+    status:        Optional[str]  = None   # stored in restaurant_configs.settings
+    monthly_fee:   Optional[float]= None   # stored in restaurant_configs.settings (dollars)
+    join_url:      Optional[str]  = None   # restaurant_configs.nfc_url
+
 class BatchTablesRequest(BaseModel):
     tables: list  # [{table_number, capacity, shape?, x?, y?, w?, h?, label?}]
 
@@ -2514,6 +2524,55 @@ def owner_create_client(req: CreateClientRequest, secret: Optional[str] = None):
         raise
     except Exception as e:
         print(f"[owner/clients POST] {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/owner/clients/{restaurant_id}")
+def patch_client(restaurant_id: str, req: ClientUpdateRequest, secret: Optional[str] = None):
+    """Update editable fields on a client — display name, city, plan, join URL, etc."""
+    _check_owner_secret(secret)
+    try:
+        # 1. Update restaurants.name if provided
+        if req.name is not None:
+            supabase.table("restaurants").update({"name": req.name}).eq("id", restaurant_id).execute()
+
+        # 2. Update restaurant_configs (display_name, nfc_url, settings patch)
+        existing_cfg = supabase.table("restaurant_configs").select("settings").eq("restaurant_id", restaurant_id).limit(1).execute()
+        cfg_data: dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+
+        if req.display_name is not None:
+            cfg_data["display_name"] = req.display_name
+        if req.join_url is not None:
+            cfg_data["nfc_url"] = req.join_url
+
+        # Merge settings patch (city, plan_type, status, monthly_fee)
+        current_settings: dict = {}
+        if existing_cfg.data:
+            raw = existing_cfg.data[0].get("settings") or {}
+            if isinstance(raw, str):
+                try:   current_settings = _json.loads(raw)
+                except: current_settings = {}
+            else:
+                current_settings = raw
+        settings_patch = {k: v for k, v in {
+            "city":        req.city,
+            "plan_type":   req.plan_type,
+            "status":      req.status,
+            "monthly_fee": req.monthly_fee,
+        }.items() if v is not None}
+        if settings_patch:
+            current_settings.update(settings_patch)
+            cfg_data["settings"] = _json.dumps(current_settings)
+
+        if existing_cfg.data:
+            supabase.table("restaurant_configs").update(cfg_data).eq("restaurant_id", restaurant_id).execute()
+        else:
+            cfg_data["restaurant_id"] = restaurant_id
+            supabase.table("restaurant_configs").insert(cfg_data).execute()
+
+        return {"ok": True}
+    except Exception as e:
+        print(f"[owner/clients PATCH] {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

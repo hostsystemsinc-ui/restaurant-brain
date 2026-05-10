@@ -1542,6 +1542,192 @@ function CredentialsTab({ restaurantId, token }: { restaurantId: string; token: 
   )
 }
 
+// ── Overview Tab (editable client details) ─────────────────────────────────────
+function OverviewTab({ client, token, floorTables, floorWalls, floorObjects, canvasAspect, configLoaded, onUpdated }: {
+  client: Client
+  token: string
+  floorTables: FloorTable[]
+  floorWalls: FloorWall[]
+  floorObjects: FloorObject[]
+  canvasAspect: number
+  configLoaded: boolean
+  onUpdated: () => void
+}) {
+  const [editing,     setEditing]     = useState(false)
+  const [saving,      setSaving]      = useState(false)
+  const [saveResult,  setSaveResult]  = useState<{ ok: boolean; msg: string } | null>(null)
+
+  // Editable fields
+  const [displayName, setDisplayName] = useState(client.display_name)
+  const [city,        setCity]        = useState(client.city || "")
+  const [joinUrl,     setJoinUrl]     = useState(client.join_url)
+  const [planType,    setPlanType]    = useState(client.plan_type)
+  const [status,      setStatus]      = useState(client.status)
+  const [monthlyFee,  setMonthlyFee]  = useState(
+    client.monthly_fee_cents != null ? String(client.monthly_fee_cents / 100) : ""
+  )
+
+  const save = async () => {
+    setSaving(true); setSaveResult(null)
+    try {
+      const r = await fetch(`${API}/owner/clients/${client.id}?secret=${encodeURIComponent(token)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: displayName.trim() || undefined,
+          city:         city.trim()        || undefined,
+          join_url:     joinUrl.trim()     || undefined,
+          plan_type:    planType           || undefined,
+          status:       status             || undefined,
+          monthly_fee:  monthlyFee ? parseFloat(monthlyFee) : undefined,
+        }),
+      })
+      const d = await r.json()
+      if (r.ok && d.ok) {
+        setSaveResult({ ok: true, msg: "Saved ✓" })
+        setEditing(false)
+        onUpdated()
+      } else {
+        setSaveResult({ ok: false, msg: d.detail || "Save failed" })
+      }
+    } catch {
+      setSaveResult({ ok: false, msg: "Network error" })
+    } finally { setSaving(false) }
+  }
+
+  const cancel = () => {
+    setDisplayName(client.display_name)
+    setCity(client.city || "")
+    setJoinUrl(client.join_url)
+    setPlanType(client.plan_type)
+    setStatus(client.status)
+    setMonthlyFee(client.monthly_fee_cents != null ? String(client.monthly_fee_cents / 100) : "")
+    setEditing(false); setSaveResult(null)
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 20, flexDirection: "column" }}>
+
+      {/* Editable info block */}
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${D.border}` }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: D.text }}>Client Details</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            {editing && (
+              <button onClick={cancel}
+                style={{ padding: "5px 14px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+                Cancel
+              </button>
+            )}
+            <button onClick={editing ? save : () => setEditing(true)} disabled={saving}
+              style={{ padding: "5px 14px", borderRadius: 7, border: "none",
+                background: editing ? D.accent : "rgba(255,255,255,0.08)",
+                color: editing ? "#fff" : D.text2, fontSize: 12, fontWeight: editing ? 700 : 400, cursor: "pointer" }}>
+              {saving ? "Saving…" : editing ? "Save Changes" : "✏ Edit"}
+            </button>
+          </div>
+        </div>
+
+        {saveResult && (
+          <div style={{ padding: "8px 20px", fontSize: 12, fontWeight: 600,
+            color: saveResult.ok ? D.green : D.red,
+            background: saveResult.ok ? D.greenBg : D.redBg,
+            borderBottom: `1px solid ${D.border}` }}>
+            {saveResult.msg}
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+          {[
+            {
+              label: "Display Name",
+              view: <span>{client.display_name}</span>,
+              edit: <input value={displayName} onChange={e => setDisplayName(e.target.value)} style={inputFull} />,
+            },
+            {
+              label: "City",
+              view: <span>{client.city || "—"}</span>,
+              edit: <input value={city} onChange={e => setCity(e.target.value)} placeholder="Denver, CO" style={inputFull} />,
+            },
+            {
+              label: "Join URL",
+              view: <a href={client.join_url} target="_blank" rel="noopener noreferrer" style={{ color: D.blue, fontSize: 12, wordBreak: "break-all" as const }}>{client.join_url}</a>,
+              edit: <input value={joinUrl} onChange={e => setJoinUrl(e.target.value)} style={inputFull} />,
+            },
+            {
+              label: "Station URL",
+              view: <a href={client.station_url} target="_blank" rel="noopener noreferrer" style={{ color: D.blue, fontSize: 12, wordBreak: "break-all" as const }}>{client.station_url}</a>,
+              edit: <div style={{ fontSize: 12, color: D.muted, paddingTop: 2 }}>{client.station_url} <span style={{ color: D.muted }}>(auto)</span></div>,
+            },
+            {
+              label: "Plan",
+              view: <span>{client.plan_type}</span>,
+              edit: <select value={planType} onChange={e => setPlanType(e.target.value)} style={selectStyle}>
+                <option value="standard">Standard</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Enterprise</option>
+              </select>,
+            },
+            {
+              label: "Status",
+              view: <span>{client.status}</span>,
+              edit: <select value={status} onChange={e => setStatus(e.target.value)} style={selectStyle}>
+                <option value="active">Active</option>
+                <option value="trial">Trial</option>
+                <option value="inactive">Inactive</option>
+              </select>,
+            },
+            {
+              label: "Monthly Fee",
+              view: <span>{client.monthly_fee_cents != null ? `$${(client.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"}</span>,
+              edit: <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ color: D.muted, fontSize: 13 }}>$</span>
+                <input type="number" value={monthlyFee} onChange={e => setMonthlyFee(e.target.value)}
+                  placeholder="0.00" min="0" step="0.01" style={{ ...inputFull, width: 100 }} />
+                <span style={{ color: D.muted, fontSize: 12 }}>/mo</span>
+              </div>,
+            },
+            {
+              label: "Signed",
+              view: <span>{client.signed_at ? fmtTime(client.signed_at) : "Not signed"}</span>,
+              edit: <span style={{ fontSize: 12, color: D.muted }}>{client.signed_at ? fmtTime(client.signed_at) : "Not signed"}</span>,
+            },
+            {
+              label: "Signer",
+              view: <span>{client.signer_name || "—"}</span>,
+              edit: <span style={{ fontSize: 12, color: D.muted }}>{client.signer_name || "—"}</span>,
+            },
+            {
+              label: "Client ID",
+              view: <code style={{ fontSize: 11, color: D.muted }}>{client.id}</code>,
+              edit: <code style={{ fontSize: 11, color: D.muted }}>{client.id}</code>,
+            },
+          ].map(({ label, view, edit }, i) => (
+            <div key={label} style={{
+              padding: "14px 20px",
+              borderBottom: i < 9 ? `1px solid ${D.border}` : "none",
+              borderRight: i % 2 === 0 ? `1px solid ${D.border}` : "none",
+            }}>
+              <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
+              <div style={{ fontSize: 13, color: D.text }}>
+                {editing ? edit : view}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mini floor map preview */}
+      {configLoaded && floorTables.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Floor Plan Preview</div>
+          <FloorViewer tables={floorTables} walls={floorWalls} objects={floorObjects} aspectRatio={canvasAspect} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Client Detail View ─────────────────────────────────────────────────────────
 function ClientDetailView({ client, token, onBack, onUpdated }: {
   client: Client
@@ -1696,40 +1882,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
 
       {/* Overview tab */}
       {tab === "overview" && (
-        <div style={{ display: "flex", gap: 20, flexDirection: "column" }}>
-          {/* Info grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {[
-              { label: "Join URL",         value: client.join_url,    link: true  },
-              { label: "Station URL",      value: client.station_url, link: true  },
-              { label: "Plan",             value: client.plan_type              },
-              { label: "Status",           value: client.status                 },
-              { label: "Monthly Fee",      value: client.monthly_fee_cents != null ? `$${(client.monthly_fee_cents/100).toFixed(2)}/mo` : "Free" },
-              { label: "Locations",        value: String(client.location_count || 1) },
-              { label: "Signed",           value: client.signed_at ? fmtTime(client.signed_at) : "Not signed" },
-              { label: "Signer",           value: client.signer_name || "—"     },
-              { label: "Signer Email",     value: client.signer_email || "—"    },
-              { label: "Client ID",        value: client.id                     },
-            ].map(({ label, value, link }) => (
-              <div key={label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px" }}>
-                <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>{label}</div>
-                {link ? (
-                  <a href={value} target="_blank" rel="noopener noreferrer"
-                    style={{ fontSize: 13, color: D.blue, wordBreak: "break-all" as const }}>{value}</a>
-                ) : (
-                  <div style={{ fontSize: 13, color: D.text, wordBreak: "break-all" as const }}>{value}</div>
-                )}
-              </div>
-            ))}
-          </div>
-          {/* Mini floor map preview */}
-          {configLoaded && floorTables.length > 0 && (
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Floor Plan Preview</div>
-              <FloorViewer tables={floorTables} walls={floorWalls} objects={floorObjects} aspectRatio={canvasAspect} />
-            </div>
-          )}
-        </div>
+        <OverviewTab client={client} token={token} floorTables={floorTables} floorWalls={floorWalls} floorObjects={floorObjects} canvasAspect={canvasAspect} configLoaded={configLoaded} onUpdated={onUpdated} />
       )}
 
       {/* Credentials tab */}
