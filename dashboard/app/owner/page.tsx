@@ -211,6 +211,7 @@ function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => vo
 // ── Dashboard View ─────────────────────────────────────────────────────────────
 interface ServiceStatus { label: string; status: "checking"|"up"|"degraded"|"down"; detail: string }
 interface RestaurantLive { id: string; name: string; queueNow: number; tablesOccupied: number; tablesTotal: number; avgWait: number|null; utilization: number }
+interface DemoSubmission { id?: string; name: string; restaurant: string; email: string; phone?: string; message?: string; submittedAt?: string; receivedAt?: string }
 
 const KNOWN_RESTAURANTS = [
   { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original" },
@@ -228,6 +229,8 @@ function DashboardView({ token }: { token: string }) {
   const [clients,   setClients]   = useState<Client[]>([])
   const [liveStats, setLiveStats] = useState<RestaurantLive[]>([])
   const [lastCheck, setLastCheck] = useState<Date|null>(null)
+  const [demos,     setDemos]     = useState<DemoSubmission[]>([])
+  const [demosLoading, setDemosLoading] = useState(true)
 
   const runChecks = useCallback(async () => {
     // ── Railway + Supabase (inferred from API response)
@@ -327,6 +330,12 @@ function DashboardView({ token }: { token: string }) {
       .then(r => r.json())
       .then(d => setClients(d.clients || []))
       .catch(() => {})
+    // Load demo requests
+    setDemosLoading(true)
+    fetch(`/api/demo?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { setDemos(Array.isArray(d) ? d : (d.submissions || [])); setDemosLoading(false) })
+      .catch(() => setDemosLoading(false))
     // Run health checks
     runChecks()
     const interval = setInterval(runChecks, 60_000)
@@ -418,7 +427,7 @@ function DashboardView({ token }: { token: string }) {
 
       {/* Recent clients */}
       <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.07em" }}>Recent Clients</h2>
-      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 32 }}>
         {clients.slice(0, 6).map((c, i) => (
           <div key={c.id} style={{ padding: "13px 20px", borderBottom: i < Math.min(5, clients.length - 1) ? `1px solid ${D.border}` : "none",
             display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -432,6 +441,74 @@ function DashboardView({ token }: { token: string }) {
         {clients.length === 0 && (
           <div style={{ padding: 32, textAlign: "center", color: D.muted, fontSize: 14 }}>No clients yet. Add your first client!</div>
         )}
+      </div>
+
+      {/* Demo Requests */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          Demo Requests
+          {demos.length > 0 && (
+            <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 700, background: D.greenBg, color: D.green,
+              border: `1px solid ${D.greenBorder}`, borderRadius: 20, padding: "2px 9px" }}>
+              {demos.length}
+            </span>
+          )}
+        </h2>
+        <button onClick={() => {
+          setDemosLoading(true)
+          fetch(`/api/demo?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+            .then(r => r.json())
+            .then(d => { setDemos(Array.isArray(d) ? d : (d.submissions || [])); setDemosLoading(false) })
+            .catch(() => setDemosLoading(false))
+        }} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+          ↻ Refresh
+        </button>
+      </div>
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+        {/* Header row */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 140px", padding: "10px 20px",
+          borderBottom: `1px solid ${D.border}`, fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+          <span>Name</span><span>Restaurant</span><span>Email</span><span>Phone</span><span style={{ textAlign: "right" }}>Submitted</span>
+        </div>
+        {demosLoading ? (
+          <div style={{ padding: "24px 20px", color: D.muted, fontSize: 13 }}>Loading demo requests…</div>
+        ) : demos.length === 0 ? (
+          <div style={{ padding: "40px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>📭</div>
+            <div style={{ color: D.muted, fontSize: 14 }}>No demo requests yet.</div>
+            <div style={{ color: D.muted, fontSize: 12, marginTop: 4 }}>Requests from hostplatform.net will appear here.</div>
+          </div>
+        ) : demos.map((d, i) => {
+          const ts = d.submittedAt || d.receivedAt
+          const date = ts ? new Date(ts) : null
+          const isNew = date ? (Date.now() - date.getTime()) < 48 * 60 * 60 * 1000 : false
+          return (
+            <div key={d.id || i} style={{
+              display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 140px",
+              padding: "14px 20px", borderBottom: i < demos.length - 1 ? `1px solid ${D.border}` : "none",
+              alignItems: "center",
+              background: isNew ? "rgba(34,197,94,0.03)" : "transparent",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {isNew && <span style={{ width: 7, height: 7, borderRadius: "50%", background: D.green, flexShrink: 0, boxShadow: `0 0 6px ${D.green}` }} />}
+                <span style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{d.name || "—"}</span>
+              </div>
+              <div style={{ fontSize: 13, color: D.text2 }}>{d.restaurant || "—"}</div>
+              <div>
+                <a href={`mailto:${d.email}`} style={{ fontSize: 13, color: D.blue, textDecoration: "none" }}>{d.email || "—"}</a>
+              </div>
+              <div style={{ fontSize: 13, color: D.text2 }}>{d.phone || "—"}</div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 12, color: isNew ? D.green : D.muted, fontWeight: isNew ? 600 : 400 }}>
+                  {date ? date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                </div>
+                <div style={{ fontSize: 11, color: D.muted }}>
+                  {date ? date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ""}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
