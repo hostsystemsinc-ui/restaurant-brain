@@ -45,14 +45,14 @@ def _load_demo_subs():
         if res.data:
             _demo_submissions = res.data
             return
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[DEMO SUBS] Failed to load from Supabase: {e}")
 
 def _save_demo_sub_to_db(sub: dict):
     try:
         supabase.table("demo_submissions").insert(sub).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[DEMO SUBS] Failed to save to Supabase: {e}")
 
 # Load existing submissions in the background so startup is never blocked
 threading.Thread(target=_load_demo_subs, daemon=True).start()
@@ -2143,9 +2143,17 @@ async def create_demo_submission(request: Request):
 def get_demo_submissions(secret: Optional[str] = None):
     if not secret or secret != os.environ.get("OWNER_PASS", ""):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    if not _demo_submissions:
-        _load_demo_subs()
-    return _demo_submissions
+    # Always query Supabase directly so restarts never lose history
+    try:
+        res = supabase.table("demo_submissions").select("*").order("receivedAt", desc=True).execute()
+        if res.data:
+            return res.data
+        # Table exists but is empty — check in-memory list as fallback
+        return _demo_submissions
+    except Exception as e:
+        print(f"[DEMO SUBS] GET failed: {e}")
+        # Supabase unavailable — return in-memory list
+        return _demo_submissions
 
 # ── Owner Analytics ────────────────────────────────────────────────────────────
 
