@@ -3115,8 +3115,6 @@ function SettingsView({ token }: { token: string }) {
 }
 
 // ── Main OwnerPage ─────────────────────────────────────────────────────────────
-const PASS = process.env.NEXT_PUBLIC_OWNER_PASS || "host2024"
-
 export default function OwnerPage() {
   const [authed,    setAuthed]    = useState(false)
   const [passInput, setPassInput] = useState("")
@@ -3132,17 +3130,28 @@ export default function OwnerPage() {
 
   useEffect(() => {
     if (sessionStorage.getItem("host_owner_authed") === "1") {
-      const t = sessionStorage.getItem("host_owner_token") || PASS
-      setToken(t); setAuthed(true)
+      const t = sessionStorage.getItem("host_owner_token") || ""
+      if (t) { setToken(t); setAuthed(true) }
     }
   }, [])
 
-  function login() {
-    if (passInput === PASS) {
-      sessionStorage.setItem("host_owner_authed", "1")
-      sessionStorage.setItem("host_owner_token", passInput)
-      setToken(passInput); setAuthed(true); setPassErr(false)
-    } else { setPassErr(true); setPassInput("") }
+  async function login() {
+    try {
+      const res = await fetch("/api/owner/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: passInput }),
+      })
+      if (res.ok) {
+        sessionStorage.setItem("host_owner_authed", "1")
+        sessionStorage.setItem("host_owner_token", passInput)
+        setToken(passInput); setAuthed(true); setPassErr(false)
+      } else {
+        setPassErr(true); setPassInput("")
+      }
+    } catch {
+      setPassErr(true); setPassInput("")
+    }
   }
 
   function handleSetView(v: NavView) {
