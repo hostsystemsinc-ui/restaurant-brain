@@ -109,20 +109,20 @@ function ClientJoinInner() {
   }, [restaurantId, fetchLive])
 
   async function join() {
-    if (!name.trim() || !phone.trim() || !restaurantId) { setError("Please enter your name and phone number"); return }
+    if (!name.trim() || !restaurantId) { setError("Please enter your name"); return }
     setLoading(true); setError("")
     try {
       const r = await fetch(`${API}/queue/join`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), phone: phone.trim(), party_size: partySize, source: src, restaurant_id: restaurantId }),
+        body: JSON.stringify({ name: name.trim(), phone: phone.trim() || null, party_size: partySize, source: src, restaurant_id: restaurantId }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.detail || "Failed to join")
-      setEntryId(d.entry_id || d.id || null)
+      const id = d.entry?.id ?? d.entry_id ?? d.id ?? null
+      setEntryId(id)
+      if (id) sessionStorage.setItem("host_wait_id", id)
       setJoined(true)
-      if (d.entry_id || d.id) {
-        setTimeout(() => router.push(`/wait/${d.entry_id || d.id}`), 1500)
-      }
+      if (id) setTimeout(() => router.push(`/wait/${id}`), 1500)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Something went wrong. Please try again.")
     } finally {
@@ -131,9 +131,13 @@ function ClientJoinInner() {
   }
 
   const bg = cfg.bgColor || "#000"
-  const accent = cfg.accentColor || "#22c55e"
-  const btnColor = cfg.buttonTextColor || "#fff"
-  const isDark = !bg.includes("F") && !bg.includes("f") && !bg.startsWith("#F") && !bg.startsWith("#E")
+  const accent = cfg.accentColor || "#ffffff"
+  const btnColor = cfg.buttonTextColor || "#000"
+  // Proper luminance-based dark detection (matches owner console logic)
+  const _h = bg.replace("#","").padEnd(6,"0")
+  const _lin = (c: number) => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4)
+  const _lum = 0.2126*_lin(parseInt(_h.slice(0,2),16)/255)+0.7152*_lin(parseInt(_h.slice(2,4),16)/255)+0.0722*_lin(parseInt(_h.slice(4,6),16)/255)
+  const isDark = _lum < 0.25
   const textColor = isDark ? "#fff" : "#111"
   const text2Color = isDark ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.5)"
   const surfaceBg  = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"
@@ -260,7 +264,7 @@ function ClientJoinInner() {
                 </div>
               )}
             </div>
-            {partySize <= 8 && partySize >= 8 && (
+            {partySize === 8 && (
               <button onClick={() => setPartySize(9)}
                 style={{ marginTop: 10, background: "none", border: "none", color: accent, fontSize: 13, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
                 Larger party?
@@ -278,7 +282,7 @@ function ClientJoinInner() {
 
           {/* Phone */}
           <input
-            placeholder="Phone number (for your text alert)"
+            placeholder="Phone number — optional (SMS alert)"
             value={phone}
             onChange={e => setPhone(e.target.value)}
             type="tel"

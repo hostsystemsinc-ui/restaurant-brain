@@ -164,7 +164,47 @@ function configForRid(rid?: string): GuestConfig | null {
 function joinUrlForRid(rid?: string): string {
   if (rid === WALNUT_ORIGINAL_RID)  return "/walnut/original/join"
   if (rid === WALNUT_SOUTHSIDE_RID) return "/walnut/southside/join"
+  if (rid === WALTERS_RID)          return "/walters303/join"
   return "/demo/join"
+}
+
+// Derive full GuestConfig from the flat DB guest_config object.
+// Used for demo and any new generic client — derives token colors from bgColor luminance.
+function guestConfigFromApi(gc: Record<string, unknown>): GuestConfig {
+  const bgColor   = (gc.bgColor   as string) || "#000000"
+  const h = bgColor.replace("#","").padEnd(6,"0")
+  const lin = (c: number) => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4)
+  const lum = 0.2126*lin(parseInt(h.slice(0,2),16)/255)
+           + 0.7152*lin(parseInt(h.slice(2,4),16)/255)
+           + 0.0722*lin(parseInt(h.slice(4,6),16)/255)
+  const isDark = lum < 0.25
+  const darkColor  = (gc.darkColor  as string) || "#111111"
+  const accentColor = isDark
+    ? ((gc.accentColor as string) || "#ffffff")
+    : (darkColor)
+  function rgba(hex: string, a: number) {
+    const c = hex.replace("#","").padEnd(6,"0")
+    return `rgba(${parseInt(c.slice(0,2),16)},${parseInt(c.slice(2,4),16)},${parseInt(c.slice(4,6),16)},${a})`
+  }
+  return {
+    bgColor,
+    accentColor,
+    buttonTextColor: (gc.buttonTextColor as string) || (isDark ? "#000000" : bgColor),
+    restaurantName:  (gc.restaurantName  as string) || "Restaurant",
+    tagline:         (gc.tagline         as string) || "",
+    textColor:       isDark ? "#ffffff"                    : darkColor,
+    text2Color:      isDark ? "rgba(255,255,255,0.50)"     : rgba(darkColor, 0.55),
+    text3Color:      isDark ? "rgba(255,255,255,0.25)"     : rgba(darkColor, 0.30),
+    cardBg:          isDark ? "#141414"                    : rgba(darkColor, 0.05),
+    cardBorder:      isDark ? "rgba(255,255,255,0.08)"     : rgba(darkColor, 0.12),
+    progressTrack:   isDark ? "rgba(255,255,255,0.07)"     : rgba(darkColor, 0.09),
+    logoUrl:         (gc.logoUrl         as string) || undefined,
+    waitMessages:    (gc.waitMessages    as string[]) || DEFAULT_CONFIG.waitMessages,
+    seatedMessage:   (gc.seatedMessage   as string) || DEFAULT_CONFIG.seatedMessage,
+    finalButtons:    (gc.finalButtons    as GuestConfig["finalButtons"]) || [],
+    googleReviewsUrl: (gc.googleReviewsUrl as string) || undefined,
+    instagramUrl:     (gc.instagramUrl    as string) || undefined,
+  }
 }
 
 function isWalnutRid(rid?: string): boolean {
@@ -191,20 +231,25 @@ export default function WaitPage() {
   const progressKeyRef = useRef<string | null>(null)
   const [cfg, setCfg] = useState<GuestConfig>(DEFAULT_CONFIG)
 
-  // Load demo localStorage config on mount (used only if entry is demo restaurant)
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem("host_guest_config_demo")
-      if (s) setCfg({ ...DEFAULT_CONFIG, ...JSON.parse(s) })
-    } catch {}
-  }, [])
-
-  // Override config once entry.restaurant_id is known
+  // Load config once entry.restaurant_id is known.
+  // Known restaurants use hardcoded configs (Walnut/Walter's have extra tokens like
+  // cardBg, textColor, Google/Instagram links). Unknown restaurants (demo, new clients)
+  // fetch live config from the API so owner console edits are reflected here.
   useEffect(() => {
     if (!entry?.restaurant_id) return
-    const staticCfg = configForRid(entry.restaurant_id)
-    if (staticCfg) setCfg(staticCfg)
-    setJoinUrl(joinUrlForRid(entry.restaurant_id))
+    const rid = entry.restaurant_id
+    const staticCfg = configForRid(rid)
+    if (staticCfg) {
+      setCfg(staticCfg)
+    } else {
+      fetch(`${API}/public/guest-config/${rid}`, { cache: "no-store" })
+        .then(r => r.json())
+        .then((d: { guest_config?: Record<string,unknown> | null }) => {
+          if (d.guest_config) setCfg(guestConfigFromApi(d.guest_config))
+        })
+        .catch(() => {}) // non-critical — DEFAULT_CONFIG applies
+    }
+    setJoinUrl(joinUrlForRid(rid))
   }, [entry?.restaurant_id])
 
   const fetchingRef = useRef(false)

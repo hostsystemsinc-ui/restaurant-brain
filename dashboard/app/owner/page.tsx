@@ -1695,8 +1695,9 @@ function OverviewTab({ client, token, floorTables, floorWalls, floorObjects, can
               label: "Plan",
               view: <span>{client.plan_type}</span>,
               edit: <select value={planType} onChange={e => setPlanType(e.target.value)} style={selectStyle}>
+                <option value="free-partner">Free Partner</option>
                 <option value="standard">Standard</option>
-                <option value="pro">Pro</option>
+                <option value="multi">Multi-Location</option>
                 <option value="enterprise">Enterprise</option>
               </select>,
             },
@@ -2149,6 +2150,15 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
           </>
         )}
       </div>
+      <div>
+        <FieldLabel>Button Text Color</FieldLabel>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="color" value={cfg.buttonTextColor || (isDarkTheme ? "#000000" : (cfg.bgColor || "#EDE8DF"))} onChange={e => setCfg(p => ({ ...p, buttonTextColor: e.target.value }))}
+            style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
+          <Input value={cfg.buttonTextColor || ""} onChange={v => setCfg(p => ({ ...p, buttonTextColor: v }))} placeholder={isDarkTheme ? "#000000" : "(uses bg color)"} />
+        </div>
+        <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Text color shown inside the Join Waitlist button</div>
+      </div>
       <div style={{ gridColumn: "1/-1" }}>
         <FieldLabel>Tagline</FieldLabel>
         <Input value={cfg.tagline || ""} onChange={v => setCfg(p => ({ ...p, tagline: v }))} placeholder="Powered by HOST" />
@@ -2229,7 +2239,7 @@ interface OpsRestaurant {
 const OPS_RESTAURANTS = [
   { id: "272a8876-e4e6-4867-831d-0525db80a8db", name: "Walter's 303",
     stationUrl: "https://hostplatform.net/walters303/station",
-    joinUrl:    "https://hostplatform.net/client/test/join",
+    joinUrl:    "https://hostplatform.net/walters303/join",
     loginAs:    "walters" },
   { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original",
     stationUrl: "https://hostplatform.net/station",

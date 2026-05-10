@@ -88,11 +88,27 @@ export default function DemoJoinPage() {
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [cfg,         setCfg]         = useState<GuestConfig>(DEFAULT_CONFIG)
 
+  // Load live config from DB so owner console edits are reflected here
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("host_guest_config_demo")
-      if (raw) setCfg({ ...DEFAULT_CONFIG, ...JSON.parse(raw) })
-    } catch { /* ignore */ }
+    fetch(`${API}/public/guest-config/${DEMO_RESTAURANT_ID}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then((d: { guest_config?: Record<string, unknown> | null }) => {
+        const gc = d.guest_config
+        if (gc && typeof gc === "object") {
+          setCfg(prev => ({
+            ...prev,
+            bgColor:         (gc.bgColor         as string) || prev.bgColor,
+            accentColor:     (gc.accentColor      as string) || prev.accentColor,
+            buttonTextColor: (gc.buttonTextColor  as string) || prev.buttonTextColor,
+            restaurantName:  (gc.restaurantName   as string) || prev.restaurantName,
+            tagline:         (gc.tagline          as string) ?? prev.tagline,
+            waitMessages:    (gc.waitMessages     as string[]) || prev.waitMessages,
+            seatedMessage:   (gc.seatedMessage    as string) || prev.seatedMessage,
+            finalButtons:    (gc.finalButtons     as GuestConfig["finalButtons"]) || prev.finalButtons,
+          }))
+        }
+      })
+      .catch(() => { /* non-critical — defaults apply */ })
   }, [])
 
   const fetchLive = useCallback(async () => {

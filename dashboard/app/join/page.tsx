@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation"
 import { Minus, Plus, Loader2 } from "lucide-react"
 
 const API              = "https://restaurant-brain-production.up.railway.app"
-const DEMO_RESTAURANT_ID = "dec0cafe-0000-4000-8000-000000000001"
-const RESTAURANT       = "Walter's303"
+const WALTERS_RID      = "272a8876-e4e6-4867-831d-0525db80a8db"
 const TOTAL_TABLES     = 16
 
 interface LiveInfo {
@@ -28,8 +27,8 @@ export default function JoinPage() {
   const fetchLive = useCallback(async () => {
     try {
       const [tablesRes, insightsRes] = await Promise.all([
-        fetch(`${API}/tables?restaurant_id=${DEMO_RESTAURANT_ID}`),
-        fetch(`${API}/insights?restaurant_id=${DEMO_RESTAURANT_ID}`),
+        fetch(`${API}/tables?restaurant_id=${WALTERS_RID}`),
+        fetch(`${API}/insights?restaurant_id=${WALTERS_RID}`),
       ])
       const tables   = tablesRes.ok   ? await tablesRes.json()   : []
       const insights = insightsRes.ok ? await insightsRes.json() : null
@@ -66,13 +65,14 @@ export default function JoinPage() {
           phone:         phone.trim() || null,
           preference:    "asap",
           source:        "nfc",
-          restaurant_id: DEMO_RESTAURANT_ID,
+          restaurant_id: WALTERS_RID,
         }),
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
 
       // Show brand transition animation, then navigate
+      sessionStorage.setItem("host_wait_id", data.entry.id)
       setJoined(true)
       setTimeout(() => {
         router.push(`/wait/${data.entry.id}`)
@@ -82,9 +82,6 @@ export default function JoinPage() {
       setLoading(false)
     }
   }
-
-  // Suppress unused variable warning — RESTAURANT used in the identity section concept
-  void RESTAURANT
 
   return (
     <div
