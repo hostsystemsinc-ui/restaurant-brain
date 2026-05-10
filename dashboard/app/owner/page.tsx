@@ -140,7 +140,7 @@ interface GAData {
   daily?: { date: string; sessions: number; pageviews: number }[]
 }
 
-type NavView = "dashboard" | "clients" | "client-detail" | "new-client" | "billing" | "analytics" | "website" | "agreements" | "settings"
+type NavView = "dashboard" | "clients" | "client-detail" | "new-client" | "billing" | "analytics" | "website" | "agreements" | "settings" | "operations"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtTime(iso: string) {
@@ -168,6 +168,7 @@ function nanoid() {
 function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => void }) {
   const items: { id: NavView; label: string; icon: string }[] = [
     { id: "dashboard",   label: "Dashboard",          icon: "⬡" },
+    { id: "operations",  label: "Operations",         icon: "⚡" },
     { id: "clients",     label: "Clients",            icon: "🏢" },
     { id: "billing",     label: "Billing",            icon: "💳" },
     { id: "website",     label: "Website Analytics",  icon: "🌐" },
@@ -225,9 +226,10 @@ interface RestaurantLive { id: string; name: string; queueNow: number; tablesOcc
 interface DemoSubmission { id?: string; name: string; restaurant: string; email: string; phone?: string; message?: string; submittedAt?: string; receivedAt?: string }
 
 const KNOWN_RESTAURANTS = [
-  { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original" },
+  { id: "272a8876-e4e6-4867-831d-0525db80a8db", name: "Walter's 303"    },
+  { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original"  },
   { id: "0002cafe-0001-4000-8000-000000000002", name: "Walnut Southside" },
-  { id: DEMO_RID,                               name: "Demo"            },
+  { id: DEMO_RID,                               name: "Demo"             },
 ]
 
 function DashboardView({ token }: { token: string }) {
@@ -1926,7 +1928,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
         <div>
           {!configLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
             <GuestPageEditor
-              initial={(config?.guest_config || { restaurantName: client.name, bgColor: "#EDE8DF", darkColor: "#2C2416", accentColor: "#22c55e", buttonTextColor: "#fff", tagline: "Powered by HOST", logoUrl: "", waitMessages: [], seatedMessage: "", finalButtons: [] }) as unknown as GuestPageConfig}
+              initial={(config?.guest_config ? (config.guest_config as unknown as GuestPageConfig) : getDefaultGuestConfig(client.id, client.name))}
               onSave={gc => saveConfig({ guest_config: gc as unknown as Record<string,unknown> })}
               saving={savingConfig}
             />
@@ -2003,23 +2005,49 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
 // ── Guest Page Editor ──────────────────────────────────────────────────────────
 interface GuestPageConfig {
   bgColor:         string
-  darkColor:       string   // main text + button bg color
-  accentColor:     string   // legacy field (kept for compat)
+  darkColor:       string   // light-theme: text + button bg (Walnut model)
+  accentColor:     string   // dark-theme: button accent color (Demo model)
   buttonTextColor: string
   restaurantName:  string
   tagline?:        string
-  logoUrl?:        string   // restaurant logo image URL
+  logoUrl?:        string
   waitMessages:    string[]
   seatedMessage:   string
   finalButtons:    Array<{ id: string; label: string; url: string; color: string }>
 }
 
 function hexToRgba(hex: string, alpha: number): string {
-  const h = hex.replace("#", "")
+  const h = (hex || "#000000").replace("#", "").padEnd(6, "0")
   const r = parseInt(h.slice(0, 2), 16) || 0
   const g = parseInt(h.slice(2, 4), 16) || 0
   const b = parseInt(h.slice(4, 6), 16) || 0
   return `rgba(${r},${g},${b},${alpha})`
+}
+
+/** Relative luminance of a hex color (0 = black, 1 = white) */
+function bgLuminance(hex: string): number {
+  const h = (hex || "#000000").replace("#", "").padEnd(6, "0")
+  const lin = (c: number) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  return 0.2126 * lin(parseInt(h.slice(0,2),16)/255)
+       + 0.7152 * lin(parseInt(h.slice(2,4),16)/255)
+       + 0.0722 * lin(parseInt(h.slice(4,6),16)/255)
+}
+
+// Smart defaults per-restaurant so the editor shows the correct color model out of the box
+const WALNUT_RID_SET = new Set([
+  "0001cafe-0001-4000-8000-000000000001",
+  "0002cafe-0001-4000-8000-000000000002",
+])
+function getDefaultGuestConfig(restaurantId: string, name: string): GuestPageConfig {
+  if (WALNUT_RID_SET.has(restaurantId)) {
+    return { restaurantName: name, bgColor: "#EDE8DF", darkColor: "#2C2416", accentColor: "",
+      buttonTextColor: "#EDE8DF", tagline: "Powered by HOST", logoUrl: "",
+      waitMessages: [], seatedMessage: "Enjoy your meal!", finalButtons: [] }
+  }
+  // Dark / accent model (Demo + all new restaurants)
+  return { restaurantName: name, bgColor: "#000000", accentColor: "#22c55e", darkColor: "",
+    buttonTextColor: "#ffffff", tagline: "Powered by HOST", logoUrl: "",
+    waitMessages: [], seatedMessage: "Enjoy your meal!", finalButtons: [] }
 }
 
 function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig; onSave: (c: GuestPageConfig) => void; saving: boolean }) {
@@ -2030,12 +2058,21 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
     onSave({ ...cfg, waitMessages: waitText.split("\n").map(s => s.trim()).filter(Boolean) })
   }
 
-  const bg    = cfg.bgColor   || "#EDE8DF"
-  const dark  = cfg.darkColor || cfg.accentColor || "#2C2416"
-  const dark2 = hexToRgba(dark, 0.55)
-  const dark3 = hexToRgba(dark, 0.30)
-  const dark4 = hexToRgba(dark, 0.08)
-  const dark5 = hexToRgba(dark, 0.12)
+  // Theme detection: dark bg → accent model (Demo), light bg → dark-text model (Walnut)
+  const lum         = bgLuminance(cfg.bgColor)
+  const isDarkTheme = lum < 0.25
+
+  // Derive preview colors that match the ACTUAL guest join page rendering
+  const bg        = cfg.bgColor || (isDarkTheme ? "#000000" : "#EDE8DF")
+  const btnColor  = isDarkTheme
+    ? (cfg.accentColor || "#22c55e")
+    : (cfg.darkColor   || "#2C2416")
+  const btnText   = isDarkTheme ? (cfg.buttonTextColor || "#ffffff") : bg
+  const txtColor  = isDarkTheme ? "#ffffff" : (cfg.darkColor || "#2C2416")
+  const txtFaint  = isDarkTheme ? "rgba(255,255,255,0.28)" : hexToRgba(cfg.darkColor || "#2C2416", 0.30)
+  const badgeBg   = isDarkTheme ? hexToRgba(cfg.accentColor || "#22c55e", 0.08) : hexToRgba(cfg.darkColor || "#2C2416", 0.08)
+  const badgeBdr  = isDarkTheme ? hexToRgba(cfg.accentColor || "#22c55e", 0.22) : hexToRgba(cfg.darkColor || "#2C2416", 0.12)
+  const nameTxt   = isDarkTheme ? (cfg.accentColor || "#22c55e") : (cfg.darkColor || "#2C2416")
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -2046,18 +2083,40 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
       <div>
         <FieldLabel>Background Color</FieldLabel>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="color" value={cfg.bgColor || "#EDE8DF"} onChange={e => setCfg(p => ({ ...p, bgColor: e.target.value }))}
+          <input type="color" value={cfg.bgColor || "#000000"} onChange={e => setCfg(p => ({ ...p, bgColor: e.target.value }))}
             style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
-          <Input value={cfg.bgColor || ""} onChange={v => setCfg(p => ({ ...p, bgColor: v }))} placeholder="#EDE8DF" />
+          <Input value={cfg.bgColor || ""} onChange={v => setCfg(p => ({ ...p, bgColor: v }))} placeholder="#000000" />
+        </div>
+        <div style={{ fontSize: 11, color: isDarkTheme ? D.blue : D.orange, marginTop: 4, fontWeight: 600 }}>
+          {isDarkTheme ? "▪ Dark theme detected → accent model" : "▪ Light theme detected → dark-text model"}
         </div>
       </div>
       <div>
-        <FieldLabel>Text &amp; Button Color</FieldLabel>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="color" value={cfg.darkColor || cfg.accentColor || "#2C2416"} onChange={e => setCfg(p => ({ ...p, darkColor: e.target.value }))}
-            style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
-          <Input value={cfg.darkColor || ""} onChange={v => setCfg(p => ({ ...p, darkColor: v }))} placeholder="#2C2416" />
-        </div>
+        {isDarkTheme ? (
+          <>
+            <FieldLabel>Accent / Button Color</FieldLabel>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="color" value={cfg.accentColor || "#22c55e"} onChange={e => setCfg(p => ({ ...p, accentColor: e.target.value }))}
+                style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
+              <Input value={cfg.accentColor || ""} onChange={v => setCfg(p => ({ ...p, accentColor: v }))} placeholder="#22c55e" />
+            </div>
+            <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Color for buttons and highlights on dark background</div>
+          </>
+        ) : (
+          <>
+            <FieldLabel>Text &amp; Button Color</FieldLabel>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input type="color" value={cfg.darkColor || "#2C2416"} onChange={e => setCfg(p => ({ ...p, darkColor: e.target.value }))}
+                style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
+              <Input value={cfg.darkColor || ""} onChange={v => setCfg(p => ({ ...p, darkColor: v }))} placeholder="#2C2416" />
+            </div>
+            <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Dark text and button color for light background</div>
+          </>
+        )}
+      </div>
+      <div style={{ gridColumn: "1/-1" }}>
+        <FieldLabel>Tagline</FieldLabel>
+        <Input value={cfg.tagline || ""} onChange={v => setCfg(p => ({ ...p, tagline: v }))} placeholder="Powered by HOST" />
       </div>
       <div style={{ gridColumn: "1/-1" }}>
         <FieldLabel>Logo URL</FieldLabel>
@@ -2071,36 +2130,38 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
       </div>
       <div style={{ gridColumn: "1/-1" }}>
         <FieldLabel>Seated / Thank You Message</FieldLabel>
-        <Input value={cfg.seatedMessage} onChange={v => setCfg(p => ({ ...p, seatedMessage: v }))} placeholder="Thanks for dining with us!" />
+        <Input value={cfg.seatedMessage} onChange={v => setCfg(p => ({ ...p, seatedMessage: v }))} placeholder="Enjoy your meal!" />
       </div>
 
-      {/* Live preview — matches actual guest join page layout */}
+      {/* Live preview — accurately matches actual guest join page */}
       <div style={{ gridColumn: "1/-1", borderRadius: 14, overflow: "hidden", border: `1px solid ${D.border}` }}>
-        <div style={{ padding: "8px 14px", background: D.surface2, borderBottom: `1px solid ${D.border}`, fontSize: 11, color: D.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em" }}>
-          Live Preview — Guest Join Page
+        <div style={{ padding: "8px 14px", background: D.surface2, borderBottom: `1px solid ${D.border}`, fontSize: 11, color: D.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Live Preview — Guest Join Page</span>
+          <span style={{ color: isDarkTheme ? D.blue : D.orange }}>
+            {isDarkTheme ? "Dark / Accent theme" : "Light / Dark-text theme"}
+          </span>
         </div>
-        <div style={{ background: bg, padding: "20px 24px", fontFamily: "system-ui, sans-serif" }}>
-          {/* HOST wordmark */}
-          <div style={{ textAlign: "center", marginBottom: 10 }}>
-            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.08em", color: dark, lineHeight: 1 }}>HOST</div>
-            <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color: dark3, marginTop: 3 }}>Restaurant Operating System</div>
+        <div style={{ background: bg, padding: "24px 28px", fontFamily: "system-ui, sans-serif", maxWidth: 360, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: "0.08em", color: txtColor, lineHeight: 1 }}>HOST</div>
+            <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color: txtFaint, marginTop: 3 }}>Restaurant Operating System</div>
           </div>
-          {/* Logo */}
           {cfg.logoUrl && (
-            <div style={{ textAlign: "center", marginBottom: 8 }}>
+            <div style={{ textAlign: "center", marginBottom: 10 }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={cfg.logoUrl} alt={cfg.restaurantName} style={{ height: 52, objectFit: "contain" }} />
             </div>
           )}
-          {/* Restaurant badge */}
-          <div style={{ textAlign: "center", marginBottom: 12 }}>
-            <div style={{ display: "inline-block", padding: "5px 16px", border: `1px solid ${dark5}`, borderRadius: 10, background: dark4 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: dark }}>{cfg.restaurantName.toUpperCase()}</div>
+          <div style={{ textAlign: "center", marginBottom: 10 }}>
+            <div style={{ display: "inline-block", padding: "5px 16px", border: `1px solid ${badgeBdr}`, borderRadius: 10, background: badgeBg }}>
+              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.14em", color: nameTxt }}>{cfg.restaurantName.toUpperCase()}</div>
             </div>
           </div>
-          {/* Join button */}
-          <div style={{ padding: "8px 0 4px" }}>
-            <div style={{ width: "100%", height: 42, borderRadius: 14, background: dark, color: bg, fontWeight: 800, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {(cfg.tagline || "Powered by HOST") && (
+            <div style={{ textAlign: "center", fontSize: 12, color: txtFaint, marginBottom: 14 }}>{cfg.tagline || "Powered by HOST"}</div>
+          )}
+          <div>
+            <div style={{ width: "100%", height: 44, borderRadius: 14, background: btnColor, color: btnText, fontWeight: 800, fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", display: "flex", alignItems: "center", justifyContent: "center" }}>
               Join Waitlist
             </div>
           </div>
@@ -2112,6 +2173,239 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
           style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
           {saving ? "Saving…" : "Save Guest Page"}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Operations View ────────────────────────────────────────────────────────────
+interface OpsParty {
+  id: string; name: string; partySize: number
+  status: string; quotedWait: number | null; arrivedAt: string | null
+}
+interface OpsRestaurant {
+  id: string; name: string; stationUrl: string
+  queue: OpsParty[]
+  tablesOccupied: number; tablesTotal: number
+  avgWait: number | null; utilization: number
+  loaded: boolean
+}
+
+const OPS_RESTAURANTS = [
+  { id: "272a8876-e4e6-4867-831d-0525db80a8db", name: "Walter's 303",    stationUrl: "https://hostplatform.net/station" },
+  { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original",  stationUrl: "https://hostplatform.net/station" },
+  { id: "0002cafe-0001-4000-8000-000000000002", name: "Walnut Southside", stationUrl: "https://hostplatform.net/station" },
+  { id: DEMO_RID,                               name: "Demo Restaurant",  stationUrl: "https://hostplatform.net/demo/station" },
+]
+
+function OperationsView({ token }: { token: string }) {
+  const [restaurants, setRestaurants] = useState<OpsRestaurant[]>(
+    OPS_RESTAURANTS.map(r => ({ ...r, queue: [], tablesOccupied: 0, tablesTotal: 0, avgWait: null, utilization: 0, loaded: false }))
+  )
+  const [lastUpdate,   setLastUpdate]   = useState<Date | null>(null)
+  const [loading,      setLoading]      = useState(false)
+  const [autoRefresh,  setAutoRefresh]  = useState(true)
+  const [expandedId,   setExpandedId]   = useState<string | null>(null)
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const load = useCallback(async (_tk?: string) => {
+    setLoading(true)
+    const results = await Promise.all(OPS_RESTAURANTS.map(async r => {
+      try {
+        const [insRes, queueRes] = await Promise.all([
+          fetch(`${API}/insights?restaurant_id=${r.id}`, { cache: "no-store" }),
+          fetch(`${API}/queue?restaurant_id=${r.id}`,    { cache: "no-store" }),
+        ])
+        const ins = insRes.ok ? (await insRes.json() as Record<string,unknown>) : null
+        const raw = queueRes.ok ? await queueRes.json() : []
+        const queue: OpsParty[] = Array.isArray(raw)
+          ? raw.slice(0, 20).map((p: Record<string,unknown>) => ({
+              id:         String(p.id  || ""),
+              name:       String(p.name || "Guest"),
+              partySize:  Number(p.party_size) || 1,
+              status:     String(p.status      || "waiting"),
+              quotedWait: p.quoted_wait  != null ? Number(p.quoted_wait)  : null,
+              arrivedAt:  p.arrival_time != null ? String(p.arrival_time) : null,
+            }))
+          : []
+        return {
+          ...r,
+          queue,
+          tablesOccupied: Number(ins?.tables_occupied)          || 0,
+          tablesTotal:    Number(ins?.tables_total)             || 0,
+          avgWait:        ins?.avg_wait_estimate ? Number(ins.avg_wait_estimate) : null,
+          utilization:    Number(ins?.capacity_utilization)     || 0,
+          loaded: true,
+        }
+      } catch {
+        return { ...r, queue: [], tablesOccupied: 0, tablesTotal: 0, avgWait: null, utilization: 0, loaded: true }
+      }
+    }))
+    setRestaurants(results)
+    setLastUpdate(new Date())
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    load(token)
+    if (!autoRefresh) return
+    const iv = setInterval(() => load(token), 30_000)
+    return () => clearInterval(iv)
+  }, [load, token, autoRefresh])
+
+  function statusBadge(status: string) {
+    const map: Record<string, [string, string]> = {
+      waiting: [D.blue,   D.blueBg],
+      ready:   [D.yellow, D.orangeBg],
+      seated:  [D.green,  D.greenBg],
+      removed: [D.red,    D.redBg],
+    }
+    const [color, bg] = map[status] || [D.muted, D.surface]
+    return (
+      <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 20, padding: "2px 8px",
+        color, background: bg, border: `1px solid ${color}40`, whiteSpace: "nowrap" as const }}>
+        {status}
+      </span>
+    )
+  }
+
+  function minutesAgo(iso: string | null) {
+    if (!iso) return null
+    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
+    return mins < 60 ? `${mins}m` : `${Math.floor(mins/60)}h ${mins%60}m`
+  }
+
+  const totalActive = restaurants.reduce((s, r) => s + r.queue.filter(p => ["waiting","ready"].includes(p.status)).length, 0)
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Live Operations</h1>
+          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>
+            {lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString()}` : "Loading…"}
+            {totalActive > 0 && (
+              <span style={{ marginLeft: 12, color: D.orange, fontWeight: 600 }}>⚡ {totalActive} active in queue</span>
+            )}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: D.text2, cursor: "pointer" }}>
+            <input type="checkbox" checked={autoRefresh} onChange={e => setAutoRefresh(e.target.checked)} style={{ cursor: "pointer" }} />
+            Auto-refresh 30s
+          </label>
+          <button onClick={() => load(token)} disabled={loading}
+            style={{ padding: "7px 16px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+            {loading ? "Refreshing…" : "↺ Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {/* Restaurant cards grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14, marginBottom: 20, marginTop: 20 }}>
+        {restaurants.map(r => {
+          const activeQueue = r.queue.filter(p => ["waiting","ready"].includes(p.status))
+          const isExpanded  = expandedId === r.id
+          const util        = r.utilization
+          const utilColor   = util > 80 ? D.red : util > 60 ? D.orange : D.green
+          return (
+            <div key={r.id} style={{ background: D.surface, border: `1px solid ${isExpanded ? D.borderStrong : D.border}`, borderRadius: 14, overflow: "hidden", transition: "border-color 0.15s" }}>
+              {/* Card header */}
+              <div style={{ padding: "16px 18px", borderBottom: isExpanded ? `1px solid ${D.border}` : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: D.text }}>{r.name}</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <a href={r.stationUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 11, color: D.blue, textDecoration: "none", padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg }}>
+                      ↗ Station
+                    </a>
+                    <button onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                      style={{ fontSize: 11, color: D.text2, padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", cursor: "pointer" }}>
+                      {isExpanded ? "Hide" : "Queue ↓"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Three stat cells */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0, background: D.surface2, borderRadius: 10, overflow: "hidden", border: `1px solid ${D.border}` }}>
+                  {[
+                    {
+                      label: "Queue",
+                      value: activeQueue.length,
+                      color: activeQueue.length > 0 ? D.orange : D.green,
+                      big: true,
+                    },
+                    {
+                      label: "Tables",
+                      value: `${r.tablesOccupied}/${r.tablesTotal}`,
+                      color: D.text,
+                      big: false,
+                    },
+                    {
+                      label: "Avg Wait",
+                      value: r.avgWait ? `${Math.round(r.avgWait)}m` : "—",
+                      color: D.text2,
+                      big: false,
+                    },
+                  ].map((cell, ci) => (
+                    <div key={cell.label} style={{
+                      padding: "12px 14px",
+                      borderRight: ci < 2 ? `1px solid ${D.border}` : "none",
+                    }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: D.muted, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 4 }}>{cell.label}</div>
+                      <div style={{ fontSize: cell.big ? 24 : 18, fontWeight: 700, color: cell.color, lineHeight: 1 }}>{String(cell.value)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Utilization bar */}
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                    <span style={{ fontSize: 10, color: D.muted }}>Capacity utilization</span>
+                    <span style={{ fontSize: 10, color: utilColor, fontWeight: 700 }}>{util}%</span>
+                  </div>
+                  <div style={{ background: D.border, borderRadius: 4, height: 5 }}>
+                    <div style={{ background: utilColor, height: 5, borderRadius: 4, width: `${Math.min(100, util)}%`, transition: "width 0.6s ease" }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Expanded queue table */}
+              {isExpanded && (
+                <div>
+                  {activeQueue.length === 0 ? (
+                    <div style={{ padding: "20px", textAlign: "center", color: D.muted, fontSize: 13 }}>No parties in queue</div>
+                  ) : (
+                    <div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 48px 72px 64px 56px",
+                        padding: "7px 16px", fontSize: 9, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em",
+                        borderBottom: `1px solid ${D.border}` }}>
+                        <span>Name</span>
+                        <span style={{ textAlign: "center" }}>Party</span>
+                        <span style={{ textAlign: "center" }}>Status</span>
+                        <span style={{ textAlign: "center" }}>Quoted</span>
+                        <span style={{ textAlign: "right" }}>Waiting</span>
+                      </div>
+                      {activeQueue.map((p, i) => (
+                        <div key={p.id} style={{ display: "grid", gridTemplateColumns: "1fr 48px 72px 64px 56px",
+                          padding: "10px 16px", alignItems: "center",
+                          borderBottom: i < activeQueue.length - 1 ? `1px solid ${D.border}` : "none",
+                          background: p.status === "ready" ? "rgba(251,191,36,0.03)" : "transparent" }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: D.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{p.name}</span>
+                          <span style={{ textAlign: "center", fontSize: 13, color: D.text2 }}>{p.partySize}</span>
+                          <span style={{ textAlign: "center" }}>{statusBadge(p.status)}</span>
+                          <span style={{ textAlign: "center", fontSize: 12, color: D.text2 }}>{p.quotedWait ? `${p.quotedWait}m` : "—"}</span>
+                          <span style={{ textAlign: "right", fontSize: 11, color: D.muted }}>{minutesAgo(p.arrivedAt) || "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -2352,6 +2646,7 @@ function BillingView({ token }: { token: string }) {
 
 // ── Restaurant ID → name map (used by analytics) ──────────────────────────────
 const RID_NAMES: Record<string, string> = {
+  "272a8876-e4e6-4867-831d-0525db80a8db": "Walter's 303",
   "0001cafe-0001-4000-8000-000000000001": "Walnut Original",
   "0002cafe-0001-4000-8000-000000000002": "Walnut Southside",
   "dec0cafe-0000-4000-8000-000000000001": "Demo",
@@ -2503,14 +2798,16 @@ function AnalyticsView({ token }: { token: string }) {
   const [sortDir,   setSortDir]   = useState<"asc"|"desc">("desc")
   const PAGE_SIZE = 50
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true)
     fetch(`${API}/owner/analytics?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
       .then(r => r.json())
       .then(d => { setData(d.entries || []); setFetched(true); setPage(0) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }
+  }, [token])
+
+  useEffect(() => { load() }, [load])
 
   // Build restaurant list from data
   const restaurants = Array.from(new Set(data.map(e => e.restaurant_id).filter((x): x is string => x !== null)))
@@ -2585,19 +2882,69 @@ function AnalyticsView({ token }: { token: string }) {
           </button>}
           <button onClick={load} disabled={loading}
             style={{ padding: "7px 16px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
-            {loading ? "Loading…" : fetched ? "↺ Refresh" : "Load Data"}
+            {loading ? "Loading…" : "↺ Refresh"}
           </button>
         </div>
       </div>
 
-      {!fetched && !loading && (
-        <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
-          <div style={{ fontSize: 14 }}>Click &quot;Load Data&quot; to fetch guest records</div>
-        </div>
-      )}
-
       {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading analytics…</div>}
+
+      {fetched && !loading && (() => {
+        const seated    = sorted.filter(e => e.status === "seated")
+        const withWait  = sorted.filter(e => e.actual_wait != null && (e.actual_wait || 0) > 0)
+        const avgWait   = withWait.length ? Math.round(withWait.reduce((s, e) => s + (e.actual_wait || 0), 0) / withWait.length) : null
+        const avgParty  = sorted.length ? (sorted.reduce((s, e) => s + e.party_size, 0) / sorted.length).toFixed(1) : null
+        const seatedPct = sorted.length ? Math.round((seated.length / sorted.length) * 100) : 0
+        // Party count by hour of day (from arrival_time)
+        const byHour: number[] = Array(24).fill(0)
+        sorted.forEach(e => { if (e.arrival_time) { const h = new Date(e.arrival_time).getHours(); byHour[h]++ } })
+        const peakHour  = byHour.indexOf(Math.max(...byHour))
+        const maxHour   = Math.max(...byHour) || 1
+        return (
+          <>
+            {/* Stat cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 16 }}>
+              {[
+                { label: "Total Parties",     value: sorted.length.toLocaleString(),  color: D.blue   },
+                { label: "Seated",            value: `${seated.length} (${seatedPct}%)`, color: D.green  },
+                { label: "Avg Actual Wait",   value: avgWait ? `${avgWait} min` : "—", color: D.orange },
+                { label: "Avg Party Size",    value: avgParty || "—",                  color: D.purple },
+              ].map(c => (
+                <div key={c.label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "14px 18px" }}>
+                  <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>{c.label}</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: c.color }}>{c.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Peak hours mini-chart */}
+            {sorted.length > 0 && (
+              <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: D.text2, textTransform: "uppercase", letterSpacing: "0.08em" }}>Arrivals by Hour of Day</div>
+                  <div style={{ fontSize: 12, color: D.text2 }}>
+                    Peak: <strong style={{ color: D.orange }}>{peakHour === 0 ? "12am" : peakHour < 12 ? `${peakHour}am` : peakHour === 12 ? "12pm" : `${peakHour-12}pm`}</strong>
+                    {" "}({byHour[peakHour]} parties)
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 50 }}>
+                  {byHour.map((count, hour) => {
+                    const pct  = (count / maxHour) * 100
+                    const isP  = hour === peakHour
+                    const label = hour === 0 ? "12a" : hour < 12 ? `${hour}a` : hour === 12 ? "12p" : `${hour-12}p`
+                    return (
+                      <div key={hour} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }} title={`${label}: ${count} parties`}>
+                        <div style={{ width: "100%", background: isP ? D.orange : D.blue, opacity: count === 0 ? 0.2 : 1, borderRadius: "2px 2px 0 0", height: `${Math.max(2, pct)}%`, transition: "height 0.3s" }} />
+                        {(hour % 4 === 0) && <div style={{ fontSize: 8, color: D.muted, marginTop: 3 }}>{label}</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )
+      })()}
 
       {fetched && !loading && (
         <>
@@ -3233,6 +3580,7 @@ export default function OwnerPage() {
         )}
 
         {view === "dashboard"    && <DashboardView token={token} />}
+        {view === "operations"   && <OperationsView token={token} />}
         {view === "clients"      && <ClientsView key={clientListKey} token={token} onSelectClient={handleSelectClient} onAddNew={handleAddNew} />}
         {view === "client-detail" && selectedClient && (
           <ClientDetailView client={selectedClient} token={token} onBack={() => setView("clients")} onUpdated={() => {}} />
