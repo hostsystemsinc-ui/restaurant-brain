@@ -2705,10 +2705,126 @@ function AgreementsView({ token }: { token: string }) {
 }
 
 // ── Settings View ──────────────────────────────────────────────────────────────
+// ── Client Login credential row ────────────────────────────────────────────────
+interface CredRow {
+  username:    string
+  displayName: string
+  redirect:    string
+  password:    string
+  isOverride:  boolean
+  envKey:      string
+}
+
+function CredentialRow({ cred, token, onUpdated }: { cred: CredRow; token: string; onUpdated: (username: string, newPw: string) => void }) {
+  const [editing,  setEditing]  = useState(false)
+  const [newPw,    setNewPw]    = useState("")
+  const [showPw,   setShowPw]   = useState(false)
+  const [saving,   setSaving]   = useState(false)
+  const [result,   setResult]   = useState<{ ok: boolean; msg: string } | null>(null)
+  const [showCurr, setShowCurr] = useState(false)
+
+  const save = async () => {
+    if (!newPw.trim()) return
+    setSaving(true); setResult(null)
+    try {
+      const r = await fetch("/api/owner/secrets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ username: cred.username, password: newPw.trim() }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setResult({ ok: true, msg: "Password updated ✓" })
+        onUpdated(cred.username, newPw.trim())
+        setNewPw(""); setEditing(false)
+      } else {
+        setResult({ ok: false, msg: d.error || "Failed to update" })
+      }
+    } catch {
+      setResult({ ok: false, msg: "Network error" })
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ padding: "16px 20px", borderBottom: `1px solid ${D.border}` }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        {/* Left: account info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{cred.displayName}</span>
+            {cred.isOverride && (
+              <span style={{ fontSize: 10, fontWeight: 700, color: D.orange, background: D.orangeBg, borderRadius: 20, padding: "1px 8px" }}>
+                Runtime override
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" as const }}>
+            <span style={{ fontSize: 12, color: D.muted }}>
+              Username: <code style={{ color: D.text2, background: "rgba(255,255,255,0.06)", padding: "1px 6px", borderRadius: 4 }}>{cred.username}</code>
+            </span>
+            <span style={{ fontSize: 12, color: D.muted }}>
+              Password: {showCurr
+                ? <code style={{ color: D.text2, background: "rgba(255,255,255,0.06)", padding: "1px 6px", borderRadius: 4 }}>{cred.password || "(not set)"}</code>
+                : <code style={{ color: D.muted, background: "rgba(255,255,255,0.04)", padding: "1px 6px", borderRadius: 4 }}>••••••••</code>
+              }
+              <button onClick={() => setShowCurr(s => !s)}
+                style={{ marginLeft: 4, background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 11, padding: "0 2px" }}>
+                {showCurr ? "hide" : "show"}
+              </button>
+            </span>
+            <span style={{ fontSize: 12, color: D.muted }}>→ <code style={{ color: D.text2 }}>{cred.redirect}</code></span>
+          </div>
+          {!cred.isOverride && (
+            <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>
+              Env var: <code style={{ color: D.muted }}>{cred.envKey}</code>
+            </div>
+          )}
+        </div>
+        {/* Right: edit button */}
+        <button onClick={() => { setEditing(e => !e); setResult(null); setNewPw("") }}
+          style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 7, border: `1px solid ${D.border}`, background: editing ? D.surface2 : "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+          {editing ? "Cancel" : "Change"}
+        </button>
+      </div>
+
+      {/* Inline edit form */}
+      {editing && (
+        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ flex: 1, position: "relative" }}>
+            <input
+              type={showPw ? "text" : "password"}
+              placeholder="New password (min 4 chars)"
+              value={newPw}
+              onChange={e => setNewPw(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && save()}
+              style={{ ...inputFull, paddingRight: 60 }}
+              autoFocus
+            />
+            <button onClick={() => setShowPw(s => !s)}
+              style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 11 }}>
+              {showPw ? "hide" : "show"}
+            </button>
+          </div>
+          <button onClick={save} disabled={saving || !newPw.trim()}
+            style={{ padding: "9px 18px", borderRadius: 7, border: "none", background: newPw.trim() ? D.accent : "rgba(255,255,255,0.1)", color: "#fff", fontSize: 13, fontWeight: 600, cursor: newPw.trim() ? "pointer" : "default", opacity: saving ? 0.7 : 1, flexShrink: 0 }}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      )}
+      {result && (
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: result.ok ? D.green : D.red, padding: "6px 10px", borderRadius: 6, background: result.ok ? D.greenBg : D.redBg }}>
+          {result.msg}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SettingsView({ token }: { token: string }) {
-  const [textbeltKey,      setTextbeltKey]      = useState("")
-  const [smsQuota,         setSmsQuota]         = useState<number|null>(null)
-  const [smsStatus,        setSmsStatus]        = useState<"checking"|"up"|"down">("checking")
+  const [smsQuota,   setSmsQuota]   = useState<number|null>(null)
+  const [smsStatus,  setSmsStatus]  = useState<"checking"|"up"|"down">("checking")
+  const [creds,      setCreds]      = useState<CredRow[]>([])
+  const [credsLoading, setCredsLoading] = useState(true)
 
   useEffect(() => {
     fetch("/api/textbelt", { cache: "no-store" })
@@ -2720,13 +2836,27 @@ function SettingsView({ token }: { token: string }) {
       .catch(() => setSmsStatus("down"))
   }, [token])
 
+  const loadCreds = useCallback(() => {
+    setCredsLoading(true)
+    fetch("/api/owner/secrets", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { setCreds(d.clientCreds || []); setCredsLoading(false) })
+      .catch(() => setCredsLoading(false))
+  }, [token])
+
+  useEffect(() => { loadCreds() }, [loadCreds])
+
+  const handleCredUpdated = (username: string, newPw: string) => {
+    setCreds(prev => prev.map(c => c.username === username ? { ...c, password: newPw, isOverride: true } : c))
+  }
+
   const prompts = [
     { category: "Infrastructure", title: "Add New Restaurant Client", risk: "Safe",
       prompt: "Add a new restaurant client named [Restaurant Name] in [City] to the HOST system." },
     { category: "Infrastructure", title: "Check System Status", risk: "Safe",
       prompt: "Check the current Textbelt quota and Railway deployment status." },
-    { category: "Infrastructure", title: "Rotate Password / API Key", risk: "Moderate",
-      prompt: "Update the PASS constant in /owner/page.tsx to a new password: [NEW_PASSWORD]." },
+    { category: "Infrastructure", title: "Rotate Owner Password", risk: "Moderate",
+      prompt: "Update the NEXT_PUBLIC_OWNER_PASS env var in Railway to a new password: [NEW_PASSWORD]." },
     { category: "Guest Experience", title: "Change Join SMS Message", risk: "Safe",
       prompt: "Change the join SMS message for all restaurants to: [YOUR MESSAGE]." },
     { category: "Guest Experience", title: "Update Demo Restaurant Menu", risk: "Safe",
@@ -2746,31 +2876,67 @@ function SettingsView({ token }: { token: string }) {
     <div>
       <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 32px" }}>Settings</h1>
 
-      {/* SMS status */}
+      {/* ── Client Logins ────────────────────────────────────────────────────── */}
+      <section style={{ marginBottom: 36 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: 0 }}>Client Logins</h2>
+            <p style={{ fontSize: 13, color: D.text2, margin: "4px 0 0" }}>
+              All client portal accounts. Changes take effect immediately; reset to Railway env vars on next deploy.
+            </p>
+          </div>
+          <button onClick={loadCreds}
+            style={{ padding: "6px 14px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+            ↻ Refresh
+          </button>
+        </div>
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+          {/* Header */}
+          <div style={{ padding: "10px 20px", borderBottom: `1px solid ${D.border}`, background: "rgba(255,255,255,0.02)",
+            display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8, fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+            <span>Account</span><span>Credentials</span><span>Redirects To</span><span></span>
+          </div>
+          {credsLoading ? (
+            <div style={{ padding: "28px 20px", color: D.muted, fontSize: 13 }}>Loading credentials…</div>
+          ) : creds.length === 0 ? (
+            <div style={{ padding: "28px 20px", color: D.muted, fontSize: 13 }}>Could not load credentials. Check Railway env vars.</div>
+          ) : (
+            creds.map(cred => (
+              <CredentialRow key={cred.username} cred={cred} token={token} onUpdated={handleCredUpdated} />
+            ))
+          )}
+          {/* Last row: note about env vars */}
+          {!credsLoading && creds.length > 0 && (
+            <div style={{ padding: "12px 20px", background: "rgba(245,158,11,0.04)", borderTop: `1px solid ${D.border}` }}>
+              <p style={{ fontSize: 11, color: D.orange, margin: 0 }}>
+                ⚠ Runtime changes reset on Railway redeploy. For permanent changes, update the Railway environment variables.
+              </p>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── SMS / Textbelt ───────────────────────────────────────────────────── */}
       <section style={{ marginBottom: 36 }}>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 16px" }}>SMS / Textbelt</h2>
         <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <div style={{ width: 8, height: 8, borderRadius: "50%", background: smsStatus === "up" ? D.green : smsStatus === "down" ? D.red : D.muted }} />
             <span style={{ fontSize: 14, color: D.text }}>
               {smsStatus === "checking" ? "Checking…" : smsQuota != null ? `${smsQuota.toLocaleString()} texts remaining` : "Not configured"}
             </span>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input placeholder="Textbelt API key" value={textbeltKey} onChange={e => setTextbeltKey(e.target.value)}
-              type="password" style={{ ...inputFull, flex: 1 }} />
             <a href="https://textbelt.com" target="_blank" rel="noopener noreferrer"
-              style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, textDecoration: "none", display: "flex", alignItems: "center", flexShrink: 0 }}>
+              style={{ marginLeft: "auto", padding: "6px 14px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, textDecoration: "none" }}>
               Buy Credits ↗
             </a>
           </div>
-          <p style={{ fontSize: 12, color: D.muted, margin: "10px 0 0" }}>
-            API key is managed via Railway environment variable TEXTBELT_KEY.
+          <p style={{ fontSize: 12, color: D.muted, margin: 0 }}>
+            API key managed via Railway env var <code style={{ color: D.text2 }}>TEXTBELT_KEY</code>.
           </p>
         </div>
       </section>
 
-      {/* Claude prompts */}
+      {/* ── Claude prompts ───────────────────────────────────────────────────── */}
       <section>
         <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 16px" }}>Claude Prompts</h2>
         <p style={{ fontSize: 13, color: D.text2, margin: "0 0 16px" }}>Ready-to-use prompts for common HOST maintenance tasks.</p>

@@ -1074,7 +1074,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How much does HOST cost?",
-    a: "Pricing depends on your restaurant's size and volume. We're currently onboarding founding restaurants in Denver and Boulder — schedule a free demo and we'll talk through what makes sense for you.",
+    a: "$149 / month, flat. No setup fees, no per-cover charges, no surprises. Your first month is completely free — no credit card required to start. Cancel anytime.",
   },
 ]
 
@@ -1592,6 +1592,16 @@ export default function MarketingPage() {
             <a href="#how-it-works" className="ghost-btn" style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500, fontSize: "1rem", padding: "15px 26px", borderRadius: 10, textDecoration: "none", border: "1px solid rgba(255,255,255,0.1)" }}>
               See how it works
             </a>
+          </div>
+          <div style={{ animation: "herofade 0.6s ease 0.48s both", display: "flex", gap: 0, justifyContent: "center", alignItems: "center", marginTop: 22, flexWrap: "wrap" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0, boxShadow: "0 0 8px rgba(34,197,94,0.6)" }} />
+              First month free
+            </span>
+            <span style={{ color: "rgba(255,255,255,0.1)", fontSize: ".9rem" }}>·</span>
+            <span style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>$149 / month</span>
+            <span style={{ color: "rgba(255,255,255,0.1)", fontSize: ".9rem" }}>·</span>
+            <span style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>Cancel anytime</span>
           </div>
         </div>
 

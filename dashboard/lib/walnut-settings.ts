@@ -1,5 +1,5 @@
 /**
- * Server-side settings store for the Walnut admin dashboard.
+ * Server-side settings store for runtime credential overrides.
  * Reads/writes a JSON file at process.cwd()/walnut-settings.json.
  * Falls back to env vars when overrides are null.
  * File is NOT committed to git — resets to env-var defaults on fresh deploy.
@@ -15,6 +15,8 @@ interface WalnutSettings {
   pin: string | null
   /** Per-account password overrides. null = use env var for that account */
   credentials: {
+    walters:   string | null
+    demo:      string | null
     original:  string | null
     southside: string | null
     walnut:    string | null
@@ -23,7 +25,7 @@ interface WalnutSettings {
 
 const DEFAULT_SETTINGS: WalnutSettings = {
   pin: null,
-  credentials: { original: null, southside: null, walnut: null },
+  credentials: { walters: null, demo: null, original: null, southside: null, walnut: null },
 }
 
 export function readSettings(): WalnutSettings {
@@ -34,6 +36,8 @@ export function readSettings(): WalnutSettings {
       return {
         pin: parsed.pin ?? null,
         credentials: {
+          walters:   parsed.credentials?.walters   ?? null,
+          demo:      parsed.credentials?.demo      ?? null,
           original:  parsed.credentials?.original  ?? null,
           southside: parsed.credentials?.southside ?? null,
           walnut:    parsed.credentials?.walnut    ?? null,
