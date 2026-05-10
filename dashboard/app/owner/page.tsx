@@ -34,6 +34,24 @@ const D = {
 const API  = "https://restaurant-brain-production.up.railway.app"
 const DEMO_RID = "dec0cafe-0000-4000-8000-000000000001"
 
+// NOTE: Backend generates station_url as /client/{slug}/station which are all 404.
+// These are the actual working station URLs per restaurant ID.
+// Walnut Original and Southside share /station — the page reads the client auth cookie
+// to know which restaurant to show, so the user must be logged in as the right client.
+const REAL_STATION_URL: Record<string, string> = {
+  "272a8876-e4e6-4867-831d-0525db80a8db": "https://hostplatform.net/walters303/station",
+  "0001cafe-0001-4000-8000-000000000001": "https://hostplatform.net/station",
+  "0002cafe-0001-4000-8000-000000000002": "https://hostplatform.net/station",
+  "dec0cafe-0000-4000-8000-000000000001": "https://hostplatform.net/demo/station",
+}
+// Client username to log in as for station access
+const STATION_LOGIN_AS: Record<string, string> = {
+  "272a8876-e4e6-4867-831d-0525db80a8db": "walters",
+  "0001cafe-0001-4000-8000-000000000001": "original",
+  "0002cafe-0001-4000-8000-000000000002": "southside",
+  "dec0cafe-0000-4000-8000-000000000001": "demo",
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Client {
   id:             string
@@ -1658,8 +1676,20 @@ function OverviewTab({ client, token, floorTables, floorWalls, floorObjects, can
             },
             {
               label: "Station URL",
-              view: <a href={client.station_url} target="_blank" rel="noopener noreferrer" style={{ color: D.blue, fontSize: 12, wordBreak: "break-all" as const }}>{client.station_url}</a>,
-              edit: <div style={{ fontSize: 12, color: D.muted, paddingTop: 2 }}>{client.station_url} <span style={{ color: D.muted }}>(auto)</span></div>,
+              view: (() => {
+                const stationUrl = REAL_STATION_URL[client.id] || client.station_url
+                const loginAs = STATION_LOGIN_AS[client.id]
+                return (
+                  <div>
+                    <a href={stationUrl} target="_blank" rel="noopener noreferrer" style={{ color: D.blue, fontSize: 12, wordBreak: "break-all" as const }}>{stationUrl}</a>
+                    {loginAs && <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>Login as client: <code style={{ color: D.orange, background: "rgba(245,158,11,0.08)", padding: "1px 5px", borderRadius: 3 }}>{loginAs}</code></div>}
+                  </div>
+                )
+              })(),
+              edit: (() => {
+                const stationUrl = REAL_STATION_URL[client.id] || client.station_url
+                return <div style={{ fontSize: 12, color: D.muted, paddingTop: 2 }}>{stationUrl} <span style={{ color: D.muted }}>(auto)</span></div>
+              })(),
             },
             {
               label: "Plan",
@@ -2184,7 +2214,7 @@ interface OpsParty {
   status: string; quotedWait: number | null; arrivedAt: string | null
 }
 interface OpsRestaurant {
-  id: string; name: string; stationUrl: string
+  id: string; name: string; stationUrl: string; joinUrl: string; loginAs: string
   queue: OpsParty[]
   tablesOccupied: number; tablesTotal: number
   avgWait: number | null; utilization: number
@@ -2192,16 +2222,30 @@ interface OpsRestaurant {
 }
 
 const OPS_RESTAURANTS = [
-  { id: "272a8876-e4e6-4867-831d-0525db80a8db", name: "Walter's 303",    stationUrl: "https://hostplatform.net/station" },
-  { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original",  stationUrl: "https://hostplatform.net/station" },
-  { id: "0002cafe-0001-4000-8000-000000000002", name: "Walnut Southside", stationUrl: "https://hostplatform.net/station" },
-  { id: DEMO_RID,                               name: "Demo Restaurant",  stationUrl: "https://hostplatform.net/demo/station" },
+  { id: "272a8876-e4e6-4867-831d-0525db80a8db", name: "Walter's 303",
+    stationUrl: "https://hostplatform.net/walters303/station",
+    joinUrl:    "https://hostplatform.net/client/test/join",
+    loginAs:    "walters" },
+  { id: "0001cafe-0001-4000-8000-000000000001", name: "Walnut Original",
+    stationUrl: "https://hostplatform.net/station",
+    joinUrl:    "https://hostplatform.net/walnut/original/join",
+    loginAs:    "original" },
+  { id: "0002cafe-0001-4000-8000-000000000002", name: "Walnut Southside",
+    stationUrl: "https://hostplatform.net/station",
+    joinUrl:    "https://hostplatform.net/walnut/southside/join",
+    loginAs:    "southside" },
+  { id: DEMO_RID,                               name: "Demo Restaurant",
+    stationUrl: "https://hostplatform.net/demo/station",
+    joinUrl:    "https://hostplatform.net/demo/join",
+    loginAs:    "demo" },
 ]
 
 function OperationsView({ token }: { token: string }) {
   const [restaurants, setRestaurants] = useState<OpsRestaurant[]>(
     OPS_RESTAURANTS.map(r => ({ ...r, queue: [], tablesOccupied: 0, tablesTotal: 0, avgWait: null, utilization: 0, loaded: false }))
   )
+  // Identify which restaurants share the /station URL (Walnut clients)
+  const sharedStationIds = new Set(["0001cafe-0001-4000-8000-000000000001", "0002cafe-0001-4000-8000-000000000002"])
   const [lastUpdate,   setLastUpdate]   = useState<Date | null>(null)
   const [loading,      setLoading]      = useState(false)
   const [autoRefresh,  setAutoRefresh]  = useState(true)
@@ -2315,15 +2359,26 @@ function OperationsView({ token }: { token: string }) {
               <div style={{ padding: "16px 18px", borderBottom: isExpanded ? `1px solid ${D.border}` : "none" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
                   <div style={{ fontSize: 15, fontWeight: 700, color: D.text }}>{r.name}</div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <a href={r.stationUrl} target="_blank" rel="noopener noreferrer"
-                      style={{ fontSize: 11, color: D.blue, textDecoration: "none", padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg }}>
-                      ↗ Station
-                    </a>
-                    <button onClick={() => setExpandedId(isExpanded ? null : r.id)}
-                      style={{ fontSize: 11, color: D.text2, padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", cursor: "pointer" }}>
-                      {isExpanded ? "Hide" : "Queue ↓"}
-                    </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <a href={r.stationUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: 11, color: D.blue, textDecoration: "none", padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg }}>
+                        ↗ Station
+                      </a>
+                      <a href={r.joinUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: 11, color: D.green, textDecoration: "none", padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.greenBorder}`, background: D.greenBg }}>
+                        ↗ Join
+                      </a>
+                      <button onClick={() => setExpandedId(isExpanded ? null : r.id)}
+                        style={{ fontSize: 11, color: D.text2, padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", cursor: "pointer" }}>
+                        {isExpanded ? "Hide" : "Queue ↓"}
+                      </button>
+                    </div>
+                    {sharedStationIds.has(r.id) && (
+                      <div style={{ fontSize: 10, color: D.muted }}>
+                        Station requires client login as <code style={{ color: D.orange, background: "rgba(245,158,11,0.08)", padding: "1px 5px", borderRadius: 3 }}>{r.loginAs}</code>
+                      </div>
+                    )}
                   </div>
                 </div>
 
