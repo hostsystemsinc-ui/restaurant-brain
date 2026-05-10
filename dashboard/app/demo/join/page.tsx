@@ -16,7 +16,7 @@ interface GuestConfig {
   finalButtons: Array<{ id: string; label: string; url: string; color: string }>
 }
 const DEFAULT_CONFIG: GuestConfig = {
-  bgColor: "#000000", accentColor: "#22c55e", buttonTextColor: "#ffffff",
+  bgColor: "#000000", accentColor: "#ffffff", buttonTextColor: "#000000",
   restaurantName: DEMO_NAME, tagline: "",
   waitMessages: [], seatedMessage: "Enjoy your meal!",
   finalButtons: [],
@@ -294,7 +294,7 @@ export default function DemoJoinPage() {
       <div style={{ padding: "14px 22px 28px", flexShrink: 0 }}>
         {error && <p style={{ textAlign: "center", fontSize: ".78rem", color: "rgba(255,90,90,0.9)", marginBottom: 10 }}>{error}</p>}
         <button className="cta-btn" onClick={submit} disabled={loading || joined}
-          style={{ width: "100%", height: 60, borderRadius: 18, background: loading || joined ? "rgba(255,255,255,0.26)" : "#fff", color: "#000", fontWeight: 800, fontSize: ".95rem", letterSpacing: ".12em", textTransform: "uppercase", border: "none", cursor: loading || joined ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "transform .12s" }}>
+          style={{ width: "100%", height: 60, borderRadius: 18, background: loading || joined ? "rgba(255,255,255,0.26)" : (cfg.accentColor || "#fff"), color: loading || joined ? "rgba(0,0,0,0.4)" : (cfg.buttonTextColor || "#000"), fontWeight: 800, fontSize: ".95rem", letterSpacing: ".12em", textTransform: "uppercase", border: "none", cursor: loading || joined ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "transform .12s" }}>
           {loading && !joined
             ? <Loader2 style={{ width: 20, height: 20, animation: "spin 1s linear infinite" }} />
             : "Join Waitlist"}

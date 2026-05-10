@@ -1057,7 +1057,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
 
   // Step 3 — Guest page
   const [bgColor,      setBgColor]      = useState("#000000")
-  const [accentColor,  setAccentColor]  = useState("#22c55e")
+  const [accentColor,  setAccentColor]  = useState("#ffffff")
   const [tagline,      setTagline]      = useState("Powered by HOST")
   const [seatedMsg,    setSeatedMsg]    = useState("Thanks for dining with us!")
   const [waitMessages, setWaitMessages] = useState("Your spot is saved — feel free to step out.\nWe'll let you know the moment your table is ready.\nSit tight, we're moving quickly.")
@@ -1105,7 +1105,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
 
       // Save config (guest page + menu + floor plan)
       const guestConfig = {
-        bgColor, accentColor, buttonTextColor: "#ffffff",
+        bgColor, accentColor, buttonTextColor: "#000000",
         restaurantName: name, tagline,
         waitMessages: waitMessages.split("\n").map(s => s.trim()).filter(Boolean),
         seatedMessage: seatedMsg, finalButtons: [],
@@ -1252,11 +1252,11 @@ function NewClientWizard({ token, onDone, onCancel }: {
                 </div>
               </div>
               <div>
-                <FieldLabel>Accent Color</FieldLabel>
+                <FieldLabel>Button Color</FieldLabel>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input type="color" value={accentColor} onChange={e => setAccentColor(e.target.value)}
                     style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2, background: "none" }} />
-                  <Input value={accentColor} onChange={setAccentColor} placeholder="#22c55e" />
+                  <Input value={accentColor} onChange={setAccentColor} placeholder="#ffffff" />
                 </div>
               </div>
               <div style={{ gridColumn: "1/-1" }}>
@@ -1277,8 +1277,8 @@ function NewClientWizard({ token, onDone, onCancel }: {
             {/* Preview chip */}
             <div style={{ marginTop: 20, padding: 20, borderRadius: 12, background: bgColor, border: `1px solid ${D.border}`, textAlign: "center" }}>
               <div style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>{name || "Restaurant"}</div>
-              <div style={{ color: accentColor, fontSize: 13, marginTop: 4 }}>{tagline}</div>
-              <div style={{ marginTop: 12, padding: "8px 20px", background: accentColor, borderRadius: 20, display: "inline-block", color: "#fff", fontSize: 13, fontWeight: 700 }}>Join Waitlist</div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginTop: 4 }}>{tagline}</div>
+              <div style={{ marginTop: 12, padding: "8px 20px", background: accentColor, borderRadius: 20, display: "inline-block", color: "#000", fontSize: 13, fontWeight: 700 }}>Join Waitlist</div>
             </div>
           </div>
         )}
@@ -2075,8 +2075,9 @@ function getDefaultGuestConfig(restaurantId: string, name: string): GuestPageCon
       waitMessages: [], seatedMessage: "Enjoy your meal!", finalButtons: [] }
   }
   // Dark / accent model (Demo + all new restaurants)
-  return { restaurantName: name, bgColor: "#000000", accentColor: "#22c55e", darkColor: "",
-    buttonTextColor: "#ffffff", tagline: "Powered by HOST", logoUrl: "",
+  // Demo uses white button (#ffffff) with black text (#000000) — no green anywhere
+  return { restaurantName: name, bgColor: "#000000", accentColor: "#ffffff", darkColor: "",
+    buttonTextColor: "#000000", tagline: "Powered by HOST", logoUrl: "",
     waitMessages: [], seatedMessage: "Enjoy your meal!", finalButtons: [] }
 }
 
@@ -2093,16 +2094,20 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
   const isDarkTheme = lum < 0.25
 
   // Derive preview colors that match the ACTUAL guest join page rendering
+  // Dark theme (Demo): white button + black text — accentColor IS the button color
+  // Light theme (Walnut): darkColor IS the button color, buttonTextColor = bg
   const bg        = cfg.bgColor || (isDarkTheme ? "#000000" : "#EDE8DF")
   const btnColor  = isDarkTheme
-    ? (cfg.accentColor || "#22c55e")
+    ? (cfg.accentColor || "#ffffff")   // Demo: white button by default
     : (cfg.darkColor   || "#2C2416")
-  const btnText   = isDarkTheme ? (cfg.buttonTextColor || "#ffffff") : bg
+  const btnText   = isDarkTheme ? (cfg.buttonTextColor || "#000000") : bg
   const txtColor  = isDarkTheme ? "#ffffff" : (cfg.darkColor || "#2C2416")
   const txtFaint  = isDarkTheme ? "rgba(255,255,255,0.28)" : hexToRgba(cfg.darkColor || "#2C2416", 0.30)
-  const badgeBg   = isDarkTheme ? hexToRgba(cfg.accentColor || "#22c55e", 0.08) : hexToRgba(cfg.darkColor || "#2C2416", 0.08)
-  const badgeBdr  = isDarkTheme ? hexToRgba(cfg.accentColor || "#22c55e", 0.22) : hexToRgba(cfg.darkColor || "#2C2416", 0.12)
-  const nameTxt   = isDarkTheme ? (cfg.accentColor || "#22c55e") : (cfg.darkColor || "#2C2416")
+  // For dark theme: badge uses a faint white tint (matches demo page rgba(255,255,255,0.04/0.11))
+  const badgeBg   = isDarkTheme ? "rgba(255,255,255,0.04)" : hexToRgba(cfg.darkColor || "#2C2416", 0.08)
+  const badgeBdr  = isDarkTheme ? "rgba(255,255,255,0.11)" : hexToRgba(cfg.darkColor || "#2C2416", 0.12)
+  // Restaurant name text: demo uses rgba(255,255,255,0.85), not the accent color
+  const nameTxt   = isDarkTheme ? "rgba(255,255,255,0.85)" : (cfg.darkColor || "#2C2416")
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -2124,13 +2129,13 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
       <div>
         {isDarkTheme ? (
           <>
-            <FieldLabel>Accent / Button Color</FieldLabel>
+            <FieldLabel>Button Color</FieldLabel>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input type="color" value={cfg.accentColor || "#22c55e"} onChange={e => setCfg(p => ({ ...p, accentColor: e.target.value }))}
+              <input type="color" value={cfg.accentColor || "#ffffff"} onChange={e => setCfg(p => ({ ...p, accentColor: e.target.value }))}
                 style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2 }} />
-              <Input value={cfg.accentColor || ""} onChange={v => setCfg(p => ({ ...p, accentColor: v }))} placeholder="#22c55e" />
+              <Input value={cfg.accentColor || ""} onChange={v => setCfg(p => ({ ...p, accentColor: v }))} placeholder="#ffffff" />
             </div>
-            <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Color for buttons and highlights on dark background</div>
+            <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Button background color on dark background</div>
           </>
         ) : (
           <>
