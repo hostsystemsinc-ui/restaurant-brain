@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const D = {
@@ -130,7 +131,16 @@ interface AnalyticsEntry {
   restaurant_id: string | null
 }
 
-type NavView = "dashboard" | "clients" | "client-detail" | "new-client" | "billing" | "analytics" | "agreements" | "settings"
+interface GAData {
+  configured: boolean
+  error?: string
+  today?: { sessions: number; pageviews: number; activeUsers: number; newUsers: number }
+  pages?: { path: string; title: string; pageviews: number; sessions: number }[]
+  sources?: { source: string; sessions: number }[]
+  daily?: { date: string; sessions: number; pageviews: number }[]
+}
+
+type NavView = "dashboard" | "clients" | "client-detail" | "new-client" | "billing" | "analytics" | "website" | "agreements" | "settings"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtTime(iso: string) {
@@ -157,12 +167,13 @@ function nanoid() {
 // ── Sidebar ────────────────────────────────────────────────────────────────────
 function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => void }) {
   const items: { id: NavView; label: string; icon: string }[] = [
-    { id: "dashboard",   label: "Dashboard",   icon: "⬡" },
-    { id: "clients",     label: "Clients",     icon: "🏢" },
-    { id: "billing",     label: "Billing",     icon: "💳" },
-    { id: "analytics",   label: "Analytics",   icon: "📊" },
-    { id: "agreements",  label: "Agreements",  icon: "📄" },
-    { id: "settings",    label: "Settings",    icon: "⚙️" },
+    { id: "dashboard",   label: "Dashboard",          icon: "⬡" },
+    { id: "clients",     label: "Clients",            icon: "🏢" },
+    { id: "billing",     label: "Billing",            icon: "💳" },
+    { id: "website",     label: "Website Analytics",  icon: "🌐" },
+    { id: "analytics",   label: "Guest Analytics",    icon: "📊" },
+    { id: "agreements",  label: "Agreements",         icon: "📄" },
+    { id: "settings",    label: "Settings",           icon: "⚙️" },
   ]
   const active = (view === "client-detail" || view === "new-client") ? "clients" : view
   return (
@@ -2193,6 +2204,141 @@ const RID_NAMES: Record<string, string> = {
   "dec0cafe-0000-4000-8000-000000000001": "Demo",
 }
 
+// ── Website Analytics View ─────────────────────────────────────────────────────
+function WebsiteAnalyticsView({ token }: { token: string }) {
+  const [gaData,    setGaData]    = useState<GAData | null>(null)
+  const [gaLoading, setGaLoading] = useState(true)
+  const [gaError,   setGaError]   = useState<string | null>(null)
+
+  function load() {
+    setGaLoading(true); setGaError(null)
+    fetch(`/api/ga?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { setGaData(d); if (d.error) setGaError(d.error) })
+      .catch(() => setGaData({ configured: false }))
+      .finally(() => setGaLoading(false))
+  }
+
+  useEffect(() => { load() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const gaTotal = gaData?.sources?.reduce((a, b) => a + b.sessions, 0) ?? 1
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Website Analytics</h1>
+          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>hostplatform.net · powered by Google Analytics</p>
+        </div>
+        <button onClick={load} disabled={gaLoading}
+          style={{ padding: "7px 16px", borderRadius: 7, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+          {gaLoading ? "Loading…" : "↺ Refresh"}
+        </button>
+      </div>
+
+      {gaLoading ? (
+        <div style={{ color: D.muted, fontSize: 14, textAlign: "center" as const, padding: "60px 0" }}>Loading traffic data…</div>
+
+      ) : !gaData?.configured ? (
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "48px 32px", textAlign: "center" as const }}>
+          <div style={{ fontSize: 40, marginBottom: 14 }}>📡</div>
+          <div style={{ color: D.text, fontWeight: 700, fontSize: 18, marginBottom: 8 }}>GA4 Not Connected</div>
+          <div style={{ color: D.text2, fontSize: 14, maxWidth: 480, margin: "0 auto 16px", lineHeight: 1.6 }}>
+            To display live website traffic data here, add two environment variables to Railway and redeploy.
+          </div>
+          <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: "16px 20px", display: "inline-block", textAlign: "left" as const, fontFamily: "monospace", fontSize: 13 }}>
+            <div style={{ color: D.green, marginBottom: 6 }}>GA_PROPERTY_ID=<span style={{ color: D.text2 }}>your-numeric-property-id</span></div>
+            <div style={{ color: D.green }}>GA_SERVICE_ACCOUNT_JSON=<span style={{ color: D.text2 }}>{"{"}"type":"service_account",...{"}"}</span></div>
+          </div>
+          {gaError && <div style={{ color: D.red, fontSize: 12, marginTop: 14 }}>{gaError}</div>}
+        </div>
+
+      ) : (
+        <>
+          {/* ── Today's metric cards ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 16 }}>
+            {([
+              { label: "Sessions Today",   value: gaData.today?.sessions    ?? 0, color: D.green },
+              { label: "Page Views Today", value: gaData.today?.pageviews   ?? 0, color: D.blue  },
+              { label: "Active Users",     value: gaData.today?.activeUsers ?? 0, color: D.orange },
+              { label: "New Users Today",  value: gaData.today?.newUsers    ?? 0, color: D.purple },
+            ] as { label: string; value: number; color: string }[]).map(({ label, value, color }) => (
+              <div key={label} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "18px 20px" }}>
+                <div style={{ color: D.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 8 }}>{label}</div>
+                <div style={{ color, fontSize: 32, fontWeight: 700, lineHeight: 1 }}>{value.toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Daily sessions chart ── */}
+          {(gaData.daily?.length ?? 0) > 0 && (
+            <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "18px 20px", marginBottom: 16 }}>
+              <div style={{ color: D.text2, fontSize: 12, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 16 }}>
+                Sessions · Last 14 Days
+              </div>
+              <ResponsiveContainer width="100%" height={130}>
+                <BarChart data={gaData.daily} margin={{ top: 0, right: 4, left: -26, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={D.border} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fill: D.muted, fontSize: 10 }} tickLine={false} axisLine={false}
+                    tickFormatter={d => { const p = d.split("-"); return `${p[1]}/${p[2]}` }} />
+                  <YAxis tick={{ fill: D.muted, fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ background: D.sidebar, border: `1px solid ${D.border}`, borderRadius: 8, fontSize: 12 }}
+                    labelStyle={{ color: D.text2 }}
+                    cursor={{ fill: "rgba(255,255,255,0.04)" }} />
+                  <Bar dataKey="sessions" fill={D.green} radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* ── Top pages + Traffic sources ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 14 }}>
+            {/* Top Pages */}
+            <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${D.border}`, color: D.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>
+                Top Pages · 7 Days
+              </div>
+              {(gaData.pages ?? []).slice(0, 9).map((p, i) => (
+                <div key={p.path + i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "9px 18px", borderBottom: `1px solid ${D.border}` }}>
+                  <div style={{ color: D.text, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis",
+                    whiteSpace: "nowrap" as const, maxWidth: "78%", fontFamily: "monospace", letterSpacing: "-0.02em" }}>
+                    {p.path === "/" ? "/ · Home" : p.path}
+                  </div>
+                  <div style={{ color: D.green, fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{p.pageviews.toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Traffic Sources */}
+            <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ padding: "12px 18px", borderBottom: `1px solid ${D.border}`, color: D.muted, fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>
+                Traffic Sources · 7 Days
+              </div>
+              {(gaData.sources ?? []).map((s, i) => {
+                const pct = Math.round((s.sessions / gaTotal) * 100)
+                return (
+                  <div key={s.source + i} style={{ padding: "10px 18px", borderBottom: `1px solid ${D.border}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                      <span style={{ color: D.text, fontSize: 13 }}>{s.source}</span>
+                      <span style={{ color: D.text2, fontSize: 12 }}>{s.sessions} sessions</span>
+                    </div>
+                    <div style={{ background: D.border, borderRadius: 4, height: 3 }}>
+                      <div style={{ background: D.blue, height: 3, borderRadius: 4, width: `${pct}%`, transition: "width 0.4s ease" }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Analytics View ─────────────────────────────────────────────────────────────
 function AnalyticsView({ token }: { token: string }) {
   const [data,      setData]      = useState<AnalyticsEntry[]>([])
@@ -2271,7 +2417,7 @@ function AnalyticsView({ token }: { token: string }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Analytics</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Guest Analytics</h1>
           <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>{sorted.length.toLocaleString()} records{restFilter !== "all" ? ` (filtered)` : ` total`}</p>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -2767,6 +2913,7 @@ export default function OwnerPage() {
           <NewClientWizard token={token} onDone={handleWizardDone} onCancel={() => setView("clients")} />
         )}
         {view === "billing"      && <BillingView token={token} />}
+        {view === "website"      && <WebsiteAnalyticsView token={token} />}
         {view === "analytics"    && <AnalyticsView token={token} />}
         {view === "agreements"   && <AgreementsView token={token} />}
         {view === "settings"     && <SettingsView token={token} />}
