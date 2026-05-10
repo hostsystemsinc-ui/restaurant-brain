@@ -2135,8 +2135,14 @@ async def create_demo_submission(request: Request):
         "receivedAt":  _now(),
     }
     _demo_submissions.insert(0, sub)
-    threading.Thread(target=_save_demo_sub_to_db, args=(sub,), daemon=True).start()
     print(f"[DEMO REQUEST] {_json.dumps(sub)}")
+    # Save to Supabase synchronously so the submission survives restarts
+    try:
+        supabase.table("demo_submissions").insert(sub).execute()
+        print(f"[DEMO REQUEST] Saved to Supabase: {sub['id']}")
+    except Exception as e:
+        # Table may not exist yet — log full payload so it can be recovered from Railway logs
+        print(f"[DEMO REQUEST] Supabase save FAILED ({e}) — payload: {_json.dumps(sub)}")
     return {"ok": True}
 
 @app.get("/demo-submissions")
