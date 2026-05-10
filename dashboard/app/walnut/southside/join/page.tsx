@@ -85,10 +85,11 @@ function SouthsideJoinInner() {
       ])
       const tables   = tablesRes.ok   ? await tablesRes.json()   : []
       const insights = insightsRes.ok ? await insightsRes.json() : null
+      const total       = Array.isArray(tables) ? tables.length : 0
       const apiOccupied = Array.isArray(tables)
         ? tables.filter((t: { status: string }) => t.status !== "available").length : 0
       setLive({
-        available: Math.max(0, 16 - apiOccupied),
+        available: Math.max(0, total - apiOccupied),
         ahead:     insights?.parties_waiting ?? 0,
         waitMin:   insights?.avg_wait_estimate > 0 ? insights.avg_wait_estimate : null,
       })
