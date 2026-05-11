@@ -29,7 +29,7 @@ interface LiveInfo {
 }
 
 const DEFAULT_CONFIG: GuestConfig = {
-  bgColor: "#000000", accentColor: "#22c55e", buttonTextColor: "#ffffff",
+  bgColor: "#000000", accentColor: "#ffffff", buttonTextColor: "#000000",
   restaurantName: "Restaurant", tagline: "Powered by HOST",
   waitMessages: ["Your spot is saved — feel free to step out.", "We'll let you know the moment your table is ready.", "Sit tight, we're moving quickly."],
   seatedMessage: "Thanks for dining with us!",

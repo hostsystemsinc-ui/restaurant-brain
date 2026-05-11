@@ -158,7 +158,7 @@ interface GAData {
   daily?: { date: string; sessions: number; pageviews: number }[]
 }
 
-type NavView = "dashboard" | "clients" | "client-detail" | "new-client" | "billing" | "analytics" | "website" | "agreements" | "settings" | "operations"
+type NavView = "dashboard" | "clients" | "client-detail" | "new-client" | "billing" | "analytics" | "website" | "agreements" | "settings"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function fmtTime(iso: string) {
@@ -186,7 +186,6 @@ function nanoid() {
 function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => void }) {
   const items: { id: NavView; label: string; icon: string }[] = [
     { id: "dashboard",   label: "Dashboard",          icon: "⬡" },
-    { id: "operations",  label: "Operations",         icon: "⚡" },
     { id: "clients",     label: "Clients",            icon: "🏢" },
     { id: "billing",     label: "Billing",            icon: "💳" },
     { id: "website",     label: "Website Analytics",  icon: "🌐" },
@@ -427,31 +426,34 @@ function DashboardView({ token }: { token: string }) {
         ))}
       </div>
 
-      {/* Per-restaurant live stats */}
-      <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.07em" }}>Live Restaurant Stats</h2>
-      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 32 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px 80px 90px", padding: "10px 20px",
-          borderBottom: `1px solid ${D.border}`, fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
-          <span>Restaurant</span><span style={{ textAlign: "center" }}>Queue</span>
-          <span style={{ textAlign: "center" }}>Tables Occupied</span><span style={{ textAlign: "center" }}>Avg Wait</span>
-          <span style={{ textAlign: "center" }}>Utilization</span>
-        </div>
+      {/* Live Restaurant Monitor */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.07em" }}>Live Operations</h2>
+        <a href="#" onClick={e => { e.preventDefault(); runChecks() }} style={{ fontSize: 12, color: D.blue, textDecoration: "none" }}>↻ Refresh</a>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12, marginBottom: 32 }}>
         {liveStats.length === 0 ? (
-          <div style={{ padding: "24px 20px", color: D.muted, fontSize: 13 }}>Loading live data…</div>
-        ) : liveStats.map((r, i) => (
-          <div key={r.id} style={{ display: "grid", gridTemplateColumns: "1fr 80px 110px 80px 90px",
-            padding: "14px 20px", borderBottom: i < liveStats.length - 1 ? `1px solid ${D.border}` : "none",
-            alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{r.name}</div>
-              <div style={{ fontSize: 10, color: D.muted, fontFamily: "monospace", marginTop: 1 }}>{r.id.slice(0,8)}…</div>
+          <div style={{ gridColumn: "1/-1", padding: "24px 20px", color: D.muted, fontSize: 13, background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12 }}>Loading live data…</div>
+        ) : liveStats.map(r => (
+          <div key={r.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "16px 18px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: D.text }}>{r.name}</div>
+              <span style={{ fontSize: 18, fontWeight: 800, color: r.queueNow > 0 ? D.orange : D.green }}>{r.queueNow} <span style={{ fontSize: 11, fontWeight: 400, color: D.muted }}>in queue</span></span>
             </div>
-            <div style={{ textAlign: "center" }}>
-              <span style={{ fontSize: 18, fontWeight: 700, color: r.queueNow > 0 ? D.orange : D.green }}>{r.queueNow}</span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              <div style={{ background: D.surface2, borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ fontSize: 9, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Tables</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{r.tablesOccupied}<span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>/{r.tablesTotal}</span></div>
+              </div>
+              <div style={{ background: D.surface2, borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ fontSize: 9, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Avg Wait</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: D.text2 }}>{r.avgWait ? `~${Math.round(r.avgWait)}m` : "—"}</div>
+              </div>
+              <div style={{ background: D.surface2, borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ fontSize: 9, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Utilization</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: r.utilization > 70 ? D.orange : D.green }}>{r.utilization}%</div>
+              </div>
             </div>
-            <div style={{ textAlign: "center", fontSize: 15, fontWeight: 600, color: D.text }}>{r.tablesOccupied}<span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>/{r.tablesTotal}</span></div>
-            <div style={{ textAlign: "center", fontSize: 13, color: D.text2 }}>{r.avgWait ? `~${Math.round(r.avgWait)}m` : "—"}</div>
-            <div style={{ textAlign: "center", fontSize: 14, fontWeight: 600, color: r.utilization > 70 ? D.orange : D.green }}>{r.utilization}%</div>
           </div>
         ))}
       </div>
@@ -630,264 +632,362 @@ function FloorViewer({ tables, walls, objects, aspectRatio = 1.62 }: {
 }
 
 // ── Table Designer ─────────────────────────────────────────────────────────────
-function TableDesigner({ tables, walls, objects, onChange, aspectRatio = 1.62 }: {
+function TableDesigner({ tables, walls, objects, onChange, onObjectsChange, aspectRatio = 1.62 }: {
   tables: FloorTable[]
   walls?: FloorWall[]
   objects?: FloorObject[]
   onChange: (tables: FloorTable[]) => void
+  onObjectsChange?: (objects: FloorObject[]) => void
   aspectRatio?: number
 }) {
   const [selected, setSelected] = useState<string | null>(null)
-  const [adding,   setAdding]   = useState(false)
-  const [newTbl,   setNewTbl]   = useState({ number: "", capacity: "4", shape: "rect" as FloorTable["shape"], label: "" })
+  const [selType, setSelType] = useState<"table"|"object">("table")
+  const [addMode, setAddMode] = useState<"table"|"object"|null>(null)
+  const [newTbl, setNewTbl] = useState({ label: "", capacity: "4", shape: "rect" as FloorTable["shape"] })
+  const [newObj, setNewObj] = useState({ type: "door", label: "" })
   const canvasRef = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ id: string; startX: number; startY: number; ox: number; oy: number } | null>(null)
+  const drag = useRef<{ id: string; kind: "table"|"object"; startX: number; startY: number; ox: number; oy: number } | null>(null)
+  const resizing = useRef<{ id: string; kind: "table"|"object"; handle: string; startX: number; startY: number; ox: number; oy: number; ow: number; oh: number } | null>(null)
+  const objs = objects || []
 
-  const selectedTable = tables.find(t => t.id === selected)
+  const selectedTable = selType === "table" ? tables.find(t => t.id === selected) : undefined
+  const selectedObj   = selType === "object" ? objs.find(o => o.id === selected) : undefined
 
   function handleCanvasClick(e: React.MouseEvent) {
-    if (drag.current) return
-    if ((e.target as HTMLElement).closest("[data-table]")) return
+    if (drag.current || resizing.current) return
+    if ((e.target as HTMLElement).closest("[data-item]")) return
     setSelected(null)
-    if (adding) {
-      const rect = canvasRef.current!.getBoundingClientRect()
-      const x = ((e.clientX - rect.left) / rect.width * 100).toFixed(1)
-      const y = ((e.clientY - rect.top) / rect.height * 100).toFixed(1)
-      const num = parseInt(newTbl.number) || (tables.length ? Math.max(...tables.map(t => t.number)) + 1 : 1)
+    if (!canvasRef.current) return
+    const rect = canvasRef.current.getBoundingClientRect()
+    const xPct = ((e.clientX - rect.left) / rect.width * 100)
+    const yPct = ((e.clientY - rect.top) / rect.height * 100)
+
+    if (addMode === "table") {
+      const nextNum = tables.length ? Math.max(...tables.map(t => t.number)) + 1 : 1
+      const lbl = newTbl.label.trim() || String(nextNum)
       const isSmall = newTbl.shape === "circle" || newTbl.shape === "diamond"
       const w = isSmall ? 6 : newTbl.shape === "booth" ? 14 : 8
       const h = isSmall ? 6 : newTbl.shape === "booth" ? 5 : 8
       const t: FloorTable = {
-        id: nanoid(), number: num, label: newTbl.label || String(num),
+        id: nanoid(), number: nextNum, label: lbl,
         capacity: parseInt(newTbl.capacity) || 4, shape: newTbl.shape,
-        x: Math.max(w/2, Math.min(100 - w/2, parseFloat(x))),
-        y: Math.max(h/2, Math.min(100 - h/2, parseFloat(y))),
+        x: Math.max(w/2, Math.min(100-w/2, xPct)),
+        y: Math.max(h/2, Math.min(100-h/2, yPct)),
         w, h,
       }
       onChange([...tables, t])
-      setNewTbl(prev => ({ ...prev, number: String(num + 1), label: "" }))
+      setNewTbl(prev => ({ ...prev, label: "" }))
+    } else if (addMode === "object" && onObjectsChange) {
+      const w = newObj.type === "door" ? 8 : newObj.type === "bar" ? 20 : 12
+      const h = newObj.type === "door" ? 4 : newObj.type === "bar" ? 6 : 3
+      const o: FloorObject = {
+        id: nanoid(), type: newObj.type, label: newObj.label,
+        x: Math.max(0, Math.min(100-w, xPct - w/2)),
+        y: Math.max(0, Math.min(100-h, yPct - h/2)),
+        w, h,
+      }
+      onObjectsChange([...objs, o])
+      setNewObj(prev => ({ ...prev, label: "" }))
     }
   }
 
-  function startDrag(e: React.MouseEvent, id: string) {
+  function startDrag(e: React.MouseEvent, id: string, kind: "table"|"object") {
     e.stopPropagation()
-    const tbl = tables.find(t => t.id === id)!
-    const rect = canvasRef.current!.getBoundingClientRect()
-    drag.current = {
-      id,
-      startX: e.clientX, startY: e.clientY,
-      ox: tbl.x, oy: tbl.y,
-    }
-    setSelected(id)
+    if (!canvasRef.current) return
+    const item = kind === "table" ? tables.find(t => t.id === id) : objs.find(o => o.id === id)
+    if (!item) return
+    drag.current = { id, kind, startX: e.clientX, startY: e.clientY, ox: item.x, oy: item.y }
+    setSelected(id); setSelType(kind)
     const onMove = (me: MouseEvent) => {
-      if (!drag.current) return
-      const rect2 = canvasRef.current!.getBoundingClientRect()
-      const dx = (me.clientX - drag.current.startX) / rect2.width * 100
-      const dy = (me.clientY - drag.current.startY) / rect2.height * 100
-      onChange(tables.map(t => t.id === drag.current!.id
-        ? { ...t, x: Math.max(0, Math.min(90, drag.current!.ox + dx)), y: Math.max(0, Math.min(90, drag.current!.oy + dy)) }
-        : t
-      ))
+      if (!drag.current || !canvasRef.current) return
+      const r = canvasRef.current.getBoundingClientRect()
+      const dx = (me.clientX - drag.current.startX) / r.width * 100
+      const dy = (me.clientY - drag.current.startY) / r.height * 100
+      if (drag.current.kind === "table") {
+        onChange(tables.map(t => t.id === drag.current!.id
+          ? { ...t, x: Math.max(t.w/2, Math.min(100-t.w/2, drag.current!.ox + dx)), y: Math.max(t.h/2, Math.min(100-t.h/2, drag.current!.oy + dy)) }
+          : t))
+      } else if (onObjectsChange) {
+        const tgt = objs.find(o => o.id === drag.current!.id)
+        if (tgt) onObjectsChange(objs.map(o => o.id === drag.current!.id
+          ? { ...o, x: Math.max(0, Math.min(100-o.w, drag.current!.ox + dx)), y: Math.max(0, Math.min(100-o.h, drag.current!.oy + dy)) }
+          : o))
+      }
     }
     const onUp = () => { drag.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp) }
     window.addEventListener("mousemove", onMove)
     window.addEventListener("mouseup", onUp)
   }
 
+  function startResize(e: React.MouseEvent, id: string, kind: "table"|"object", handle: string) {
+    e.stopPropagation()
+    if (!canvasRef.current) return
+    const item = kind === "table" ? tables.find(t => t.id === id) : objs.find(o => o.id === id)
+    if (!item) return
+    resizing.current = { id, kind, handle, startX: e.clientX, startY: e.clientY, ox: item.x, oy: item.y, ow: item.w, oh: item.h }
+    const onMove = (me: MouseEvent) => {
+      if (!resizing.current || !canvasRef.current) return
+      const r = canvasRef.current.getBoundingClientRect()
+      const dx = (me.clientX - resizing.current.startX) / r.width * 100
+      const dy = (me.clientY - resizing.current.startY) / r.height * 100
+      const { ox, oy, ow, oh, handle: h } = resizing.current
+      let nx = ox, ny = oy, nw = ow, nh = oh
+      if (h.includes("e")) nw = Math.max(4, ow + dx)
+      if (h.includes("w")) { nw = Math.max(4, ow - dx); nx = ox + (ow - nw) }
+      if (h.includes("s")) nh = Math.max(3, oh + dy)
+      if (h.includes("n")) { nh = Math.max(3, oh - dy); ny = oy + (oh - nh) }
+      if (resizing.current.kind === "table") {
+        onChange(tables.map(t => t.id === resizing.current!.id ? { ...t, x: nx + nw/2, y: ny + nh/2, w: nw, h: nh } : t))
+      } else if (onObjectsChange) {
+        onObjectsChange(objs.map(o => o.id === resizing.current!.id ? { ...o, x: nx, y: ny, w: nw, h: nh } : o))
+      }
+    }
+    const onUp = () => { resizing.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp) }
+    window.addEventListener("mousemove", onMove)
+    window.addEventListener("mouseup", onUp)
+  }
+
   const deleteSelected = useCallback(() => {
-    onChange(tables.filter(t => t.id !== selected))
-    setSelected(null)
-  }, [onChange, tables, selected])
+    if (!selected) return
+    if (selType === "table") { onChange(tables.filter(t => t.id !== selected)); setSelected(null) }
+    else if (selType === "object" && onObjectsChange) { onObjectsChange(objs.filter(o => o.id !== selected)); setSelected(null) }
+  }, [onChange, onObjectsChange, tables, objs, selected, selType])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key === "Delete" || e.key === "Backspace") && selected && !((e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA|SELECT/i))) {
-        deleteSelected()
-      }
-      if (e.key === "Escape") { setSelected(null); setAdding(false) }
+      if ((e.key === "Delete" || e.key === "Backspace") && selected && !((e.target as HTMLElement)?.tagName?.match(/INPUT|TEXTAREA|SELECT/i))) deleteSelected()
+      if (e.key === "Escape") { setSelected(null); setAddMode(null) }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [selected, deleteSelected])
 
-  function updateSelected(patch: Partial<FloorTable>) {
+  function updateTable(patch: Partial<FloorTable>) {
     onChange(tables.map(t => t.id === selected ? { ...t, ...patch } : t))
+  }
+  function updateObj(patch: Partial<FloorObject>) {
+    if (onObjectsChange) onObjectsChange(objs.map(o => o.id === selected ? { ...o, ...patch } : o))
   }
 
   const shapeStyle = (t: FloorTable, isSel: boolean): React.CSSProperties => {
     const base: React.CSSProperties = {
-      position: "absolute", left: `${t.x - t.w / 2}%`, top: `${t.y - t.h / 2}%`,
+      position: "absolute",
+      left: `${t.x - t.w/2}%`, top: `${t.y - t.h/2}%`,
       width: `${t.w}%`, height: `${t.h}%`,
       background: isSel ? "rgba(96,165,250,0.25)" : "rgba(255,255,255,0.12)",
       border: `2px solid ${isSel ? D.blue : "rgba(255,255,255,0.22)"}`,
       display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
-      cursor: "grab", userSelect: "none", transition: "border-color 0.12s",
-      boxSizing: "border-box",
+      cursor: "grab", userSelect: "none", transition: "border-color 0.12s", boxSizing: "border-box",
     }
-    if (t.shape === "circle") {
-      base.borderRadius = "50%"
-    } else if (t.shape === "diamond") {
-      // Use clipPath (same as station page) so the label stays upright and shape looks correct
-      base.clipPath = "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"
-      base.borderRadius = 0
-      base.border = "none"
-      base.background = isSel ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.18)"
-    } else if (t.shape === "booth") {
-      base.borderRadius = "4px 4px 0 0"
-    } else {
-      base.borderRadius = "6px"
-    }
+    if (t.shape === "circle") base.borderRadius = "50%"
+    else if (t.shape === "diamond") { base.clipPath = "polygon(50% 0%,100% 50%,50% 100%,0% 50%)"; base.borderRadius = 0; base.border = "none"; base.background = isSel ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.18)" }
+    else if (t.shape === "booth") base.borderRadius = "4px 4px 0 0"
+    else base.borderRadius = "6px"
     return base
   }
 
-  const innerStyle = (): React.CSSProperties => ({ textAlign: "center" })
+  const objStyle = (o: FloorObject, isSel: boolean): React.CSSProperties => ({
+    position: "absolute", left: `${o.x}%`, top: `${o.y}%`, width: `${o.w}%`, height: `${o.h}%`,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    cursor: "grab", userSelect: "none", boxSizing: "border-box",
+    border: `2px solid ${isSel ? D.blue : (
+      o.type === "door" ? "rgba(20,180,180,0.5)" :
+      o.type === "bar"  ? "rgba(140,100,60,0.5)" :
+      o.type === "window" ? "rgba(100,160,255,0.4)" :
+      o.type === "host-stand" ? "rgba(167,139,250,0.5)" :
+      "rgba(255,255,255,0.3)"
+    )}`,
+    background: isSel ? "rgba(96,165,250,0.15)" : (
+      o.type === "door" ? "rgba(20,180,180,0.12)" :
+      o.type === "bar"  ? "rgba(140,100,60,0.18)" :
+      o.type === "window" ? "rgba(100,160,255,0.10)" :
+      o.type === "host-stand" ? "rgba(167,139,250,0.12)" :
+      "rgba(255,255,255,0.05)"
+    ),
+    borderRadius: 4,
+  })
+
+  // Resize handle positions: 8 handles per item
+  const handles = ["n","ne","e","se","s","sw","w","nw"]
+  const handlePos = (h: string): React.CSSProperties => {
+    const center = "50%", near = "-5px", far = "calc(100% + 1px)"
+    const map: Record<string, [string,string]> = {
+      n: [center, near], ne: [far, near], e: [far, center], se: [far, far],
+      s: [center, far], sw: [near, far], w: [near, center], nw: [near, near],
+    }
+    const [l, t] = map[h]
+    return { position: "absolute", left: l, top: t, width: 9, height: 9, borderRadius: 2,
+      background: D.blue, border: "1.5px solid #fff", cursor: `${h}-resize`, transform: "translate(-50%,-50%)", zIndex: 10, flexShrink: 0 }
+  }
+
+  const objectTypeOptions = [
+    { value: "door", label: "🚪 Door" },
+    { value: "bar",  label: "🍺 Bar" },
+    { value: "window", label: "🪟 Window" },
+    { value: "host-stand", label: "🖥 Host Stand" },
+    { value: "wall", label: "▬ Wall" },
+    { value: "label", label: "🏷 Label" },
+  ]
 
   return (
     <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-      {/* Controls panel */}
-      <div style={{ width: 200, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* Add table */}
-        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: 14 }}>
+      {/* Left controls */}
+      <div style={{ width: 210, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+
+        {/* Add Table panel */}
+        <div style={{ background: D.surface, border: `1px solid ${addMode === "table" ? D.blue : D.border}`, borderRadius: 10, padding: 14, transition: "border-color 0.15s" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Add Table</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <input placeholder="Table #" value={newTbl.number} onChange={e => setNewTbl(p => ({ ...p, number: e.target.value }))}
-              style={inputSm} />
-            <input placeholder="Label (opt)" value={newTbl.label} onChange={e => setNewTbl(p => ({ ...p, label: e.target.value }))}
-              style={inputSm} />
+            <input placeholder="Label (e.g. A, B, 12, Bar)" value={newTbl.label} onChange={e => setNewTbl(p => ({ ...p, label: e.target.value }))} style={inputSm} />
             <select value={newTbl.capacity} onChange={e => setNewTbl(p => ({ ...p, capacity: e.target.value }))} style={inputSm}>
               {[1,2,3,4,5,6,7,8,10,12].map(n => <option key={n} value={n}>{n} guests</option>)}
             </select>
             <select value={newTbl.shape} onChange={e => setNewTbl(p => ({ ...p, shape: e.target.value as FloorTable["shape"] }))} style={inputSm}>
-              <option value="rect">Square</option>
+              <option value="rect">Square / Rect</option>
               <option value="circle">Round</option>
               <option value="booth">Booth</option>
               <option value="diamond">Diamond</option>
             </select>
-            <button onClick={() => setAdding(a => !a)}
-              style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${adding ? D.blue : D.border}`,
-                background: adding ? D.blueBg : "transparent", color: adding ? D.blue : D.text2,
+            <button onClick={() => setAddMode(m => m === "table" ? null : "table")}
+              style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${addMode === "table" ? D.blue : D.border}`,
+                background: addMode === "table" ? D.blueBg : "transparent", color: addMode === "table" ? D.blue : D.text2,
                 fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-              {adding ? "🖱 Click canvas to place" : "+ Add Table"}
+              {addMode === "table" ? "🖱 Click canvas to place" : "+ Add Table"}
             </button>
           </div>
         </div>
 
-        {/* Selected table edit */}
+        {/* Add Object panel */}
+        <div style={{ background: D.surface, border: `1px solid ${addMode === "object" ? D.purple : D.border}`, borderRadius: 10, padding: 14, transition: "border-color 0.15s" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Add Shape</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <select value={newObj.type} onChange={e => setNewObj(p => ({ ...p, type: e.target.value }))} style={inputSm}>
+              {objectTypeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <input placeholder="Label (optional)" value={newObj.label} onChange={e => setNewObj(p => ({ ...p, label: e.target.value }))} style={inputSm} />
+            <button onClick={() => setAddMode(m => m === "object" ? null : "object")}
+              disabled={!onObjectsChange}
+              style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${addMode === "object" ? D.purple : D.border}`,
+                background: addMode === "object" ? D.purpleBg : "transparent", color: addMode === "object" ? D.purple : D.text2,
+                fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              {addMode === "object" ? "🖱 Click canvas to place" : "+ Add Shape"}
+            </button>
+          </div>
+        </div>
+
+        {/* Edit selected table */}
         {selectedTable && (
-          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: 14, flex: 1 }}>
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: 14 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Edit Table</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <input placeholder="Number" value={selectedTable.number} type="number"
-                onChange={e => updateSelected({ number: parseInt(e.target.value) || 0 })} style={inputSm} />
-              <input placeholder="Label" value={selectedTable.label}
-                onChange={e => updateSelected({ label: e.target.value })} style={inputSm} />
-              <select value={selectedTable.capacity} onChange={e => updateSelected({ capacity: parseInt(e.target.value) })} style={inputSm}>
+              <input placeholder="Label" value={selectedTable.label} onChange={e => updateTable({ label: e.target.value, number: isNaN(parseInt(e.target.value)) ? selectedTable.number : parseInt(e.target.value) })} style={inputSm} />
+              <select value={selectedTable.capacity} onChange={e => updateTable({ capacity: parseInt(e.target.value) })} style={inputSm}>
                 {[1,2,3,4,5,6,7,8,10,12].map(n => <option key={n} value={n}>{n} guests</option>)}
               </select>
-              <select value={selectedTable.shape} onChange={e => updateSelected({ shape: e.target.value as FloorTable["shape"] })} style={inputSm}>
-                <option value="rect">Square</option>
+              <select value={selectedTable.shape} onChange={e => updateTable({ shape: e.target.value as FloorTable["shape"] })} style={inputSm}>
+                <option value="rect">Square / Rect</option>
                 <option value="circle">Round</option>
                 <option value="booth">Booth</option>
                 <option value="diamond">Diamond</option>
               </select>
+              <div style={{ fontSize: 11, color: D.muted }}>Drag corners to resize</div>
               <button onClick={deleteSelected}
-                style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${D.red}40`,
-                  background: D.redBg, color: D.red, fontSize: 12, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
-                🗑 Delete Table
+                style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${D.red}40`, background: D.redBg, color: D.red, fontSize: 12, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
+                🗑 Delete
               </button>
             </div>
           </div>
         )}
 
-        {!selectedTable && (
-          <div style={{ color: D.muted, fontSize: 12, padding: "8px 4px" }}>
-            Click a table to edit · Drag to move
+        {/* Edit selected object */}
+        {selectedObj && (
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Edit Shape</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <select value={selectedObj.type} onChange={e => updateObj({ type: e.target.value })} style={inputSm}>
+                {objectTypeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <input placeholder="Label" value={selectedObj.label} onChange={e => updateObj({ label: e.target.value })} style={inputSm} />
+              <div style={{ fontSize: 11, color: D.muted }}>Drag corners to resize</div>
+              <button onClick={deleteSelected}
+                style={{ padding: "7px 0", borderRadius: 6, border: `1px solid ${D.red}40`, background: D.redBg, color: D.red, fontSize: 12, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
+                🗑 Delete Shape
+              </button>
+            </div>
           </div>
+        )}
+
+        {!selectedTable && !selectedObj && (
+          <div style={{ color: D.muted, fontSize: 12, padding: "6px 4px" }}>Click to select · Drag to move · Drag corner to resize · Del to delete</div>
         )}
       </div>
 
-      {/* Canvas — aspect-ratio matches the original floor plan canvas to prevent distortion */}
+      {/* Canvas */}
       <div ref={canvasRef} onClick={handleCanvasClick}
-        style={{ flex: 1, aspectRatio: String(aspectRatio), background: "rgba(0,0,0,0.45)",
-          border: `2px dashed ${adding ? D.blue : D.border}`,
-          borderRadius: 12, position: "relative", overflow: "hidden", cursor: adding ? "crosshair" : "default",
-          transition: "border-color 0.15s" }}>
+        style={{ flex: 1, minHeight: 560, background: "rgba(0,0,0,0.45)",
+          border: `2px dashed ${addMode === "table" ? D.blue : addMode === "object" ? D.purple : D.border}`,
+          borderRadius: 12, position: "relative", overflow: "hidden",
+          cursor: addMode ? "crosshair" : "default", transition: "border-color 0.15s" }}>
 
-        {/* Walls — read-only structural lines */}
-        {(walls || []).map((w, i) => {
-          const isVertical = Math.abs(w.x2 - w.x1) < Math.abs(w.y2 - w.y1)
+        {/* Objects (non-table shapes) */}
+        {objs.map(o => {
+          const isSel = selected === o.id && selType === "object"
           return (
-            <div key={`wall-${i}`} style={{
-              position: "absolute",
-              background: "rgba(255,185,100,0.45)",
-              pointerEvents: "none",
-              ...(isVertical ? {
-                left: `${w.x1}%`,
-                top:  `${Math.min(w.y1, w.y2)}%`,
-                width: "0.5%",
-                height: `${Math.abs(w.y2 - w.y1)}%`,
-              } : {
-                left:   `${Math.min(w.x1, w.x2)}%`,
-                top:    `${w.y1}%`,
-                width:  `${Math.abs(w.x2 - w.x1)}%`,
-                height: "0.8%",
-              }),
-            }} />
+            <div key={o.id} data-item="1" style={objStyle(o, isSel)}
+              onMouseDown={e => startDrag(e, o.id, "object")}>
+              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.6)", fontWeight: 700, letterSpacing: "0.05em", textTransform: "uppercase", pointerEvents: "none" }}>
+                {o.label || o.type}
+              </span>
+              {isSel && handles.map(h => (
+                <div key={h} style={handlePos(h)} onMouseDown={e => startResize(e, o.id, "object", h)} />
+              ))}
+            </div>
           )
         })}
 
-        {/* Objects — doors, counters, labels (read-only) */}
-        {(objects || []).map(obj => (
-          <div key={obj.id} style={{
-            position: "absolute",
-            left: `${obj.x}%`, top: `${obj.y}%`,
-            width: `${obj.w}%`, height: `${obj.h}%`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            pointerEvents: "none",
-            ...(obj.type === "door"    ? { background: "rgba(20,180,180,0.18)", border: "1px solid rgba(20,180,180,0.4)", borderRadius: 4 } :
-               obj.type === "counter" ? { background: "rgba(140,100,60,0.22)", border: "1px solid rgba(140,100,60,0.4)", borderRadius: 3 } :
-               obj.type === "window"  ? { background: "rgba(100,160,255,0.15)", border: "1px solid rgba(100,160,255,0.35)", borderRadius: 2 } :
-               { background: "transparent" }),
-          }}>
-            {obj.label && obj.type !== "label" && (
-              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                {obj.label}
-              </span>
-            )}
-            {obj.type === "label" && obj.label.trim() && (
-              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.35)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                {obj.label.trim()}
-              </span>
-            )}
-          </div>
-        ))}
+        {/* Tables */}
+        {tables.map(t => {
+          const isSel = selected === t.id && selType === "table"
+          return (
+            <div key={t.id} data-item="1" style={shapeStyle(t, isSel)}
+              onMouseDown={e => startDrag(e, t.id, "table")}>
+              <div style={{ textAlign: "center", pointerEvents: "none" }}>
+                <div style={{ fontSize: Math.max(9, Math.min(13, t.w * 1.2)), fontWeight: 700, color: D.text, lineHeight: 1 }}>
+                  {t.label || t.number}
+                </div>
+                <div style={{ fontSize: Math.max(7, Math.min(10, t.w)), color: D.muted, lineHeight: 1 }}>
+                  {t.capacity}p
+                </div>
+              </div>
+              {isSel && t.shape !== "circle" && t.shape !== "diamond" && handles.map(h => (
+                <div key={h} style={handlePos(h)} onMouseDown={e => startResize(e, t.id, "table", h)} />
+              ))}
+              {isSel && t.shape === "circle" && ["ne","se","sw","nw"].map(h => (
+                <div key={h} style={handlePos(h)} onMouseDown={e => startResize(e, t.id, "table", h)} />
+              ))}
+            </div>
+          )
+        })}
 
-        {tables.length === 0 && !adding && (walls || []).length === 0 && (
+        {tables.length === 0 && objs.length === 0 && !addMode && (
           <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>🗺</div>
-            <div style={{ color: D.muted, fontSize: 14 }}>Click &quot;+ Add Table&quot; then click here to place tables</div>
+            <div style={{ color: D.muted, fontSize: 14 }}>Click &quot;+ Add Table&quot; or &quot;+ Add Shape&quot; then click here to place</div>
           </div>
         )}
 
-        {tables.map(t => (
-          <div key={t.id} data-table="1" style={shapeStyle(t, t.id === selected)}
-            onMouseDown={e => startDrag(e, t.id)}>
-            <div style={innerStyle()}>
-              <div style={{ fontSize: Math.max(9, Math.min(13, t.w * 1.2)), fontWeight: 700, color: D.text, lineHeight: 1 }}>
-                {t.label || t.number}
-              </div>
-              <div style={{ fontSize: Math.max(8, Math.min(10, t.w)), color: D.muted, lineHeight: 1 }}>
-                {t.capacity}p
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {adding && (
+        {addMode === "table" && (
           <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
             background: D.blueBg, border: `1px solid ${D.blueBorder}`, borderRadius: 20,
             padding: "4px 14px", fontSize: 11, color: D.blue, fontWeight: 600, pointerEvents: "none" }}>
-            Click to place table #{newTbl.number || (tables.length + 1)}
+            Click to place table {newTbl.label || `#${tables.length + 1}`}
+          </div>
+        )}
+        {addMode === "object" && (
+          <div style={{ position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
+            background: D.purpleBg, border: `1px solid rgba(167,139,250,0.3)`, borderRadius: 20,
+            padding: "4px 14px", fontSize: 11, color: D.purple, fontWeight: 600, pointerEvents: "none" }}>
+            Click to place {newObj.label || newObj.type}
           </div>
         )}
       </div>
@@ -1042,6 +1142,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
   const [error, setError] = useState("")
 
   // Step 1 — Basic info
+  const [clientGroup,  setClientGroup]  = useState("")
   const [name,         setName]         = useState("")
   const [slug,         setSlug]         = useState("")
   const [city,         setCity]         = useState("")
@@ -1054,6 +1155,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
 
   // Step 2 — Table layout
   const [floorTables, setFloorTables] = useState<FloorTable[]>([])
+  const [floorObjects, setFloorObjects] = useState<FloorObject[]>([])
 
   // Step 3 — Guest page
   const [bgColor,      setBgColor]      = useState("#000000")
@@ -1066,8 +1168,9 @@ function NewClientWizard({ token, onDone, onCancel }: {
   const [menuSections, setMenuSections] = useState<MenuSection[]>([])
 
   // Step 5 — Credentials
-  const [stationPin,  setStationPin]  = useState("")
-  const [managerPin,  setManagerPin]  = useState("")
+  const [adminPin,    setAdminPin]    = useState("")
+  const [hvUsername,  setHvUsername]  = useState("")
+  const [hvPassword,  setHvPassword]  = useState("")
   const [wifiName,    setWifiName]    = useState("")
   const [wifiPass,    setWifiPass]    = useState("")
 
@@ -1089,7 +1192,8 @@ function NewClientWizard({ token, onDone, onCancel }: {
           name, slug, city, address, contact_name: contactName, contact_email: contactEmail,
           plan_type: planType, monthly_fee: parseFloat(monthlyFee) || 0,
           location_count: parseInt(locationCount) || 1,
-          initial_tables: 0,  // we'll batch them ourselves
+          location_group: clientGroup.trim() || undefined,
+          initial_tables: 0,
         }),
       })
       if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed to create client"); }
@@ -1115,16 +1219,16 @@ function NewClientWizard({ token, onDone, onCancel }: {
         body: JSON.stringify({
           guest_config: guestConfig,
           menu_config: { sections: menuSections },
-          floor_plan: floorTables,
+          floor_plan: { tables: floorTables, objects: floorObjects, canvasAspect: 1.62 },
           settings: { city, address, contact_name: contactName, contact_email: contactEmail, location_count: parseInt(locationCount) || 1, plan_type: planType, monthly_fee: parseFloat(monthlyFee) || 0 },
         }),
       })
 
       // Save credentials
       const creds = [
-        stationPin  && { credential_type: "station_pin",  label: "Station PIN",       value: stationPin },
-        managerPin  && { credential_type: "manager_pin",  label: "Manager PIN",       value: managerPin },
-        wifiName    && { credential_type: "wifi",          label: `WiFi: ${wifiName}`, value: wifiPass || "" },
+        adminPin   && { credential_type: "admin_pin", label: "Admin PIN (4-digit dashboard access)", value: adminPin },
+        hvUsername && { credential_type: "login",      label: "Host View Login",                      value: `${hvUsername}:${hvPassword}` },
+        wifiName   && { credential_type: "wifi",       label: `WiFi: ${wifiName}`,                    value: wifiPass || "" },
       ].filter(Boolean) as { credential_type: string; label: string; value: string }[]
       for (const c of creds) {
         await fetch(`${API}/owner/clients/${restaurant_id}/credentials?secret=${encodeURIComponent(token)}`, {
@@ -1152,8 +1256,8 @@ function NewClientWizard({ token, onDone, onCancel }: {
           ← Cancel
         </button>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: D.text, margin: 0 }}>New Client</h1>
-          <p style={{ fontSize: 13, color: D.muted, margin: "4px 0 0" }}>Set up a new restaurant from scratch</p>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: D.text, margin: 0 }}>Add Restaurant</h1>
+          <p style={{ fontSize: 13, color: D.muted, margin: "4px 0 0" }}>Configure and launch a new restaurant on HOST</p>
         </div>
       </div>
 
@@ -1196,6 +1300,11 @@ function NewClientWizard({ token, onDone, onCancel }: {
                 <FieldLabel>City</FieldLabel>
                 <Input value={city} onChange={setCity} placeholder="Boulder, CO" />
               </div>
+              <div>
+                <FieldLabel>Client / Company Group</FieldLabel>
+                <Input value={clientGroup} onChange={setClientGroup} placeholder="e.g. walnut (leave blank if standalone)" />
+                <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Multiple restaurants with the same group name appear grouped in Clients</div>
+              </div>
               <div style={{ gridColumn: "1/-1" }}>
                 <FieldLabel>Address</FieldLabel>
                 <Input value={address} onChange={setAddress} placeholder="3073 Walnut St, Boulder, CO 80301" />
@@ -1234,7 +1343,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Floor Map</h2>
             <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Design the table layout. Drag tables to position them. You can skip this and set it up later.</p>
-            <TableDesigner tables={floorTables} onChange={setFloorTables} />
+            <TableDesigner tables={floorTables} objects={floorObjects} onChange={setFloorTables} onObjectsChange={setFloorObjects} />
           </div>
         )}
 
@@ -1296,25 +1405,42 @@ function NewClientWizard({ token, onDone, onCancel }: {
         {step === 5 && (
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Access Credentials</h2>
-            <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Set up initial PINs and access codes. These are stored securely in the owner console.</p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div>
-                <FieldLabel>Station PIN</FieldLabel>
-                <Input value={stationPin} onChange={setStationPin} placeholder="4-digit PIN" type="text" />
-                <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>For host tablet login</div>
+            <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Set login credentials for staff. Stored securely in the owner console.</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Host View Login */}
+              <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: D.text, marginBottom: 12 }}>🖥 Host View Login <span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>— staff use this to log into the station tablet</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <FieldLabel>Username</FieldLabel>
+                    <Input value={hvUsername} onChange={setHvUsername} placeholder="e.g. host-myrestaurant" />
+                  </div>
+                  <div>
+                    <FieldLabel>Password</FieldLabel>
+                    <Input value={hvPassword} onChange={setHvPassword} placeholder="Strong password" type="text" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <FieldLabel>Manager PIN</FieldLabel>
-                <Input value={managerPin} onChange={setManagerPin} placeholder="4-digit PIN" type="text" />
-                <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>For manager access</div>
+              {/* Admin PIN */}
+              <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: D.text, marginBottom: 12 }}>🔐 Admin PIN <span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>— 4-digit PIN to access this restaurant&apos;s admin dashboard</span></div>
+                <div style={{ maxWidth: 200 }}>
+                  <Input value={adminPin} onChange={setAdminPin} placeholder="4 digits" type="text" />
+                </div>
               </div>
-              <div>
-                <FieldLabel>WiFi Network</FieldLabel>
-                <Input value={wifiName} onChange={setWifiName} placeholder="Network name" />
-              </div>
-              <div>
-                <FieldLabel>WiFi Password</FieldLabel>
-                <Input value={wifiPass} onChange={setWifiPass} placeholder="Password" type="text" />
+              {/* WiFi */}
+              <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: D.text, marginBottom: 12 }}>📶 WiFi <span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>— optional, for staff reference</span></div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div>
+                    <FieldLabel>Network Name</FieldLabel>
+                    <Input value={wifiName} onChange={setWifiName} placeholder="Network name" />
+                  </div>
+                  <div>
+                    <FieldLabel>Password</FieldLabel>
+                    <Input value={wifiPass} onChange={setWifiPass} placeholder="Password" type="text" />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1946,7 +2072,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
                 </div>
               </div>
               {floorEditMode
-                ? <TableDesigner tables={floorTables} walls={floorWalls} objects={floorObjects} onChange={t => setFloorTables(t)} aspectRatio={canvasAspect} />
+                ? <TableDesigner tables={floorTables} walls={floorWalls} objects={floorObjects} onChange={t => setFloorTables(t)} onObjectsChange={o => setFloorObjects(o)} aspectRatio={canvasAspect} />
                 : <FloorViewer tables={floorTables} walls={floorWalls} objects={floorObjects} aspectRatio={canvasAspect} />
               }
             </>
@@ -2547,7 +2673,7 @@ function ClientsView({ token, onSelectClient, onAddNew }: {
           </button>
           <button onClick={onAddNew}
             style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-            + Add Client
+            + Add Restaurant
           </button>
         </div>
       </div>
@@ -3650,7 +3776,6 @@ export default function OwnerPage() {
         )}
 
         {view === "dashboard"    && <DashboardView token={token} />}
-        {view === "operations"   && <OperationsView token={token} />}
         {view === "clients"      && <ClientsView key={clientListKey} token={token} onSelectClient={handleSelectClient} onAddNew={handleAddNew} />}
         {view === "client-detail" && selectedClient && (
           <ClientDetailView client={selectedClient} token={token} onBack={() => setView("clients")} onUpdated={() => {}} />
