@@ -1213,6 +1213,8 @@ function NewClientWizard({ token, onDone, onCancel }: {
         restaurantName: name, tagline,
         waitMessages: waitMessages.split("\n").map(s => s.trim()).filter(Boolean),
         seatedMessage: seatedMsg, finalButtons: [],
+        // adminPin stored in guest_config so /client/[slug]/station can validate without owner token
+        adminPin: adminPin || undefined,
       }
       await fetch(`${API}/owner/clients/${restaurant_id}/config?secret=${encodeURIComponent(token)}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1803,12 +1805,16 @@ function OverviewTab({ client, token, floorTables, floorWalls, floorObjects, can
             {
               label: "Station URL",
               view: (() => {
-                const stationUrl = REAL_STATION_URL[client.id] || client.station_url
+                // Hardcoded known stations; fall back to generic /client/[slug]/station for new clients
+                const stationUrl = REAL_STATION_URL[client.id]
+                  || (client.slug ? `https://hostplatform.net/client/${client.slug}/station` : client.station_url)
                 const loginAs = STATION_LOGIN_AS[client.id]
+                const isGeneric = !REAL_STATION_URL[client.id]
                 return (
                   <div>
                     <a href={stationUrl} target="_blank" rel="noopener noreferrer" style={{ color: D.blue, fontSize: 12, wordBreak: "break-all" as const }}>{stationUrl}</a>
                     {loginAs && <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>Login as client: <code style={{ color: D.orange, background: "rgba(245,158,11,0.08)", padding: "1px 5px", borderRadius: 3 }}>{loginAs}</code></div>}
+                    {isGeneric && <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>PIN-protected · set Admin PIN in Credentials tab</div>}
                   </div>
                 )
               })(),
