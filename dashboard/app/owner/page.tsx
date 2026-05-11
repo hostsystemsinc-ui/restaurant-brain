@@ -1157,9 +1157,15 @@ function NewClientWizard({ token, onDone, onCancel }: {
   const [floorTables, setFloorTables] = useState<FloorTable[]>([])
   const [floorObjects, setFloorObjects] = useState<FloorObject[]>([])
 
+  // Step 1 — Website auto-build
+  const [websiteUrl,   setWebsiteUrl]   = useState("")
+  const [scraping,     setScraping]     = useState(false)
+  const [scrapeMsg,    setScrapeMsg]    = useState<{ type: "ok" | "err"; text: string } | null>(null)
+
   // Step 3 — Guest page
   const [bgColor,      setBgColor]      = useState("#000000")
   const [accentColor,  setAccentColor]  = useState("#ffffff")
+  const [logoUrl,      setLogoUrl]      = useState("")
   const [tagline,      setTagline]      = useState("Powered by HOST")
   const [seatedMsg,    setSeatedMsg]    = useState("Thanks for dining with us!")
   const [waitMessages, setWaitMessages] = useState("Your spot is saved — feel free to step out.\nWe'll let you know the moment your table is ready.\nSit tight, we're moving quickly.")
@@ -1181,6 +1187,43 @@ function NewClientWizard({ token, onDone, onCancel }: {
   function handleNameChange(v: string) {
     setName(v)
     if (!slug || slug === autoSlug(name)) setSlug(autoSlug(v))
+  }
+
+  async function scrapeSite() {
+    const url = websiteUrl.trim()
+    if (!url) return
+    setScraping(true); setScrapeMsg(null)
+    try {
+      const res = await fetch(`/api/scrape-site?url=${encodeURIComponent(url)}`)
+      if (!res.ok) throw new Error("Could not reach that site")
+      const d = await res.json()
+      if (d.restaurantName && !name) { setName(d.restaurantName); if (!slug) setSlug(autoSlug(d.restaurantName)) }
+      if (d.brandColor)  { setBgColor(d.brandColor) }
+      if (d.logoUrl)     { setLogoUrl(d.logoUrl) }
+      if (d.menuSections && d.menuSections.length > 0) {
+        setMenuSections(d.menuSections.map((s: { title: string; items: Array<{ name: string; description?: string; price?: string; tags?: string[] }> }) => ({
+          id:    crypto.randomUUID(),
+          title: s.title,
+          items: s.items.map((it) => ({
+            id:          crypto.randomUUID(),
+            name:        it.name,
+            description: it.description || "",
+            price:       it.price       || "",
+            tags:        it.tags        || [],
+          })),
+        })))
+      }
+      const parts: string[] = []
+      if (d.restaurantName) parts.push(`name "${d.restaurantName}"`)
+      if (d.brandColor)     parts.push(`brand color ${d.brandColor}`)
+      if (d.logoUrl)        parts.push("logo")
+      if (d.menuSections?.length) parts.push(`${d.menuSections.length} menu section(s)`)
+      setScrapeMsg({ type: "ok", text: parts.length ? `Auto-filled: ${parts.join(", ")}` : "Site scanned — nothing extractable found" })
+    } catch (e: unknown) {
+      setScrapeMsg({ type: "err", text: e instanceof Error ? e.message : "Failed to scan site" })
+    } finally {
+      setScraping(false)
+    }
   }
 
   async function create() {
@@ -1211,6 +1254,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
       const guestConfig = {
         bgColor, accentColor, buttonTextColor: "#000000",
         restaurantName: name, tagline,
+        logoUrl: logoUrl.trim() || undefined,
         waitMessages: waitMessages.split("\n").map(s => s.trim()).filter(Boolean),
         seatedMessage: seatedMsg, finalButtons: [],
         // adminPin stored in guest_config so /client/[slug]/station can validate without owner token
@@ -1288,6 +1332,33 @@ function NewClientWizard({ token, onDone, onCancel }: {
         {step === 1 && (
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 20px" }}>Restaurant Information</h2>
+
+            {/* ── Website auto-build ── */}
+            <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: 16, marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: D.text, marginBottom: 8 }}>✨ Auto-build from website <span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>— paste the restaurant&apos;s URL to prefill name, logo, brand color &amp; menu</span></div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={websiteUrl}
+                  onChange={e => setWebsiteUrl(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && scrapeSite()}
+                  placeholder="https://restaurant.com"
+                  style={{ flex: 1, background: D.bg, border: `1px solid ${D.border}`, borderRadius: 8, padding: "9px 12px", color: D.text, fontSize: 14, outline: "none" }}
+                />
+                <button
+                  onClick={scrapeSite}
+                  disabled={scraping || !websiteUrl.trim()}
+                  style={{ padding: "9px 18px", borderRadius: 8, border: "none", background: scraping || !websiteUrl.trim() ? D.muted : D.blue, color: "#fff", fontSize: 13, fontWeight: 600, cursor: scraping || !websiteUrl.trim() ? "default" : "pointer", whiteSpace: "nowrap" }}
+                >
+                  {scraping ? "Scanning…" : "Auto-build →"}
+                </button>
+              </div>
+              {scrapeMsg && (
+                <div style={{ marginTop: 10, fontSize: 12, color: scrapeMsg.type === "ok" ? D.green : D.red }}>
+                  {scrapeMsg.type === "ok" ? "✓ " : "✗ "}{scrapeMsg.text}
+                </div>
+              )}
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               <div style={{ gridColumn: "1/-1" }}>
                 <FieldLabel>Restaurant Name *</FieldLabel>
@@ -1369,6 +1440,10 @@ function NewClientWizard({ token, onDone, onCancel }: {
                     style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2, background: "none" }} />
                   <Input value={accentColor} onChange={setAccentColor} placeholder="#ffffff" />
                 </div>
+              </div>
+              <div style={{ gridColumn: "1/-1" }}>
+                <FieldLabel>Logo URL</FieldLabel>
+                <Input value={logoUrl} onChange={setLogoUrl} placeholder="https://restaurant.com/logo.png (auto-filled from website scan)" />
               </div>
               <div style={{ gridColumn: "1/-1" }}>
                 <FieldLabel>Tagline</FieldLabel>
