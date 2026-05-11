@@ -1161,6 +1161,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
   const [websiteUrl,   setWebsiteUrl]   = useState("")
   const [scraping,     setScraping]     = useState(false)
   const [scrapeMsg,    setScrapeMsg]    = useState<{ type: "ok" | "err"; text: string } | null>(null)
+  const [scrapeBanner, setScrapeBanner] = useState("")   // shown in step 2 after auto-build
 
   // Step 3 — Guest page
   const [bgColor,      setBgColor]      = useState("#000000")
@@ -1197,14 +1198,17 @@ function NewClientWizard({ token, onDone, onCancel }: {
       const res = await fetch(`/api/scrape-site?url=${encodeURIComponent(url)}`)
       if (!res.ok) throw new Error("Could not reach that site")
       const d = await res.json()
-      if (d.restaurantName && !name) { setName(d.restaurantName); if (!slug) setSlug(autoSlug(d.restaurantName)) }
-      if (d.brandColor)  { setBgColor(d.brandColor) }
-      if (d.logoUrl)     { setLogoUrl(d.logoUrl) }
-      if (d.menuSections && d.menuSections.length > 0) {
+      if (d.error) throw new Error(d.error)
+
+      // Populate fields
+      if (d.restaurantName) { setName(d.restaurantName); if (!slug) setSlug(autoSlug(d.restaurantName)) }
+      if (d.brandColor)  setBgColor(d.brandColor)
+      if (d.logoUrl)     setLogoUrl(d.logoUrl)
+      if (d.menuSections?.length > 0) {
         setMenuSections(d.menuSections.map((s: { title: string; items: Array<{ name: string; description?: string; price?: string; tags?: string[] }> }) => ({
           id:    crypto.randomUUID(),
           title: s.title,
-          items: s.items.map((it) => ({
+          items: s.items.map((it: { name: string; description?: string; price?: string; tags?: string[] }) => ({
             id:          crypto.randomUUID(),
             name:        it.name,
             description: it.description || "",
@@ -1213,12 +1217,22 @@ function NewClientWizard({ token, onDone, onCancel }: {
           })),
         })))
       }
+
       const parts: string[] = []
-      if (d.restaurantName) parts.push(`name "${d.restaurantName}"`)
-      if (d.brandColor)     parts.push(`brand color ${d.brandColor}`)
-      if (d.logoUrl)        parts.push("logo")
-      if (d.menuSections?.length) parts.push(`${d.menuSections.length} menu section(s)`)
-      setScrapeMsg({ type: "ok", text: parts.length ? `Auto-filled: ${parts.join(", ")}` : "Site scanned — nothing extractable found" })
+      if (d.restaurantName)      parts.push(`name`)
+      if (d.logoUrl)             parts.push(`logo`)
+      if (d.brandColor)          parts.push(`brand color`)
+      if (d.menuSections?.length) parts.push(`${d.menuSections.length} menu section${d.menuSections.length === 1 ? "" : "s"}`)
+
+      if (parts.length > 0) {
+        // Auto-advance to floor map — everything else is done
+        const banner = `Auto-filled from website: ${parts.join(", ")}. Now build the floor map below.`
+        setScrapeBanner(banner)
+        setScrapeMsg(null)
+        setStep(2)
+      } else {
+        setScrapeMsg({ type: "ok", text: "Site scanned — couldn't extract usable data. Fill in details below." })
+      }
     } catch (e: unknown) {
       setScrapeMsg({ type: "err", text: e instanceof Error ? e.message : "Failed to scan site" })
     } finally {
@@ -1415,7 +1429,17 @@ function NewClientWizard({ token, onDone, onCancel }: {
         {step === 2 && (
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Floor Map</h2>
-            <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Design the table layout. Drag tables to position them. You can skip this and set it up later.</p>
+            {scrapeBanner ? (
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, margin: "0 0 16px", padding: "12px 14px", background: D.greenBg, border: `1px solid ${D.greenBorder}`, borderRadius: 10 }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>✓</span>
+                <div>
+                  <div style={{ fontSize: 13, color: D.green, fontWeight: 600 }}>{scrapeBanner}</div>
+                  <div style={{ fontSize: 12, color: D.text2, marginTop: 3 }}>Guest page, logo, colors &amp; menu are ready — you can review them in the next steps. This is the only manual step.</div>
+                </div>
+              </div>
+            ) : (
+              <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Design the table layout. Drag tables to position them. You can skip this and set it up later.</p>
+            )}
             <TableDesigner tables={floorTables} objects={floorObjects} onChange={setFloorTables} onObjectsChange={setFloorObjects} />
           </div>
         )}
