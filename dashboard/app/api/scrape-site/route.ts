@@ -1,270 +1,282 @@
 import { NextRequest, NextResponse } from "next/server"
 
-// ── Shared types ──────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface MenuItemOut    { name: string; description: string; price: string; tags: string[] }
 interface MenuSectionOut { title: string; items: MenuItemOut[] }
+interface MenuItemRaw    { name?: string; description?: string; offers?: { price?: string | number } | Array<{ price?: string | number }>; suitableForDiet?: string | string[] }
+interface MenuSectionRaw { name?: string; hasMenuItem?: MenuItemRaw[] }
+interface MenuSchema     { "@type"?: string; hasMenuSection?: MenuSectionRaw[] }
+interface RestaurantSchema { "@type"?: string; menu?: string | { "@id"?: string; url?: string } }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function extractMeta(html: string, name: string): string {
-  const patterns = [
+  const pats = [
     new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, "i"),
     new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+name=["']${name}["']`, "i"),
     new RegExp(`<meta[^>]+property=["']${name}["'][^>]+content=["']([^"']+)["']`, "i"),
     new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${name}["']`, "i"),
   ]
-  for (const p of patterns) { const m = html.match(p); if (m?.[1]) return m[1].trim() }
+  for (const p of pats) { const m = html.match(p); if (m?.[1]) return m[1].trim() }
   return ""
 }
 
 function resolveUrl(base: string, path: string): string {
-  if (!path) return ""
-  if (path.startsWith("data:")) return ""          // skip inline data URIs
-  if (path.startsWith("http"))  return path
-  if (path.startsWith("//"))    return `https:${path}`
+  if (!path || path.startsWith("data:")) return ""
+  if (path.startsWith("http")) return path
+  if (path.startsWith("//"))   return `https:${path}`
   try {
     const u = new URL(base)
-    if (path.startsWith("/")) return `${u.origin}${path}`
-    return `${u.origin}/${path}`
+    return path.startsWith("/") ? `${u.origin}${path}` : `${u.origin}/${path}`
   } catch { return path }
 }
 
-async function fetchHtml(url: string, timeoutMs = 10_000): Promise<string> {
+function decodeHtml(s: string): string {
+  return s
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&apos;/g, "'").replace(/&quot;/g, '"')
+}
+
+async function fetchHtml(url: string, ms = 9_000): Promise<string> {
   try {
-    const res = await fetch(url, {
+    const r = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
-      signal:   AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(ms),
       redirect: "follow",
     })
-    if (!res.ok) return ""
-    return res.text()
+    return r.ok ? r.text() : ""
   } catch { return "" }
 }
 
-// ── Logo extraction ───────────────────────────────────────────────────────────
+// ── Logo ──────────────────────────────────────────────────────────────────────
 function findLogo(html: string, baseUrl: string): string {
-  // 1. og:image (most reliable on real restaurant sites)
+  // 1. og:image (most reliable — usually the restaurant's hero/logo image)
   const ogImage = extractMeta(html, "og:image")
   if (ogImage) return resolveUrl(baseUrl, ogImage)
 
-  // 2. apple-touch-icon (usually the app icon / logo)
-  const touchIcon =
+  // 2. apple-touch-icon
+  const touch =
     html.match(/<link[^>]+rel=["']apple-touch-icon(?:-precomposed)?["'][^>]+href=["']([^"']+)["']/i)?.[1] ||
     html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']apple-touch-icon(?:-precomposed)?["']/i)?.[1] || ""
-  if (touchIcon) return resolveUrl(baseUrl, touchIcon)
+  if (touch) return resolveUrl(baseUrl, touch)
 
-  // 3. <img> tags whose src / alt / class / id contains "logo" or "brand"
+  // 3. <img> with "logo" or "brand" in src / alt / class / id
   const imgRe = /<img([^>]+)>/gi
   let m: RegExpExecArray | null
   while ((m = imgRe.exec(html)) !== null) {
-    const attrs = m[1]
-    const src = attrs.match(/src=["']([^"']+)["']/i)?.[1] || ""
-    const alt = (attrs.match(/alt=["']([^"']*?)["']/i)?.[1] || "").toLowerCase()
-    const cls = (attrs.match(/class=["']([^"']*?)["']/i)?.[1] || "").toLowerCase()
-    const id  = (attrs.match(/id=["']([^"']*?)["']/i)?.[1] || "").toLowerCase()
-    if (src && /logo|brand/.test(src.toLowerCase() + alt + cls + id)) {
+    const a   = m[1]
+    const src = a.match(/src=["']([^"']+)["']/i)?.[1] || ""
+    const alt = (a.match(/alt=["']([^"']*?)["']/i)?.[1] || "").toLowerCase()
+    const cls = (a.match(/class=["']([^"']*?)["']/i)?.[1] || "").toLowerCase()
+    const id  = (a.match(/id=["']([^"']*?)["']/i)?.[1]  || "").toLowerCase()
+    if (src && /logo|brand/.test(src.toLowerCase() + alt + cls + id))
       return resolveUrl(baseUrl, src)
-    }
   }
 
-  // 4. SVG <use> / <symbol> logos referenced in an <img>
-  // (not practical via regex — skip)
-
-  // 5. Favicon as last resort
-  const favicon =
+  // 4. Favicon (last resort)
+  const fav =
     html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i)?.[1] ||
     html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'](?:shortcut )?icon["']/i)?.[1] || ""
-  if (favicon) return resolveUrl(baseUrl, favicon)
-
-  return ""
+  return fav ? resolveUrl(baseUrl, fav) : ""
 }
 
-// ── Brand color extraction ────────────────────────────────────────────────────
+// ── Brand color ───────────────────────────────────────────────────────────────
 function findBrandColor(html: string): string {
-  // 1. theme-color / msapplication-TileColor meta
-  const themeMeta = extractMeta(html, "theme-color") || extractMeta(html, "msapplication-TileColor")
-  if (/^#[0-9a-fA-F]{3,8}$/.test(themeMeta)) return themeMeta
+  const themeRaw = extractMeta(html, "theme-color") || extractMeta(html, "msapplication-TileColor")
+  if (/^#[0-9a-fA-F]{3,8}$/.test(themeRaw) && themeRaw.toLowerCase() !== "#ffffff" && themeRaw.toLowerCase() !== "#fff")
+    return themeRaw
 
-  // 2. CSS custom properties (--primary-color, --brand-color, --accent, etc.)
   const styles = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) || []).join("\n")
-  const varPatterns = [
+  for (const re of [
     /--(?:primary|brand|main|accent|theme)[-_]?color\s*:\s*(#[0-9a-fA-F]{3,8})/i,
     /--color-(?:primary|brand|main|accent|theme)\s*:\s*(#[0-9a-fA-F]{3,8})/i,
     /--(?:color-)?primary\s*:\s*(#[0-9a-fA-F]{3,8})/i,
-  ]
-  for (const re of varPatterns) {
-    const hit = styles.match(re)
-    if (hit?.[1]) return hit[1]
-  }
+  ]) { const hit = styles.match(re); if (hit?.[1]) return hit[1] }
 
-  // 3. body or header background-color in <style>
-  const bgPatterns = [
-    /(?:^|[{;])\s*background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,8})/i,
-  ]
-  const headerBlock = styles.match(/(?:header|\.header|#header|nav|\.nav|\.navbar)[^{]*\{([^}]+)\}/gi)?.[0] || ""
-  for (const re of bgPatterns) {
-    const hit = headerBlock.match(re)
-    if (hit?.[1] && hit[1].toLowerCase() !== "#ffffff" && hit[1].toLowerCase() !== "#fff") return hit[1]
-  }
+  const headerBlock = styles.match(/(?:header|\.header|#header|\.navbar|\.nav-bar)[^{]*\{([^}]+)\}/gi)?.[0] || ""
+  const bgHit = headerBlock.match(/background(?:-color)?\s*:\s*(#[0-9a-fA-F]{3,8})/i)
+  if (bgHit?.[1] && !/^#f{3,6}$|^#fff/i.test(bgHit[1])) return bgHit[1]
 
   return ""
 }
 
-// ── Menu page discovery ───────────────────────────────────────────────────────
-function findMenuPageUrl(html: string, baseUrl: string): string {
-  // Find anchor tags that look like they lead to the menu
-  const aRe = /<a([^>]+)>/gi
-  let m: RegExpExecArray | null
-  while ((m = aRe.exec(html)) !== null) {
-    const attrs  = m[1]
-    const href   = attrs.match(/href=["']([^"']+)["']/i)?.[1] || ""
-    if (!href || href.startsWith("#") || href.startsWith("mailto") || href.startsWith("tel")) continue
-    // Match href patterns like /menu, /our-menu, /food, /dine, /dining
-    if (/^\/?(menu|our[-_]?menu|food[-_]?menu|drinks?[-_]?menu|food[-_]?and[-_]?drink|dine|dining)(\/?$|[?#])/i.test(href)) {
-      return resolveUrl(baseUrl, href)
-    }
-    // Also match external-looking links with "menu" prominently
-    if (/\/menu\/?$/.test(href)) return resolveUrl(baseUrl, href)
-  }
-
-  // Also scan link text (extracted via a quick text pass after anchor open)
-  const fullAnchorRe = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
-  while ((m = fullAnchorRe.exec(html)) !== null) {
-    const href = m[1]
-    const text = m[2].replace(/<[^>]+>/g, "").trim()
-    if (!href || href.startsWith("#")) continue
-    if (/^(menu|our menu|food menu|view menu|full menu|food & drinks?|food and drinks?)$/i.test(text)) {
-      return resolveUrl(baseUrl, href)
-    }
-  }
-
-  return ""
-}
-
-// ── JSON-LD menu parser ───────────────────────────────────────────────────────
-interface MenuItemRaw    { name?: string; description?: string; offers?: { price?: string | number } | Array<{ price?: string | number }>; suitableForDiet?: string | string[] }
-interface MenuSectionRaw { name?: string; hasMenuItem?: MenuItemRaw[] }
-interface MenuSchema     { "@type"?: string; hasMenuSection?: MenuSectionRaw[] }
-
-function parseMenuFromJsonLd(html: string): MenuSectionOut[] {
+// ── Menu: JSON-LD (schema.org/Menu) ──────────────────────────────────────────
+function parseMenuJsonLd(html: string): MenuSectionOut[] {
   const sections: MenuSectionOut[] = []
-  const scriptTags = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []
-  for (const script of scriptTags) {
+  const scripts = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []
+  for (const script of scripts) {
     try {
-      const content = script.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "")
-      const data    = JSON.parse(content) as Record<string, unknown>
+      const data = JSON.parse(script.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "")) as Record<string, unknown>
       const schemas: unknown[] = Array.isArray(data) ? data
-        : Array.isArray(data["@graph"]) ? (data["@graph"] as unknown[])
-        : [data]
-
-      for (const schema of schemas) {
-        const s = schema as MenuSchema
+        : Array.isArray(data["@graph"]) ? (data["@graph"] as unknown[]) : [data]
+      for (const raw of schemas) {
+        const s = raw as MenuSchema
         if (s["@type"] === "Menu" && Array.isArray(s.hasMenuSection)) {
-          for (const section of s.hasMenuSection) {
-            const items: MenuItemOut[] = (section.hasMenuItem || []).map((item: MenuItemRaw) => {
-              const offersArr  = Array.isArray(item.offers) ? item.offers : (item.offers ? [item.offers] : [])
-              const priceRaw   = offersArr[0]?.price
-              const price      = priceRaw != null ? `$${priceRaw}` : ""
-              const dietRaw    = item.suitableForDiet
-              const diets      = Array.isArray(dietRaw) ? dietRaw : (dietRaw ? [dietRaw] : [])
-              const tags       = diets.map((d: string) =>
-                d.replace(/https?:\/\/schema\.org\//g, "").replace(/RestrictedDiet$/, ""))
-              return { name: item.name || "", description: item.description || "", price, tags }
+          for (const sec of s.hasMenuSection) {
+            const items: MenuItemOut[] = (sec.hasMenuItem || []).map((it: MenuItemRaw) => {
+              const arr   = Array.isArray(it.offers) ? it.offers : (it.offers ? [it.offers] : [])
+              const price = arr[0]?.price != null ? `$${arr[0].price}` : ""
+              const diet  = Array.isArray(it.suitableForDiet) ? it.suitableForDiet : (it.suitableForDiet ? [it.suitableForDiet] : [])
+              const tags  = diet.map((d: string) => d.replace(/https?:\/\/schema\.org\//g, "").replace(/RestrictedDiet$/, ""))
+              return { name: it.name || "", description: it.description || "", price, tags }
             }).filter((i: MenuItemOut) => i.name)
-            if (items.length > 0) sections.push({ title: section.name || "Menu", items })
+            if (items.length > 0) sections.push({ title: sec.name || "Menu", items })
           }
         }
       }
-    } catch { /* skip malformed JSON-LD */ }
+    } catch { /* skip */ }
   }
   return sections
 }
 
-// ── HTML menu parser (heuristic) ──────────────────────────────────────────────
-function parseMenuFromHtml(html: string): MenuSectionOut[] {
-  // Strip scripts, styles, SVGs, comments
+// ── Menu: Restaurant JSON-LD → follow menu URL ────────────────────────────────
+function findMenuUrlFromRestaurantJsonLd(html: string, baseUrl: string): string {
+  const scripts = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []
+  for (const script of scripts) {
+    try {
+      const data = JSON.parse(script.replace(/<script[^>]*>/i, "").replace(/<\/script>/i, "")) as Record<string, unknown>
+      const schemas: unknown[] = Array.isArray(data) ? data
+        : Array.isArray(data["@graph"]) ? (data["@graph"] as unknown[]) : [data]
+      for (const raw of schemas) {
+        const s = raw as RestaurantSchema
+        if (s["@type"] === "Restaurant" || s["@type"] === "FoodEstablishment") {
+          if (typeof s.menu === "string" && s.menu)
+            return resolveUrl(baseUrl, s.menu)
+          if (s.menu && typeof s.menu === "object") {
+            const u = (s.menu as { url?: string; "@id"?: string }).url || (s.menu as { "@id"?: string })["@id"] || ""
+            if (u) return resolveUrl(baseUrl, u)
+          }
+        }
+      }
+    } catch { /* skip */ }
+  }
+  return ""
+}
+
+// ── Menu: HTML heuristic (section headings → items, with or without prices) ───
+function parseMenuHtml(html: string): MenuSectionOut[] {
+  // Strip non-content elements
   const cleaned = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
-    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi,  " ")
+    .replace(/<style[\s\S]*?<\/style>/gi,    " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi,        " ")
+    .replace(/<!--[\s\S]*?-->/g,             " ")
 
-  // Inject newlines at block-level elements so text structure is preserved
-  const text = cleaned
-    .replace(/<(\/?(h[1-6]|p|div|li|tr|td|dt|dd|section|article|header|footer|nav))[^>]*>/gi, "\n")
+  // Tag block-level elements so we can reconstruct structure
+  const tagged = cleaned
+    .replace(/<h2[^>]*>/gi,  "\n§H2§").replace(/<\/h2>/gi,  "\n")
+    .replace(/<h3[^>]*>/gi,  "\n§H3§").replace(/<\/h3>/gi,  "\n")
+    .replace(/<h4[^>]*>/gi,  "\n§H4§").replace(/<\/h4>/gi,  "\n")
+    .replace(/<h5[^>]*>/gi,  "\n§H5§").replace(/<\/h5>/gi,  "\n")
+    .replace(/<li[^>]*>/gi,  "\n§LI§").replace(/<\/li>/gi,  "\n")
+    .replace(/<dt[^>]*>/gi,  "\n§DT§").replace(/<\/dt>/gi,  "\n")
+    .replace(/<dd[^>]*>/gi,  "\n§DD§").replace(/<\/dd>/gi,  "\n")
+    .replace(/<p[^>]*>/gi,   "\n§P§" ).replace(/<\/p>/gi,   "\n")
+    .replace(/<(div|section|article|tr|td|header|footer|nav|span)[^>]*>/gi, "\n")
     .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ").replace(/&#\d+;/g, " ")
     .replace(/[ \t]+/g, " ")
-    .replace(/\n[ \t]*/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
 
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0)
   const priceRe = /\$\s*(\d{1,3}(?:\.\d{1,2})?)/
+  const junkRe  = /^(home|about|contact|reservations?|order online|careers?|gift cards?|hours|location|copyright|privacy|follow|sign up|newsletter|login|log in|sign in|back to top|©|\d{4}\s)$/i
 
   const sections: MenuSectionOut[] = []
   let currentSection: MenuSectionOut | null = null
 
+  const lines = tagged.split("\n").map(l => l.trim()).filter(l => l.length > 0)
+
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const priceMatch = line.match(priceRe)
+    const raw     = lines[i]
+    const tag     = raw.match(/^§([^§]+)§/)?.[1] || ""
+    const content = decodeHtml(raw.replace(/^§[^§]+§/, "").trim())
+    if (!content || content.length < 2) continue
 
-    if (priceMatch) {
-      const priceIdx = line.indexOf(priceMatch[0])
-      // Everything before the price (strip trailing dots/dashes used as dot-leaders)
-      let itemName = line.slice(0, priceIdx).replace(/[\s.\-·]+$/, "").trim()
+    const isSection = tag === "H2" || tag === "H3"
+    const isItem    = tag === "H4" || tag === "H5" || tag === "LI" || tag === "DT"
+    const isDesc    = tag === "DD" || tag === "P"
 
-      // If name is empty or too short, look at the previous line
-      if (itemName.length < 2 && i > 0) {
-        const prev = lines[i - 1]
-        if (!priceRe.test(prev) && prev.length >= 2 && prev.length <= 80) {
-          itemName = prev
-        }
+    if (isSection) {
+      if (content.length >= 2 && content.length <= 80 && !junkRe.test(content)) {
+        currentSection = { title: content, items: [] }
+        sections.push(currentSection)
       }
 
-      if (itemName.length >= 2 && itemName.length <= 100) {
-        // Ensure we have a section
+    } else if (isItem) {
+      const priceMatch = content.match(priceRe)
+      const price = priceMatch ? `$${priceMatch[1]}` : ""
+      const name  = decodeHtml(content.replace(priceRe, "").replace(/[\s·—.]+$/, "").trim())
+
+      if (name.length >= 2 && name.length <= 120 && !junkRe.test(name) && !/^https?:\/\//.test(name)) {
         if (!currentSection) {
           currentSection = { title: "Menu", items: [] }
           sections.push(currentSection)
         }
-
-        // Peek at next line for a description (no price, reasonable length)
+        // Peek at next lines for a description
         let description = ""
-        if (i + 1 < lines.length) {
-          const nxt = lines[i + 1]
-          if (!priceRe.test(nxt) && nxt.length > 10 && nxt.length < 200) {
-            description = nxt
+        for (let j = i + 1; j <= i + 2 && j < lines.length; j++) {
+          const nRaw  = lines[j]
+          const nTag  = nRaw.match(/^§([^§]+)§/)?.[1] || ""
+          const nText = decodeHtml(nRaw.replace(/^§[^§]+§/, "").trim())
+          if ((nTag === "DD" || nTag === "P" || !nTag) && nText.length > 5 && nText.length < 300 && !priceRe.test(nText) && !junkRe.test(nText)) {
+            description = nText; break
           }
+          if (nTag === "H2" || nTag === "H3" || nTag === "H4" || nTag === "LI" || nTag === "DT") break
         }
-
-        currentSection.items.push({
-          name:        itemName,
-          description,
-          price:       `$${priceMatch[1]}`,
-          tags:        [],
-        })
+        currentSection.items.push({ name, description, price, tags: [] })
       }
+
+    } else if (isDesc) {
+      if (currentSection?.items.length) {
+        const last = currentSection.items[currentSection.items.length - 1]
+        if (!last.description && content.length > 5 && content.length < 300 && !junkRe.test(content))
+          last.description = content
+      }
+
     } else {
-      // Potential section heading: short, capitalised, next few lines have prices
-      if (line.length >= 3 && line.length <= 60) {
-        const upcoming = lines.slice(i + 1, i + 10)
-        const priceCount = upcoming.filter(l => priceRe.test(l)).length
-        if (priceCount >= 2) {
-          currentSection = { title: line, items: [] }
-          sections.push(currentSection)
+      // Untagged line — still try price extraction
+      const priceMatch = content.match(priceRe)
+      if (priceMatch && content.length < 120) {
+        const priceIdx = content.indexOf(priceMatch[0])
+        const name = decodeHtml(content.slice(0, priceIdx).replace(/[\s·—.]+$/, "").trim())
+        if (name.length >= 2 && name.length <= 80 && !junkRe.test(name)) {
+          if (!currentSection) { currentSection = { title: "Menu", items: [] }; sections.push(currentSection) }
+          currentSection.items.push({ name, description: "", price: `$${priceMatch[1]}`, tags: [] })
         }
       }
     }
   }
 
-  // Deduplicate items by name within each section, drop sections with <2 items
+  // Deduplicate items by name (case-insensitive), drop sections with 0 items
   return sections
-    .map(s => ({ ...s, items: s.items.filter((it, idx, arr) => arr.findIndex(x => x.name === it.name) === idx) }))
-    .filter(s => s.items.length >= 2)
+    .map(s => ({
+      ...s,
+      items: s.items
+        .filter((it, idx, arr) => arr.findIndex(x => x.name.toLowerCase() === it.name.toLowerCase()) === idx)
+    }))
+    .filter(s => s.items.length >= 1)
+    .slice(0, 16) // cap at 16 sections
+}
+
+// ── Menu discovery: nav link heuristic ───────────────────────────────────────
+function findMenuNavUrl(html: string, baseUrl: string): string {
+  // Match full anchor tags so we can check link text too
+  const aRe = /<a([^>]+)>([\s\S]*?)<\/a>/gi
+  let m: RegExpExecArray | null
+  while ((m = aRe.exec(html)) !== null) {
+    const href = m[1].match(/href=["']([^"']+)["']/i)?.[1] || ""
+    if (!href || href.startsWith("#") || href.startsWith("mailto") || href.startsWith("tel")) continue
+    const text = m[2].replace(/<[^>]+>/g, "").trim()
+    if (/^\/?(menu|our[-_]?menu|food[-_]?menu|food[-_]?drink|dine|dining)(\/?$|[?#])/i.test(href))
+      return resolveUrl(baseUrl, href)
+    if (/\/menu\/?$/.test(href))
+      return resolveUrl(baseUrl, href)
+    if (/^(menu|our menu|food menu|view menu|full menu|food & drinks?|food and drinks?)$/i.test(text))
+      return resolveUrl(baseUrl, href)
+  }
+  return ""
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -290,11 +302,10 @@ export async function GET(req: NextRequest) {
     const baseUrl = res.url || url
 
     // ── Name ─────────────────────────────────────────────────────────────────
-    const ogSiteName = extractMeta(html, "og:site_name")
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-    const rawTitle   = titleMatch?.[1]?.trim() || ""
-    const cleanTitle = rawTitle.split(/\s*[\|\-–—·•]\s*/)[0].trim()
-    const restaurantName = ogSiteName || cleanTitle || extractMeta(html, "og:title") || ""
+    const ogSiteName     = extractMeta(html, "og:site_name")
+    const titleRaw       = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() || ""
+    const titleClean     = titleRaw.split(/\s*[\|\-–—·•]\s*/)[0].trim()
+    const restaurantName = ogSiteName || titleClean || extractMeta(html, "og:title") || ""
 
     // ── Logo ─────────────────────────────────────────────────────────────────
     const logoUrl = findLogo(html, baseUrl)
@@ -302,32 +313,45 @@ export async function GET(req: NextRequest) {
     // ── Brand color ───────────────────────────────────────────────────────────
     const brandColor = findBrandColor(html)
 
-    // ── Menu — JSON-LD first, then follow menu page, then HTML parse ──────────
-    let menuSections = parseMenuFromJsonLd(html)
+    // ── Menu (try multiple strategies in priority order) ──────────────────────
+    let menuSections: MenuSectionOut[] = []
+
+    // Strategy 1: JSON-LD Menu schema on main page
+    menuSections = parseMenuJsonLd(html)
 
     if (menuSections.length === 0) {
-      // Try the menu sub-page (e.g. /menu, /food)
-      const menuPageUrl = findMenuPageUrl(html, baseUrl)
-      if (menuPageUrl && menuPageUrl !== baseUrl) {
-        const menuHtml = await fetchHtml(menuPageUrl, 8_000)
+      // Strategy 2: Follow menu URL from Restaurant JSON-LD schema
+      const jsonLdMenuUrl = findMenuUrlFromRestaurantJsonLd(html, baseUrl)
+      if (jsonLdMenuUrl && jsonLdMenuUrl !== baseUrl) {
+        const menuHtml = await fetchHtml(jsonLdMenuUrl)
         if (menuHtml) {
-          menuSections = parseMenuFromJsonLd(menuHtml)
-          if (menuSections.length === 0) {
-            menuSections = parseMenuFromHtml(menuHtml)
-          }
+          menuSections = parseMenuJsonLd(menuHtml)
+          if (menuSections.length === 0) menuSections = parseMenuHtml(menuHtml)
         }
       }
+    }
 
-      // Still nothing — try parsing the main page HTML directly
-      if (menuSections.length === 0) {
-        menuSections = parseMenuFromHtml(html)
+    if (menuSections.length === 0) {
+      // Strategy 3: Follow nav link to menu page
+      const navMenuUrl = findMenuNavUrl(html, baseUrl)
+      if (navMenuUrl && navMenuUrl !== baseUrl) {
+        const menuHtml = await fetchHtml(navMenuUrl)
+        if (menuHtml) {
+          menuSections = parseMenuJsonLd(menuHtml)
+          if (menuSections.length === 0) menuSections = parseMenuHtml(menuHtml)
+        }
       }
+    }
+
+    if (menuSections.length === 0) {
+      // Strategy 4: Parse main page HTML directly
+      menuSections = parseMenuHtml(html)
     }
 
     return NextResponse.json({ restaurantName, logoUrl, brandColor, menuSections, scrapedFrom: baseUrl })
 
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
+    const msg       = e instanceof Error ? e.message : String(e)
     const isTimeout = msg.toLowerCase().includes("timeout") || msg.toLowerCase().includes("abort")
     return NextResponse.json(
       { error: isTimeout ? "Site took too long to respond (>12s)" : `Could not reach site: ${msg}` },

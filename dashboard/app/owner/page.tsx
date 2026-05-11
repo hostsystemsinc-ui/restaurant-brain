@@ -1430,11 +1430,13 @@ function NewClientWizard({ token, onDone, onCancel }: {
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Floor Map</h2>
             {scrapeBanner ? (
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, margin: "0 0 16px", padding: "12px 14px", background: D.greenBg, border: `1px solid ${D.greenBorder}`, borderRadius: 10 }}>
-                <span style={{ fontSize: 16, lineHeight: 1 }}>✓</span>
-                <div>
-                  <div style={{ fontSize: 13, color: D.green, fontWeight: 600 }}>{scrapeBanner}</div>
-                  <div style={{ fontSize: 12, color: D.text2, marginTop: 3 }}>Guest page, logo, colors &amp; menu are ready — you can review them in the next steps. This is the only manual step.</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, margin: "0 0 16px", padding: "12px 14px", background: D.greenBg, border: `1px solid ${D.greenBorder}`, borderRadius: 10 }}>
+                {logoUrl && (
+                  <img src={logoUrl} alt={name || "Logo"} style={{ width: 52, height: 52, objectFit: "contain", borderRadius: 8, flexShrink: 0, background: "rgba(255,255,255,0.08)" }} />
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, color: D.green, fontWeight: 600 }}>✓ {scrapeBanner}</div>
+                  <div style={{ fontSize: 12, color: D.text2, marginTop: 3 }}>Guest page, colors &amp; menu are ready — review in the next steps if needed. This is the only manual step.</div>
                 </div>
               </div>
             ) : (
@@ -1485,7 +1487,11 @@ function NewClientWizard({ token, onDone, onCancel }: {
               </div>
             </div>
             {/* Preview chip */}
-            <div style={{ marginTop: 20, padding: 20, borderRadius: 12, background: bgColor, border: `1px solid ${D.border}`, textAlign: "center" }}>
+            <div style={{ marginTop: 20, padding: 24, borderRadius: 12, background: bgColor, border: `1px solid ${D.border}`, textAlign: "center" }}>
+              {logoUrl && (
+                <img src={logoUrl} alt={name || "Logo"}
+                  style={{ width: 80, height: 80, objectFit: "contain", borderRadius: 10, marginBottom: 12, display: "block", marginLeft: "auto", marginRight: "auto" }} />
+              )}
               <div style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>{name || "Restaurant"}</div>
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginTop: 4 }}>{tagline}</div>
               <div style={{ marginTop: 12, padding: "8px 20px", background: accentColor, borderRadius: 20, display: "inline-block", color: "#000", fontSize: 13, fontWeight: 700 }}>Join Waitlist</div>
