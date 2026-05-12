@@ -438,6 +438,10 @@ function StationInner() {
   const [termsRead,      setTermsRead]      = useState(false)
   const [termsAccepting, setTermsAccepting] = useState(false)
 
+  // Table/queue action guards — prevent double-clicks and duplicate mutations
+  const [seatingId,  setSeatingId]  = useState<string | null>(null)
+  const [clearingId, setClearingId] = useState<string | null>(null)
+
   // Clock
   useEffect(() => {
     const iv = setInterval(() => setClockStr(nowTimeStr()), 30_000)
@@ -469,6 +473,25 @@ function StationInner() {
         }
         // Check session auth
         if (sessionStorage.getItem(`station_auth_${slug}`) === "1") setAuthed(true)
+
+        // ── Check terms acceptance from config (persistent, survives restarts) ──
+        // If termsRequiredVersion is set and doesn't match termsAcceptedVersion,
+        // the client must accept before using the station.
+        const required = typeof gc.termsRequiredVersion === "string" ? gc.termsRequiredVersion : ""
+        const accepted = typeof gc.termsAcceptedVersion === "string" ? gc.termsAcceptedVersion : ""
+        if (required && required !== accepted) {
+          setTermsVersion(required)
+          setTermsPending(true)
+          // Load full terms text from the terms API (does not contain client data)
+          fetch("/api/admin/terms")
+            .then(r => r.json())
+            .then(t => {
+              if (t.version) setTermsVersion(t.version)
+              if (t.effectiveDate) setTermsDate(t.effectiveDate)
+              if (Array.isArray(t.sections)) setTermsSections(t.sections)
+            })
+            .catch(() => {/* non-critical — show modal with version only if text fails to load */})
+        }
       })
       .catch(() => setInfo({ id: "", name: slug, slug, adminPin: "" }))
       .finally(() => setLoading(false))
@@ -514,34 +537,19 @@ function StationInner() {
     setAuthed(false); setShowAdmin(false)
   }
 
-  // ── Terms pending check (fires after authed) ──────────────────────────────
-  useEffect(() => {
-    if (!authed || !slug) return
-    fetch(`/api/admin/terms?slug=${encodeURIComponent(slug)}`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.pending) {
-          setTermsVersion(d.version || "")
-          setTermsDate(d.effectiveDate || "")
-          setTermsSections(d.sections || [])
-          setTermsPending(true)
-        }
-      })
-      .catch(() => {/* non-critical — don't block station if check fails */})
-  }, [authed, slug])
-
   async function acceptTerms() {
     if (!termsRead) return
     setTermsAccepting(true)
     try {
-      await fetch(`/api/admin/terms?action=accept`, {
+      // Write acceptance into the DB via server-side route — persists across restarts
+      await fetch("/api/client/terms-accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug, version: termsVersion }),
       })
-      setTermsPending(false)
-    } catch { /* best-effort — dismiss modal anyway */ }
+    } catch { /* best-effort — don't block the user if the accept call fails */ }
     finally {
+      // Always dismiss the modal — the station must never be permanently blocked
       setTermsPending(false)
       setTermsAccepting(false)
     }
@@ -564,22 +572,53 @@ function StationInner() {
   }
 
   async function seatParty(id: string) {
-    const ok = await act(`/queue/${id}/seat`)
-    flash(ok, ok ? "Party seated ✓" : "Failed to seat")
-    if (ok) { setRefreshKey(k => k + 1); setExpandedId(null) }
+    if (seatingId) return // guard: prevent double-tap / double-click
+    setSeatingId(id)
+    // Optimistic update — remove from active queue immediately so the UI feels instant
+    // and staff can't accidentally re-seat the same party
+    setQueue(prev => prev.map(p => p.id === id ? { ...p, status: "seated" as const } : p))
+    setExpandedId(null)
+    try {
+      const ok = await act(`/queue/${id}/seat`)
+      flash(ok, ok ? "Party seated ✓" : "Seat failed — refreshing")
+      setRefreshKey(k => k + 1) // sync with server
+    } catch {
+      flash(false, "Network error — refreshing")
+      setRefreshKey(k => k + 1)
+    } finally {
+      setSeatingId(null)
+    }
   }
 
   async function removeParty(id: string, name: string) {
     if (!confirm(`Remove ${name} from the queue?`)) return
-    const ok = await act(`/queue/${id}/remove`)
-    flash(ok, ok ? "Removed from queue" : "Failed to remove")
-    if (ok) { setRefreshKey(k => k + 1); setExpandedId(null) }
+    // Optimistic remove
+    setQueue(prev => prev.filter(p => p.id !== id))
+    setExpandedId(null)
+    try {
+      const ok = await act(`/queue/${id}/remove`)
+      flash(ok, ok ? "Removed from queue" : "Remove failed — refreshing")
+    } catch {
+      flash(false, "Network error — refreshing")
+    } finally {
+      setRefreshKey(k => k + 1)
+    }
   }
 
   async function clearTable(id: string) {
-    const ok = await act(`/tables/${id}/clear`)
-    flash(ok, ok ? "Table cleared ✓" : "Failed to clear")
-    if (ok) setRefreshKey(k => k + 1)
+    if (clearingId) return // guard: prevent double-tap
+    setClearingId(id)
+    // Optimistic update
+    setTables(prev => prev.map(t => t.id === id ? { ...t, status: "available" as const, party_name: undefined } : t))
+    try {
+      const ok = await act(`/tables/${id}/clear`)
+      flash(ok, ok ? "Table cleared ✓" : "Clear failed — refreshing")
+    } catch {
+      flash(false, "Network error — refreshing")
+    } finally {
+      setRefreshKey(k => k + 1)
+      setClearingId(null)
+    }
   }
 
   // ── Derived data ──────────────────────────────────────────────────────────
@@ -844,9 +883,11 @@ function StationInner() {
                           📣 Mark Ready
                         </button>
                       )}
-                      <button onClick={() => seatParty(p.id)}
-                        style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: D.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                        ✓ Seat Party
+                      <button
+                        onClick={() => seatParty(p.id)}
+                        disabled={!!seatingId}
+                        style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: seatingId === p.id ? D.muted : D.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: seatingId ? "not-allowed" : "pointer" }}>
+                        {seatingId === p.id ? "Seating…" : "✓ Seat Party"}
                       </button>
                       <button onClick={() => removeParty(p.id, p.name)}
                         style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${D.red}40`, background: D.redBg, color: D.red, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
@@ -896,9 +937,11 @@ function StationInner() {
                       </div>
                       {t.party_name && <div style={{ fontSize: 11, color: D.text2, marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.party_name}</div>}
                       {isOcc && (
-                        <button onClick={() => clearTable(t.id)}
-                          style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${D.red}40`, background: D.redBg, color: D.red, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-                          Clear
+                        <button
+                          onClick={() => clearTable(t.id)}
+                          disabled={clearingId === t.id}
+                          style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${D.red}40`, background: D.redBg, color: clearingId === t.id ? D.muted : D.red, fontSize: 11, fontWeight: 600, cursor: clearingId === t.id ? "not-allowed" : "pointer" }}>
+                          {clearingId === t.id ? "…" : "Clear"}
                         </button>
                       )}
                     </div>
@@ -948,9 +991,11 @@ function StationInner() {
                       </div>
                       {isExp && (
                         <div style={{ display: "flex", gap: 8, padding: "0 14px 12px", borderTop: `1px solid ${D.border}`, paddingTop: 10 }}>
-                          <button onClick={() => seatParty(p.id)}
-                            style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: D.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                            ✓ Seat
+                          <button
+                            onClick={() => seatParty(p.id)}
+                            disabled={!!seatingId}
+                            style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: seatingId === p.id ? D.muted : D.green, color: "#fff", fontSize: 13, fontWeight: 700, cursor: seatingId ? "not-allowed" : "pointer" }}>
+                            {seatingId === p.id ? "Seating…" : "✓ Seat"}
                           </button>
                           <button onClick={() => removeParty(p.id, p.name)}
                             style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${D.red}40`, background: D.redBg, color: D.red, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>

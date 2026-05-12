@@ -3342,20 +3342,31 @@ function AgreementsView({ token }: { token: string }) {
   const [pushSelected,  setPushSelected]  = useState<Set<string>>(new Set())
   const [pushing,       setPushing]       = useState(false)
   const [pushDone,      setPushDone]      = useState<string|null>(null)
-  const [pendingOnHost, setPendingOnHost] = useState<Record<string, { acceptedAt: string; version: string }>>({})
-  const [pendingList,   setPendingList]   = useState<string[]>([])
+  // Per-client terms status, loaded from Railway config when Terms tab is open
+  // key = slug, value = { required, accepted } — both can be undefined
+  const [clientTermsStatus, setClientTermsStatus] = useState<
+    Record<string, { required?: string; accepted?: string; acceptedAt?: string }>
+  >({})
 
-  // Load pending acceptance status when on Terms tab
+  // Load per-client terms status from their config when on Terms tab
   useEffect(() => {
-    if (tab !== "terms") return
-    fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`)
-      .then(r => r.json())
-      .then(d => {
-        setPendingList(d.pendingSlugs   || [])
-        setPendingOnHost(d.acceptedSlugs || {})
-      })
-      .catch(() => {/* non-critical */})
-  }, [tab, token, pushDone, termsPublished])
+    if (tab !== "terms" || clients.length === 0) return
+    const map: Record<string, { required?: string; accepted?: string; acceptedAt?: string }> = {}
+    Promise.allSettled(
+      clients.map(c =>
+        fetch(`${API}/client/${encodeURIComponent(c.slug)}/config`, { cache: "no-store" })
+          .then(r => r.json())
+          .then(d => {
+            const gc = (d.guest_config || {}) as Record<string, string | undefined>
+            map[c.slug] = {
+              required:   gc.termsRequiredVersion,
+              accepted:   gc.termsAcceptedVersion,
+              acceptedAt: gc.termsAcceptedAt,
+            }
+          })
+      )
+    ).then(() => setClientTermsStatus({ ...map }))
+  }, [tab, clients, pushDone])
 
   const generatedLink = useMemo(() => {
     const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
@@ -3403,18 +3414,44 @@ function AgreementsView({ token }: { token: string }) {
 
   async function pushToClients() {
     if (pushSelected.size === 0) return
-    const slugs = Array.from(pushSelected)
-    if (!confirm(`Push current terms (${termsVersion}) to ${slugs.length} client(s)? They will see an acceptance modal the next time they open HOST.`)) return
+    const selectedClients = clients.filter(c => pushSelected.has(c.slug))
+    if (!confirm(`Push terms version "${termsVersion}" to ${selectedClients.length} client(s)? They will see an acceptance modal the next time they open HOST.`)) return
     setPushing(true)
+    let failed = 0
     try {
-      await fetch(`/api/admin/terms?action=push&secret=${encodeURIComponent(token)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slugs }),
-      })
+      // Write termsRequiredVersion into each client's guest_config in the Railway DB.
+      // This is persistent across restarts — the only reliable storage.
+      await Promise.allSettled(
+        selectedClients.map(async c => {
+          try {
+            // GET current config so we don't clobber existing fields
+            const configRes = await fetch(
+              `${API}/owner/clients/${c.id}/config?secret=${encodeURIComponent(token)}`,
+              { cache: "no-store" }
+            )
+            if (!configRes.ok) { failed++; return }
+            const config = await configRes.json()
+            const gc: Record<string, unknown> = { ...(config.guest_config || {}) }
+            gc.termsRequiredVersion = termsVersion
+            // Clear old acceptance so the client must re-accept
+            delete gc.termsAcceptedVersion
+            delete gc.termsAcceptedAt
+            delete gc.termsAcceptedIp
+            await fetch(
+              `${API}/owner/clients/${c.id}/config?secret=${encodeURIComponent(token)}`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ guest_config: gc }),
+              }
+            )
+          } catch { failed++ }
+        })
+      )
+      if (failed > 0) alert(`Warning: ${failed} client(s) could not be updated. Retry for those clients.`)
       setPushDone(new Date().toLocaleString())
       setPushSelected(new Set())
-    } catch { alert("Push failed") }
+    } catch { alert("Push failed — check connection and retry") }
     finally { setPushing(false) }
   }
 
@@ -3730,8 +3767,9 @@ function AgreementsView({ token }: { token: string }) {
                   </span>
                 </div>
                 {clients.map(c => {
-                  const isPending  = pendingList.includes(c.slug)
-                  const acceptance = pendingOnHost[c.slug]
+                  const ts          = clientTermsStatus[c.slug]
+                  const needsAccept = ts?.required && ts.required !== ts?.accepted
+                  const accepted    = ts?.required && ts.required === ts?.accepted
                   return (
                     <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: `1px solid ${D.border}` }}>
                       <input type="checkbox"
@@ -3746,14 +3784,15 @@ function AgreementsView({ token }: { token: string }) {
                         <span style={{ fontSize: 13, color: D.text }}>{c.name}</span>
                         <span style={{ fontSize: 11, color: D.muted, marginLeft: 8 }}>{c.slug}</span>
                       </div>
-                      {isPending && !acceptance && (
-                        <span style={{ fontSize: 11, color: D.orange, fontWeight: 600 }}>⏳ Awaiting acceptance</span>
+                      {needsAccept && (
+                        <span style={{ fontSize: 11, color: D.orange, fontWeight: 600 }}>⏳ Awaiting · v{ts?.required}</span>
                       )}
-                      {acceptance && (
+                      {accepted && ts?.acceptedAt && (
                         <span style={{ fontSize: 11, color: D.green }}>
-                          ✓ Accepted {new Date(acceptance.acceptedAt).toLocaleDateString()} · v{acceptance.version}
+                          ✓ {new Date(ts.acceptedAt).toLocaleDateString()} · v{ts.accepted}
                         </span>
                       )}
+                      {!ts && <span style={{ fontSize: 11, color: D.muted }}>…</span>}
                     </div>
                   )
                 })}
