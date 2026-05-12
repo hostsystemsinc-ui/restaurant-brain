@@ -3338,6 +3338,25 @@ function AgreementsView({ token }: { token: string }) {
   const [linkPlan,   setLinkPlan]   = useState("free")
   const [linkLocs,   setLinkLocs]   = useState("1")
 
+  // Push-to-clients state
+  const [pushSelected,  setPushSelected]  = useState<Set<string>>(new Set())
+  const [pushing,       setPushing]       = useState(false)
+  const [pushDone,      setPushDone]      = useState<string|null>(null)
+  const [pendingOnHost, setPendingOnHost] = useState<Record<string, { acceptedAt: string; version: string }>>({})
+  const [pendingList,   setPendingList]   = useState<string[]>([])
+
+  // Load pending acceptance status when on Terms tab
+  useEffect(() => {
+    if (tab !== "terms") return
+    fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`)
+      .then(r => r.json())
+      .then(d => {
+        setPendingList(d.pendingSlugs   || [])
+        setPendingOnHost(d.acceptedSlugs || {})
+      })
+      .catch(() => {/* non-critical */})
+  }, [tab, token, pushDone, termsPublished])
+
   const generatedLink = useMemo(() => {
     const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
     const p = new URLSearchParams()
@@ -3380,6 +3399,23 @@ function AgreementsView({ token }: { token: string }) {
       setTermsEditing(false)
     } catch { alert("Publish failed") }
     finally { setTermsPublishing(false) }
+  }
+
+  async function pushToClients() {
+    if (pushSelected.size === 0) return
+    const slugs = Array.from(pushSelected)
+    if (!confirm(`Push current terms (${termsVersion}) to ${slugs.length} client(s)? They will see an acceptance modal the next time they open HOST.`)) return
+    setPushing(true)
+    try {
+      await fetch(`/api/admin/terms?action=push&secret=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slugs }),
+      })
+      setPushDone(new Date().toLocaleString())
+      setPushSelected(new Set())
+    } catch { alert("Push failed") }
+    finally { setPushing(false) }
   }
 
   function copyLink(url: string, key: string) {
@@ -3665,6 +3701,79 @@ function AgreementsView({ token }: { token: string }) {
                   ))}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ── Push to existing clients ── */}
+          {clients.length > 0 && (
+            <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: D.text }}>Push to Existing Clients</div>
+                  <div style={{ fontSize: 12, color: D.text2, marginTop: 2 }}>
+                    Selected clients will see an acceptance modal the next time they open HOST. Their click is timestamped and stored as a valid electronic agreement.
+                  </div>
+                </div>
+                {pushDone && <div style={{ fontSize: 11, color: D.green, whiteSpace: "nowrap" as const, marginLeft: 16 }}>✓ Pushed {pushDone}</div>}
+              </div>
+
+              {/* Client list with checkboxes */}
+              <div style={{ marginTop: 16, border: `1px solid ${D.border}`, borderRadius: 8, overflow: "hidden" }}>
+                {/* Select all row */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: `1px solid ${D.border}`, background: D.surface2 }}>
+                  <input type="checkbox"
+                    checked={pushSelected.size === clients.length}
+                    onChange={e => setPushSelected(e.target.checked ? new Set(clients.map(c => c.slug)) : new Set())}
+                    style={{ accentColor: D.blue, width: 14, height: 14, cursor: "pointer" }} />
+                  <span style={{ fontSize: 11, color: D.text2, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                    Select All ({clients.length})
+                  </span>
+                </div>
+                {clients.map(c => {
+                  const isPending  = pendingList.includes(c.slug)
+                  const acceptance = pendingOnHost[c.slug]
+                  return (
+                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: `1px solid ${D.border}` }}>
+                      <input type="checkbox"
+                        checked={pushSelected.has(c.slug)}
+                        onChange={e => setPushSelected(prev => {
+                          const next = new Set(prev)
+                          e.target.checked ? next.add(c.slug) : next.delete(c.slug)
+                          return next
+                        })}
+                        style={{ accentColor: D.blue, width: 14, height: 14, cursor: "pointer" }} />
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: 13, color: D.text }}>{c.name}</span>
+                        <span style={{ fontSize: 11, color: D.muted, marginLeft: 8 }}>{c.slug}</span>
+                      </div>
+                      {isPending && !acceptance && (
+                        <span style={{ fontSize: 11, color: D.orange, fontWeight: 600 }}>⏳ Awaiting acceptance</span>
+                      )}
+                      {acceptance && (
+                        <span style={{ fontSize: 11, color: D.green }}>
+                          ✓ Accepted {new Date(acceptance.acceptedAt).toLocaleDateString()} · v{acceptance.version}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+                <span style={{ fontSize: 12, color: D.muted }}>
+                  {pushSelected.size} of {clients.length} selected · version {termsVersion}
+                </span>
+                <button
+                  onClick={pushToClients}
+                  disabled={pushing || pushSelected.size === 0}
+                  style={{
+                    padding: "9px 22px", borderRadius: 8, border: "none", cursor: pushSelected.size === 0 ? "not-allowed" : "pointer",
+                    background: pushSelected.size === 0 ? D.surface2 : D.accent,
+                    color: pushSelected.size === 0 ? D.muted : "#fff", fontSize: 13, fontWeight: 700,
+                  }}>
+                  {pushing ? "Pushing…" : `Push to ${pushSelected.size || "Selected"} Client${pushSelected.size !== 1 ? "s" : ""}`}
+                </button>
+              </div>
             </div>
           )}
 

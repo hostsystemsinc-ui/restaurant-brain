@@ -428,6 +428,16 @@ function StationInner() {
   const [flashMsg,    setFlashMsg]    = useState<{ text: string; ok: boolean } | null>(null)
   const [clockStr,    setClockStr]    = useState(nowTimeStr())
 
+  // Terms acceptance state
+  interface TermsSectionData { heading: string; body: string }
+  const [termsPending,   setTermsPending]   = useState(false)
+  const [termsVersion,   setTermsVersion]   = useState("")
+  const [termsDate,      setTermsDate]      = useState("")
+  const [termsSections,  setTermsSections]  = useState<TermsSectionData[]>([])
+  const [termsExpanded,  setTermsExpanded]  = useState(false)
+  const [termsRead,      setTermsRead]      = useState(false)
+  const [termsAccepting, setTermsAccepting] = useState(false)
+
   // Clock
   useEffect(() => {
     const iv = setInterval(() => setClockStr(nowTimeStr()), 30_000)
@@ -504,6 +514,39 @@ function StationInner() {
     setAuthed(false); setShowAdmin(false)
   }
 
+  // ── Terms pending check (fires after authed) ──────────────────────────────
+  useEffect(() => {
+    if (!authed || !slug) return
+    fetch(`/api/admin/terms?slug=${encodeURIComponent(slug)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.pending) {
+          setTermsVersion(d.version || "")
+          setTermsDate(d.effectiveDate || "")
+          setTermsSections(d.sections || [])
+          setTermsPending(true)
+        }
+      })
+      .catch(() => {/* non-critical — don't block station if check fails */})
+  }, [authed, slug])
+
+  async function acceptTerms() {
+    if (!termsRead) return
+    setTermsAccepting(true)
+    try {
+      await fetch(`/api/admin/terms?action=accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, version: termsVersion }),
+      })
+      setTermsPending(false)
+    } catch { /* best-effort — dismiss modal anyway */ }
+    finally {
+      setTermsPending(false)
+      setTermsAccepting(false)
+    }
+  }
+
   // ── Actions ───────────────────────────────────────────────────────────────
   function flash(ok: boolean, text: string) {
     setFlashMsg({ ok, text }); setTimeout(() => setFlashMsg(null), 2500)
@@ -563,6 +606,93 @@ function StationInner() {
   // ── Render: PIN gate ──────────────────────────────────────────────────────
   if (!authed) {
     return <PinGate name={info?.name || slug} onAuth={tryPin} error={pinError} />
+  }
+
+  // ── Render: terms acceptance modal (overlay, blocks station) ────────────────
+  if (termsPending) {
+    return (
+      <div style={{ minHeight: "100dvh", background: D.bg, fontFamily: "system-ui, sans-serif", color: D.text,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
+        <div style={{ width: "100%", maxWidth: 640, background: "#0E141C", border: `1px solid ${D.borderStrong}`,
+          borderRadius: 20, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.7)" }}>
+
+          {/* Header */}
+          <div style={{ padding: "28px 32px 20px", borderBottom: `1px solid ${D.border}` }}>
+            <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6 }}>
+              Host Platform LLC
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: D.text, letterSpacing: "-0.02em", marginBottom: 4 }}>
+              Updated Terms of Service
+            </div>
+            <div style={{ fontSize: 13, color: D.text2 }}>
+              Version {termsVersion}{termsDate ? ` · Effective ${termsDate}` : ""}
+            </div>
+          </div>
+
+          {/* Body */}
+          <div style={{ padding: "24px 32px" }}>
+            <p style={{ fontSize: 14, color: D.text2, lineHeight: 1.7, margin: "0 0 20px" }}>
+              We&apos;ve updated the agreement between your business and Host Platform LLC.
+              Please review the terms below and confirm your acceptance to continue using HOST.
+            </p>
+
+            {/* Expandable terms text */}
+            <div style={{ border: `1px solid ${D.border}`, borderRadius: 10, overflow: "hidden", marginBottom: 20 }}>
+              <button
+                onClick={() => setTermsExpanded(e => !e)}
+                style={{ width: "100%", padding: "12px 16px", background: D.surface2, border: "none", cursor: "pointer",
+                  display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 13, color: D.text, fontWeight: 600 }}>Read Full Agreement</span>
+                <span style={{ fontSize: 16, color: D.text2 }}>{termsExpanded ? "▲" : "▼"}</span>
+              </button>
+              {termsExpanded && (
+                <div style={{ maxHeight: 340, overflowY: "auto", padding: "16px 20px", background: D.surface }}>
+                  {termsSections.map((s, i) => (
+                    <div key={i} style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: D.text2, textTransform: "uppercase",
+                        letterSpacing: "0.09em", marginBottom: 4, paddingTop: 10,
+                        borderTop: i > 0 ? `1px solid ${D.border}` : "none" }}>
+                        {s.heading}
+                      </div>
+                      {s.body.split("\n\n").map((para, j) => (
+                        <p key={j} style={{ fontSize: 11, color: D.muted, lineHeight: 1.75, margin: "0 0 6px" }}>{para}</p>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* I've read checkbox */}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 12, cursor: "pointer", marginBottom: 24 }}>
+              <input type="checkbox" checked={termsRead} onChange={e => setTermsRead(e.target.checked)}
+                style={{ marginTop: 2, width: 18, height: 18, accentColor: D.accent, cursor: "pointer", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: D.text2, lineHeight: 1.6 }}>
+                I confirm that I am authorized to accept agreements on behalf of <strong style={{ color: D.text }}>{info?.name || slug}</strong>, and I have read and agree to the Host Platform LLC Master Subscription Agreement version <strong style={{ color: D.text }}>{termsVersion}</strong>.
+              </span>
+            </label>
+
+            {/* Accept button */}
+            <button
+              onClick={acceptTerms}
+              disabled={!termsRead || termsAccepting}
+              style={{
+                width: "100%", padding: "14px 0", borderRadius: 10, border: "none",
+                background: termsRead ? D.accent : D.surface2,
+                color: termsRead ? "#fff" : D.muted,
+                fontSize: 15, fontWeight: 700, cursor: termsRead ? "pointer" : "not-allowed",
+                transition: "background 0.15s",
+              }}>
+              {termsAccepting ? "Recording agreement…" : "I've Read and Agree — Continue to HOST"}
+            </button>
+
+            <p style={{ fontSize: 11, color: D.muted, textAlign: "center", marginTop: 14, marginBottom: 0 }}>
+              Your acceptance will be recorded with a timestamp and your IP address as a valid electronic signature under the ESIGN Act and Colorado UETA.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // ── Render: main station ──────────────────────────────────────────────────
