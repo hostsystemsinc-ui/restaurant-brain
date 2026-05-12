@@ -1,7 +1,9 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { Check, ChevronRight, AlertCircle, Loader2, ShieldCheck } from "lucide-react"
+import { TERMS_SECTIONS, CURRENT_VERSION, EFFECTIVE_DATE, ENTITY_NAME } from "@/lib/terms"
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -27,16 +29,22 @@ const LOGO = "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682
 
 const PLANS = [
   {
-    key:      "single",
-    name:     "Single Location",
-    price:    149,
-    desc:     "One restaurant location",
+    key:   "free",
+    name:  "Free Plan",
+    price: 0,
+    desc:  "HOST platform + 2 NFC signs per location",
   },
   {
-    key:      "multi",
-    name:     "Multi-Location",
-    price:    129,
-    desc:     "Per location — 2 or more locations",
+    key:   "single",
+    name:  "Single Location",
+    price: 149,
+    desc:  "One restaurant location",
+  },
+  {
+    key:   "multi",
+    name:  "Multi-Location",
+    price: 129,
+    desc:  "Per location — 2 or more locations",
   },
 ]
 
@@ -84,76 +92,33 @@ function Steps({ step }: { step: number }) {
   )
 }
 
-// ── Contract text component ────────────────────────────────────────────────────
-function ContractText() {
+// ── Full contract renderer ─────────────────────────────────────────────────────
+function ContractText({ version = CURRENT_VERSION, effectiveDate = EFFECTIVE_DATE }: { version?: string; effectiveDate?: string }) {
   return (
-    <div style={{ fontSize: 11, lineHeight: 1.7, color: C.text2 }}>
-      <p style={{ fontWeight: 800, fontSize: 13, color: C.text, marginBottom: 4 }}>HOST SYSTEMS LLC — MASTER SUBSCRIPTION AGREEMENT</p>
-      <p style={{ marginBottom: 8, fontSize: 10, color: C.muted }}>Version 1.0 · Full text available at hostplatform.net/legal/terms</p>
-
-      <p style={{ marginBottom: 10 }}>
-        This Master Subscription Agreement ("Agreement") governs your access to and use of the Host restaurant
-        management platform ("Services") provided by Host Systems LLC, a Colorado limited liability company.
-        By completing this onboarding, you agree to all terms of this Agreement.
+    <div style={{ fontSize: 11, lineHeight: 1.75, color: C.text2 }}>
+      <p style={{ fontWeight: 900, fontSize: 13, color: C.text, marginBottom: 2 }}>
+        {ENTITY_NAME.toUpperCase()} — MASTER SUBSCRIPTION AGREEMENT
       </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>FREE TRIAL (Article 2)</p>
-      <p style={{ marginBottom: 10 }}>
-        You receive a 30-day free trial beginning today. No charge during the trial. On Day 31, your subscription
-        converts automatically to the paid plan you select. You'll receive reminder emails at 7 days and 3 days
-        before billing begins. Cancel anytime before Day 31 at no charge. One trial per business entity.
+      <p style={{ fontSize: 10, color: C.muted, marginBottom: 16 }}>
+        {version} · Effective {effectiveDate} · Full text: hostplatform.net/legal/terms
       </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>SUBSCRIPTION & PAYMENT (Articles 3–4)</p>
-      <p style={{ marginBottom: 10 }}>
-        Monthly subscription billed in advance via Stripe. Auto-renews monthly. Price adjustments require
-        30 days' notice. Late payments accrue interest at 1.5%/month. Accounts suspended after 10 days
-        of non-payment; terminated after 30 days. All fees are non-refundable except as stated in the Agreement.
-      </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>YOUR DATA (Article 6)</p>
-      <p style={{ marginBottom: 10 }}>
-        You own your guest data. We process it only to provide the Services and never sell it or use it
-        for advertising. We maintain reasonable security measures. You are responsible for obtaining
-        guest consent to receive SMS messages under the TCPA.
-      </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>SMS COMPLIANCE (Article 7)</p>
-      <p style={{ marginBottom: 10 }}>
-        You are solely responsible for TCPA compliance, including obtaining prior express written consent
-        from every guest before texting them. Host Systems is not liable for your SMS practices.
-      </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>INTELLECTUAL PROPERTY (Article 8)</p>
-      <p style={{ marginBottom: 10 }}>
-        Host Systems owns the platform and all related software. You retain your guest data and brand assets.
-      </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>LIMITATION OF LIABILITY (Article 11)</p>
-      <p style={{ marginBottom: 10 }}>
-        <strong>IMPORTANT: HOST SYSTEMS' TOTAL LIABILITY IS CAPPED AT ONE MONTH'S SUBSCRIPTION FEES.
-        NEITHER PARTY IS LIABLE FOR INDIRECT, CONSEQUENTIAL, OR PUNITIVE DAMAGES.</strong> These limitations
-        are a fundamental part of the agreement.
-      </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>TERMINATION (Article 5)</p>
-      <p style={{ marginBottom: 10 }}>
-        Cancel anytime with 15 days' written notice (after the trial). No long-term contract, no cancellation fees.
-        Termination for cause (non-payment or material breach) requires 30 days' cure notice.
-      </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>GOVERNING LAW & ARBITRATION (Article 13)</p>
-      <p style={{ marginBottom: 10 }}>
-        Colorado law governs this Agreement. Disputes are resolved by binding JAMS arbitration in Denver,
-        Colorado. <strong>You waive your right to a jury trial and to participate in class actions.</strong>
-      </p>
-
-      <p style={{ fontWeight: 700, color: C.text, marginBottom: 4 }}>ELECTRONIC SIGNATURE (Exhibit C)</p>
-      <p style={{ marginBottom: 2 }}>
-        By signing below, you confirm that you have read this Agreement, are authorized to bind your
-        business, and agree to be bound by all its terms. This signature is legally binding under the
-        ESIGN Act (15 U.S.C. § 7001) and the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101).
-      </p>
+      {TERMS_SECTIONS.map((section, i) => (
+        <div key={i} style={{ marginBottom: 16 }}>
+          <p style={{ fontWeight: 800, fontSize: 11, color: C.text, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            {section.heading}
+          </p>
+          {section.body.split("\n\n").map((para, j) => (
+            <p key={j} style={{ marginBottom: 8, fontSize: 11 }}>
+              {para}
+            </p>
+          ))}
+        </div>
+      ))}
+      <div style={{ marginTop: 16, padding: "12px 14px", background: "#f0f0f0", borderRadius: 8, fontSize: 10, color: C.text2 }}>
+        <strong>ELECTRONIC SIGNATURE NOTICE:</strong> By signing below, you confirm you have read this entire Agreement,
+        are authorized to bind your business to its terms, and agree that your typed name constitutes a legally
+        binding electronic signature under the ESIGN Act (15 U.S.C. § 7001) and Colorado UETA (C.R.S. § 24-71.3-101).
+      </div>
     </div>
   )
 }
@@ -187,23 +152,27 @@ function Field({
   )
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────────
-export default function SignupPage() {
+// ── Inner page (needs useSearchParams) ────────────────────────────────────────
+function SignupInner() {
+  const params = useSearchParams()
+
   const [step,       setStep]       = useState<1 | 2 | 3>(1)
   const [submitting, setSubmitting] = useState(false)
   const [done,       setDone]       = useState(false)
   const [error,      setError]      = useState("")
 
-  // Step 1 — business info
-  const [bizName,       setBizName]       = useState("")
-  const [ownerName,     setOwnerName]     = useState("")
-  const [email,         setEmail]         = useState("")
-  const [phone,         setPhone]         = useState("")
-  const [address,       setAddress]       = useState("")
-  const [locationCount, setLocationCount] = useState("1")
+  // Step 1 — business info (pre-fillable via query params)
+  const [bizName,       setBizName]       = useState(params.get("biz")  || "")
+  const [ownerName,     setOwnerName]     = useState(params.get("name") || "")
+  const [email,         setEmail]         = useState(params.get("email")|| "")
+  const [phone,         setPhone]         = useState(params.get("phone")|| "")
+  const [address,       setAddress]       = useState(params.get("addr") || "")
+  const [locationCount, setLocationCount] = useState(params.get("locs") || "1")
 
-  // Step 2 — plan
-  const [plan, setPlan] = useState<"single" | "multi">("single")
+  // Step 2 — plan (pre-fillable)
+  const [plan, setPlan] = useState<"free" | "single" | "multi">(
+    (params.get("plan") as "free" | "single" | "multi") || "free"
+  )
 
   // Step 3 — signature
   const [scrolledToBottom, setScrolledToBottom] = useState(false)
@@ -229,6 +198,12 @@ export default function SignupPage() {
   const step1Valid = bizName.trim() && ownerName.trim() && email.trim() && address.trim()
   const step3Valid = scrolledToBottom && agreed && sigName.trim().length >= 2
 
+  const monthlyFee = useCallback(() => {
+    if (plan === "free")  return 0
+    if (plan === "multi") return 129 * (parseInt(locationCount, 10) || 1)
+    return 149
+  }, [plan, locationCount])
+
   async function handleSubmit() {
     if (!step3Valid) return
     setSubmitting(true)
@@ -246,8 +221,8 @@ export default function SignupPage() {
           address:        address.trim(),
           location_count: parseInt(locationCount, 10),
           plan_type:      plan,
-          monthly_fee:    plan === "multi" ? 129 * parseInt(locationCount, 10) : 149,
-          agreement_version: "MSA-v1.0-2026-05",
+          monthly_fee:    monthlyFee(),
+          agreement_version: CURRENT_VERSION,
         }),
       })
       if (!res.ok) {
@@ -313,8 +288,9 @@ export default function SignupPage() {
     )
   }
 
-  const locs = parseInt(locationCount, 10) || 1
-  const monthly = plan === "multi" ? 129 * locs : 149
+  const locs    = parseInt(locationCount, 10) || 1
+  const monthly = monthlyFee()
+  const isFree  = plan === "free"
 
   return (
     <div style={{
@@ -328,10 +304,10 @@ export default function SignupPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={LOGO} alt="Host" style={{ height: 36, objectFit: "contain", marginBottom: 12 }} />
           <h1 style={{ fontSize: 22, fontWeight: 900, color: C.text, letterSpacing: "-0.02em", marginBottom: 4 }}>
-            Start your free trial
+            {isFree ? "Get started with HOST" : "Start your free trial"}
           </h1>
           <p style={{ fontSize: 13, color: C.text2 }}>
-            30 days free · No credit card required · Cancel anytime
+            {isFree ? "Free plan · 2 NFC signs included · No credit card" : "30 days free · No credit card required · Cancel anytime"}
           </p>
         </div>
 
@@ -492,7 +468,7 @@ export default function SignupPage() {
                   {agreed && <Check size={11} style={{ color: "#fff" }} />}
                 </div>
                 <span style={{ fontSize: 12, color: C.text2, lineHeight: 1.5 }}>
-                  I have read and agree to the Host Systems LLC Master Subscription Agreement.
+                  I have read and agree to the {ENTITY_NAME} Master Subscription Agreement ({CURRENT_VERSION}).
                   I am authorized to sign on behalf of <strong>{bizName || "my business"}</strong>.
                 </span>
               </label>
@@ -534,12 +510,14 @@ export default function SignupPage() {
                 background: C.bg, border: `1px solid ${C.border}`,
                 borderRadius: 10, padding: "12px 14px",
               }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Order Summary</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Summary</p>
                 {[
-                  { label: "Business",      value: bizName },
-                  { label: "Plan",          value: plan === "multi" ? `Multi-Location (${locs})` : "Single Location" },
-                  { label: "Monthly (after trial)", value: `$${monthly}` },
-                  { label: "Trial period",  value: `Free through ${new Date(Date.now() + 30 * 86400000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` },
+                  { label: "Business",  value: bizName },
+                  { label: "Plan",      value: isFree ? "Free Plan" : plan === "multi" ? `Multi-Location (${locs})` : "Single Location" },
+                  { label: "Monthly",   value: isFree ? "Free" : `$${monthly}/mo after trial` },
+                  ...(isFree ? [] : [{ label: "Trial", value: `Free through ${new Date(Date.now() + 30 * 86400000).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}` }]),
+                  { label: "Signs",     value: `2 HOST NFC signs per location` },
+                  { label: "Agreement", value: CURRENT_VERSION },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, paddingBottom: 5 }}>
                     <span style={{ color: C.muted }}>{label}</span>
@@ -570,7 +548,7 @@ export default function SignupPage() {
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
                   }}>
                   {submitting ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <ShieldCheck size={15} />}
-                  {submitting ? "Saving…" : "Sign & Start Free Trial"}
+                  {submitting ? "Saving…" : isFree ? "Sign Agreement" : "Sign & Start Free Trial"}
                 </button>
               </div>
 
@@ -591,5 +569,14 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+// ── Export with Suspense boundary (required for useSearchParams) ───────────────
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupInner />
+    </Suspense>
   )
 }

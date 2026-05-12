@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { CURRENT_VERSION, EFFECTIVE_DATE, ENTITY_NAME, TERMS_SECTIONS, type TermsSection } from "@/lib/terms"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
@@ -3307,11 +3308,45 @@ function AnalyticsView({ token }: { token: string }) {
 
 // ── Agreements View ────────────────────────────────────────────────────────────
 function AgreementsView({ token }: { token: string }) {
+  const [tab,        setTab]        = useState<"signed" | "terms">("signed")
   const [agreements, setAgreements] = useState<AgreementRecord[]>([])
   const [loading,    setLoading]    = useState(false)
   const [fetched,    setFetched]    = useState(false)
   const [error,      setError]      = useState<string|null>(null)
   const [deleting,   setDeleting]   = useState<string|null>(null)
+  const [copied,     setCopied]     = useState<string|null>(null)
+  const [clients,    setClients]    = useState<Client[]>([])
+
+  useEffect(() => {
+    fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => setClients(d.clients || []))
+      .catch(() => {/* non-critical */})
+  }, [token])
+
+  // Terms management state
+  const [termsVersion,  setTermsVersion]  = useState(CURRENT_VERSION)
+  const [termsDate,     setTermsDate]     = useState(EFFECTIVE_DATE)
+  const [termsSections, setTermsSections] = useState<TermsSection[]>(TERMS_SECTIONS)
+  const [termsEditing,  setTermsEditing]  = useState(false)
+  const [termsPublishing, setTermsPublishing] = useState(false)
+  const [termsPublished,  setTermsPublished]  = useState<string|null>(null)
+
+  // Link generator state
+  const [linkClient, setLinkClient] = useState("")
+  const [linkEmail,  setLinkEmail]  = useState("")
+  const [linkPlan,   setLinkPlan]   = useState("free")
+  const [linkLocs,   setLinkLocs]   = useState("1")
+
+  const generatedLink = useMemo(() => {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
+    const p = new URLSearchParams()
+    if (linkClient) p.set("biz",   linkClient)
+    if (linkEmail)  p.set("email", linkEmail)
+    if (linkPlan)   p.set("plan",  linkPlan)
+    if (linkLocs && linkLocs !== "1") p.set("locs", linkLocs)
+    return `${base}/signup?${p.toString()}`
+  }, [linkClient, linkEmail, linkPlan, linkLocs])
 
   function load() {
     setLoading(true); setError(null)
@@ -3332,9 +3367,42 @@ function AgreementsView({ token }: { token: string }) {
     finally { setDeleting(null) }
   }
 
+  async function publishTerms() {
+    if (!confirm(`Publish version "${termsVersion}" as the current Terms of Service?`)) return
+    setTermsPublishing(true)
+    try {
+      await fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: termsVersion, effectiveDate: termsDate, sections: termsSections }),
+      })
+      setTermsPublished(new Date().toLocaleString())
+      setTermsEditing(false)
+    } catch { alert("Publish failed") }
+    finally { setTermsPublishing(false) }
+  }
+
+  function copyLink(url: string, key: string) {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(key); setTimeout(() => setCopied(null), 2000)
+    })
+  }
+
+  function sendLinkForClient(client: Client) {
+    const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
+    const p = new URLSearchParams({ biz: client.name, plan: client.plan_type || "free" })
+    if (client.signer_email) p.set("email", client.signer_email)
+    copyLink(`${base}/signup?${p.toString()}`, client.id)
+  }
+
   function downloadPDF(a: AgreementRecord) {
+    const sectionsHtml = TERMS_SECTIONS.map(s =>
+      `<div class="terms-section">${s.heading}</div>` +
+      s.body.split("\n\n").map(p => `<p>${p.replace(/\n/g, " ")}</p>`).join("")
+    ).join("")
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-<title>HOST Agreement — ${a.business_name}</title>
+<title>${ENTITY_NAME} Agreement — ${a.business_name}</title>
 <style>
   body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 32px;color:#1a1a1a;font-size:14px;line-height:1.6}
   h1{font-size:22px;font-weight:700;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:24px}
@@ -3349,18 +3417,17 @@ function AgreementsView({ token }: { token: string }) {
   .terms{margin-top:40px;border-top:3px solid #000;padding-top:24px}
   .terms-title{font-size:16px;font-weight:700;margin-bottom:4px}
   .terms-sub{font-size:11px;color:#888;margin-bottom:20px}
-  .terms-section{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;margin:20px 0 6px;color:#333}
-  .terms p{font-size:12px;line-height:1.7;margin:0 0 12px;color:#222}
-  .terms .warning{font-weight:700;color:#000}
-  .legal{font-size:11px;color:#888;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:16px}
+  .terms-section{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.07em;margin:20px 0 6px;color:#333;border-top:1px solid #e0e0e0;padding-top:12px}
+  .terms p{font-size:11px;line-height:1.75;margin:0 0 8px;color:#222}
+  .legal{font-size:10px;color:#888;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:16px}
   @media print{body{margin:20px auto}}
 </style>
 </head><body>
-<h1>HOST Platform — Service Agreement</h1>
+<h1>${ENTITY_NAME} — Master Subscription Agreement</h1>
 <div class="stamp">
   🔐 Signed: ${new Date(a.signed_at).toLocaleString("en-US",{dateStyle:"full",timeStyle:"long"})} &nbsp;|&nbsp;
-  IP Address: ${a.ip_address || "not recorded"} &nbsp;|&nbsp;
-  Version: ${a.agreement_version || "v1"}
+  IP: ${a.ip_address || "not recorded"} &nbsp;|&nbsp;
+  Version: ${a.agreement_version || CURRENT_VERSION}
 </div>
 <h2>Business Information</h2>
 <div class="meta">
@@ -3380,59 +3447,13 @@ function AgreementsView({ token }: { token: string }) {
   ${a.signer_title ? a.signer_title + "<br/>" : ""}${a.business_name}<br/>
   <span style="font-size:12px;color:#555">Signed electronically on ${new Date(a.signed_at).toLocaleString("en-US",{dateStyle:"long",timeStyle:"short"})} from IP ${a.ip_address || "unknown"}</span>
 </div>
-
 <div class="terms">
-  <div class="terms-title">HOST SYSTEMS LLC — MASTER SUBSCRIPTION AGREEMENT</div>
-  <div class="terms-sub">Version 1.0 · Full text available at hostplatform.net/legal/terms</div>
-
-  <p>This Master Subscription Agreement ("Agreement") governs your access to and use of the Host restaurant
-  management platform ("Services") provided by Host Systems LLC, a Colorado limited liability company.
-  By completing this onboarding, you agree to all terms of this Agreement.</p>
-
-  <div class="terms-section">Free Trial (Article 2)</div>
-  <p>You receive a 30-day free trial beginning today. No charge during the trial. On Day 31, your subscription
-  converts automatically to the paid plan you select. You'll receive reminder emails at 7 days and 3 days
-  before billing begins. Cancel anytime before Day 31 at no charge. One trial per business entity.</p>
-
-  <div class="terms-section">Subscription &amp; Payment (Articles 3–4)</div>
-  <p>Monthly subscription billed in advance via Stripe. Auto-renews monthly. Price adjustments require
-  30 days' notice. Late payments accrue interest at 1.5%/month. Accounts suspended after 10 days
-  of non-payment; terminated after 30 days. All fees are non-refundable except as stated in the Agreement.</p>
-
-  <div class="terms-section">Your Data (Article 6)</div>
-  <p>You own your guest data. We process it only to provide the Services and never sell it or use it
-  for advertising. We maintain reasonable security measures. You are responsible for obtaining
-  guest consent to receive SMS messages under the TCPA.</p>
-
-  <div class="terms-section">SMS Compliance (Article 7)</div>
-  <p>You are solely responsible for TCPA compliance, including obtaining prior express written consent
-  from every guest before texting them. Host Systems is not liable for your SMS practices.</p>
-
-  <div class="terms-section">Intellectual Property (Article 8)</div>
-  <p>Host Systems owns the platform and all related software. You retain your guest data and brand assets.</p>
-
-  <div class="terms-section">Limitation of Liability (Article 11)</div>
-  <p><span class="warning">IMPORTANT: HOST SYSTEMS' TOTAL LIABILITY IS CAPPED AT ONE MONTH'S SUBSCRIPTION FEES.
-  NEITHER PARTY IS LIABLE FOR INDIRECT, CONSEQUENTIAL, OR PUNITIVE DAMAGES.</span> These limitations
-  are a fundamental part of the agreement.</p>
-
-  <div class="terms-section">Termination (Article 5)</div>
-  <p>Cancel anytime with 15 days' written notice (after the trial). No long-term contract, no cancellation fees.
-  Termination for cause (non-payment or material breach) requires 30 days' cure notice.</p>
-
-  <div class="terms-section">Governing Law &amp; Arbitration (Article 13)</div>
-  <p>Colorado law governs this Agreement. Disputes are resolved by binding JAMS arbitration in Denver,
-  Colorado. <span class="warning">You waive your right to a jury trial and to participate in class actions.</span></p>
-
-  <div class="terms-section">Electronic Signature (Exhibit C)</div>
-  <p>By signing below, you confirm that you have read this Agreement, are authorized to bind your
-  business, and agree to be bound by all its terms. This signature is legally binding under the
-  ESIGN Act (15 U.S.C. § 7001) and the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101).</p>
+  <div class="terms-title">${ENTITY_NAME.toUpperCase()} — MASTER SUBSCRIPTION AGREEMENT</div>
+  <div class="terms-sub">${a.agreement_version || CURRENT_VERSION} · Effective ${EFFECTIVE_DATE} · hostplatform.net/legal/terms</div>
+  ${sectionsHtml}
 </div>
-
 <div class="legal">
-  This document is a record of an electronically signed service agreement between HOST Systems Inc. and the signatory above.
-  Agreement ID: ${a.id} · Generated: ${new Date().toISOString()}
+  Electronically signed agreement · ${ENTITY_NAME} · Agreement ID: ${a.id} · Generated: ${new Date().toISOString()}
 </div>
 </body></html>`
     const w = window.open("", "_blank", "width=800,height=900")
@@ -3442,70 +3463,278 @@ function AgreementsView({ token }: { token: string }) {
     setTimeout(() => w.print(), 400)
   }
 
+  const TAB_BTN = (id: "signed" | "terms", label: string) => (
+    <button
+      onClick={() => setTab(id)}
+      style={{
+        padding: "8px 20px", borderRadius: 8, border: "none", cursor: "pointer",
+        fontSize: 13, fontWeight: 600,
+        background: tab === id ? D.surface2 : "transparent",
+        color:      tab === id ? D.text     : D.text2,
+        borderBottom: tab === id ? `2px solid ${D.blue}` : "2px solid transparent",
+      }}
+    >{label}</button>
+  )
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: "0 0 4px" }}>Agreements</h1>
-          <p style={{ color: D.text2, fontSize: 13, margin: 0 }}>{agreements.length} signed agreement{agreements.length !== 1 ? "s" : ""}</p>
-        </div>
-        <button onClick={load} disabled={loading}
-          style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
-          {loading ? "Loading…" : fetched ? "↺ Refresh" : "Load Agreements"}
-        </button>
+      {/* ── Page header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: D.text, margin: 0 }}>Agreements</h1>
+        {tab === "signed" && (
+          <button onClick={load} disabled={loading}
+            style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+            {loading ? "Loading…" : fetched ? "↺ Refresh" : "Load Agreements"}
+          </button>
+        )}
+      </div>
+
+      {/* ── Tab switcher ── */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 28, borderBottom: `1px solid ${D.border}` }}>
+        {TAB_BTN("signed", `📄 Signed Agreements${fetched ? ` (${agreements.length})` : ""}`)}
+        {TAB_BTN("terms",  "📋 Terms of Service")}
       </div>
 
       {error && <div style={{ color: D.red, fontSize: 14, marginBottom: 16 }}>{error}</div>}
 
-      {!fetched && !loading && (
-        <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
-          <div style={{ fontSize: 14 }}>Click &quot;Load Agreements&quot; to view signed contracts</div>
+      {/* ═══════════════════════════════════════════════════════════ SIGNED TAB */}
+      {tab === "signed" && (
+        <div>
+          {!fetched && !loading && (
+            <div style={{ textAlign: "center", padding: "60px 0", color: D.muted }}>
+              <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
+              <div style={{ fontSize: 14 }}>Click &quot;Load Agreements&quot; to view signed contracts</div>
+            </div>
+          )}
+
+          {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading…</div>}
+
+          {fetched && !loading && agreements.map(a => {
+            const outdated = !!a.agreement_version && a.agreement_version !== termsVersion
+            const matchClient = clients.find(c =>
+              c.name?.toLowerCase() === a.business_name?.toLowerCase() ||
+              c.signer_email === a.signer_email
+            )
+            return (
+              <div key={a.id} style={{ background: D.surface, border: `1px solid ${outdated ? D.orange + "55" : D.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{a.business_name}</div>
+                    <div style={{ fontSize: 13, color: D.text2, marginTop: 2 }}>
+                      {a.signer_name}{a.signer_title ? ` · ${a.signer_title}` : ""} · {a.signer_email}
+                    </div>
+                    {outdated && (
+                      <div style={{ fontSize: 11, color: D.orange, marginTop: 4 }}>
+                        ⚠ Signed on old version {a.agreement_version} — current is {termsVersion}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const, justifyContent: "flex-end" }}>
+                    {planBadge(a.plan_type, a.status || "active")}
+                    <button onClick={() => downloadPDF(a)}
+                      style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      ↓ PDF
+                    </button>
+                    <button
+                      title="Copy re-sign link to clipboard"
+                      onClick={() => {
+                        if (matchClient) { sendLinkForClient(matchClient) }
+                        else {
+                          const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
+                          const p = new URLSearchParams({ biz: a.business_name, plan: a.plan_type || "free" })
+                          if (a.signer_email) p.set("email", a.signer_email)
+                          copyLink(`${base}/signup?${p.toString()}`, a.id + "-link")
+                        }
+                      }}
+                      style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface2, color: outdated ? D.orange : D.text2, fontSize: 12, cursor: "pointer" }}>
+                      {copied === (a.id + "-link") || copied === (matchClient?.id) ? "✓ Copied" : "↩ Re-sign Link"}
+                    </button>
+                    <button onClick={() => deleteAgreement(a.id)} disabled={deleting === a.id}
+                      style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
+                      {deleting === a.id ? "…" : "✕"}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 28, flexWrap: "wrap" as const }}>
+                  {[
+                    ["Signed",       fmtTime(a.signed_at)],
+                    ["Version",      a.agreement_version || "—"],
+                    ["IP Address",   a.ip_address || "—"],
+                    ["Fee",          a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"],
+                    ["Locations",    String(a.location_count || 1)],
+                    ["Agreement ID", a.id.slice(0,8) + "…"],
+                  ].map(([k, v]) => (
+                    <div key={k}>
+                      <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
+                      <div style={{ fontSize: 13, color: k === "Version" && outdated ? D.orange : D.text, marginTop: 2, fontFamily: k === "Agreement ID" ? "monospace" : "inherit" }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+          {fetched && agreements.length === 0 && (
+            <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No signed agreements found</div>
+          )}
         </div>
       )}
 
-      {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading…</div>}
-
-      {fetched && !loading && agreements.map(a => (
-        <div key={a.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+      {/* ═══════════════════════════════════════════════════════════ TERMS TAB */}
+      {tab === "terms" && (
+        <div>
+          {/* Version info card */}
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "18px 24px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{a.business_name}</div>
-              <div style={{ fontSize: 13, color: D.text2, marginTop: 2 }}>
-                {a.signer_name}{a.signer_title ? ` · ${a.signer_title}` : ""} · {a.signer_email}
-              </div>
+              <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Current Version</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: D.text, fontFamily: "monospace" }}>{termsVersion}</div>
+              <div style={{ fontSize: 12, color: D.text2, marginTop: 2 }}>Effective {termsDate}</div>
+              {termsPublished && <div style={{ fontSize: 11, color: D.green, marginTop: 4 }}>✓ Published {termsPublished}</div>}
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {planBadge(a.plan_type, a.status || "active")}
-              <button onClick={() => downloadPDF(a)}
-                style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                ↓ PDF
-              </button>
-              <button onClick={() => deleteAgreement(a.id)} disabled={deleting === a.id}
-                style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
-                {deleting === a.id ? "…" : "✕"}
-              </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              {termsEditing ? (
+                <>
+                  <button onClick={() => setTermsEditing(false)}
+                    style={{ padding: "8px 16px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+                    Cancel
+                  </button>
+                  <button onClick={publishTerms} disabled={termsPublishing}
+                    style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: D.green, color: "#000", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    {termsPublishing ? "Publishing…" : "Publish New Version"}
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setTermsEditing(true)}
+                  style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+                  ✎ Edit Terms
+                </button>
+              )}
             </div>
           </div>
-          <div style={{ display: "flex", gap: 28, flexWrap: "wrap" as const }}>
-            {[
-              ["Signed", fmtTime(a.signed_at)],
-              ["Version", a.agreement_version || "—"],
-              ["IP Address", a.ip_address || "—"],
-              ["Fee", a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"],
-              ["Locations", String(a.location_count || 1)],
-              ["Agreement ID", a.id.slice(0,8) + "…"],
-            ].map(([k, v]) => (
-              <div key={k}>
-                <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
-                <div style={{ fontSize: 13, color: D.text, marginTop: 2, fontFamily: k === "Agreement ID" ? "monospace" : "inherit" }}>{v}</div>
+
+          {/* Edit mode: version/date fields + section editors */}
+          {termsEditing && (
+            <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: D.text, marginBottom: 16 }}>Edit Terms of Service</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 4 }}>Version String</label>
+                  <input value={termsVersion} onChange={e => setTermsVersion(e.target.value)}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 13, boxSizing: "border-box" as const }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 4 }}>Effective Date</label>
+                  <input value={termsDate} onChange={e => setTermsDate(e.target.value)}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 13, boxSizing: "border-box" as const }} />
+                </div>
               </div>
-            ))}
+              <div style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>Sections</div>
+              {termsSections.map((s, i) => (
+                <div key={i} style={{ marginBottom: 16, borderBottom: `1px solid ${D.border}`, paddingBottom: 16 }}>
+                  <input
+                    value={s.heading}
+                    onChange={e => setTermsSections(prev => prev.map((x, j) => j === i ? { ...x, heading: e.target.value } : x))}
+                    style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 12, fontWeight: 700, marginBottom: 6, boxSizing: "border-box" as const }}
+                    placeholder="Section heading"
+                  />
+                  <textarea
+                    value={s.body}
+                    rows={6}
+                    onChange={e => setTermsSections(prev => prev.map((x, j) => j === i ? { ...x, body: e.target.value } : x))}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 11, lineHeight: 1.65, resize: "vertical", boxSizing: "border-box" as const }}
+                    placeholder="Section body…"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Full contract text (read-only / scrollable) */}
+          {!termsEditing && (
+            <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "24px 28px", marginBottom: 20, maxHeight: 560, overflowY: "auto" }}>
+              <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.04em", color: D.text, marginBottom: 6, textTransform: "uppercase" }}>
+                {ENTITY_NAME} — Master Subscription Agreement
+              </div>
+              <div style={{ fontSize: 11, color: D.muted, marginBottom: 20 }}>Version {termsVersion} · Effective {termsDate}</div>
+              {termsSections.map((s, i) => (
+                <div key={i} style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: D.text2, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 6, paddingTop: 12, borderTop: `1px solid ${D.border}` }}>
+                    {s.heading}
+                  </div>
+                  {s.body.split("\n\n").map((para, j) => (
+                    <p key={j} style={{ fontSize: 11, color: D.text2, lineHeight: 1.75, margin: "0 0 8px" }}>{para}</p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── Link generator ── */}
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "20px 24px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: D.text, marginBottom: 4 }}>Send Sign-up Link</div>
+            <div style={{ fontSize: 12, color: D.text2, marginBottom: 16 }}>Generate a pre-filled sign-up URL for a client and copy it to your clipboard.</div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 4 }}>Business Name</label>
+                <input value={linkClient} onChange={e => setLinkClient(e.target.value)}
+                  placeholder="e.g. Walnut Original"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 13, boxSizing: "border-box" as const }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 4 }}>Email (optional)</label>
+                <input value={linkEmail} onChange={e => setLinkEmail(e.target.value)}
+                  placeholder="owner@restaurant.com"
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 13, boxSizing: "border-box" as const }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 4 }}>Plan</label>
+                <select value={linkPlan} onChange={e => setLinkPlan(e.target.value)}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 13, boxSizing: "border-box" as const }}>
+                  <option value="free">Free Plan</option>
+                  <option value="single">Single Location ($149/mo)</option>
+                  <option value="multi">Multi-Location ($129/location/mo)</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 4 }}>Locations</label>
+                <input type="number" min="1" value={linkLocs} onChange={e => setLinkLocs(e.target.value)}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 13, boxSizing: "border-box" as const }} />
+              </div>
+            </div>
+
+            {/* Also allow picking from existing clients */}
+            {clients.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em", display: "block", marginBottom: 4 }}>Or pick an existing client</label>
+                <select
+                  value=""
+                  onChange={e => {
+                    const c = clients.find(x => x.id === e.target.value)
+                    if (c) {
+                      setLinkClient(c.name || "")
+                      if (c.signer_email) setLinkEmail(c.signer_email)
+                      if (c.plan_type) setLinkPlan(c.plan_type)
+                      if (c.location_count) setLinkLocs(String(c.location_count))
+                    }
+                  }}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text, fontSize: 13, boxSizing: "border-box" as const }}>
+                  <option value="">— Select client —</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            )}
+
+            {/* Generated URL preview + copy */}
+            <div style={{ background: D.surface2, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontSize: 12, color: D.text2, flex: 1, wordBreak: "break-all" as const, fontFamily: "monospace" }}>{generatedLink}</div>
+              <button
+                onClick={() => copyLink(generatedLink, "gen")}
+                style={{ padding: "7px 16px", borderRadius: 7, border: "none", background: copied === "gen" ? D.green : D.blue, color: "#000", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" as const }}>
+                {copied === "gen" ? "✓ Copied" : "Copy Link"}
+              </button>
+            </div>
           </div>
         </div>
-      ))}
-      {fetched && agreements.length === 0 && (
-        <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No signed agreements found</div>
       )}
     </div>
   )
