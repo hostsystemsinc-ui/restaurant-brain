@@ -159,15 +159,22 @@ function findMenuUrlFromRestaurantJsonLd(html: string, baseUrl: string): string 
 
 // ── Menu: HTML heuristic (section headings → items, with or without prices) ───
 function parseMenuHtml(html: string): MenuSectionOut[] {
-  // Strip non-content elements
   const cleaned = html
-    .replace(/<script[\s\S]*?<\/script>/gi,  " ")
-    .replace(/<style[\s\S]*?<\/style>/gi,    " ")
-    .replace(/<svg[\s\S]*?<\/svg>/gi,        " ")
-    .replace(/<!--[\s\S]*?-->/g,             " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi,   " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi,       " ")
+    .replace(/<!--[\s\S]*?-->/g,            " ")
 
-  // Tag block-level elements so we can reconstruct structure
-  const tagged = cleaned
+  // Before stripping, pull aria-label values from image-buttons so we
+  // capture item names that live only in that attribute (e.g. Postino).
+  // Inject them as §ARIA§ markers so the main loop can treat them as items.
+  const withAria = cleaned.replace(
+    /<button[^>]+aria-label=["']([^"']{2,80})["'][^>]*>/gi,
+    (_m, label) => `\n§ARIA§${label}\n`,
+  )
+
+  // Tag block-level elements with semantic markers
+  const tagged = withAria
     .replace(/<h2[^>]*>/gi,  "\n§H2§").replace(/<\/h2>/gi,  "\n")
     .replace(/<h3[^>]*>/gi,  "\n§H3§").replace(/<\/h3>/gi,  "\n")
     .replace(/<h4[^>]*>/gi,  "\n§H4§").replace(/<\/h4>/gi,  "\n")
@@ -181,10 +188,24 @@ function parseMenuHtml(html: string): MenuSectionOut[] {
     .replace(/[ \t]+/g, " ")
 
   const priceRe = /\$\s*(\d{1,3}(?:\.\d{1,2})?)/
-  const junkRe  = /^(home|about|contact|reservations?|order online|careers?|gift cards?|hours|location|copyright|privacy|follow|sign up|newsletter|login|log in|sign in|back to top|©|\d{4}\s)$/i
+  const junkRe  = /^(home|about|contact|reservations?|order online|careers?|gift cards?|hours?|location|copyright|privacy|follow us|sign up|newsletter|login|log in|sign in|back to top|©|\d{4}$)/i
+
+  // ── Heuristic: does this look like a menu item NAME vs a description? ──────
+  // Item names are short and have few commas (not ingredient lists).
+  // Descriptions tend to be comma-separated ingredient lists.
+  function looksLikeName(s: string): boolean {
+    if (s.length > 80 || s.length < 2) return false
+    if (/^https?:\/\//.test(s))         return false
+    if (junkRe.test(s))                 return false
+    const commas = (s.match(/,/g) || []).length
+    return commas <= 1
+  }
 
   const sections: MenuSectionOut[] = []
   let currentSection: MenuSectionOut | null = null
+
+  // Track the last §ARIA§ seen so we can avoid double-adding it as a §P§ name
+  let lastAriaLabel = ""
 
   const lines = tagged.split("\n").map(l => l.trim()).filter(l => l.length > 0)
 
@@ -194,70 +215,108 @@ function parseMenuHtml(html: string): MenuSectionOut[] {
     const content = decodeHtml(raw.replace(/^§[^§]+§/, "").trim())
     if (!content || content.length < 2) continue
 
-    const isSection = tag === "H2" || tag === "H3"
-    const isItem    = tag === "H4" || tag === "H5" || tag === "LI" || tag === "DT"
-    const isDesc    = tag === "DD" || tag === "P"
+    // ── Aria-label from image-button (item name on JS-heavy sites) ────────────
+    if (tag === "ARIA") {
+      if (!junkRe.test(content) && !/^https?:\/\//.test(content)) {
+        if (!currentSection) { currentSection = { title: "Menu", items: [] }; sections.push(currentSection) }
+        currentSection.items.push({ name: content, description: "", price: "", tags: [] })
+        lastAriaLabel = content.toLowerCase()
+      }
+      continue
+    }
 
-    if (isSection) {
+    // ── Section headings ──────────────────────────────────────────────────────
+    if (tag === "H2" || tag === "H3") {
       if (content.length >= 2 && content.length <= 80 && !junkRe.test(content)) {
         currentSection = { title: content, items: [] }
         sections.push(currentSection)
+        lastAriaLabel = ""
       }
+      continue
+    }
 
-    } else if (isItem) {
+    // ── Definitive item elements (h4, h5, li, dt) ────────────────────────────
+    if (tag === "H4" || tag === "H5" || tag === "LI" || tag === "DT") {
       const priceMatch = content.match(priceRe)
       const price = priceMatch ? `$${priceMatch[1]}` : ""
-      const name  = decodeHtml(content.replace(priceRe, "").replace(/[\s·—.]+$/, "").trim())
-
+      const name  = content.replace(priceRe, "").replace(/[\s·—.]+$/, "").trim()
       if (name.length >= 2 && name.length <= 120 && !junkRe.test(name) && !/^https?:\/\//.test(name)) {
-        if (!currentSection) {
-          currentSection = { title: "Menu", items: [] }
-          sections.push(currentSection)
-        }
-        // Peek at next lines for a description
+        if (!currentSection) { currentSection = { title: "Menu", items: [] }; sections.push(currentSection) }
+        // Peek ahead for description
         let description = ""
-        for (let j = i + 1; j <= i + 2 && j < lines.length; j++) {
-          const nRaw  = lines[j]
-          const nTag  = nRaw.match(/^§([^§]+)§/)?.[1] || ""
-          const nText = decodeHtml(nRaw.replace(/^§[^§]+§/, "").trim())
+        for (let j = i + 1; j <= i + 3 && j < lines.length; j++) {
+          const nTag  = lines[j].match(/^§([^§]+)§/)?.[1] || ""
+          const nText = decodeHtml(lines[j].replace(/^§[^§]+§/, "").trim())
           if ((nTag === "DD" || nTag === "P" || !nTag) && nText.length > 5 && nText.length < 300 && !priceRe.test(nText) && !junkRe.test(nText)) {
             description = nText; break
           }
-          if (nTag === "H2" || nTag === "H3" || nTag === "H4" || nTag === "LI" || nTag === "DT") break
+          if ("H2 H3 H4 H5 LI DT ARIA".includes(nTag)) break
         }
         currentSection.items.push({ name, description, price, tags: [] })
+        lastAriaLabel = ""
       }
+      continue
+    }
 
-    } else if (isDesc) {
-      if (currentSection?.items.length) {
+    // ── DD: always a description ──────────────────────────────────────────────
+    if (tag === "DD") {
+      if (currentSection?.items.length && content.length > 5 && content.length < 300 && !junkRe.test(content)) {
         const last = currentSection.items[currentSection.items.length - 1]
-        if (!last.description && content.length > 5 && content.length < 300 && !junkRe.test(content))
-          last.description = content
+        if (!last.description) last.description = content
       }
+      continue
+    }
 
-    } else {
-      // Untagged line — still try price extraction
-      const priceMatch = content.match(priceRe)
-      if (priceMatch && content.length < 120) {
-        const priceIdx = content.indexOf(priceMatch[0])
-        const name = decodeHtml(content.slice(0, priceIdx).replace(/[\s·—.]+$/, "").trim())
-        if (name.length >= 2 && name.length <= 80 && !junkRe.test(name)) {
-          if (!currentSection) { currentSection = { title: "Menu", items: [] }; sections.push(currentSection) }
-          currentSection.items.push({ name, description: "", price: `$${priceMatch[1]}`, tags: [] })
-        }
+    // ── P: could be an item name OR a description — use heuristics ───────────
+    if (tag === "P") {
+      if (!currentSection) continue  // ignore text outside a known section
+      if (junkRe.test(content) || content.length < 2) continue
+
+      // Skip if this duplicates a §ARIA§ item name we just added
+      if (lastAriaLabel && content.toLowerCase() === lastAriaLabel) continue
+
+      const lastItem = currentSection.items.length
+        ? currentSection.items[currentSection.items.length - 1]
+        : null
+
+      if (looksLikeName(content) && (!lastItem || lastItem.description !== "")) {
+        // Short, few commas, and the last item already has a description (or no items yet)
+        // → start a new item
+        currentSection.items.push({ name: content, description: "", price: "", tags: [] })
+        lastAriaLabel = ""
+      } else if (lastItem && !lastItem.description && content.length > 5 && content.length < 300) {
+        // Last item has no description yet → use this as its description
+        lastItem.description = content
+      } else if (looksLikeName(content)) {
+        // Last item has a description but this still looks like a name → new item
+        currentSection.items.push({ name: content, description: "", price: "", tags: [] })
+        lastAriaLabel = ""
+      }
+      continue
+    }
+
+    // ── Untagged line: try price extraction ───────────────────────────────────
+    const priceMatch = content.match(priceRe)
+    if (priceMatch && content.length < 120 && currentSection) {
+      const priceIdx = content.indexOf(priceMatch[0])
+      const name = content.slice(0, priceIdx).replace(/[\s·—.]+$/, "").trim()
+      if (name.length >= 2 && name.length <= 80 && !junkRe.test(name)) {
+        currentSection.items.push({ name, description: "", price: `$${priceMatch[1]}`, tags: [] })
+        lastAriaLabel = ""
       }
     }
   }
 
-  // Deduplicate items by name (case-insensitive), drop sections with 0 items
+  // Deduplicate by name (case-insensitive), require ≥1 item per section, cap sections
   return sections
     .map(s => ({
       ...s,
-      items: s.items
-        .filter((it, idx, arr) => arr.findIndex(x => x.name.toLowerCase() === it.name.toLowerCase()) === idx)
+      items: s.items.filter(
+        (it, idx, arr) => arr.findIndex(x => x.name.toLowerCase() === it.name.toLowerCase()) === idx,
+      ),
     }))
     .filter(s => s.items.length >= 1)
-    .slice(0, 16) // cap at 16 sections
+    .slice(0, 16)
 }
 
 // ── Menu discovery: nav link heuristic ───────────────────────────────────────
