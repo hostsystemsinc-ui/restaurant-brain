@@ -1964,6 +1964,9 @@ export default function HostDashboard() {
   const termsPendingRef = useRef(termsPending)
   termsPendingRef.current = termsPending
 
+  const restaurantIdRef = useRef(restaurantId)
+  restaurantIdRef.current = restaurantId
+
   const handleResizePointerMove = useCallback((e: PointerEvent) => {
     if (!isResizing.current) return
     const delta = e.clientX - resizeStartX.current
@@ -2097,23 +2100,40 @@ export default function HostDashboard() {
     if (termsPendingRef.current) return
     fetch("/api/admin/terms")
       .then(r => r.json())
-      .then(t => {
+      .then(async t => {
         const required = typeof t.version === "string" ? t.version : ""
         if (!required) return
-        const accepted = localStorage.getItem("terms_accepted_walnut") || ""
-        // Compare canonical bases only (strip -push<timestamp> suffix from both sides).
-        // A station that accepted "MSA-v2.1-2026-05" or "MSA-v2.1-2026-05-push..."
-        // should not be re-prompted just because the API returns a different push variant
-        // of the same canonical version. A genuinely new version (e.g. MSA-v2.2) will
-        // still trigger the modal because its base differs.
         const requiredBase = required.replace(/-push\d+$/, "")
-        const acceptedBase = accepted.replace(/-push\d+$/, "")
-        if (requiredBase !== acceptedBase) {
-          setTermsVersion(required)
-          setTermsDate(t.effectiveDate || "")
-          setTermsSections(Array.isArray(t.sections) ? t.sections : [])
-          setTermsPending(true)
+
+        // Fast path: localStorage already shows accepted for this canonical version.
+        const localAccepted    = localStorage.getItem("terms_accepted_walnut") || ""
+        const localAcceptedBase = localAccepted.replace(/-push\d+$/, "")
+        if (localAcceptedBase === requiredBase) return
+
+        // Slow path: localStorage is empty or stale — check server-side record.
+        // This handles new devices / cleared caches for restaurants that already signed.
+        const rid = restaurantIdRef.current
+        if (rid) {
+          try {
+            const sr = await fetch(`/api/client/terms-status?restaurantId=${encodeURIComponent(rid)}`, { cache: "no-store" })
+            if (sr.ok) {
+              const sd            = await sr.json() as { acceptedVersion: string | null }
+              const serverAccepted = typeof sd.acceptedVersion === "string" ? sd.acceptedVersion : ""
+              const serverBase     = serverAccepted.replace(/-push\d+$/, "")
+              if (serverBase === requiredBase) {
+                // Server confirms acceptance — sync to localStorage so future checks are fast.
+                localStorage.setItem("terms_accepted_walnut", requiredBase)
+                return
+              }
+            }
+          } catch {/* non-critical */}
         }
+
+        // Neither localStorage nor server has an accepted record — show the modal.
+        setTermsVersion(required)
+        setTermsDate(t.effectiveDate || "")
+        setTermsSections(Array.isArray(t.sections) ? t.sections : [])
+        setTermsPending(true)
       })
       .catch(() => {})
   }
