@@ -613,7 +613,7 @@ function DayHistory({ history, restaurantColor }: { history: HistoryEntry[]; res
   }
 
   const fmtWait = (entry: HistoryEntry): string => {
-    // Prefer actual elapsed time if we have updated_at (when they were seated/removed)
+    // Actual elapsed time: from when they joined to when their status changed
     if (entry.updated_at) {
       try {
         const ms = new Date(entry.updated_at).getTime() - new Date(entry.arrival_time).getTime()
@@ -623,8 +623,7 @@ function DayHistory({ history, restaurantColor }: { history: HistoryEntry[]; res
         }
       } catch {}
     }
-    // Fall back to quoted wait
-    return entry.quoted_wait != null ? `${entry.quoted_wait}m quoted` : "—"
+    return "—"
   }
 
   const copyPhone = async (phone: string, id: string) => {
@@ -1220,24 +1219,6 @@ export default function WalnutDashboard() {
           )
         })()}
 
-        {/* Guest join links */}
-        <div>
-          <h3 style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>
-            Guest Join Links
-          </h3>
-          <div style={{ display: "flex", gap: 10 }}>
-            {RESTAURANTS.map(r => (
-              <div key={r.key} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 18px", flex: 1 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: r.color, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>{r.short}</p>
-                <p style={{ fontSize: 11, color: C.text2, marginBottom: 8, wordBreak: "break-all" }}>{r.joinUrl}</p>
-                <a href={r.joinUrl} target="_blank" rel="noreferrer"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, color: r.color, padding: "6px 12px", borderRadius: 8, background: r.accent, border: `1px solid ${r.accentBorder}`, textDecoration: "none" }}>
-                  Open ↗
-                </a>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
     </div>
