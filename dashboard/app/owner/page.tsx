@@ -3339,34 +3339,9 @@ function AgreementsView({ token }: { token: string }) {
   const [linkLocs,   setLinkLocs]   = useState("1")
 
   // Push-to-clients state
-  const [pushSelected,  setPushSelected]  = useState<Set<string>>(new Set())
-  const [pushing,       setPushing]       = useState(false)
-  const [pushDone,      setPushDone]      = useState<string|null>(null)
-  // Per-client terms status, loaded from Railway config when Terms tab is open
-  // key = slug, value = { required, accepted } — both can be undefined
-  const [clientTermsStatus, setClientTermsStatus] = useState<
-    Record<string, { required?: string; accepted?: string; acceptedAt?: string }>
-  >({})
-
-  // Load per-client terms status from their config when on Terms tab
-  useEffect(() => {
-    if (tab !== "terms" || clients.length === 0) return
-    const map: Record<string, { required?: string; accepted?: string; acceptedAt?: string }> = {}
-    Promise.allSettled(
-      clients.map(c =>
-        fetch(`${API}/client/${encodeURIComponent(c.slug)}/config`, { cache: "no-store" })
-          .then(r => r.json())
-          .then(d => {
-            const gc = (d.guest_config || {}) as Record<string, string | undefined>
-            map[c.slug] = {
-              required:   gc.termsRequiredVersion,
-              accepted:   gc.termsAcceptedVersion,
-              acceptedAt: gc.termsAcceptedAt,
-            }
-          })
-      )
-    ).then(() => setClientTermsStatus({ ...map }))
-  }, [tab, clients, pushDone])
+  const [pushSelected, setPushSelected] = useState<Set<string>>(new Set())
+  const [pushing,      setPushing]      = useState(false)
+  const [pushDone,     setPushDone]     = useState<string|null>(null)
 
   const generatedLink = useMemo(() => {
     const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
@@ -3414,61 +3389,36 @@ function AgreementsView({ token }: { token: string }) {
 
   async function pushToClients() {
     if (pushSelected.size === 0) return
-    const selectedClients = clients.filter(c => pushSelected.has(c.slug))
-    if (!confirm(`Push terms version "${termsVersion}" to ${selectedClients.length} client(s)? They will see an acceptance modal the next time they open HOST.`)) return
+    if (!confirm(`Push terms to ${pushSelected.size} client(s)? All HOST stations that are open will see the acceptance modal within 20 seconds.`)) return
     setPushing(true)
-    let failed = 0
     try {
-      // Write termsRequiredVersion into each client's guest_config in the Railway DB.
-      // This is persistent across restarts — the only reliable storage.
-      await Promise.allSettled(
-        selectedClients.map(async c => {
-          try {
-            // Step 1: GET current config so we don't clobber existing fields
-            const configRes = await fetch(
-              `${API}/owner/clients/${c.id}/config?secret=${encodeURIComponent(token)}`,
-              { cache: "no-store" }
-            )
-            if (!configRes.ok) { failed++; return }
-            const config = await configRes.json()
+      // How the push works:
+      // Station devices store the last accepted version in localStorage.
+      // On every 20-second poll, each station fetches /api/admin/terms and
+      // compares the server version against localStorage. If they differ → modal.
+      //
+      // So "pushing" means: make the server version something the client hasn't
+      // accepted yet. We publish the current terms into the in-memory override
+      // (which all open stations will detect within 20s).
+      //
+      // If the version string hasn't changed from the canonical, we append a
+      // revision suffix so devices that already accepted the canonical version
+      // know they need to re-accept this specific push.
+      const versionToPush = termsVersion !== CURRENT_VERSION
+        ? termsVersion   // already a custom version — use as-is
+        : `${termsVersion}-push${new Date().toISOString().slice(0,10).replace(/-/g,"")}`
 
-            // Step 2: Merge terms fields into guest_config
-            const gc: Record<string, unknown> = { ...(config.guest_config || {}) }
-            gc.termsRequiredVersion = termsVersion
-            // Clear old acceptance so the client must re-accept
-            delete gc.termsAcceptedVersion
-            delete gc.termsAcceptedAt
-            delete gc.termsAcceptedIp
-
-            // Step 3: PATCH back
-            const patchRes = await fetch(
-              `${API}/owner/clients/${c.id}/config?secret=${encodeURIComponent(token)}`,
-              {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ guest_config: gc }),
-              }
-            )
-            if (!patchRes.ok) { failed++; return }
-
-            // Step 4: Verify the write actually stuck (catches backends that silently
-            // ignore unknown fields in the guest_config schema)
-            const verifyRes = await fetch(
-              `${API}/client/${encodeURIComponent(c.slug)}/config`,
-              { cache: "no-store" }
-            )
-            if (verifyRes.ok) {
-              const v = await verifyRes.json()
-              const vgc = (v.guest_config || {}) as Record<string, unknown>
-              if (vgc.termsRequiredVersion !== termsVersion) {
-                console.warn(`[terms push] Verify failed for ${c.slug}: field not persisted`)
-                failed++
-              }
-            }
-          } catch { failed++ }
-        })
-      )
-      if (failed > 0) alert(`Warning: ${failed} client(s) could not be updated. Retry for those clients.`)
+      await fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          version:       versionToPush,
+          effectiveDate: termsDate,
+          sections:      termsSections,
+          publishedBy:   "Owner Push",
+        }),
+      })
+      setTermsVersion(versionToPush)
       setPushDone(new Date().toLocaleString())
       setPushSelected(new Set())
     } catch { alert("Push failed — check connection and retry") }
@@ -3768,7 +3718,7 @@ function AgreementsView({ token }: { token: string }) {
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: D.text }}>Push to Existing Clients</div>
                   <div style={{ fontSize: 12, color: D.text2, marginTop: 2 }}>
-                    Selected clients will see an acceptance modal the next time they open HOST. Their click is timestamped and stored as a valid electronic agreement.
+                    Select which clients to push to (for your records), then hit Push. Any HOST station that is currently open will show the acceptance modal within 20 seconds. Stations opened later will also see it until they accept.
                   </div>
                 </div>
                 {pushDone && <div style={{ fontSize: 11, color: D.green, whiteSpace: "nowrap" as const, marginLeft: 16 }}>✓ Pushed {pushDone}</div>}
@@ -3786,36 +3736,20 @@ function AgreementsView({ token }: { token: string }) {
                     Select All ({clients.length})
                   </span>
                 </div>
-                {clients.map(c => {
-                  const ts          = clientTermsStatus[c.slug]
-                  const needsAccept = ts?.required && ts.required !== ts?.accepted
-                  const accepted    = ts?.required && ts.required === ts?.accepted
-                  return (
-                    <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: `1px solid ${D.border}` }}>
-                      <input type="checkbox"
-                        checked={pushSelected.has(c.slug)}
-                        onChange={e => setPushSelected(prev => {
-                          const next = new Set(prev)
-                          e.target.checked ? next.add(c.slug) : next.delete(c.slug)
-                          return next
-                        })}
-                        style={{ accentColor: D.blue, width: 14, height: 14, cursor: "pointer" }} />
-                      <div style={{ flex: 1 }}>
-                        <span style={{ fontSize: 13, color: D.text }}>{c.name}</span>
-                        <span style={{ fontSize: 11, color: D.muted, marginLeft: 8 }}>{c.slug}</span>
-                      </div>
-                      {needsAccept && (
-                        <span style={{ fontSize: 11, color: D.orange, fontWeight: 600 }}>⏳ Awaiting · v{ts?.required}</span>
-                      )}
-                      {accepted && ts?.acceptedAt && (
-                        <span style={{ fontSize: 11, color: D.green }}>
-                          ✓ {new Date(ts.acceptedAt).toLocaleDateString()} · v{ts.accepted}
-                        </span>
-                      )}
-                      {!ts && <span style={{ fontSize: 11, color: D.muted }}>…</span>}
-                    </div>
-                  )
-                })}
+                {clients.map(c => (
+                  <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: `1px solid ${D.border}` }}>
+                    <input type="checkbox"
+                      checked={pushSelected.has(c.slug)}
+                      onChange={e => setPushSelected(prev => {
+                        const next = new Set(prev)
+                        e.target.checked ? next.add(c.slug) : next.delete(c.slug)
+                        return next
+                      })}
+                      style={{ accentColor: D.blue, width: 14, height: 14, cursor: "pointer" }} />
+                    <span style={{ fontSize: 13, color: D.text }}>{c.name}</span>
+                    <span style={{ fontSize: 11, color: D.muted, marginLeft: 4 }}>{c.slug}</span>
+                  </div>
+                ))}
               </div>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>

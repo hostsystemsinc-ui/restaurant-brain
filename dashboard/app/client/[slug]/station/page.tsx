@@ -474,69 +474,64 @@ function StationInner() {
         // Check session auth
         if (sessionStorage.getItem(`station_auth_${slug}`) === "1") setAuthed(true)
 
-        // ── Check terms acceptance from config (persistent, survives restarts) ──
-        // If termsRequiredVersion is set and doesn't match termsAcceptedVersion,
-        // the client must accept before using the station.
-        const required = typeof gc.termsRequiredVersion === "string" ? gc.termsRequiredVersion : ""
-        const accepted = typeof gc.termsAcceptedVersion === "string" ? gc.termsAcceptedVersion : ""
-        if (required && required !== accepted) {
-          setTermsVersion(required)
-          setTermsPending(true)
-          // Load full terms text from the terms API (does not contain client data)
-          fetch("/api/admin/terms")
-            .then(r => r.json())
-            .then(t => {
-              if (t.version) setTermsVersion(t.version)
-              if (t.effectiveDate) setTermsDate(t.effectiveDate)
-              if (Array.isArray(t.sections)) setTermsSections(t.sections)
-            })
-            .catch(() => {/* non-critical — show modal with version only if text fails to load */})
-        }
+        // ── Check terms acceptance ────────────────────────────────────────────
+        // Fetch the current required version from our Next.js API, then compare
+        // against what this station device has accepted (stored in localStorage).
+        // localStorage survives server restarts; no DB write to Railway needed.
+        checkTerms(slug)
       })
       .catch(() => setInfo({ id: "", name: slug, slug, adminPin: "" }))
       .finally(() => setLoading(false))
   }, [slug])
 
-  // Keep a ref so the polling callback can read termsPending without being
-  // recreated every time it changes (avoids cancelling the interval needlessly).
+  // ── Terms check (called on mount and every poll cycle) ───────────────────────
+  // Fetches the current required version from /api/admin/terms, then compares
+  // against what this device recorded in localStorage. localStorage survives
+  // server restarts, so we never lose acceptance history and never need to
+  // write back to the Railway DB (which drops our custom fields anyway).
+  // The in-memory server-side push is a bonus real-time signal; localStorage
+  // comparison is the permanent enforcement layer.
+  function checkTerms(forSlug: string) {
+    if (termsPendingRef.current) return // already showing modal
+    fetch("/api/admin/terms")
+      .then(r => r.json())
+      .then(t => {
+        const required = typeof t.version === "string" ? t.version : ""
+        if (!required) return
+        const lsKey   = `terms_accepted_${forSlug}`
+        const accepted = localStorage.getItem(lsKey) || ""
+        if (required !== accepted) {
+          setTermsVersion(required)
+          setTermsDate(t.effectiveDate || "")
+          setTermsSections(Array.isArray(t.sections) ? t.sections : [])
+          setTermsPending(true)
+        }
+      })
+      .catch(() => {/* non-critical — station must not be blocked if check fails */})
+  }
+
+  // Keep a ref so the polling callback can read termsPending without causing
+  // loadData to be recreated (which would cancel/restart the interval).
   const termsPendingRef = useRef(termsPending)
   termsPendingRef.current = termsPending
 
-  // Load live data + check for terms push on every poll cycle
+  // Load live data — also re-runs the terms check every cycle so that a push
+  // from the owner console appears on already-open stations within 20 seconds.
   const loadData = useCallback(async () => {
     if (!info?.id || !authed) return
     setDataLoading(true)
+    checkTerms(slug)
     try {
-      const [qRes, tRes, cfgRes] = await Promise.all([
+      const [qRes, tRes] = await Promise.all([
         fetch(`${API}/queue?restaurant_id=${info.id}`, { cache: "no-store" }),
         fetch(`${API}/tables?restaurant_id=${info.id}`, { cache: "no-store" }),
-        // Re-check config every cycle so a terms push shows up on open stations
-        // without requiring a page refresh.
-        fetch(`${API}/client/${encodeURIComponent(slug)}/config`, { cache: "no-store" }),
       ])
       if (qRes.ok) setQueue(await qRes.json())
       if (tRes.ok) setTables(await tRes.json())
-      if (cfgRes.ok && !termsPendingRef.current) {
-        const d   = await cfgRes.json()
-        const gc  = (d.guest_config || {}) as Record<string, unknown>
-        const req = typeof gc.termsRequiredVersion === "string" ? gc.termsRequiredVersion : ""
-        const acc = typeof gc.termsAcceptedVersion === "string" ? gc.termsAcceptedVersion : ""
-        if (req && req !== acc) {
-          setTermsVersion(req)
-          setTermsPending(true)
-          fetch("/api/admin/terms")
-            .then(r => r.json())
-            .then(t => {
-              if (t.version)              setTermsVersion(t.version)
-              if (t.effectiveDate)        setTermsDate(t.effectiveDate)
-              if (Array.isArray(t.sections)) setTermsSections(t.sections)
-            })
-            .catch(() => {})
-        }
-      }
       setLastUpd(new Date())
     } catch { /* non-critical */ }
     finally { setDataLoading(false) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [info?.id, authed, slug])
 
   useEffect(() => {
@@ -567,14 +562,18 @@ function StationInner() {
     if (!termsRead) return
     setTermsAccepting(true)
     try {
-      // Write acceptance into the DB via server-side route — persists across restarts
-      await fetch("/api/client/terms-accept", {
+      // Primary persistence: localStorage on this device. Survives server restarts,
+      // requires no DB write. The station will no longer be prompted for this version.
+      localStorage.setItem(`terms_accepted_${slug}`, termsVersion)
+
+      // Secondary: best-effort server-side log for the owner's records.
+      // Failure here never blocks the user.
+      fetch("/api/client/terms-accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug, version: termsVersion }),
-      })
-    } catch { /* best-effort — don't block the user if the accept call fails */ }
-    finally {
+      }).catch(() => {})
+    } finally {
       // Always dismiss the modal — the station must never be permanently blocked
       setTermsPending(false)
       setTermsAccepting(false)
