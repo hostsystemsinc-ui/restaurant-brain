@@ -3518,6 +3518,82 @@ function AgreementsView({ token }: { token: string }) {
     setTimeout(() => w.print(), 400)
   }
 
+  // PDF for station re-acceptances — same full agreement text, station-appropriate header
+  function downloadStationPDF(a: AgreementRecord) {
+    // Use the sections stored in current terms state (best match for any active override);
+    // fall back to canonical TERMS_SECTIONS from lib/terms.ts.
+    const sections = termsSections.length > 0 ? termsSections : TERMS_SECTIONS
+    const sectionsHtml = sections.map(s =>
+      `<div class="terms-section">${s.heading}</div>` +
+      s.body.split("\n\n").map(p => `<p>${p.replace(/\n/g, " ")}</p>`).join("")
+    ).join("")
+
+    const acceptedAt = new Date(a.signed_at).toLocaleString("en-US", { dateStyle: "full", timeStyle: "long" })
+    const version    = a.agreement_version || CURRENT_VERSION
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<title>${ENTITY_NAME} Terms Re-Acceptance — ${a.business_name}</title>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 32px;color:#1a1a1a;font-size:14px;line-height:1.6}
+  h1{font-size:22px;font-weight:700;border-bottom:2px solid #000;padding-bottom:12px;margin-bottom:24px}
+  h2{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#555;margin:28px 0 8px}
+  .meta{display:grid;grid-template-columns:1fr 1fr;gap:16px 32px;margin-bottom:24px}
+  .field{background:#f8f8f8;border:1px solid #e0e0e0;border-radius:6px;padding:10px 14px}
+  .field-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#888;margin-bottom:4px}
+  .field-value{font-size:14px;font-weight:500}
+  .stamp{background:#f0f7ff;border:1px solid #b3d4f5;border-radius:6px;padding:12px 16px;margin:24px 0;font-size:12px;color:#1a4a7a}
+  .sig{border:2px solid #000;border-radius:6px;padding:16px 20px;margin-top:24px;font-size:13px}
+  .sig strong{display:block;font-size:16px;margin-bottom:4px}
+  .sig .method{font-size:11px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px;padding:4px 8px;display:inline-block;margin-top:6px;color:#555}
+  .terms{margin-top:40px;border-top:3px solid #000;padding-top:24px}
+  .terms-title{font-size:16px;font-weight:700;margin-bottom:4px}
+  .terms-sub{font-size:11px;color:#888;margin-bottom:20px}
+  .terms-section{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.07em;margin:20px 0 6px;color:#333;border-top:1px solid #e0e0e0;padding-top:12px}
+  .terms p{font-size:11px;line-height:1.75;margin:0 0 8px;color:#222}
+  .legal{font-size:10px;color:#888;margin-top:32px;border-top:1px solid #e0e0e0;padding-top:16px}
+  @media print{body{margin:20px auto}}
+</style>
+</head><body>
+<h1>${ENTITY_NAME} — Terms Re-Acceptance Record</h1>
+<div class="stamp">
+  ✓ Accepted: ${acceptedAt} &nbsp;|&nbsp;
+  IP: ${a.ip_address || "not recorded"} &nbsp;|&nbsp;
+  Version: ${version}
+</div>
+<h2>Business</h2>
+<div class="meta">
+  <div class="field"><div class="field-label">Business Name</div><div class="field-value">${a.business_name}</div></div>
+  <div class="field"><div class="field-label">Record ID</div><div class="field-value" style="font-family:monospace;font-size:12px">${a.id}</div></div>
+  <div class="field"><div class="field-label">Version Accepted</div><div class="field-value">${version}</div></div>
+  <div class="field"><div class="field-label">IP Address</div><div class="field-value">${a.ip_address || "not recorded"}</div></div>
+</div>
+<div class="sig">
+  <strong>${a.business_name}</strong>
+  <div class="method">✓ Accepted electronically via HOST Station device</div><br/>
+  <span style="font-size:12px;color:#555">
+    Accepted on ${new Date(a.signed_at).toLocaleString("en-US",{dateStyle:"long",timeStyle:"short"})}
+    from IP ${a.ip_address || "unknown"}<br/>
+    This constitutes a valid electronic signature under the ESIGN Act and Colorado UETA.
+    The authorized representative of ${a.business_name} confirmed acceptance by checking
+    a checkbox and clicking &ldquo;I&rsquo;ve Read and Agree&rdquo; on the HOST Station device.
+  </span>
+</div>
+<div class="terms">
+  <div class="terms-title">${ENTITY_NAME.toUpperCase()} — MASTER SUBSCRIPTION AGREEMENT</div>
+  <div class="terms-sub">${version} · Effective ${termsDate || EFFECTIVE_DATE} · hostplatform.net/legal/terms</div>
+  ${sectionsHtml}
+</div>
+<div class="legal">
+  Electronic re-acceptance record · ${ENTITY_NAME} · Record ID: ${a.id} · Generated: ${new Date().toISOString()}
+</div>
+</body></html>`
+    const w = window.open("", "_blank", "width=800,height=900")
+    if (!w) return
+    w.document.write(html)
+    w.document.close()
+    setTimeout(() => w.print(), 400)
+  }
+
   const TAB_BTN = (id: "signed" | "terms", label: string) => (
     <button
       onClick={() => setTab(id)}
@@ -3604,6 +3680,10 @@ function AgreementsView({ token }: { token: string }) {
                                 <div style={{ fontSize: 12, color: k === "Version" && outdated ? D.orange : D.text, marginTop: 1, fontFamily: k === "Record ID" ? "monospace" : "inherit" }}>{v}</div>
                               </div>
                             ))}
+                            <button onClick={() => downloadStationPDF(a)}
+                              style={{ padding: "4px 12px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                              ↓ PDF
+                            </button>
                             <button onClick={() => deleteAgreement(a.id)} disabled={deleting === a.id}
                               style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
                               {deleting === a.id ? "…" : "✕"}
