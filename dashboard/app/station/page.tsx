@@ -297,6 +297,7 @@ interface HistoryEntry {
   phone: string | null
   notes: string | null
   table_number?: number | null   // last table the guest was seated at (from seating_events)
+  updated_at?: string            // when status changed — used to compute actual wait time
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -2154,6 +2155,7 @@ export default function HostDashboard() {
       phone: entry.phone,
       notes: entry.notes,
       table_number: tableNumber ?? null,
+      updated_at: new Date().toISOString(), // actual moment guest was seated/removed → used for real wait time
     }
     // Remove any previous entry with the same ID (e.g., if guest was restored then re-removed)
     localHistoryRef.current = [histEntry, ...localHistoryRef.current.filter(e => e.id !== entry.id)]
