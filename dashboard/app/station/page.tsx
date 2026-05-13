@@ -2101,7 +2101,14 @@ export default function HostDashboard() {
         const required = typeof t.version === "string" ? t.version : ""
         if (!required) return
         const accepted = localStorage.getItem("terms_accepted_walnut") || ""
-        if (required !== accepted) {
+        // Compare canonical bases only (strip -push<timestamp> suffix from both sides).
+        // A station that accepted "MSA-v2.1-2026-05" or "MSA-v2.1-2026-05-push..."
+        // should not be re-prompted just because the API returns a different push variant
+        // of the same canonical version. A genuinely new version (e.g. MSA-v2.2) will
+        // still trigger the modal because its base differs.
+        const requiredBase = required.replace(/-push\d+$/, "")
+        const acceptedBase = accepted.replace(/-push\d+$/, "")
+        if (requiredBase !== acceptedBase) {
           setTermsVersion(required)
           setTermsDate(t.effectiveDate || "")
           setTermsSections(Array.isArray(t.sections) ? t.sections : [])
@@ -2115,7 +2122,9 @@ export default function HostDashboard() {
     if (!termsRead) return
     setTermsAccepting(true)
     try {
-      localStorage.setItem("terms_accepted_walnut", termsVersion)
+      // Store the canonical base (no push suffix) so future re-pushes of the same
+      // version never re-prompt this device.
+      localStorage.setItem("terms_accepted_walnut", termsVersion.replace(/-push\d+$/, ""))
       // Send restaurantId + businessName directly so the API route doesn't
       // need to look up by slug (the "walnut" owner account isn't a valid slug
       // in Railway — the actual slugs are "walnut-original" / "walnut-southside")
