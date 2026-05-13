@@ -2115,10 +2115,17 @@ export default function HostDashboard() {
     setTermsAccepting(true)
     try {
       localStorage.setItem("terms_accepted_walnut", termsVersion)
+      // Send restaurantId + businessName directly so the API route doesn't
+      // need to look up by slug (the "walnut" owner account isn't a valid slug
+      // in Railway — the actual slugs are "walnut-original" / "walnut-southside")
       fetch("/api/client/terms-accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: "walnut", version: termsVersion }),
+        body: JSON.stringify({
+          restaurantId: restaurantId,
+          businessName: restaurantName || "The Walnut Cafe",
+          version:      termsVersion,
+        }),
       }).catch(() => {})
     } finally {
       setTermsPending(false)
