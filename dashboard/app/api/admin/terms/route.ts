@@ -56,6 +56,22 @@ function getActiveState(): TermsState {
   if (!overrideState) {
     overrideState = readPersistedState()
   }
+
+  // Guard: if the override was pushed from an older canonical version than the
+  // current build (e.g. pushed from MSA-v2.0 but lib/terms.ts is now MSA-v2.1),
+  // auto-invalidate it so newly deployed terms changes are always visible.
+  // A push version looks like "MSA-v2.1-2026-05-push20260513120000"; strip the
+  // -pushNNN suffix to get the canonical base for comparison.
+  if (overrideState) {
+    const canonicalBase = CURRENT_VERSION.replace(/-push\d+$/, "")
+    const overrideBase  = overrideState.version.replace(/-push\d+$/, "")
+    if (overrideBase !== canonicalBase) {
+      // Override is stale — clear both layers so fresh canonical sections are served
+      overrideState = null
+      persistState(null)
+    }
+  }
+
   return overrideState ?? {
     version:       CURRENT_VERSION,
     effectiveDate: EFFECTIVE_DATE,

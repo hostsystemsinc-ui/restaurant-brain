@@ -3334,7 +3334,7 @@ function AgreementsView({ token }: { token: string }) {
 
   // Sync terms state from server on mount so UI reflects any active override
   useEffect(() => {
-    fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`)
+    fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
       .then(r => r.json())
       .then(t => {
         if (t.version)   setTermsVersion(t.version)
