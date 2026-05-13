@@ -6,8 +6,12 @@ const OWNER_SECRET  = process.env.OWNER_SECRET || ""
 
 // ── POST /api/client/terms-accept ────────────────────────────────────────────
 // Called from the station page when a client accepts updated terms.
-// Reads the current config for the slug, merges the acceptance fields,
-// and PATCHes it back — so acceptance survives restarts/redeploys.
+//
+// Does two things:
+//  1. POSTs a permanent agreement record to the Railway /agreements/accept
+//     endpoint so it shows up in the owner console Signed Agreements tab.
+//  2. Best-effort PATCHes guest_config with acceptance metadata (Railway may
+//     silently drop unknown fields, but we try anyway for the server log).
 //
 // Body: { slug: string, version: string }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -23,6 +27,7 @@ export async function POST(req: NextRequest) {
     const ip   = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim()
                ?? hdrs.get("x-real-ip")
                ?? "unknown"
+    const userAgent = hdrs.get("user-agent") ?? "unknown"
 
     const { slug, version } = body
 
@@ -34,42 +39,64 @@ export async function POST(req: NextRequest) {
     if (!configRes.ok) {
       return NextResponse.json({ error: "Could not load client config" }, { status: 502 })
     }
-    const config    = await configRes.json()
-    const restaurantId: string = config.restaurant_id || ""
+    const config         = await configRes.json()
+    const restaurantId   = String(config.restaurant_id || "")
+    const gc             = (config.guest_config || {}) as Record<string, unknown>
+    const businessName   = String(gc.restaurantName || config.name || slug)
+    const planType       = String(config.plan_type || "active")
+
     if (!restaurantId) {
       return NextResponse.json({ error: "Could not determine restaurant ID" }, { status: 502 })
     }
 
-    // ── 2. Merge acceptance fields into guest_config ──────────────────────────
-    const existingGc: Record<string, unknown> = config.guest_config || {}
+    // ── 2. Create a permanent agreement record in Railway ────────────────────
+    // This makes the acceptance visible in the owner console Signed Agreements
+    // tab immediately and persists it to Supabase across server restarts.
+    // The station doesn't collect signer name/email, so we use clear placeholders.
+    const agreementRes = await fetch(`${API}/agreements/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        business_name:     businessName,
+        signer_name:       "HOST Station",
+        signer_title:      "Terms Re-Acceptance via Station Device",
+        signer_email:      `station+${slug}@hostplatform.net`,
+        address:           "Digital acceptance via HOST Station device",
+        location_count:    1,
+        plan_type:         planType,
+        monthly_fee:       0,
+        agreement_version: version,
+        ip_address:        ip,
+        user_agent:        userAgent,
+      }),
+    })
+
+    if (!agreementRes.ok) {
+      console.warn("[terms-accept] Agreement record creation failed:", await agreementRes.text().catch(() => ""))
+      // Non-fatal — continue; localStorage on the device is still the primary record
+    }
+
+    // ── 3. Best-effort PATCH guest_config (Railway may drop unknown fields) ──
     const updatedGc = {
-      ...existingGc,
+      ...gc,
       termsAcceptedVersion: version,
       termsAcceptedAt:      new Date().toISOString(),
       termsAcceptedIp:      ip,
     }
-
-    // ── 3. PATCH back — preserves all other config fields ────────────────────
-    const patchRes = await fetch(
+    await fetch(
       `${API}/owner/clients/${restaurantId}/config?secret=${encodeURIComponent(OWNER_SECRET)}`,
       {
         method:  "PATCH",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ guest_config: updatedGc }),
       }
-    )
-
-    if (!patchRes.ok) {
-      const err = await patchRes.json().catch(() => ({}))
-      console.error("[terms-accept] PATCH failed:", err)
-      return NextResponse.json({ error: "Failed to record acceptance" }, { status: 502 })
-    }
+    ).catch(() => {/* non-critical */})
 
     return NextResponse.json({
-      ok:          true,
+      ok:         true,
       slug,
       version,
-      acceptedAt:  updatedGc.termsAcceptedAt,
+      acceptedAt: new Date().toISOString(),
       ip,
     })
 

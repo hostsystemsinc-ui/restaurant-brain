@@ -3552,71 +3552,135 @@ function AgreementsView({ token }: { token: string }) {
 
           {loading && <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>Loading…</div>}
 
-          {fetched && !loading && agreements.map(a => {
-            const outdated = !!a.agreement_version && a.agreement_version !== termsVersion
-            const matchClient = clients.find(c =>
-              c.name?.toLowerCase() === a.business_name?.toLowerCase() ||
-              c.signer_email === a.signer_email
-            )
+          {fetched && !loading && (() => {
+            // Split into full signup agreements and station re-acceptances
+            const isStation = (a: AgreementRecord) => a.signer_title?.includes("Station") || a.signer_name === "HOST Station"
+            const signups   = agreements.filter(a => !isStation(a))
+            const stations  = agreements.filter(a =>  isStation(a))
+
             return (
-              <div key={a.id} style={{ background: D.surface, border: `1px solid ${outdated ? D.orange + "55" : D.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{a.business_name}</div>
-                    <div style={{ fontSize: 13, color: D.text2, marginTop: 2 }}>
-                      {a.signer_name}{a.signer_title ? ` · ${a.signer_title}` : ""} · {a.signer_email}
+              <>
+                {/* ── Station Terms Re-Acceptances ── */}
+                {stations.length > 0 && (
+                  <div style={{ marginBottom: 28 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>
+                      Station Terms Re-Acceptances ({stations.length})
                     </div>
-                    {outdated && (
-                      <div style={{ fontSize: 11, color: D.orange, marginTop: 4 }}>
-                        ⚠ Signed on old version {a.agreement_version} — current is {termsVersion}
+                    {stations.map(a => {
+                      const outdated = !!a.agreement_version && a.agreement_version !== termsVersion
+                      return (
+                        <div key={a.id} style={{ background: D.surface, border: `1px solid ${outdated ? D.orange + "55" : D.greenBorder || D.border}`, borderRadius: 10, padding: "14px 20px", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" as const, gap: 12 }}>
+                          <div>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: D.text }}>{a.business_name}</div>
+                            <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>
+                              ✓ Accepted via HOST Station · {fmtTime(a.signed_at)}
+                            </div>
+                            {outdated && (
+                              <div style={{ fontSize: 11, color: D.orange, marginTop: 3 }}>
+                                ⚠ Accepted old version {a.agreement_version}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" as const }}>
+                            {[
+                              ["Version",    a.agreement_version || "—"],
+                              ["IP Address", a.ip_address || "—"],
+                              ["Record ID",  a.id.slice(0,8) + "…"],
+                            ].map(([k, v]) => (
+                              <div key={k}>
+                                <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
+                                <div style={{ fontSize: 12, color: k === "Version" && outdated ? D.orange : D.text, marginTop: 1, fontFamily: k === "Record ID" ? "monospace" : "inherit" }}>{v}</div>
+                              </div>
+                            ))}
+                            <button onClick={() => deleteAgreement(a.id)} disabled={deleting === a.id}
+                              style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
+                              {deleting === a.id ? "…" : "✕"}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* ── Full Signup Agreements ── */}
+                {(signups.length > 0 || stations.length === 0) && signups.length > 0 && (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>
+                    Full Signup Agreements ({signups.length})
+                  </div>
+                )}
+                {signups.map(a => {
+                  const outdated = !!a.agreement_version && a.agreement_version !== termsVersion
+                  const matchClient = clients.find(c =>
+                    c.name?.toLowerCase() === a.business_name?.toLowerCase() ||
+                    c.signer_email === a.signer_email
+                  )
+                  return (
+                    <div key={a.id} style={{ background: D.surface, border: `1px solid ${outdated ? D.orange + "55" : D.border}`, borderRadius: 12, padding: "20px 24px", marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{a.business_name}</div>
+                          <div style={{ fontSize: 13, color: D.text2, marginTop: 2 }}>
+                            {a.signer_name}{a.signer_title ? ` · ${a.signer_title}` : ""} · {a.signer_email}
+                          </div>
+                          {outdated && (
+                            <div style={{ fontSize: 11, color: D.orange, marginTop: 4 }}>
+                              ⚠ Signed on old version {a.agreement_version} — current is {termsVersion}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const, justifyContent: "flex-end" }}>
+                          {planBadge(a.plan_type, a.status || "active")}
+                          <button onClick={() => downloadPDF(a)}
+                            style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                            ↓ PDF
+                          </button>
+                          <button
+                            title="Copy re-sign link to clipboard"
+                            onClick={() => {
+                              if (matchClient) { sendLinkForClient(matchClient) }
+                              else {
+                                const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
+                                const p = new URLSearchParams({ biz: a.business_name, plan: a.plan_type || "free" })
+                                if (a.signer_email) p.set("email", a.signer_email)
+                                copyLink(`${base}/signup?${p.toString()}`, a.id + "-link")
+                              }
+                            }}
+                            style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface2, color: outdated ? D.orange : D.text2, fontSize: 12, cursor: "pointer" }}>
+                            {copied === (a.id + "-link") || copied === (matchClient?.id) ? "✓ Copied" : "↩ Re-sign Link"}
+                          </button>
+                          <button onClick={() => deleteAgreement(a.id)} disabled={deleting === a.id}
+                            style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
+                            {deleting === a.id ? "…" : "✕"}
+                          </button>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const, justifyContent: "flex-end" }}>
-                    {planBadge(a.plan_type, a.status || "active")}
-                    <button onClick={() => downloadPDF(a)}
-                      style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                      ↓ PDF
-                    </button>
-                    <button
-                      title="Copy re-sign link to clipboard"
-                      onClick={() => {
-                        if (matchClient) { sendLinkForClient(matchClient) }
-                        else {
-                          const base = typeof window !== "undefined" ? window.location.origin : "https://hostplatform.net"
-                          const p = new URLSearchParams({ biz: a.business_name, plan: a.plan_type || "free" })
-                          if (a.signer_email) p.set("email", a.signer_email)
-                          copyLink(`${base}/signup?${p.toString()}`, a.id + "-link")
-                        }
-                      }}
-                      style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface2, color: outdated ? D.orange : D.text2, fontSize: 12, cursor: "pointer" }}>
-                      {copied === (a.id + "-link") || copied === (matchClient?.id) ? "✓ Copied" : "↩ Re-sign Link"}
-                    </button>
-                    <button onClick={() => deleteAgreement(a.id)} disabled={deleting === a.id}
-                      style={{ padding: "5px 10px", borderRadius: 6, border: `1px solid ${D.red}30`, background: D.redBg, color: D.red, fontSize: 12, cursor: "pointer" }}>
-                      {deleting === a.id ? "…" : "✕"}
-                    </button>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 28, flexWrap: "wrap" as const }}>
-                  {[
-                    ["Signed",       fmtTime(a.signed_at)],
-                    ["Version",      a.agreement_version || "—"],
-                    ["IP Address",   a.ip_address || "—"],
-                    ["Fee",          a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"],
-                    ["Locations",    String(a.location_count || 1)],
-                    ["Agreement ID", a.id.slice(0,8) + "…"],
-                  ].map(([k, v]) => (
-                    <div key={k}>
-                      <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
-                      <div style={{ fontSize: 13, color: k === "Version" && outdated ? D.orange : D.text, marginTop: 2, fontFamily: k === "Agreement ID" ? "monospace" : "inherit" }}>{v}</div>
+                      <div style={{ display: "flex", gap: 28, flexWrap: "wrap" as const }}>
+                        {[
+                          ["Signed",       fmtTime(a.signed_at)],
+                          ["Version",      a.agreement_version || "—"],
+                          ["IP Address",   a.ip_address || "—"],
+                          ["Fee",          a.monthly_fee_cents != null ? `$${(a.monthly_fee_cents/100).toFixed(2)}/mo` : "Free"],
+                          ["Locations",    String(a.location_count || 1)],
+                          ["Agreement ID", a.id.slice(0,8) + "…"],
+                        ].map(([k, v]) => (
+                          <div key={k}>
+                            <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{k}</div>
+                            <div style={{ fontSize: 13, color: k === "Version" && outdated ? D.orange : D.text, marginTop: 2, fontFamily: k === "Agreement ID" ? "monospace" : "inherit" }}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  )
+                })}
+
+                {agreements.length === 0 && (
+                  <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No signed agreements found</div>
+                )}
+              </>
             )
-          })}
-          {fetched && agreements.length === 0 && (
+          })()}
+          {fetched && agreements.length === 0 && !loading && (
             <div style={{ color: D.muted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>No signed agreements found</div>
           )}
         </div>
