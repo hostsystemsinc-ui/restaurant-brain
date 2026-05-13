@@ -3424,20 +3424,24 @@ function AgreementsView({ token }: { token: string }) {
       await Promise.allSettled(
         selectedClients.map(async c => {
           try {
-            // GET current config so we don't clobber existing fields
+            // Step 1: GET current config so we don't clobber existing fields
             const configRes = await fetch(
               `${API}/owner/clients/${c.id}/config?secret=${encodeURIComponent(token)}`,
               { cache: "no-store" }
             )
             if (!configRes.ok) { failed++; return }
             const config = await configRes.json()
+
+            // Step 2: Merge terms fields into guest_config
             const gc: Record<string, unknown> = { ...(config.guest_config || {}) }
             gc.termsRequiredVersion = termsVersion
             // Clear old acceptance so the client must re-accept
             delete gc.termsAcceptedVersion
             delete gc.termsAcceptedAt
             delete gc.termsAcceptedIp
-            await fetch(
+
+            // Step 3: PATCH back
+            const patchRes = await fetch(
               `${API}/owner/clients/${c.id}/config?secret=${encodeURIComponent(token)}`,
               {
                 method: "PATCH",
@@ -3445,6 +3449,22 @@ function AgreementsView({ token }: { token: string }) {
                 body: JSON.stringify({ guest_config: gc }),
               }
             )
+            if (!patchRes.ok) { failed++; return }
+
+            // Step 4: Verify the write actually stuck (catches backends that silently
+            // ignore unknown fields in the guest_config schema)
+            const verifyRes = await fetch(
+              `${API}/client/${encodeURIComponent(c.slug)}/config`,
+              { cache: "no-store" }
+            )
+            if (verifyRes.ok) {
+              const v = await verifyRes.json()
+              const vgc = (v.guest_config || {}) as Record<string, unknown>
+              if (vgc.termsRequiredVersion !== termsVersion) {
+                console.warn(`[terms push] Verify failed for ${c.slug}: field not persisted`)
+                failed++
+              }
+            }
           } catch { failed++ }
         })
       )

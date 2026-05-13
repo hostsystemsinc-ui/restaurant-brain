@@ -497,21 +497,47 @@ function StationInner() {
       .finally(() => setLoading(false))
   }, [slug])
 
-  // Load live data
+  // Keep a ref so the polling callback can read termsPending without being
+  // recreated every time it changes (avoids cancelling the interval needlessly).
+  const termsPendingRef = useRef(termsPending)
+  termsPendingRef.current = termsPending
+
+  // Load live data + check for terms push on every poll cycle
   const loadData = useCallback(async () => {
     if (!info?.id || !authed) return
     setDataLoading(true)
     try {
-      const [qRes, tRes] = await Promise.all([
+      const [qRes, tRes, cfgRes] = await Promise.all([
         fetch(`${API}/queue?restaurant_id=${info.id}`, { cache: "no-store" }),
         fetch(`${API}/tables?restaurant_id=${info.id}`, { cache: "no-store" }),
+        // Re-check config every cycle so a terms push shows up on open stations
+        // without requiring a page refresh.
+        fetch(`${API}/client/${encodeURIComponent(slug)}/config`, { cache: "no-store" }),
       ])
       if (qRes.ok) setQueue(await qRes.json())
       if (tRes.ok) setTables(await tRes.json())
+      if (cfgRes.ok && !termsPendingRef.current) {
+        const d   = await cfgRes.json()
+        const gc  = (d.guest_config || {}) as Record<string, unknown>
+        const req = typeof gc.termsRequiredVersion === "string" ? gc.termsRequiredVersion : ""
+        const acc = typeof gc.termsAcceptedVersion === "string" ? gc.termsAcceptedVersion : ""
+        if (req && req !== acc) {
+          setTermsVersion(req)
+          setTermsPending(true)
+          fetch("/api/admin/terms")
+            .then(r => r.json())
+            .then(t => {
+              if (t.version)              setTermsVersion(t.version)
+              if (t.effectiveDate)        setTermsDate(t.effectiveDate)
+              if (Array.isArray(t.sections)) setTermsSections(t.sections)
+            })
+            .catch(() => {})
+        }
+      }
       setLastUpd(new Date())
     } catch { /* non-critical */ }
     finally { setDataLoading(false) }
-  }, [info?.id, authed])
+  }, [info?.id, authed, slug])
 
   useEffect(() => {
     loadData()
