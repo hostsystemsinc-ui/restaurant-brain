@@ -2965,17 +2965,20 @@ export default function HostDashboard() {
               background: "var(--page-bg)",
             }}
           >
-            {/* Drag-to-resize handle */}
+            {/* Drag-to-resize handle — wide touch target, thin visual border */}
             <div
               onPointerDown={startResize}
               style={{
-                position: "absolute", right: 0, top: 0, bottom: 0, width: 6,
+                position: "absolute", right: -10, top: 0, bottom: 0, width: 26,
                 cursor: "col-resize", zIndex: 20,
                 background: "transparent",
-                borderRight: "1px solid var(--bdr-2)",
+                borderRight: "none",
+                display: "flex", alignItems: "stretch",
               }}
               title="Drag to resize"
             >
+              {/* Thin visual line at left edge of the wide touch zone */}
+              <div style={{ width: 1, background: "var(--bdr-2)", alignSelf: "stretch", marginLeft: 10 }} />
               {/* Visual grip dots */}
               <div style={{
                 position: "absolute", top: "50%", left: "50%",
