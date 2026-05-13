@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { CURRENT_VERSION, EFFECTIVE_DATE, TERMS_SECTIONS, type TermsSection } from "@/lib/terms"
+import fs from "fs"
 
-// ── In-memory override store ──────────────────────────────────────────────────
-// Persists for the lifetime of the Next.js server process.
-// On redeploy, reverts to the canonical lib/terms.ts values.
-// For permanent storage, update lib/terms.ts and redeploy.
+// ── Persistence ───────────────────────────────────────────────────────────────
+// Two-layer storage so pushed terms survive process hot-reloads and most
+// Railway container restarts (which only happen on new deploys, not random
+// process restarts).
 //
-// NOTE: The pending/accepted slug state was REMOVED from here.
-// Terms push state is now stored per-client in Railway config (guest_config.termsRequiredVersion).
-// This survives restarts and is shared across all server instances.
+//   Layer 1: module-level variable (in-memory) — fastest, cleared on any restart
+//   Layer 2: /tmp/host-terms-override.json — survives hot-reloads; cleared on
+//             Railway deploy (new container), which is the desired behaviour
+//             since a new deploy = new canonical lib/terms.ts anyway.
+//
+// NOTE: This is intentionally per-server-instance. On Railway's free tier
+// (single instance), this is fine. Multi-instance setups would need a shared
+// store (e.g. Supabase, Redis). If you need that, update lib/terms.ts instead.
+//
+// The pending/accepted slug state was REMOVED from here.
+// Terms push state is stored per-client in localStorage on the station device.
+// This survives server restarts and requires no DB write.
+
+const OVERRIDE_FILE = "/tmp/host-terms-override.json"
 
 interface TermsState {
   version:       string
@@ -20,6 +32,39 @@ interface TermsState {
 
 let overrideState: TermsState | null = null
 
+function readPersistedState(): TermsState | null {
+  try {
+    const raw = fs.readFileSync(OVERRIDE_FILE, "utf-8")
+    return JSON.parse(raw) as TermsState
+  } catch {
+    return null
+  }
+}
+
+function persistState(state: TermsState | null) {
+  try {
+    if (state) {
+      fs.writeFileSync(OVERRIDE_FILE, JSON.stringify(state), "utf-8")
+    } else {
+      fs.unlinkSync(OVERRIDE_FILE)
+    }
+  } catch { /* /tmp may be unavailable in some environments — non-fatal */ }
+}
+
+function getActiveState(): TermsState {
+  // Restore from disk if in-memory was cleared (e.g. hot-reload)
+  if (!overrideState) {
+    overrideState = readPersistedState()
+  }
+  return overrideState ?? {
+    version:       CURRENT_VERSION,
+    effectiveDate: EFFECTIVE_DATE,
+    sections:      TERMS_SECTIONS,
+    publishedAt:   "",
+    publishedBy:   "",
+  }
+}
+
 const OWNER_SECRET = process.env.OWNER_SECRET || ""
 
 function checkAuth(req: NextRequest): boolean {
@@ -28,15 +73,9 @@ function checkAuth(req: NextRequest): boolean {
   return OWNER_SECRET ? secret === OWNER_SECRET : secret.length > 0
 }
 
-// GET — return current terms (override or canonical)
+// GET — return current terms (override > persisted > canonical)
 export async function GET() {
-  const state = overrideState ?? {
-    version:       CURRENT_VERSION,
-    effectiveDate: EFFECTIVE_DATE,
-    sections:      TERMS_SECTIONS,
-    publishedAt:   "",
-    publishedBy:   "",
-  }
+  const state = getActiveState()
   return NextResponse.json({ ...state, isOverride: !!overrideState })
 }
 
@@ -57,6 +96,7 @@ export async function POST(req: NextRequest) {
       publishedAt:   new Date().toISOString(),
       publishedBy:   body.publishedBy || "Owner Console",
     }
+    persistState(overrideState)
     return NextResponse.json({ ok: true, state: overrideState })
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
@@ -69,5 +109,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
   overrideState = null
+  persistState(null)
   return NextResponse.json({ ok: true, reverted: true })
 }

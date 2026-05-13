@@ -2085,8 +2085,8 @@ export default function HostDashboard() {
         checkTerms()
       })
       .catch(() => {})
-    // Poll terms every 20s so a push from the owner console shows up on open stations
-    const termsInt = setInterval(checkTerms, 20000)
+    // Poll terms every 10s so a push from the owner console shows up quickly
+    const termsInt = setInterval(checkTerms, 10000)
     return () => clearInterval(termsInt)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

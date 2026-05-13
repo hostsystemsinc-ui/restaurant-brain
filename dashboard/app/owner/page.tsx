@@ -3324,13 +3324,25 @@ function AgreementsView({ token }: { token: string }) {
       .catch(() => {/* non-critical */})
   }, [token])
 
-  // Terms management state
+  // Terms management state — synced from server on mount
   const [termsVersion,  setTermsVersion]  = useState(CURRENT_VERSION)
   const [termsDate,     setTermsDate]     = useState(EFFECTIVE_DATE)
   const [termsSections, setTermsSections] = useState<TermsSection[]>(TERMS_SECTIONS)
   const [termsEditing,  setTermsEditing]  = useState(false)
   const [termsPublishing, setTermsPublishing] = useState(false)
   const [termsPublished,  setTermsPublished]  = useState<string|null>(null)
+
+  // Sync terms state from server on mount so UI reflects any active override
+  useEffect(() => {
+    fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`)
+      .then(r => r.json())
+      .then(t => {
+        if (t.version)   setTermsVersion(t.version)
+        if (t.effectiveDate) setTermsDate(t.effectiveDate)
+        if (Array.isArray(t.sections) && t.sections.length > 0) setTermsSections(t.sections)
+      })
+      .catch(() => {/* use defaults */})
+  }, [token])
 
   // Link generator state
   const [linkClient, setLinkClient] = useState("")
@@ -3397,18 +3409,17 @@ function AgreementsView({ token }: { token: string }) {
       // On every 20-second poll, each station fetches /api/admin/terms and
       // compares the server version against localStorage. If they differ → modal.
       //
-      // So "pushing" means: make the server version something the client hasn't
-      // accepted yet. We publish the current terms into the in-memory override
-      // (which all open stations will detect within 20s).
+      // We ALWAYS generate a fresh unique push version on each push, so:
+      //   • Stations that already accepted a previous push see the modal again
+      //   • Pushing multiple times in the same day/session each produce a new string
       //
-      // If the version string hasn't changed from the canonical, we append a
-      // revision suffix so devices that already accepted the canonical version
-      // know they need to re-accept this specific push.
-      const versionToPush = termsVersion !== CURRENT_VERSION
-        ? termsVersion   // already a custom version — use as-is
-        : `${termsVersion}-push${new Date().toISOString().slice(0,10).replace(/-/g,"")}`
+      // Format: {CANONICAL_BASE}-push{YYYYMMDDHHmmss}
+      // The base is always stripped to the canonical version so the lineage is clear.
+      const base = CURRENT_VERSION.replace(/-push\d+$/, "")
+      const ts   = new Date().toISOString().replace(/\D/g, "").slice(0, 14) // e.g. "20260513143022"
+      const versionToPush = `${base}-push${ts}`
 
-      await fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`, {
+      const pushRes = await fetch(`/api/admin/terms?secret=${encodeURIComponent(token)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3418,6 +3429,7 @@ function AgreementsView({ token }: { token: string }) {
           publishedBy:   "Owner Push",
         }),
       })
+      if (!pushRes.ok) throw new Error("Server rejected push")
       setTermsVersion(versionToPush)
       setPushDone(new Date().toLocaleString())
       setPushSelected(new Set())

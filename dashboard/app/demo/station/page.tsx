@@ -2443,11 +2443,11 @@ export default function DemoHostDashboard() {
 
   useEffect(() => {
     if (!authed) return
-    refreshAll(); fetchInsights(); fetchReservations()
+    refreshAll(); fetchInsights(); fetchReservations(); checkTerms()
     const fast      = setInterval(refreshAll, 2000)
     const slow      = setInterval(fetchInsights, 30000)
     const resInt    = setInterval(fetchReservations, 30000)
-    const termsInt  = setInterval(checkTerms, 20000)
+    const termsInt  = setInterval(checkTerms, 10000)  // every 10s so a push shows up quickly
     return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt); clearInterval(termsInt) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshAll, fetchInsights, fetchReservations, authed])
@@ -2455,7 +2455,7 @@ export default function DemoHostDashboard() {
   // ── Terms check ─────────────────────────────────────────────────────────────
   // Fetches the current required version from /api/admin/terms and compares against
   // what this device accepted (stored in localStorage). localStorage survives server
-  // restarts so acceptance is never lost. Called on auth + every 20s poll.
+  // restarts so acceptance is never lost. Called on auth + every 10s poll.
   function checkTerms() {
     if (termsPendingRef.current) return // already showing modal
     fetch("/api/admin/terms")
