@@ -617,8 +617,9 @@ function DayHistory({ history, restaurantColor }: { history: HistoryEntry[]; res
     if (entry.updated_at) {
       try {
         const ms = new Date(entry.updated_at).getTime() - new Date(entry.arrival_time).getTime()
-        if (ms > 0) {
+        if (ms >= 0) {
           const mins = Math.round(ms / 60_000)
+          if (mins === 0) return "< 1m"
           return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`
         }
       } catch {}
@@ -834,12 +835,19 @@ export default function WalnutDashboard() {
             const allHistory: HistoryEntry[] = await histRes.json()
             const serverToday = filterToday(allHistory)
             if (serverToday.length > 0) {
-              // Merge: server entries take priority, local-only entries fill gaps
+              // Merge: server entries take priority, local-only entries fill gaps.
+              // If a server entry lacks updated_at (API doesn't return it), inherit
+              // it from the matching local entry so fmtWait can compute actual wait.
+              const localMap = new Map(localHistory.map(e => [e.id, e]))
               const serverIds = new Set(serverToday.map(e => e.id))
               const localOnly = localHistory.filter(e => !serverIds.has(e.id))
-              history = [...serverToday, ...localOnly].sort(
-                (a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime()
-              )
+              history = [
+                ...serverToday.map(e => {
+                  const local = localMap.get(e.id)
+                  return !e.updated_at && local?.updated_at ? { ...e, updated_at: local.updated_at } : e
+                }),
+                ...localOnly,
+              ].sort((a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime())
             } else {
               // Server returned no data for today — use local fallback
               history = localHistory

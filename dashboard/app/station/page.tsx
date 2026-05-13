@@ -2193,10 +2193,19 @@ export default function HostDashboard() {
       .then((all: unknown) => {
         const serverToday = Array.isArray(all) ? filterToday(all as HistoryEntry[]) : []
         if (serverToday.length > 0) {
-          // Merge: server entries take priority; local-only entries fill gaps
+          // Merge: server entries take priority; local-only entries fill gaps.
+          // If a server entry lacks updated_at (API may not return it), inherit
+          // it from the matching local entry so actual wait time can be computed.
+          const localMap = new Map(localToday.map(e => [e.id, e]))
           const serverIds = new Set(serverToday.map(e => e.id))
           const localOnly = localToday.filter(e => !serverIds.has(e.id))
-          const merged = [...serverToday, ...localOnly].sort(
+          const merged = [
+            ...serverToday.map(e => {
+              const local = localMap.get(e.id)
+              return !e.updated_at && local?.updated_at ? { ...e, updated_at: local.updated_at } : e
+            }),
+            ...localOnly,
+          ].sort(
             (a, b) => new Date(b.arrival_time).getTime() - new Date(a.arrival_time).getTime()
           )
           setHistory(merged)
