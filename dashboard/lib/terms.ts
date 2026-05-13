@@ -2,8 +2,8 @@
 // Update CURRENT_VERSION and TERMS_TEXT here to publish a new version.
 // Then use the owner console "Terms" tab to push re-sign requests to clients.
 
-export const CURRENT_VERSION  = "MSA-v2.0-2026-05"
-export const EFFECTIVE_DATE   = "May 12, 2026"
+export const CURRENT_VERSION  = "MSA-v2.1-2026-05"
+export const EFFECTIVE_DATE   = "May 13, 2026"
 export const GOVERNING_STATE  = "Colorado"
 export const ARBITRATION_CITY = "Denver, Colorado"
 export const ENTITY_NAME      = "Host Platform LLC"
@@ -22,7 +22,9 @@ export const TERMS_SECTIONS: TermsSection[] = [
     heading: "PARTIES AND ACCEPTANCE",
     body: `This Host Platform Subscription Agreement ("Agreement") is between Host Platform LLC, a Colorado limited liability company ("HOST," "we," "us," or "our"), and the business entity or individual identified at the time of acceptance ("Client," "you," or "your").
 
-By clicking "I Agree," signing electronically, or using the Services, you represent that (a) you have authority to bind Client to this Agreement, and (b) you agree to all terms herein. This constitutes a legally binding contract under the Electronic Signatures in Global and National Commerce Act (ESIGN, 15 U.S.C. § 7001) and the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101).`,
+By clicking "I Agree," signing electronically, or using the Services, you represent that (a) you have authority to bind Client to this Agreement on behalf of the entire business entity — including all current and future restaurant locations under common ownership, management, or operation — and (b) you agree to all terms herein on behalf of that entire entity and all its locations. This constitutes a legally binding contract under the Electronic Signatures in Global and National Commerce Act (ESIGN, 15 U.S.C. § 7001) and the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101).
+
+Multi-Location Notice: If Client operates HOST at more than one restaurant location, a single acceptance of this Agreement — whether at any HOST station, through the signup flow, or via any other electronic acceptance method — covers and governs Client's use of the Platform at all such locations, both current and future. Client is not required to sign a separate agreement for each location.`,
   },
   {
     heading: "SECTION 1 — DEFINITIONS",
@@ -48,7 +50,7 @@ By clicking "I Agree," signing electronically, or using the Services, you repres
   },
   {
     heading: "SECTION 2 — SERVICES",
-    body: `2.1 License. Subject to Client's compliance with this Agreement, HOST grants Client a limited, non-exclusive, non-transferable, revocable license to access and use the Platform during the Term solely for Client's internal restaurant operations at the location(s) specified in the Order Form.
+    body: `2.1 License. Subject to Client's compliance with this Agreement, HOST grants Client a limited, non-exclusive, non-transferable, revocable license to access and use the Platform during the Term solely for Client's internal restaurant operations at any location owned or operated by Client where Client uses the Services ("Designated Locations"). Client's acceptance of this Agreement authorizes use across all Designated Locations without requiring a separate agreement for each.
 
 2.2 Free Plan. Under the HOST Free Plan, HOST provides: (a) Platform access at no charge; (b) two (2) HOST-branded NFC signs per restaurant location ("Signs"), which remain HOST's exclusive property; and (c) queue, waitlist, table management, and host station functionality. HOST may add new features or functionality to the Free Plan at any time without notice. HOST may remove or materially reduce existing Free Plan functionality with thirty (30) days' prior notice to Client. Routine maintenance, bug fixes, security patches, UI improvements, and all feature additions are excluded from this notice requirement and may be deployed at any time at HOST's sole discretion.
 
@@ -58,7 +60,9 @@ By clicking "I Agree," signing electronically, or using the Services, you repres
 
 2.5 Modifications. HOST reserves the right to modify, update, enhance, restructure, or discontinue any feature or aspect of the Platform at any time and for any reason at HOST's sole discretion. Routine updates, bug fixes, security patches, performance improvements, UI changes, and new feature additions require no advance notice and may be deployed at any time. HOST will provide thirty (30) days' prior written notice only for changes that materially reduce the core paid functionality of a paid Plan subscription. HOST is not liable for any modification, suspension, or discontinuation of features, whether or not notice is provided.
 
-2.6 Uptime. HOST will use commercially reasonable efforts to maintain Platform availability but does not guarantee any specific uptime percentage and is not liable for downtime caused by internet outages, third-party service failures, scheduled maintenance, or events outside HOST's reasonable control.`,
+2.6 Uptime. HOST will use commercially reasonable efforts to maintain Platform availability but does not guarantee any specific uptime percentage and is not liable for downtime caused by internet outages, third-party service failures, scheduled maintenance, or events outside HOST's reasonable control.
+
+2.7 Multi-Location Coverage. This Agreement covers Client's use of the Platform at all current and future restaurant locations owned, operated, managed, or franchised by Client (each a "Designated Location"), regardless of the number of locations. A single electronic acceptance — whether completed at one HOST station, through the signup flow, or through any HOST-provided acceptance mechanism — is legally binding on Client's entire business entity and all its Designated Locations. Client represents and warrants that the person accepting this Agreement has authority to bind the entire business entity and all Designated Locations. Each Designated Location where Client uses the Platform is subject to the same terms, including all hardware obligations, data rights, fees, and acceptable use requirements. If Client opens new restaurant locations after the Effective Date, those locations are automatically covered by this Agreement upon first use of the Platform at that location.`,
   },
   {
     heading: "SECTION 3 — HOST HARDWARE (SIGNS)",
