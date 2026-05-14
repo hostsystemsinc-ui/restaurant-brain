@@ -11,8 +11,8 @@ const ACCOUNTS: Record<string, { envKey: string; redirect: string; maxAge: numbe
   walters:   { envKey: "CLIENT_PASS_WALTERS",   redirect: "/station",          maxAge: 60 * 60 * 12          }, // 12h
   demo:      { envKey: "CLIENT_PASS_DEMO",       redirect: "/demo/station",     maxAge: 60 * 60 * 12          }, // 12h
   // Station accounts — 1-year maxAge so tablets never log out unexpectedly
-  original:  { envKey: "CLIENT_PASS_ORIGINAL",   redirect: "/station",          maxAge: 60 * 60 * 24 * 365    }, // 1 year
-  southside: { envKey: "CLIENT_PASS_SOUTHSIDE",  redirect: "/station",          maxAge: 60 * 60 * 24 * 365    }, // 1 year
+  original:  { envKey: "CLIENT_PASS_ORIGINAL",   redirect: "/walnut-cafe/original",  maxAge: 60 * 60 * 24 * 365 }, // 1 year
+  southside: { envKey: "CLIENT_PASS_SOUTHSIDE",  redirect: "/walnut-cafe/southside", maxAge: 60 * 60 * 24 * 365 }, // 1 year
   walnut:    { envKey: "CLIENT_PASS_WALNUT",     redirect: "/walnut/dashboard", maxAge: 60 * 60 * 12          }, // 12h
 }
 

@@ -5,13 +5,15 @@ import type { NextRequest } from "next/server"
  * Multi-tenant routing + authentication middleware
  *
  * Auth protection:
- *   /owner/*              → requires httpOnly cookie  host_owner_session=1
- *   /station/*            → requires httpOnly cookie  host_client_session (any value)
- *   /admin/*              → requires httpOnly cookie  host_client_session (any value)
- *   /analog/*             → requires httpOnly cookie  host_client_session (any value)
- *   /demo/station/*       → requires httpOnly cookie  host_client_session=demo
- *   /walnut/dashboard/*   → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
- *   /walnut/logins/*      → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
+ *   /owner/*                  → requires httpOnly cookie  host_owner_session=1
+ *   /station/*                → requires httpOnly cookie  host_client_session (any value)
+ *   /admin/*                  → requires httpOnly cookie  host_client_session (any value)
+ *   /analog/*                 → requires httpOnly cookie  host_client_session (any value)
+ *   /demo/station/*           → requires httpOnly cookie  host_client_session=demo
+ *   /walnut/dashboard/*       → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
+ *   /walnut/logins/*          → requires httpOnly cookie  host_client_session (any value, PIN gate in page)
+ *   /walnut-cafe/original     → requires host_client_session, rewrites → /station
+ *   /walnut-cafe/southside    → requires host_client_session, rewrites → /station
  *
  * Multi-tenant rewrite (after auth check):
  *   /walters303              → /admin
@@ -26,7 +28,8 @@ const RESERVED = new Set([
   "owner",
   "login",
   "demo",
-  "walnut",   // Walnut Cafe join pages + owner dashboard
+  "walnut",      // Walnut Cafe join pages + owner dashboard
+  "walnut-cafe", // Walnut Cafe station URLs (original + southside)
   "api",
   "admin",
   "analog",
@@ -61,6 +64,19 @@ export function middleware(request: NextRequest) {
 
   const destSegments = destPath.split("/").filter(Boolean)
   const destRoot = destSegments[0] ?? ""
+
+  // ── Walnut Cafe station aliases ───────────────────────────────────────────────
+  // /walnut-cafe/original  → auth check + rewrite to /station (cookie=original)
+  // /walnut-cafe/southside → auth check + rewrite to /station (cookie=southside)
+  if (segments[0] === "walnut-cafe" && (segments[1] === "original" || segments[1] === "southside")) {
+    const cookie = request.cookies.get("host_client_session")
+    if (!cookie || !cookie.value) {
+      return NextResponse.redirect(new URL("/login/client", request.url))
+    }
+    const url = request.nextUrl.clone()
+    url.pathname = "/station"
+    return NextResponse.rewrite(url)
+  }
 
   // ── Auth gates ────────────────────────────────────────────────────────────────
 
