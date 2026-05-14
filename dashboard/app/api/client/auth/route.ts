@@ -96,10 +96,9 @@ export async function POST(req: Request) {
     // Username must equal the restaurant slug (auto-populated in the wizard).
     const railwaySlug = await tryRailwayAuth(key, password)
     if (railwaySlug) {
-      // New clients use the same full-featured /station page as Walnut/Demo.
-      // The station page reads /api/client/me to get the restaurant ID and floor plan,
-      // which now supports dynamic Railway lookup for any slug.
-      const res = NextResponse.json({ redirect: "/station" })
+      // Each new client gets their own isolated URL — data is scoped to the slug
+      // in the URL, not to a session cookie, so there is zero risk of cross-client leakage.
+      const res = NextResponse.json({ redirect: `/client/${railwaySlug}/station` })
       // 1-year maxAge — tablets should never be unexpectedly logged out
       res.cookies.set(COOKIE_NAME, railwaySlug, { ...COOKIE_BASE, maxAge: 60 * 60 * 24 * 365 })
       return res

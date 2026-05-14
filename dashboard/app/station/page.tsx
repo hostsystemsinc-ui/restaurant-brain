@@ -1918,9 +1918,6 @@ export default function HostDashboard() {
   const [restaurantId,   setRestaurantId]   = useState<string>("")
   const [restaurantName, setRestaurantName] = useState<string>("")
   const [restaurantLogo, setRestaurantLogo] = useState<string>("")
-  // Dynamic floor plan for new clients — set from /api/client/me response.
-  // Falls back to GENERIC_PLAN when null.
-  const [dynamicFloorPlan, setDynamicFloorPlan] = useState<FloorPlan | null>(null)
   const [southsideTab,   setSouthsideTab]   = useState<"indoor" | "outdoor">("indoor")
   const [zoom, setZoom] = useState(() => { try { return parseFloat(localStorage.getItem("host_walnut_zoom") || "1") } catch { return 1 } })
   useEffect(() => { try { localStorage.setItem("host_walnut_zoom", String(zoom)) } catch {} }, [zoom])
@@ -2086,11 +2083,9 @@ export default function HostDashboard() {
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!d) return
-        if (d.rid)       setRestaurantId(d.rid)
-        if (d.name)      setRestaurantName(d.name)
-        if (d.logoUrl)   setRestaurantLogo(d.logoUrl)
-        // For new clients, /api/client/me returns a pre-converted floor plan.
-        if (d.floorPlan) setDynamicFloorPlan(d.floorPlan as FloorPlan)
+        if (d.rid)     setRestaurantId(d.rid)
+        if (d.name)    setRestaurantName(d.name)
+        if (d.logoUrl) setRestaurantLogo(d.logoUrl)
         // Pass rid directly — setRestaurantId is async so the ref isn't updated yet
         checkTerms(d.rid || "")
       })
@@ -2661,10 +2656,10 @@ export default function HostDashboard() {
   const isSouthside = restaurantId === WALNUT_SOUTHSIDE_RID
   const displayPlan: FloorPlan = isOriginal  ? ORIGINAL_WALNUT_PLAN
     : isSouthside ? (southsideTab === "indoor" ? SOUTHSIDE_INDOOR_PLAN : SOUTHSIDE_OUTDOOR_PLAN)
-    : (dynamicFloorPlan ?? GENERIC_PLAN)
+    : GENERIC_PLAN
   const seatPlan: FloorPlan = isOriginal ? ORIGINAL_WALNUT_PLAN
     : isSouthside ? { ...SOUTHSIDE_INDOOR_PLAN, tables: [...SOUTHSIDE_INDOOR_PLAN.tables, ...SOUTHSIDE_OUTDOOR_PLAN.tables] }
-    : (dynamicFloorPlan ?? GENERIC_PLAN)
+    : GENERIC_PLAN
 
   // Floor availability — occupant-only, matches DroppableFloorTable's visual logic so the
   // "X available / Y occupied" header counts always match the colors on the floor map.
