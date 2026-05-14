@@ -2086,7 +2086,8 @@ export default function HostDashboard() {
         if (d.rid)     setRestaurantId(d.rid)
         if (d.name)    setRestaurantName(d.name)
         if (d.logoUrl) setRestaurantLogo(d.logoUrl)
-        checkTerms()
+        // Pass rid directly — setRestaurantId is async so the ref isn't updated yet
+        checkTerms(d.rid || "")
       })
       .catch(() => {})
     // Poll terms every 10s so a push from the owner console shows up quickly
@@ -2096,7 +2097,9 @@ export default function HostDashboard() {
   }, [])
 
   // ── Terms check ─────────────────────────────────────────────────────────────
-  function checkTerms() {
+  // knownRid: pass explicitly when calling right after setRestaurantId(), because
+  // the state ref hasn't updated yet at that point (setState is async).
+  function checkTerms(knownRid?: string) {
     if (termsPendingRef.current) return
     fetch("/api/admin/terms")
       .then(r => r.json())
@@ -2105,31 +2108,36 @@ export default function HostDashboard() {
         if (!required) return
         const requiredBase = required.replace(/-push\d+$/, "")
 
-        // Fast path: localStorage already shows accepted for this canonical version.
-        const localAccepted    = localStorage.getItem("terms_accepted_walnut") || ""
+        // Fast path: localStorage already has acceptance for this canonical version.
+        const localAccepted     = localStorage.getItem("terms_accepted_walnut") || ""
         const localAcceptedBase = localAccepted.replace(/-push\d+$/, "")
         if (localAcceptedBase === requiredBase) return
 
-        // Slow path: localStorage is empty or stale — check server-side record.
-        // This handles new devices / cleared caches for restaurants that already signed.
-        const rid = restaurantIdRef.current
-        if (rid) {
-          try {
-            const sr = await fetch(`/api/client/terms-status?restaurantId=${encodeURIComponent(rid)}`, { cache: "no-store" })
-            if (sr.ok) {
-              const sd            = await sr.json() as { acceptedVersion: string | null }
-              const serverAccepted = typeof sd.acceptedVersion === "string" ? sd.acceptedVersion : ""
-              const serverBase     = serverAccepted.replace(/-push\d+$/, "")
-              if (serverBase === requiredBase) {
-                // Server confirms acceptance — sync to localStorage so future checks are fast.
-                localStorage.setItem("terms_accepted_walnut", requiredBase)
-                return
-              }
-            }
-          } catch {/* non-critical */}
-        }
+        // Resolve the restaurant ID — prefer the explicitly-passed value so we
+        // don't hit the race condition where the ref hasn't updated from setState yet.
+        const rid = knownRid || restaurantIdRef.current
 
-        // Neither localStorage nor server has an accepted record — show the modal.
+        // If we still don't know who this restaurant is, do NOT show the modal.
+        // The 10-second interval will retry once the ID is available.
+        if (!rid) return
+
+        // Slow path: check the server record so cleared localStorage / new devices
+        // don't re-prompt a restaurant that already signed.
+        try {
+          const sr = await fetch(`/api/client/terms-status?restaurantId=${encodeURIComponent(rid)}`, { cache: "no-store" })
+          if (sr.ok) {
+            const sd             = await sr.json() as { acceptedVersion: string | null }
+            const serverAccepted = typeof sd.acceptedVersion === "string" ? sd.acceptedVersion : ""
+            const serverBase     = serverAccepted.replace(/-push\d+$/, "")
+            if (serverBase === requiredBase) {
+              // Server confirms acceptance — sync to localStorage so future checks are instant.
+              localStorage.setItem("terms_accepted_walnut", requiredBase)
+              return
+            }
+          }
+        } catch {/* non-critical */}
+
+        // Restaurant ID is known, localStorage is empty/stale, server has no record — show modal.
         setTermsVersion(required)
         setTermsDate(t.effectiveDate || "")
         setTermsSections(Array.isArray(t.sections) ? t.sections : [])
