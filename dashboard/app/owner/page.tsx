@@ -184,7 +184,7 @@ function nanoid() {
 }
 
 // ── Sidebar ────────────────────────────────────────────────────────────────────
-function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => void }) {
+function Sidebar({ view, setView, onLogout }: { view: NavView; setView: (v: NavView) => void; onLogout: () => void }) {
   const items: { id: NavView; label: string; icon: string }[] = [
     { id: "dashboard",   label: "Dashboard",          icon: "⬡" },
     { id: "clients",     label: "Clients",            icon: "🏢" },
@@ -231,8 +231,19 @@ function Sidebar({ view, setView }: { view: NavView; setView: (v: NavView) => vo
           </button>
         ))}
       </nav>
-      <div style={{ padding: "16px 20px", borderTop: `1px solid ${D.border}` }}>
-        <div style={{ fontSize: 10, color: D.muted }}>v2.0 · HOST Platform</div>
+      <div style={{ padding: "16px 12px", borderTop: `1px solid ${D.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
+        <button
+          onClick={onLogout}
+          style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+            background: "transparent", color: D.muted, fontSize: 14, fontWeight: 400, textAlign: "left", width: "100%",
+            transition: "all 0.12s" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = D.red; (e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.08)" }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = D.muted; (e.currentTarget as HTMLButtonElement).style.background = "transparent" }}
+        >
+          <span style={{ fontSize: 16, width: 20, textAlign: "center", flexShrink: 0 }}>↩</span>
+          Sign Out
+        </button>
+        <div style={{ fontSize: 10, color: D.muted, paddingLeft: 12 }}>v2.1 · HOST Platform</div>
       </div>
     </div>
   )
@@ -250,14 +261,13 @@ const KNOWN_RESTAURANTS = [
   { id: DEMO_RID,                               name: "Demo"             },
 ]
 
-function DashboardView({ token }: { token: string }) {
+function DashboardView({ token, clients: propClients, onCreateClient }: { token: string; clients: Client[]; onCreateClient: () => void }) {
   const [services,  setServices]  = useState<ServiceStatus[]>([
     { label: "Railway API", status: "checking", detail: "—" },
     { label: "Supabase DB", status: "checking", detail: "—" },
     { label: "GitHub",      status: "checking", detail: "—" },
     { label: "Textbelt",    status: "checking", detail: "—" },
   ])
-  const [clients,   setClients]   = useState<Client[]>([])
   const [liveStats, setLiveStats] = useState<RestaurantLive[]>([])
   const [lastCheck, setLastCheck] = useState<Date|null>(null)
   const [demos,     setDemos]     = useState<DemoSubmission[]>([])
@@ -331,7 +341,10 @@ function DashboardView({ token }: { token: string }) {
     setLastCheck(new Date())
 
     // ── Per-restaurant live stats
-    const stats = await Promise.all(KNOWN_RESTAURANTS.map(async r => {
+    const restaurantsToCheck = propClients.length > 0
+      ? propClients.slice(0, 8).map(r => ({ id: r.id, name: r.display_name || r.name }))
+      : KNOWN_RESTAURANTS
+    const stats = await Promise.all(restaurantsToCheck.map(async r => {
       try {
         const iRes = await fetch(`${API}/insights?restaurant_id=${r.id}`, { cache: "no-store" })
         const ins = iRes.ok ? (await iRes.json() as {
@@ -353,14 +366,9 @@ function DashboardView({ token }: { token: string }) {
       }
     }))
     setLiveStats(stats)
-  }, [])
+  }, [propClients])
 
   useEffect(() => {
-    // Load clients list
-    fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
-      .then(r => r.json())
-      .then(d => setClients(d.clients || []))
-      .catch(() => {})
     // Load demo requests
     setDemosLoading(true)
     fetch(`/api/demo?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
@@ -373,9 +381,9 @@ function DashboardView({ token }: { token: string }) {
     return () => clearInterval(interval)
   }, [token, runChecks])
 
-  const activeClients = clients.filter(c => c.status === "active").length
-  const trialClients  = clients.filter(c => c.status === "trial").length
-  const totalMRR      = clients.reduce((s, c) => s + (c.monthly_fee_cents || 0), 0)
+  const activeClients = propClients.filter(c => c.status === "active").length
+  const trialClients  = propClients.filter(c => c.status === "trial").length
+  const totalMRR      = propClients.reduce((s, c) => s + (c.monthly_fee_cents || 0), 0)
 
   function svcDot(st: ServiceStatus["status"]) {
     return st === "up" ? D.green : st === "degraded" ? D.orange : st === "checking" ? D.muted : D.red
@@ -398,7 +406,7 @@ function DashboardView({ token }: { token: string }) {
       {/* Business summary */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 28 }}>
         {[
-          { label: "Total Clients", value: String(clients.length), color: D.blue    },
+          { label: "Total Clients", value: String(propClients.length), color: D.blue    },
           { label: "Active",        value: String(activeClients),   color: D.green   },
           { label: "Trial",         value: String(trialClients),    color: D.orange  },
           { label: "Monthly MRR",   value: `$${(totalMRR/100).toFixed(0)}`, color: D.purple },
@@ -462,8 +470,8 @@ function DashboardView({ token }: { token: string }) {
       {/* Recent clients */}
       <h2 style={{ fontSize: 14, fontWeight: 700, color: D.text, margin: "0 0 12px", textTransform: "uppercase", letterSpacing: "0.07em" }}>Recent Clients</h2>
       <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 32 }}>
-        {clients.slice(0, 6).map((c, i) => (
-          <div key={c.id} style={{ padding: "13px 20px", borderBottom: i < Math.min(5, clients.length - 1) ? `1px solid ${D.border}` : "none",
+        {propClients.slice(0, 6).map((c, i) => (
+          <div key={c.id} style={{ padding: "13px 20px", borderBottom: i < Math.min(5, propClients.length - 1) ? `1px solid ${D.border}` : "none",
             display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{c.display_name}</div>
@@ -472,7 +480,7 @@ function DashboardView({ token }: { token: string }) {
             {planBadge(c.plan_type, c.status)}
           </div>
         ))}
-        {clients.length === 0 && (
+        {propClients.length === 0 && (
           <div style={{ padding: 32, textAlign: "center", color: D.muted, fontSize: 14 }}>No clients yet. Add your first client!</div>
         )}
       </div>
@@ -500,9 +508,9 @@ function DashboardView({ token }: { token: string }) {
       </div>
       <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
         {/* Header row */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 140px", padding: "10px 20px",
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.2fr 0.8fr 120px auto", padding: "10px 20px",
           borderBottom: `1px solid ${D.border}`, fontSize: 10, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
-          <span>Name</span><span>Restaurant</span><span>Email</span><span>Phone</span><span style={{ textAlign: "right" }}>Submitted</span>
+          <span>Name</span><span>Restaurant</span><span>Email</span><span>Phone</span><span style={{ textAlign: "right" }}>Submitted</span><span>Actions</span>
         </div>
         {demosLoading ? (
           <div style={{ padding: "24px 20px", color: D.muted, fontSize: 13 }}>Loading demo requests…</div>
@@ -518,7 +526,7 @@ function DashboardView({ token }: { token: string }) {
           const isNew = date ? (Date.now() - date.getTime()) < 48 * 60 * 60 * 1000 : false
           return (
             <div key={d.id || i} style={{
-              display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 140px",
+              display: "grid", gridTemplateColumns: "1fr 1fr 1.2fr 0.8fr 120px auto",
               padding: "14px 20px", borderBottom: i < demos.length - 1 ? `1px solid ${D.border}` : "none",
               alignItems: "center",
               background: isNew ? "rgba(34,197,94,0.03)" : "transparent",
@@ -539,6 +547,16 @@ function DashboardView({ token }: { token: string }) {
                 <div style={{ fontSize: 11, color: D.muted }}>
                   {date ? date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ""}
                 </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <a href={`mailto:${d.email}?subject=Your HOST Demo Request&body=Hi ${d.name},%0A%0AThank you for your interest in HOST!`}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.blueBg, color: D.blue, fontSize: 11, fontWeight: 600, textDecoration: "none", whiteSpace: "nowrap" }}>
+                  ✉ Email
+                </a>
+                <button onClick={onCreateClient}
+                  style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${D.greenBorder}`, background: D.greenBg, color: D.green, fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  + Client
+                </button>
               </div>
             </div>
           )
@@ -3096,7 +3114,7 @@ function WebsiteAnalyticsView({ token }: { token: string }) {
 }
 
 // ── Analytics View ─────────────────────────────────────────────────────────────
-function AnalyticsView({ token }: { token: string }) {
+function AnalyticsView({ token, clients }: { token: string; clients: Client[] }) {
   const [data,      setData]      = useState<AnalyticsEntry[]>([])
   const [loading,   setLoading]   = useState(false)
   const [fetched,   setFetched]   = useState(false)
@@ -3105,6 +3123,17 @@ function AnalyticsView({ token }: { token: string }) {
   const [sortKey,   setSortKey]   = useState<string>("arrival_time")
   const [sortDir,   setSortDir]   = useState<"asc"|"desc">("desc")
   const PAGE_SIZE = 50
+
+  const ridNames = useMemo(() => {
+    const map: Record<string, string> = {
+      "272a8876-e4e6-4867-831d-0525db80a8db": "Walter's 303",
+      "0001cafe-0001-4000-8000-000000000001": "Walnut Original",
+      "0002cafe-0001-4000-8000-000000000002": "Walnut Southside",
+      [DEMO_RID]: "Demo",
+    }
+    clients.forEach(c => { if (c.id) map[c.id] = c.display_name || c.name })
+    return map
+  }, [clients])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -3139,11 +3168,11 @@ function AnalyticsView({ token }: { token: string }) {
   }
 
   function exportCSV() {
-    const cols = ["name","party_size","restaurant","source","status","arrival_time","quoted_wait","actual_wait","notes"]
+    const cols = ["name","party_size","restaurant","phone","source","status","arrival_time","quoted_wait","actual_wait","notes"]
     const header = cols.join(",")
     const rows = sorted.map(e => cols.map(c => {
       const v = c === "restaurant"
-        ? (RID_NAMES[e.restaurant_id || ""] || e.restaurant_id || "")
+        ? (ridNames[e.restaurant_id || ""] || e.restaurant_id || "")
         : (e as unknown as Record<string,unknown>)[c]
       const str = v == null ? "" : String(v)
       return str.includes(",") || str.includes('"') ? `"${str.replace(/"/g,'""')}"` : str
@@ -3182,7 +3211,7 @@ function AnalyticsView({ token }: { token: string }) {
           <select value={restFilter} onChange={e => { setRestFilter(e.target.value); setPage(0) }}
             style={{ padding: "7px 10px", borderRadius: 7, border: `1px solid ${D.border}`, background: D.surface2, color: D.text2, fontSize: 13, cursor: "pointer" }}>
             <option value="all">All Restaurants</option>
-            {restaurants.map(rid => <option key={rid} value={rid}>{RID_NAMES[rid] || rid?.slice(0,8)}</option>)}
+            {restaurants.map(rid => <option key={rid} value={rid}>{ridNames[rid] || rid?.slice(0,8)}</option>)}
           </select>
           {fetched && <button onClick={exportCSV}
             style={{ padding: "7px 16px", borderRadius: 7, border: `1px solid ${D.greenBorder}`, background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
@@ -3263,7 +3292,7 @@ function AnalyticsView({ token }: { token: string }) {
                   {([
                     ["name","Name"],["party_size","Party"],["restaurant_id","Restaurant"],
                     ["source","Source"],["status","Status"],["arrival_time","Arrival"],
-                    ["quoted_wait","Quoted"],["actual_wait","Actual Wait"],["notes","Notes"]
+                    ["quoted_wait","Quoted"],["actual_wait","Actual Wait"],["phone","Phone"],["notes","Notes"]
                   ] as [string,string][]).map(([key, label]) => (
                     <th key={key} onClick={() => toggleSort(key)}
                       style={{ padding: "10px 14px", textAlign: "left", color: sortKey === key ? D.blue : D.muted,
@@ -3279,12 +3308,13 @@ function AnalyticsView({ token }: { token: string }) {
                   <tr key={e.id} style={{ borderBottom: i < slice.length - 1 ? `1px solid ${D.border}` : "none" }}>
                     <td style={{ padding: "10px 14px", color: D.text, fontWeight: 500 }}>{e.name}</td>
                     <td style={{ padding: "10px 14px", color: D.text2 }}>{e.party_size}</td>
-                    <td style={{ padding: "10px 14px", color: D.text2, fontSize: 12 }}>{RID_NAMES[e.restaurant_id || ""] || (e.restaurant_id?.slice(0,8) || "—")}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2, fontSize: 12 }}>{ridNames[e.restaurant_id || ""] || (e.restaurant_id?.slice(0,8) || "—")}</td>
                     <td style={{ padding: "10px 14px" }}><span style={sourceStyle(e.source)}>{e.source.toUpperCase()}</span></td>
                     <td style={{ padding: "10px 14px" }}><span style={statusStyle(e.status)}>{e.status}</span></td>
                     <td style={{ padding: "10px 14px", color: D.text2, whiteSpace: "nowrap" }}>{e.arrival_time ? new Date(e.arrival_time).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "—"}</td>
                     <td style={{ padding: "10px 14px", color: D.text2 }}>{e.quoted_wait != null ? `${e.quoted_wait}m` : "—"}</td>
                     <td style={{ padding: "10px 14px", color: D.text2 }}>{e.actual_wait != null ? `${e.actual_wait}m` : "—"}</td>
+                    <td style={{ padding: "10px 14px", color: D.text2, fontSize: 12 }}>{e.phone ? <a href={`tel:${e.phone}`} style={{ color: D.blue, textDecoration: "none" }}>{e.phone}</a> : "—"}</td>
                     <td style={{ padding: "10px 14px", color: D.text2, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.notes || "—"}</td>
                   </tr>
                 ))}
@@ -4119,6 +4149,7 @@ function SettingsView({ token }: { token: string }) {
   const [smsStatus,  setSmsStatus]  = useState<"checking"|"up"|"down">("checking")
   const [creds,      setCreds]      = useState<CredRow[]>([])
   const [credsLoading, setCredsLoading] = useState(true)
+  const [copiedPrompt, setCopiedPrompt] = useState<string | null>(null)
 
   useEffect(() => {
     fetch("/api/textbelt", { cache: "no-store" })
@@ -4244,8 +4275,15 @@ function SettingsView({ token }: { token: string }) {
                 </div>
                 <span style={{ fontSize: 10, fontWeight: 700, color: riskColor(p.risk), background: riskBg(p.risk), borderRadius: 20, padding: "2px 10px", flexShrink: 0 }}>{p.risk}</span>
               </div>
-              <div style={{ fontSize: 12, color: D.text2, fontFamily: "monospace", background: "rgba(0,0,0,0.3)", padding: "8px 12px", borderRadius: 6, wordBreak: "break-all" as const }}>
-                {p.prompt}
+              <div style={{ position: "relative" }}>
+                <div style={{ fontSize: 12, color: D.text2, fontFamily: "monospace", background: "rgba(0,0,0,0.3)", padding: "8px 44px 8px 12px", borderRadius: 6, wordBreak: "break-all" as const }}>
+                  {p.prompt}
+                </div>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(p.prompt); setCopiedPrompt(p.title); setTimeout(() => setCopiedPrompt(null), 2000) }}
+                  style={{ position: "absolute", top: 6, right: 8, padding: "2px 8px", borderRadius: 5, border: `1px solid ${D.border}`, background: D.surface2, color: copiedPrompt === p.title ? D.green : D.muted, fontSize: 10, cursor: "pointer", fontWeight: 600 }}>
+                  {copiedPrompt === p.title ? "✓ Copied" : "Copy"}
+                </button>
               </div>
             </div>
           ))}
@@ -4268,6 +4306,7 @@ export default function OwnerPage() {
   const [selectedClient,   setSelectedClient]   = useState<Client | null>(null)
   const [wizardDone,       setWizardDone]       = useState<{ id:string; name:string; slug:string; join_url:string; station_url:string } | null>(null)
   const [clientListKey,    setClientListKey]    = useState(0)
+  const [allClients,       setAllClients]       = useState<Client[]>([])
 
   useEffect(() => {
     if (sessionStorage.getItem("host_owner_authed") === "1") {
@@ -4275,6 +4314,16 @@ export default function OwnerPage() {
       if (t) { setToken(t); setAuthed(true) }
     }
   }, [])
+
+  const loadAllClients = useCallback(() => {
+    if (!token) return
+    fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => setAllClients(d.clients || []))
+      .catch(() => {})
+  }, [token])
+
+  useEffect(() => { if (token) loadAllClients() }, [token, loadAllClients])
 
   async function login() {
     try {
@@ -4316,7 +4365,16 @@ export default function OwnerPage() {
   function handleWizardDone(result: { id:string; name:string; slug:string; join_url:string; station_url:string }) {
     setWizardDone(result)
     setClientListKey(k => k + 1)
+    loadAllClients()
     setView("clients")
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem("host_owner_authed")
+    sessionStorage.removeItem("host_owner_token")
+    fetch("/api/owner/auth", { method: "DELETE" }).catch(() => {})
+    setAuthed(false)
+    setToken("")
   }
 
   // ── Auth screen ──────────────────────────────────────────────────────────────
@@ -4355,7 +4413,7 @@ export default function OwnerPage() {
   // ── Main layout ──────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100dvh", background: D.bg, display: "flex", fontFamily: "var(--font-geist), system-ui, sans-serif", color: D.text }}>
-      <Sidebar view={view} setView={handleSetView} />
+      <Sidebar view={view} setView={handleSetView} onLogout={handleLogout} />
       <main style={{ flex: 1, overflow: "auto", padding: 32, minWidth: 0 }}>
 
         {/* Success toast after wizard */}
@@ -4373,7 +4431,7 @@ export default function OwnerPage() {
           </div>
         )}
 
-        {view === "dashboard"    && <DashboardView token={token} />}
+        {view === "dashboard"    && <DashboardView token={token} clients={allClients} onCreateClient={handleAddNew} />}
         {view === "clients"      && <ClientsView key={clientListKey} token={token} onSelectClient={handleSelectClient} onAddNew={handleAddNew} />}
         {view === "client-detail" && selectedClient && (
           <ClientDetailView client={selectedClient} token={token} onBack={() => setView("clients")} onUpdated={() => {}} />
@@ -4383,7 +4441,7 @@ export default function OwnerPage() {
         )}
         {view === "billing"      && <BillingView token={token} />}
         {view === "website"      && <WebsiteAnalyticsView token={token} />}
-        {view === "analytics"    && <AnalyticsView token={token} />}
+        {view === "analytics"    && <AnalyticsView token={token} clients={allClients} />}
         {view === "agreements"   && <AgreementsView token={token} />}
         {view === "settings"     && <SettingsView token={token} />}
       </main>
