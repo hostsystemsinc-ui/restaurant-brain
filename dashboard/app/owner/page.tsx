@@ -35,8 +35,8 @@ const D = {
 const API  = "https://restaurant-brain-production.up.railway.app"
 const DEMO_RID = "dec0cafe-0000-4000-8000-000000000001"
 
-// NOTE: Backend generates station_url as /client/{slug}/station which are all 404.
-// These are the actual working station URLs per restaurant ID.
+// Legacy hardcoded station URLs for the original 4 clients.
+// New clients created via the wizard use /client/[slug]/station which is now fully functional.
 // Walnut Original and Southside share /station — the page reads the client auth cookie
 // to know which restaurant to show, so the user must be logged in as the right client.
 const REAL_STATION_URL: Record<string, string> = {
@@ -1195,7 +1195,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
 
   // Step 5 — Credentials
   const [adminPin,    setAdminPin]    = useState("")
-  const [hvUsername,  setHvUsername]  = useState("")
+  // Login username is always the restaurant slug (shown read-only below)
   const [hvPassword,  setHvPassword]  = useState("")
   const [wifiName,    setWifiName]    = useState("")
   const [wifiPass,    setWifiPass]    = useState("")
@@ -1304,9 +1304,10 @@ function NewClientWizard({ token, onDone, onCancel }: {
       })
 
       // Save credentials
+      // Login username = slug (the restaurant's slug is the login username for the HOST app).
       const creds = [
         adminPin   && { credential_type: "admin_pin", label: "Admin PIN (4-digit dashboard access)", value: adminPin },
-        hvUsername && { credential_type: "login",      label: "Host View Login",                      value: `${hvUsername}:${hvPassword}` },
+        hvPassword && { credential_type: "login",      label: "Host View Login",                      value: `${finalSlug}:${hvPassword}` },
         wifiName   && { credential_type: "wifi",       label: `WiFi: ${wifiName}`,                    value: wifiPass || "" },
       ].filter(Boolean) as { credential_type: string; label: string; value: string }[]
       for (const c of creds) {
@@ -1539,7 +1540,11 @@ function NewClientWizard({ token, onDone, onCancel }: {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <FieldLabel>Username</FieldLabel>
-                    <Input value={hvUsername} onChange={setHvUsername} placeholder="e.g. host-myrestaurant" />
+                    {/* Username is always the restaurant slug — this makes the auth lookup unambiguous */}
+                    <div style={{ padding: "10px 13px", borderRadius: 10, border: `1px solid ${D.border}`, background: D.surface, color: D.muted, fontSize: 14, fontFamily: "monospace" }}>
+                      {slug || <span style={{ color: D.muted, fontStyle: "italic" }}>set slug above</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Username is the restaurant slug (auto-set)</div>
                   </div>
                   <div>
                     <FieldLabel>Password</FieldLabel>
@@ -1575,7 +1580,9 @@ function NewClientWizard({ token, onDone, onCancel }: {
               <div style={{ fontSize: 12, fontWeight: 700, color: D.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>Summary</div>
               {[
                 ["Name", name],
-                ["URL", `hostplatform.net/client/${slug}/join`],
+                ["Join URL", `hostplatform.net/client/${slug}/join`],
+                ["Station URL", `hostplatform.net/client/${slug}/station`],
+                ["Login Username", slug || "(set slug above)"],
                 ["City", city || "—"],
                 ["Plan", planType],
                 ["Monthly Fee", monthlyFee ? `$${monthlyFee}/mo` : "Free"],
@@ -1585,7 +1592,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
               ].map(([k, v]) => (
                 <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: D.text2, marginBottom: 6 }}>
                   <span>{k}</span>
-                  <span style={{ color: D.text, fontWeight: 500 }}>{v}</span>
+                  <span style={{ color: k === "Login Username" ? D.blue : D.text, fontWeight: 500 }}>{v}</span>
                 </div>
               ))}
             </div>

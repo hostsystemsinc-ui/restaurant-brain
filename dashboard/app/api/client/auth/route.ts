@@ -2,7 +2,11 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { getCredentialOverride } from "@/lib/walnut-settings"
 
-// Known accounts: maps username → { envKey, redirect, maxAge }
+const RAILWAY_API   = "https://restaurant-brain-production.up.railway.app"
+const OWNER_SECRET  = process.env.OWNER_SECRET || ""
+
+// Known legacy accounts: maps username → { envKey, redirect, maxAge }
+// New clients created via the wizard are authenticated dynamically via Railway.
 const ACCOUNTS: Record<string, { envKey: string; redirect: string; maxAge: number }> = {
   walters:   { envKey: "CLIENT_PASS_WALTERS",   redirect: "/station",          maxAge: 60 * 60 * 12          }, // 12h
   demo:      { envKey: "CLIENT_PASS_DEMO",       redirect: "/demo/station",     maxAge: 60 * 60 * 12          }, // 12h
@@ -19,6 +23,51 @@ const COOKIE_BASE = {
   path:     "/",
 }
 
+// ── Dynamic Railway auth ──────────────────────────────────────────────────────
+// For new clients created via the owner wizard, credentials are stored in Railway.
+// Login username = restaurant slug. Password = the "login" credential value
+// (stored as "username:password" by the wizard — we verify the password part).
+async function tryRailwayAuth(slug: string, password: string): Promise<string | null> {
+  if (!OWNER_SECRET) return null
+  try {
+    // 1. Fetch public restaurant config by slug — no auth required
+    const configRes = await fetch(
+      `${RAILWAY_API}/client/${encodeURIComponent(slug)}/config`,
+      { cache: "no-store" }
+    )
+    if (!configRes.ok) return null
+    const config = await configRes.json()
+    const restaurantId: string = config.restaurant_id || ""
+    if (!restaurantId) return null
+
+    // 2. Fetch credentials for this restaurant (owner-only endpoint)
+    const credsRes = await fetch(
+      `${RAILWAY_API}/owner/clients/${encodeURIComponent(restaurantId)}/credentials?secret=${encodeURIComponent(OWNER_SECRET)}`,
+      { cache: "no-store" }
+    )
+    if (!credsRes.ok) return null
+    const data = await credsRes.json()
+    const creds: Array<{ credential_type: string; value: string }> = data.credentials || []
+
+    // 3. Find a "login" credential and verify the password.
+    //    The wizard stores credentials as "username:password".
+    //    When the login username = slug, we just check the password portion
+    //    (everything after the first colon, or the whole value if no colon).
+    const loginCred = creds.find(c => c.credential_type === "login")
+    if (!loginCred) return null
+
+    const colonIdx      = loginCred.value.indexOf(":")
+    const storedPassword = colonIdx >= 0
+      ? loginCred.value.slice(colonIdx + 1)
+      : loginCred.value
+
+    if (!storedPassword || password !== storedPassword) return null
+    return slug // auth OK — cookie value = slug
+  } catch {
+    return null
+  }
+}
+
 // POST /api/client/auth — validates client credentials server-side, sets httpOnly session cookie
 export async function POST(req: Request) {
   try {
@@ -28,25 +77,34 @@ export async function POST(req: Request) {
     }
 
     const key = username.trim().toLowerCase()
+
+    // ── Path 1: hardcoded legacy accounts (fast, env-var based) ──────────────
     const account = ACCOUNTS[key]
-
-    if (!account) {
-      await new Promise(r => setTimeout(r, 400))
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    if (account) {
+      const override  = getCredentialOverride(key)
+      const expected  = override ?? process.env[account.envKey]
+      if (!expected || password !== expected) {
+        await new Promise(r => setTimeout(r, 400))
+        return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+      }
+      const res = NextResponse.json({ redirect: account.redirect })
+      res.cookies.set(COOKIE_NAME, key, { ...COOKIE_BASE, maxAge: account.maxAge })
+      return res
     }
 
-    // Check for runtime credential override (set via /api/walnut/set-password)
-    // before falling back to the environment variable.
-    const override  = getCredentialOverride(key)
-    const expected  = override ?? process.env[account.envKey]
-    if (!expected || password !== expected) {
-      await new Promise(r => setTimeout(r, 400))
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
+    // ── Path 2: dynamic Railway lookup for new clients ─────────────────────
+    // Username must equal the restaurant slug (auto-populated in the wizard).
+    const railwaySlug = await tryRailwayAuth(key, password)
+    if (railwaySlug) {
+      const res = NextResponse.json({ redirect: `/client/${railwaySlug}/station` })
+      // 1-year maxAge — tablets should never be unexpectedly logged out
+      res.cookies.set(COOKIE_NAME, railwaySlug, { ...COOKIE_BASE, maxAge: 60 * 60 * 24 * 365 })
+      return res
     }
 
-    const res = NextResponse.json({ redirect: account.redirect })
-    res.cookies.set(COOKIE_NAME, key, { ...COOKIE_BASE, maxAge: account.maxAge })
-    return res
+    // Both paths failed
+    await new Promise(r => setTimeout(r, 400))
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 })
   } catch {
     return NextResponse.json({ error: "Bad request" }, { status: 400 })
   }
