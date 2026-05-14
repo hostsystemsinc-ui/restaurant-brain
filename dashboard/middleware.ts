@@ -78,6 +78,20 @@ export function middleware(request: NextRequest) {
     return NextResponse.rewrite(url)
   }
 
+  // ── /station canonical redirect ───────────────────────────────────────────────
+  // original  → /walnut-cafe/original  (new canonical URL)
+  // southside → /walnut-cafe/southside (new canonical URL)
+  // Other accounts (walters, demo...) stay at /station as before.
+  if (destRoot === "station") {
+    const cookie = request.cookies.get("host_client_session")
+    if (cookie?.value === "original") {
+      return NextResponse.redirect(new URL("/walnut-cafe/original", request.url))
+    }
+    if (cookie?.value === "southside") {
+      return NextResponse.redirect(new URL("/walnut-cafe/southside", request.url))
+    }
+  }
+
   // ── Auth gates ────────────────────────────────────────────────────────────────
 
   // /owner → owner must be logged in
