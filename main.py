@@ -2640,19 +2640,23 @@ def get_public_guest_config(restaurant_id: str):
     try:
         result = (
             supabase.table("restaurant_configs")
-            .select("guest_config")
+            .select("guest_config, menu_config")
             .eq("restaurant_id", restaurant_id)
             .limit(1)
             .execute()
         )
         if not result.data:
-            return {"guest_config": None}
+            return {"guest_config": None, "menu_config": None}
         row = result.data[0]
         gc = row.get("guest_config")
         if isinstance(gc, str):
             try:   gc = _json.loads(gc)
             except: gc = None
-        return {"guest_config": gc}
+        mc = row.get("menu_config")
+        if isinstance(mc, str):
+            try:   mc = _json.loads(mc)
+            except: mc = None
+        return {"guest_config": gc, "menu_config": mc}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

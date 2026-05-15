@@ -5,6 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2, UtensilsCrossed, X } from "lucide-react"
 import { WALNUT_MENU } from "@/lib/walnut-menu"
 
+interface DynamicMenuItem { name: string; description?: string; price?: string; id?: string }
+interface DynamicSection  { title: string; items: DynamicMenuItem[]; id?: string }
+
 const API           = "https://restaurant-brain-production.up.railway.app"
 const RESTAURANT_ID = "0001cafe-0001-4000-8000-000000000001"
 const SESSION_KEY   = "host_wait_id_walnut_original"
@@ -47,7 +50,8 @@ function OriginalJoinInner() {
   const [error,     setError]     = useState("")
   const [live,      setLive]      = useState<LiveInfo | null>(null)
   const [joined,    setJoined]    = useState(false)
-  const [menuOpen,  setMenuOpen]  = useState(false)
+  const [menuOpen,    setMenuOpen]    = useState(false)
+  const [dynamicMenu, setDynamicMenu] = useState<DynamicSection[] | null>(null)
 
   // Live config from DB — keeps join page in sync with owner console edits
   const [cfg, setCfg] = useState(DEFAULT_CFG)
@@ -55,7 +59,7 @@ function OriginalJoinInner() {
   useEffect(() => {
     fetch(`${API}/public/guest-config/${RESTAURANT_ID}`, { cache: "no-store" })
       .then(r => r.json())
-      .then((d: { guest_config?: Record<string, string> | null }) => {
+      .then((d: { guest_config?: Record<string, string> | null; menu_config?: { sections?: DynamicSection[] } | null }) => {
         const gc = d.guest_config
         if (gc && typeof gc === "object") {
           setCfg({
@@ -65,6 +69,8 @@ function OriginalJoinInner() {
             logoUrl:        (gc.logoUrl         as string) || DEFAULT_CFG.logoUrl,
           })
         }
+        const sections = d.menu_config?.sections
+        if (Array.isArray(sections) && sections.length > 0) setDynamicMenu(sections)
       })
       .catch(() => {}) // non-critical — defaults apply
   }, [])
@@ -284,15 +290,16 @@ function OriginalJoinInner() {
         </div>
       )}
 
-      {menuOpen && <WalnutMenuDrawer onClose={() => setMenuOpen(false)} darkColor={DARK} />}
+      {menuOpen && <WalnutMenuDrawer onClose={() => setMenuOpen(false)} darkColor={DARK} dynamicSections={dynamicMenu} />}
     </div>
   )
 }
 
-function WalnutMenuDrawer({ onClose, darkColor }: { onClose: () => void; darkColor: string }) {
+function WalnutMenuDrawer({ onClose, dynamicSections }: { onClose: () => void; darkColor: string; dynamicSections: DynamicSection[] | null }) {
   const [activeTab, setActiveTab] = useState(0)
-  const category = WALNUT_MENU[activeTab]
-  void darkColor // available for future theming
+
+  const useDynamic = dynamicSections && dynamicSections.length > 0
+  const staticCategory = WALNUT_MENU[activeTab]
 
   return (
     <>
@@ -310,34 +317,56 @@ function WalnutMenuDrawer({ onClose, darkColor }: { onClose: () => void; darkCol
             <X size={16} />
           </button>
         </div>
-        <div style={{ display: "flex", gap: 6, padding: "12px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0, overflowX: "auto" }}>
-          {WALNUT_MENU.map((cat, i) => (
-            <button key={cat.label} onClick={() => setActiveTab(i)}
-              style={{ padding: "7px 16px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: ".78rem", fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0, background: activeTab === i ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.08)", color: activeTab === i ? "#0D0D0D" : "rgba(255,255,255,0.55)", transition: "background .15s, color .15s" }}>
-              {cat.label}
-            </button>
-          ))}
-        </div>
+        {!useDynamic && (
+          <div style={{ display: "flex", gap: 6, padding: "12px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0, overflowX: "auto" }}>
+            {WALNUT_MENU.map((cat, i) => (
+              <button key={cat.label} onClick={() => setActiveTab(i)}
+                style={{ padding: "7px 16px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: ".78rem", fontWeight: 700, whiteSpace: "nowrap", flexShrink: 0, background: activeTab === i ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.08)", color: activeTab === i ? "#0D0D0D" : "rgba(255,255,255,0.55)", transition: "background .15s, color .15s" }}>
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        )}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0 40px" }}>
-          {category.sections.map((section, si) => (
-            <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.35s ${si * 0.05}s ease-out both` }}>
-              <p style={{ fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginBottom: section.subtitle ? 6 : 14 }}>{section.title}</p>
-              {section.subtitle && <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.42)", lineHeight: 1.5, marginBottom: 14, fontStyle: "italic" }}>{section.subtitle}</p>}
-              {section.items.map((item, ii) => (
-                <div key={item.name}>
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: item.desc ? 3 : 0 }}>{item.name}</p>
-                      {item.desc && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.desc}</p>}
+          {useDynamic
+            ? dynamicSections.map((section, si) => (
+                <div key={section.title + si} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.35s ${si * 0.05}s ease-out both` }}>
+                  <p style={{ fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginBottom: 14 }}>{section.title}</p>
+                  {section.items.map((item, ii) => (
+                    <div key={item.name + ii}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: item.description ? 3 : 0 }}>{item.name}</p>
+                          {item.description && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.description}</p>}
+                        </div>
+                        {item.price && <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>{item.price}</p>}
+                      </div>
+                      {ii < section.items.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />}
                     </div>
-                    {item.price && <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>{item.price}</p>}
-                  </div>
-                  {ii < section.items.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />}
+                  ))}
+                  {si < dynamicSections.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />}
                 </div>
-              ))}
-              {si < category.sections.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />}
-            </div>
-          ))}
+              ))
+            : staticCategory.sections.map((section, si) => (
+                <div key={section.title} style={{ padding: "20px 24px 0", animation: `menuItemIn 0.35s ${si * 0.05}s ease-out both` }}>
+                  <p style={{ fontSize: 10, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", fontWeight: 700, marginBottom: section.subtitle ? 6 : 14 }}>{section.title}</p>
+                  {section.subtitle && <p style={{ fontSize: 11.5, color: "rgba(255,255,255,0.42)", lineHeight: 1.5, marginBottom: 14, fontStyle: "italic" }}>{section.subtitle}</p>}
+                  {section.items.map((item, ii) => (
+                    <div key={item.name}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: item.desc ? 3 : 0 }}>{item.name}</p>
+                          {item.desc && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.desc}</p>}
+                        </div>
+                        {item.price && <p style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,0.6)", whiteSpace: "nowrap", marginTop: 2, flexShrink: 0 }}>{item.price}</p>}
+                      </div>
+                      {ii < section.items.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", marginBottom: 14 }} />}
+                    </div>
+                  ))}
+                  {si < staticCategory.sections.length - 1 && <div style={{ borderTop: "1px solid rgba(255,255,255,0.09)", marginTop: 8 }} />}
+                </div>
+              ))
+          }
           <p style={{ textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.15)", padding: "28px 24px 0", letterSpacing: "0.1em" }}>
             Ask your server about daily specials &amp; dietary options
           </p>
