@@ -46,9 +46,9 @@ function toLocalDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
 }
 
-function getGuestLog(dateStr: string): GuestLogRecord[] {
+function getGuestLog(slug: string, dateStr: string): GuestLogRecord[] {
   try {
-    return JSON.parse(localStorage.getItem(`host_demo_log_${dateStr}`) ?? "[]")
+    return JSON.parse(localStorage.getItem(`host_${slug}_log_${dateStr}`) ?? "[]")
   } catch { return [] }
 }
 
@@ -212,7 +212,7 @@ function HistoryContent() {
   const loadRecords = useCallback(async (dateStr: string) => {
     if (!rid) return
     setLoading(true)
-    const local = getGuestLog(dateStr)
+    const local = getGuestLog(slug, dateStr)
     const isToday = dateStr === toLocalDateStr(new Date())
 
     if (local.length > 0) {

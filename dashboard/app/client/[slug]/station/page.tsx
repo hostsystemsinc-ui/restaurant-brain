@@ -2416,7 +2416,18 @@ function ClientStationInner() {
 
   useEffect(() => {
     if (!rid) return
-    refreshAll(); fetchInsights(); fetchReservations()
+    // Auto-provision tables from floor plan if none exist in the API yet.
+    // Safe to call without auth — only creates tables matching the saved floor plan.
+    ;(async () => {
+      try {
+        const r = await fetch(`${API}/tables?restaurant_id=${rid}`)
+        const existing = r.ok ? await r.json() : []
+        if (Array.isArray(existing) && existing.length === 0 && floor.length > 0 && slug) {
+          await fetch(`https://restaurant-brain-production.up.railway.app/client/${encodeURIComponent(slug)}/tables/sync`, { method: "POST" })
+        }
+      } catch {}
+      refreshAll(); fetchInsights(); fetchReservations()
+    })()
     const fast      = setInterval(refreshAll, 2000)
     const slow      = setInterval(fetchInsights, 30000)
     const resInt    = setInterval(fetchReservations, 30000)
@@ -2917,6 +2928,10 @@ function ClientStationInner() {
 
             <Link href={`/client/${slug}/history`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
               <BarChart2 className="w-3 h-3" /> History
+            </Link>
+
+            <Link href={`/client/${slug}/admin`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
+              Admin
             </Link>
 
             <Link href={`/client/${slug}/reservations`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>

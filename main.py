@@ -2768,3 +2768,60 @@ def get_client_config_by_slug(slug: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/client/{slug}/tables/sync")
+def sync_tables_from_floor_plan(slug: str):
+    """Public — auto-provisions table records from the saved floor_plan.
+    Safe without auth: only creates tables that match the saved floor plan,
+    never deletes occupied tables, and is fully idempotent."""
+    try:
+        rest = supabase.table("restaurants").select("id").eq("slug", slug).limit(1).execute()
+        if not rest.data:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        rid = rest.data[0]["id"]
+
+        cfg_res = supabase.table("restaurant_configs").select("floor_plan").eq("restaurant_id", rid).limit(1).execute()
+        cfg = cfg_res.data[0] if cfg_res.data else {}
+        fp = cfg.get("floor_plan")
+        if isinstance(fp, str):
+            try: fp = _json.loads(fp)
+            except: fp = None
+
+        floor_tables = []
+        if isinstance(fp, dict):
+            floor_tables = fp.get("tables") or []
+        elif isinstance(fp, list):
+            floor_tables = fp
+
+        if not floor_tables:
+            return {"ok": True, "created": 0, "tables": []}
+
+        # Fetch existing table numbers so we don't duplicate
+        existing_res = supabase.table("tables").select("table_number").eq("restaurant_id", rid).execute()
+        existing_nums = {int(r["table_number"]) for r in (existing_res.data or [])}
+
+        rows = []
+        for t in floor_tables:
+            num = int(t.get("number", 0) or t.get("table_number", 0))
+            if not num or num in existing_nums:
+                continue
+            row: dict = {
+                "restaurant_id": rid,
+                "table_number":  num,
+                "capacity":      int(t.get("capacity", 2)),
+                "status":        "available",
+            }
+            if t.get("shape"):  row["shape"] = t["shape"]
+            if t.get("label"):  row["label"] = t["label"]
+            rows.append(row)
+
+        if rows:
+            supabase.table("tables").insert(rows).execute()
+
+        all_tables = supabase.table("tables").select("*").eq("restaurant_id", rid).execute()
+        return {"ok": True, "created": len(rows), "tables": all_tables.data or []}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
