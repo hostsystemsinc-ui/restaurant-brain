@@ -363,6 +363,11 @@ function ClientAdminInner() {
   const [rid,      setRid]      = useState("")
   const [ridError, setRidError] = useState(false)
   const [restName, setRestName] = useState("")
+  const [adminPin, setAdminPin] = useState("")
+  const [pinOk,    setPinOk]    = useState(false)
+  const [pinInput, setPinInput] = useState("")
+  const [pinErr,   setPinErr]   = useState(false)
+  const [activeTab, setActiveTab] = useState<"overview" | "logins">("overview")
   const [online,   setOnline]   = useState(true)
   const [lastSync, setLastSync] = useState<Date | null>(null)
 
@@ -381,6 +386,12 @@ function ClientAdminInner() {
           setRid(d.restaurant_id)
           setRidError(false)
           if (d.guest_config?.restaurantName) setRestName(d.guest_config.restaurantName)
+          if (d.guest_config?.adminPin) {
+            setAdminPin(String(d.guest_config.adminPin))
+            try { setPinOk(localStorage.getItem(`${slug}:adminPinOk`) === "1") } catch {}
+          } else {
+            setPinOk(true) // no PIN configured → open
+          }
         } else {
           setRidError(true)
         }
@@ -502,6 +513,43 @@ function ClientAdminInner() {
     )
   }
 
+  // ── PIN gate ───────────────────────────────────────────────────────────────
+  function tryPin() {
+    if (pinInput === adminPin) {
+      setPinOk(true)
+      try { localStorage.setItem(`${slug}:adminPinOk`, "1") } catch {}
+    } else {
+      setPinErr(true)
+      setPinInput("")
+    }
+  }
+
+  if (adminPin && !pinOk) return (
+    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg }}>
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "44px 52px", textAlign: "center", width: 340 }}>
+        <div style={{ fontSize: 30, marginBottom: 10 }}>🔒</div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{restName || slug}</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 28 }}>Enter your admin PIN to continue</div>
+        <input
+          type="password" inputMode="numeric" placeholder="PIN"
+          value={pinInput}
+          onChange={e => { setPinInput(e.target.value); setPinErr(false) }}
+          onKeyDown={e => e.key === "Enter" && tryPin()}
+          style={{ width: "100%", padding: "13px 18px", borderRadius: 12, border: `1px solid ${pinErr ? C.red : C.border}`, background: C.surface2, color: C.text, fontSize: 22, textAlign: "center", outline: "none", letterSpacing: "0.35em", boxSizing: "border-box" }}
+          autoFocus
+        />
+        {pinErr && <div style={{ color: C.red, fontSize: 12, marginTop: 8 }}>Incorrect PIN</div>}
+        <button onClick={tryPin}
+          style={{ marginTop: 18, width: "100%", padding: "13px 0", borderRadius: 12, background: C.green, color: "#fff", border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+          Unlock Admin
+        </button>
+        <Link href={`/client/${slug}/station`} style={{ display: "block", marginTop: 16, fontSize: 12, color: C.muted, textDecoration: "none" }}>
+          ← Back to Station
+        </Link>
+      </div>
+    </div>
+  )
+
   // ── Full dashboard ─────────────────────────────────────────────────────────
 
   return (
@@ -520,7 +568,6 @@ function ClientAdminInner() {
             fontSize: 12, fontWeight: 600, color: C.muted,
             textDecoration: "none", padding: "5px 10px",
             borderRadius: 8, border: `1px solid ${C.border}`,
-            transition: "color .15s",
           }}>
             <ChevronLeft size={13} /> Station
           </Link>
@@ -535,92 +582,159 @@ function ClientAdminInner() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Tabs */}
+          {(["overview", "logins"] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${activeTab === tab ? C.orange : C.border}`, background: activeTab === tab ? C.orangeBg : "transparent", color: activeTab === tab ? C.orange : C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
+              {tab}
+            </button>
+          ))}
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            {online
-              ? <Wifi size={13} style={{ color: C.green }} />
-              : <WifiOff size={13} style={{ color: C.red }} />}
-            <span style={{ fontSize: 11, fontWeight: 600, color: online ? C.green : C.red }}>
-              {online ? "Live" : "Offline"}
-            </span>
+            {online ? <Wifi size={13} style={{ color: C.green }} /> : <WifiOff size={13} style={{ color: C.red }} />}
+            <span style={{ fontSize: 11, fontWeight: 600, color: online ? C.green : C.red }}>{online ? "Live" : "Offline"}</span>
           </div>
-          {lastSync && (
-            <span style={{ fontSize: 10, color: C.muted }}>
-              {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          <button
-            onClick={fetchAll}
-            style={{
-              width: 34, height: 34, borderRadius: 8,
-              border: `1px solid ${C.border}`,
-              background: "transparent", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: C.muted,
-            }}
-          >
+          {lastSync && <span style={{ fontSize: 10, color: C.muted }}>{lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+          <button onClick={fetchAll} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>
             <RefreshCw size={13} />
           </button>
         </div>
       </div>
 
       {/* ── Content ─────────────────────────────────────────────────────────── */}
-      <div style={{ padding: "24px 24px 48px", maxWidth: 1100, margin: "0 auto" }}>
-
-        {/* Stats row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
-          <StatCard
-            icon={CheckCircle2}
-            label="Tables Open"
-            value={availableTables}
-            sub={`of ${deduped.length} total`}
-            color={C.green}
-            bg={C.greenBg}
-            bdr={C.greenBdr}
-          />
-          <StatCard
-            icon={Users}
-            label="Tables Seated"
-            value={occupiedTables}
-            sub={deduped.length > 0 ? `${Math.round(occupiedTables / deduped.length * 100)}% occupancy` : "—"}
-            color={occupiedTables > 0 ? C.red : C.muted}
-            bg={occupiedTables > 0 ? C.redBg : C.surface2}
-            bdr={occupiedTables > 0 ? C.redBdr : C.border}
-          />
-          <StatCard
-            icon={Clock}
-            label="Parties Waiting"
-            value={waitingParties}
-            sub={waitingParties === 0 ? "no queue" : waitingParties === 1 ? "1 party" : `${waitingParties} parties`}
-            color={waitingParties > 0 ? C.orange : C.green}
-            bg={waitingParties > 0 ? C.orangeBg : C.greenBg}
-            bdr={waitingParties > 0 ? C.orangeBdr : C.greenBdr}
-          />
-          <StatCard
-            icon={BarChart2}
-            label="Avg Wait"
-            value={avgWait > 0 ? `${Math.round(avgWait)}m` : "—"}
-            sub="estimated"
-            color={avgWait > 20 ? C.red : avgWait > 0 ? C.orange : C.muted}
-            bg={avgWait > 20 ? C.redBg : avgWait > 0 ? C.orangeBg : C.surface2}
-            bdr={avgWait > 20 ? C.redBdr : avgWait > 0 ? C.orangeBdr : C.border}
-          />
+      {activeTab === "overview" && (
+        <div style={{ padding: "24px 24px 48px", maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
+            <StatCard icon={CheckCircle2} label="Tables Open" value={availableTables} sub={`of ${deduped.length} total`} color={C.green} bg={C.greenBg} bdr={C.greenBdr} />
+            <StatCard icon={Users} label="Tables Seated" value={occupiedTables} sub={deduped.length > 0 ? `${Math.round(occupiedTables/deduped.length*100)}% occupancy` : "—"} color={occupiedTables > 0 ? C.red : C.muted} bg={occupiedTables > 0 ? C.redBg : C.surface2} bdr={occupiedTables > 0 ? C.redBdr : C.border} />
+            <StatCard icon={Clock} label="Parties Waiting" value={waitingParties} sub={waitingParties === 0 ? "no queue" : `${waitingParties} part${waitingParties === 1 ? "y" : "ies"}`} color={waitingParties > 0 ? C.orange : C.green} bg={waitingParties > 0 ? C.orangeBg : C.greenBg} bdr={waitingParties > 0 ? C.orangeBdr : C.greenBdr} />
+            <StatCard icon={BarChart2} label="Avg Wait" value={avgWait > 0 ? `${Math.round(avgWait)}m` : "—"} sub="estimated" color={avgWait > 20 ? C.red : avgWait > 0 ? C.orange : C.muted} bg={avgWait > 20 ? C.redBg : avgWait > 0 ? C.orangeBg : C.surface2} bdr={avgWait > 20 ? C.redBdr : avgWait > 0 ? C.orangeBdr : C.border} />
+          </div>
+          <div style={{ marginBottom: 20 }}><QueueSection queue={queue} /></div>
+          <div style={{ marginBottom: 20 }}><TablesSection tables={tables} /></div>
+          <div style={{ marginBottom: 20 }}><HistorySection history={history} /></div>
         </div>
+      )}
 
-        {/* Queue */}
-        <div style={{ marginBottom: 20 }}>
-          <QueueSection queue={queue} />
+      {activeTab === "logins" && (
+        <LoginsTab slug={slug} adminPin={adminPin} onPinChanged={newPin => {
+          setAdminPin(newPin)
+          try { if (!newPin) localStorage.removeItem(`${slug}:adminPinOk`); else localStorage.setItem(`${slug}:adminPinOk`, "1") } catch {}
+        }} />
+      )}
+    </div>
+  )
+}
+
+// ── Logins Tab ────────────────────────────────────────────────────────────────
+
+function LoginsTab({ slug, adminPin, onPinChanged }: {
+  slug: string
+  adminPin: string
+  onPinChanged: (newPin: string) => void
+}) {
+  const [showPin,    setShowPin]    = useState(false)
+  const [newPin,     setNewPin]     = useState("")
+  const [confirmPin, setConfirmPin] = useState("")
+  const [saving,     setSaving]     = useState(false)
+  const [saveMsg,    setSaveMsg]    = useState<{ ok: boolean; text: string } | null>(null)
+
+  async function changePin() {
+    if (!newPin) { setSaveMsg({ ok: false, text: "New PIN cannot be empty" }); return }
+    if (newPin !== confirmPin) { setSaveMsg({ ok: false, text: "PINs don't match" }); return }
+    setSaving(true); setSaveMsg(null)
+    try {
+      const r = await fetch(`${API}/client/${encodeURIComponent(slug)}/admin/pin`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current_pin: adminPin, new_pin: newPin }),
+      })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        throw new Error(d.detail || "Failed to save")
+      }
+      onPinChanged(newPin)
+      setNewPin(""); setConfirmPin("")
+      setSaveMsg({ ok: true, text: "PIN updated successfully" })
+    } catch (e: unknown) {
+      setSaveMsg({ ok: false, text: e instanceof Error ? e.message : "Could not save PIN" })
+    }
+    setSaving(false)
+    setTimeout(() => setSaveMsg(null), 4000)
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "11px 14px", borderRadius: 10,
+    border: `1px solid ${C.border}`, background: C.surface2,
+    color: C.text, fontSize: 14, outline: "none",
+    boxSizing: "border-box", letterSpacing: newPin ? "0.25em" : "normal",
+  }
+
+  return (
+    <div style={{ padding: "28px 24px 48px", maxWidth: 560, margin: "0 auto" }}>
+
+      {/* Current PIN */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 14 }}>Current Admin PIN</div>
+        {adminPin ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, color: C.text, letterSpacing: showPin ? "0.3em" : "0.1em", fontVariantNumeric: "tabular-nums" }}>
+              {showPin ? adminPin : "•".repeat(adminPin.length)}
+            </span>
+            <button onClick={() => setShowPin(p => !p)}
+              style={{ fontSize: 12, fontWeight: 600, color: C.text2, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 12px", cursor: "pointer" }}>
+              {showPin ? "Hide" : "Show"}
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 14, color: C.muted, fontStyle: "italic" }}>No PIN set — admin is open</div>
+        )}
+      </div>
+
+      {/* Change PIN form */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px" }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 16 }}>
+          {adminPin ? "Change PIN" : "Set PIN"}
         </div>
-
-        {/* Tables */}
-        <div style={{ marginBottom: 20 }}>
-          <TablesSection tables={tables} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.text2, marginBottom: 5 }}>New PIN</div>
+            <input type="password" inputMode="numeric" placeholder="Enter new PIN" value={newPin}
+              onChange={e => setNewPin(e.target.value)}
+              style={inputStyle} />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.text2, marginBottom: 5 }}>Confirm PIN</div>
+            <input type="password" inputMode="numeric" placeholder="Re-enter new PIN" value={confirmPin}
+              onChange={e => setConfirmPin(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && changePin()}
+              style={inputStyle} />
+          </div>
+          {saveMsg && (
+            <div style={{ fontSize: 13, fontWeight: 600, color: saveMsg.ok ? C.green : C.red }}>{saveMsg.text}</div>
+          )}
+          <button onClick={changePin} disabled={saving}
+            style={{ padding: "11px 0", borderRadius: 10, border: "none", background: saving ? C.muted : C.green, color: "#fff", fontSize: 14, fontWeight: 700, cursor: saving ? "default" : "pointer" }}>
+            {saving ? "Saving…" : adminPin ? "Update PIN" : "Set PIN"}
+          </button>
+          {adminPin && (
+            <button onClick={async () => {
+              setSaving(true); setSaveMsg(null)
+              try {
+                const r = await fetch(`${API}/client/${encodeURIComponent(slug)}/admin/pin`, {
+                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ current_pin: adminPin, new_pin: "" }),
+                })
+                if (!r.ok) throw new Error()
+                onPinChanged("")
+                setSaveMsg({ ok: true, text: "PIN removed — admin is now open" })
+              } catch { setSaveMsg({ ok: false, text: "Could not remove PIN" }) }
+              setSaving(false)
+            }}
+              style={{ padding: "10px 0", borderRadius: 10, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Remove PIN (open admin)
+            </button>
+          )}
         </div>
-
-        {/* History */}
-        <div style={{ marginBottom: 20 }}>
-          <HistorySection history={history} />
-        </div>
-
       </div>
     </div>
   )

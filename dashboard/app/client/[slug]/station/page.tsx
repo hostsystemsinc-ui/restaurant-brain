@@ -2235,6 +2235,7 @@ function ClientStationInner() {
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [tableSeatPicker, setTableSeatPicker] = useState<{ tableId: string | undefined; tableNumber: number } | null>(null)
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false)
   const [sidebarW, setSidebarW]           = useState(300)
   const [zoom,     setZoom]               = useState(() => { try { return parseFloat(localStorage.getItem(`${slug}:zoom`) || "1") } catch { return 1 } })
   useEffect(() => { try { localStorage.setItem(`${slug}:zoom`, String(zoom)) } catch {} }, [zoom, slug])
@@ -2715,8 +2716,16 @@ function ClientStationInner() {
     if (!entry) return
     if (localOccupants.has(targetTable)) return
 
-    // Use in-memory normalized tables — they're kept fresh by 2s polling
-    const apiTable = tables.find(t => t.table_number === targetTable)
+    // Use in-memory tables first; fall back to a live fetch if they're stale/empty
+    let apiTable = tables.find(t => t.table_number === targetTable)
+    if (!apiTable) {
+      try {
+        const fresh = await fetch(`${API}/tables?restaurant_id=${rid}`).then(r => r.ok ? r.json() : [])
+        const normalized = normalizeTables(fresh)
+        setTables(normalized)
+        apiTable = normalized.find(t => t.table_number === targetTable)
+      } catch {}
+    }
     if (!apiTable) {
       showToast(`Table ${targetTable} not found — please try again.`, "err")
       return
@@ -2810,40 +2819,7 @@ function ClientStationInner() {
       {loadErr}
     </div>
   )
-  if (adminPin && !pinOk) return (
-    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050709" }}>
-      <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "40px 48px", textAlign: "center", width: 320 }}>
-        <div style={{ fontSize: 28, marginBottom: 8 }}>🔒</div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Host Station</div>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 24 }}>Enter your PIN to continue</div>
-        <input
-          type="password"
-          inputMode="numeric"
-          placeholder="PIN"
-          value={pinInput}
-          onChange={e => { setPinInput(e.target.value); setPinErr(false) }}
-          onKeyDown={e => {
-            if (e.key === "Enter") {
-              if (pinInput === adminPin) { setPinOk(true); try { localStorage.setItem(`${slug}:pinOk`, "1") } catch {} }
-              else { setPinErr(true); setPinInput("") }
-            }
-          }}
-          style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: `1px solid ${pinErr ? "#ef4444" : "rgba(255,255,255,0.12)"}`, background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 20, textAlign: "center", outline: "none", letterSpacing: "0.3em", boxSizing: "border-box" }}
-          autoFocus
-        />
-        {pinErr && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 8 }}>Incorrect PIN</div>}
-        <button
-          onClick={() => {
-            if (pinInput === adminPin) { setPinOk(true); try { localStorage.setItem(`${slug}:pinOk`, "1") } catch {} }
-            else { setPinErr(true); setPinInput("") }
-          }}
-          style={{ marginTop: 16, width: "100%", padding: "12px 0", borderRadius: 10, background: "#22c55e", color: "#fff", border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
-        >
-          Unlock
-        </button>
-      </div>
-    </div>
-  )
+  // Station is always accessible — PIN is on Admin page
 
   return (
     <DndContext
@@ -2877,122 +2853,94 @@ function ClientStationInner() {
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <header
-          className="flex items-center justify-between px-5 h-12 shrink-0"
+          className="flex items-center justify-between px-4 h-12 shrink-0"
           style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)" }}
         >
-          <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
-            {/* Back arrow → Analog + Demo Restaurant wordmark */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Link href={`/client/${slug}/analog`} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--warm),0.65)", textDecoration: "none", flexShrink: 0, transition: "background 0.15s" }} title="Switch to Analog">
-                <ChevronLeft style={{ width: 16, height: 16 }} />
-              </Link>
-              {restLogoUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={restLogoUrl} alt={restName || slug} style={{ height: 28, maxWidth: 80, objectFit: "contain", flexShrink: 0 }} />
-              )}
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(var(--cream),0.95)", lineHeight: 1.2, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {restName || slug}
-                </span>
-                <span style={{ fontSize: 7.5, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(var(--warm),0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
-              </div>
-            </div>
+          {/* Left: restaurant identity + live stats */}
+          <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
+            {restLogoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={restLogoUrl} alt={restName || slug} style={{ height: 26, maxWidth: 72, objectFit: "contain", flexShrink: 0 }} />
+            )}
+            <span className="text-sm font-bold truncate" style={{ color: "rgba(var(--cream),0.92)", letterSpacing: "0.02em", maxWidth: 160 }}>
+              {restName || slug}
+            </span>
 
-            <div className="w-px h-5 shrink-0" style={{ background: "rgba(var(--accent),0.20)" }} />
+            <div className="w-px h-4 shrink-0" style={{ background: "rgba(var(--accent),0.22)" }} />
 
-            {/* Stats */}
+            {/* Stats pills */}
             <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.16)" }}>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.14)" }}>
                 <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
-                <span className="text-xs" style={{ color: "rgba(var(--accent),0.50)" }}>/{floor.length}</span>
-                <span className="text-[10px] ml-0.5" style={{ color: "rgba(var(--warm),0.60)" }}>free</span>
+                <span className="text-[10px]" style={{ color: "rgba(var(--accent),0.45)" }}>/{floor.length}</span>
+                <span className="text-[10px] ml-0.5" style={{ color: "rgba(var(--warm),0.55)" }}>free</span>
               </div>
-              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.16)" }}>
-                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(var(--warm),0.60)" }}>{waitingList.length}</span>
-                <span className="text-[10px]" style={{ color: "rgba(var(--warm),0.60)" }}>waiting</span>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-md shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.14)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(var(--warm),0.55)" }}>{waitingList.length}</span>
+                <span className="text-[10px]" style={{ color: "rgba(var(--warm),0.55)" }}>waiting</span>
               </div>
               {readyList.length > 0 && (
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)" }}>
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-md shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.30)" }}>
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                  <span className="text-xs font-bold" style={{ color: "#22c55e" }}>{readyList.length} ready</span>
+                  <span className="text-[11px] font-bold" style={{ color: "#22c55e" }}>{readyList.length} ready</span>
                 </div>
               )}
             </div>
           </div>
 
+          {/* Right: clock · Analog · zoom · theme · History · Admin */}
           <div className="flex items-center gap-1 shrink-0">
-            {/* Live clock */}
-            <span
-              className="hidden sm:block text-[11px] tabular-nums font-medium px-2"
-              style={{ color: "rgba(var(--warm),0.65)", letterSpacing: "0.04em" }}
-            >
+            <span className="hidden sm:block text-[11px] tabular-nums font-medium px-1.5" style={{ color: "rgba(var(--warm),0.60)", letterSpacing: "0.04em" }}>
               {clockStr}
             </span>
 
-            {/* Copy NFC Link button */}
-            <button
-              onClick={copyNfcLink}
-              className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors"
-              style={{
-                color: linkCopied ? "#22c55e" : "rgba(var(--warm),0.65)",
-                background: linkCopied ? "rgba(34,197,94,0.1)" : "transparent",
-                border: linkCopied ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent",
-              }}
-              title={joinUrl}
-            >
-              {linkCopied
-                ? <><Check className="w-3 h-3" /> Copied!</>
-                : <><Copy className="w-3 h-3" /> NFC Link</>
-              }
-            </button>
+            {/* Wifi indicator (inline, no button) */}
+            <span style={{ color: online ? "rgba(34,197,94,0.70)" : "rgba(239,68,68,0.70)" }}>
+              {online ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+            </span>
 
-            <Link href={`/client/${slug}/history`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
-              <BarChart2 className="w-3 h-3" /> History
+            <div className="w-px h-4" style={{ background: "rgba(var(--accent),0.18)", margin: "0 2px" }} />
+
+            {/* Analog */}
+            <Link href={`/client/${slug}/analog`}
+              className="hidden sm:flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold transition-colors hover:bg-white/8"
+              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)", textDecoration: "none" }}>
+              <Activity className="w-3 h-3" /> Analog
             </Link>
 
-            <Link href={`/client/${slug}/admin`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
-              Admin
-            </Link>
-
-            <Link href={`/client/${slug}/reservations`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
-              <CalendarDays className="w-3 h-3" /> Reservations
-            </Link>
-
-            {/* Zoom controls */}
-            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
-              <button
-                onClick={() => setZoom(z => Math.max(0.7, Math.round((z - 0.1) * 10) / 10))}
-                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
-                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}
-                title="Zoom out"
-              >−</button>
-              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "rgba(var(--warm),0.45)", minWidth: 28, textAlign: "center" }}>
+            {/* Zoom */}
+            <div className="hidden sm:flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
+              <button onClick={() => setZoom(z => Math.max(0.7, Math.round((z - 0.1) * 10) / 10))}
+                className="h-7 w-6 flex items-center justify-center hover:bg-white/8"
+                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}>−</button>
+              <span className="text-[10px] tabular-nums font-semibold" style={{ color: "rgba(var(--warm),0.45)", minWidth: 30, textAlign: "center" }}>
                 {Math.round(zoom * 100)}%
               </span>
-              <button
-                onClick={() => setZoom(z => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))}
-                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
-                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}
-                title="Zoom in"
-              >+</button>
+              <button onClick={() => setZoom(z => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))}
+                className="h-7 w-6 flex items-center justify-center hover:bg-white/8"
+                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}>+</button>
             </div>
 
-            {/* Light / Dark toggle */}
-            <button
-              onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
-              className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors hover:bg-white/8"
-              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
+            {/* Light/Dark toggle */}
+            <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+              className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold hover:bg-white/8"
+              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
               {theme === "dark" ? "☀︎" : "◗"} {theme === "dark" ? "Light" : "Dark"}
             </button>
 
-            <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
-              {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-            </div>
-            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.55)" }}>
-              <RefreshCw className="w-3.5 h-3.5" />
+            {/* History — opens side panel */}
+            <button onClick={() => setShowHistoryPanel(true)}
+              className="hidden sm:flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold hover:bg-white/8"
+              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
+              <BarChart2 className="w-3 h-3" /> History
             </button>
+
+            {/* Admin */}
+            <Link href={`/client/${slug}/admin`}
+              className="hidden sm:flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold hover:bg-white/8"
+              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)", textDecoration: "none" }}>
+              <LayoutDashboard className="w-3 h-3" /> Admin
+            </Link>
           </div>
         </header>
 
@@ -3636,6 +3584,11 @@ function ClientStationInner() {
       {/* Toast notifications */}
       <Toasts items={toasts} />
 
+      {/* ── History side panel ─────────────────────────────────────── */}
+      {showHistoryPanel && (
+        <StationHistoryPanel slug={slug} onClose={() => setShowHistoryPanel(false)} />
+      )}
+
 
       {/* ── Drag overlay ──────────────────────────────────────────── */}
       <DragOverlay dropAnimation={null} modifiers={[snapGhostToCursor]}>
@@ -3663,4 +3616,102 @@ function ClientStationInner() {
 
 export default function ClientStationPage() {
   return <Suspense><ClientStationInner /></Suspense>
+}
+
+// ── Station History Side Panel ─────────────────────────────────────────────────
+
+function StationHistoryPanel({ slug, onClose }: { slug: string; onClose: () => void }) {
+  const now = new Date()
+  if (now.getHours() < 3) now.setDate(now.getDate() - 1)
+  const todayStr = toLocalDateStr(now)
+
+  const records: GuestLogRecord[] = (() => {
+    try { return JSON.parse(localStorage.getItem(`host_${slug}_log_${todayStr}`) ?? "[]") }
+    catch { return [] }
+  })()
+
+  const seated  = records.filter(r => r.status === "seated")
+  const removed = records.filter(r => r.status === "removed")
+  const sorted  = [...records].sort((a, b) => b.joined_ms - a.joined_ms)
+
+  function fmtTime(ms: number) {
+    return new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 49, background: "rgba(0,0,0,0.28)" }} />
+      {/* Panel */}
+      <div style={{
+        position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 50,
+        width: 360, maxWidth: "90vw",
+        background: "var(--card-bg,#100C09)",
+        borderLeft: "1px solid rgba(var(--accent,255,185,100),0.18)",
+        display: "flex", flexDirection: "column",
+        fontFamily: "system-ui, sans-serif",
+        animation: "slideInRight 0.22s ease-out",
+      }}>
+        <style>{`@keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
+
+        {/* Panel header */}
+        <div style={{ padding: "18px 20px 14px", borderBottom: "1px solid rgba(var(--accent,255,185,100),0.14)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(var(--warm,255,200,150),0.50)" }}>
+              Today&apos;s History
+            </span>
+            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid rgba(var(--accent,255,185,100),0.18)", background: "rgba(var(--accent,255,185,100),0.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(var(--warm,255,200,150),0.65)", fontSize: 14 }}>✕</button>
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "rgba(var(--cream,255,248,240),0.92)" }}>
+            {seated.length} seated · <span style={{ color: "rgba(239,100,100,0.85)" }}>{removed.length} removed</span>
+          </div>
+        </div>
+
+        {/* Stat cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "14px 16px 0" }}>
+          <div style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.22)", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+            <div style={{ fontSize: 32, fontWeight: 800, color: "#22c55e", lineHeight: 1 }}>{seated.length}</div>
+            <div style={{ fontSize: 11, color: "rgba(34,197,94,0.70)", marginTop: 4 }}>Seated Today</div>
+          </div>
+          <div style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.22)", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+            <div style={{ fontSize: 32, fontWeight: 800, color: "#ef4444", lineHeight: 1 }}>{removed.length}</div>
+            <div style={{ fontSize: 11, color: "rgba(239,68,68,0.70)", marginTop: 4 }}>Removed Today</div>
+          </div>
+        </div>
+
+        {/* Guest list */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+          {sorted.length === 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 10, textAlign: "center" }}>
+              <Clock style={{ width: 36, height: 36, color: "rgba(var(--accent,255,185,100),0.25)" }} />
+              <div style={{ fontSize: 15, fontWeight: 600, color: "rgba(var(--cream,255,248,240),0.35)" }}>No history yet today</div>
+              <div style={{ fontSize: 12, color: "rgba(var(--warm,255,200,150),0.30)", lineHeight: 1.5, maxWidth: 200 }}>
+                Seated and removed guests appear here throughout the day.
+              </div>
+            </div>
+          ) : sorted.map(r => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, marginBottom: 6, background: "rgba(var(--accent,255,185,100),0.04)", border: "1px solid rgba(var(--accent,255,185,100),0.10)" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream,255,248,240),0.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                <div style={{ fontSize: 11, color: "rgba(var(--warm,255,200,150),0.45)", marginTop: 2 }}>
+                  {r.party_size}p · {fmtTime(r.joined_ms)}
+                  {r.actual_wait_min != null ? ` · ${r.actual_wait_min}m wait` : ""}
+                </div>
+              </div>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 6, background: r.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", color: r.status === "seated" ? "#22c55e" : "#ef4444" }}>
+                {r.status}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Full history link */}
+        <div style={{ padding: "12px 16px", borderTop: "1px solid rgba(var(--accent,255,185,100),0.12)" }}>
+          <a href={`/client/${slug}/history`} style={{ display: "block", textAlign: "center", fontSize: 12, fontWeight: 600, color: "rgba(var(--warm,255,200,150),0.55)", textDecoration: "none" }}>
+            View full history with stats →
+          </a>
+        </div>
+      </div>
+    </>
+  )
 }

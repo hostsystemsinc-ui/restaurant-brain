@@ -2990,9 +2990,25 @@ function ClientsView({ token, onSelectClient, onAddNew }: {
 
   useEffect(() => { load() }, [load])
 
-  const filtered = clients.filter(c =>
-    !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.city || "").toLowerCase().includes(search.toLowerCase())
-  )
+  const [archiving, setArchiving] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+
+  async function setStatus(clientId: string, status: "active" | "archived") {
+    setArchiving(clientId)
+    try {
+      await fetch(`${API}/owner/clients/${clientId}?secret=${encodeURIComponent(token)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      setClients(prev => prev.map(c => c.id === clientId ? { ...c, status } : c))
+    } catch {}
+    setArchiving(null)
+  }
+
+  const activeClients   = clients.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.city || "").toLowerCase().includes(search.toLowerCase())).filter(c => c.status !== "archived")
+  const archivedClients = clients.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.city || "").toLowerCase().includes(search.toLowerCase())).filter(c => c.status === "archived")
+
+  const filtered = activeClients
 
   // Group clients by location_group; ungrouped = individual cards
   function formatGroupName(key: string) {
@@ -3052,7 +3068,7 @@ function ClientsView({ token, onSelectClient, onAddNew }: {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16, marginBottom: archivedClients.length > 0 ? 32 : 0 }}>
         {cards.map(card => {
           if (card.type === "group") {
             // Multi-location client card
@@ -3096,38 +3112,65 @@ function ClientsView({ token, onSelectClient, onAddNew }: {
           // Single-location client card
           const c = card.client
           return (
-            <div key={c.id} onClick={() => onSelectClient(c)}
-              style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "20px 20px",
-                cursor: "pointer", transition: "all 0.12s" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = D.surfaceHover; (e.currentTarget as HTMLElement).style.borderColor = D.borderStrong }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = D.surface; (e.currentTarget as HTMLElement).style.borderColor = D.border }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-                <div style={{ width: 42, height: 42, borderRadius: 10, background: D.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                  🏢
+            <div key={c.id}
+              style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "20px 20px", position: "relative" }}>
+              <div onClick={() => onSelectClient(c)} style={{ cursor: "pointer" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 10, background: D.accent + "20", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🏢</div>
+                  {planBadge(c.plan_type, c.status)}
                 </div>
-                {planBadge(c.plan_type, c.status)}
-              </div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 4 }}>{c.display_name}</div>
-              <div style={{ fontSize: 13, color: D.text2, marginBottom: 12 }}>{c.city || "No city set"}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ fontSize: 12, color: D.muted }}>
-                  🔗 <span style={{ color: D.blue }}>/{c.slug}</span>
+                <div style={{ fontSize: 16, fontWeight: 700, color: D.text, marginBottom: 4 }}>{c.display_name}</div>
+                <div style={{ fontSize: 13, color: D.text2, marginBottom: 12 }}>{c.city || "No city set"}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ fontSize: 12, color: D.muted }}>🔗 <span style={{ color: D.blue }}>/{c.slug}</span></div>
+                  {c.signed_at && <div style={{ fontSize: 12, color: D.muted }}>✍️ Signed {fmtTime(c.signed_at)}</div>}
+                  {c.monthly_fee_cents != null && c.monthly_fee_cents > 0 && (
+                    <div style={{ fontSize: 12, color: D.muted }}>💳 ${(c.monthly_fee_cents/100).toFixed(2)}/mo</div>
+                  )}
                 </div>
-                {c.signed_at && (
-                  <div style={{ fontSize: 12, color: D.muted }}>
-                    ✍️ Signed {fmtTime(c.signed_at)}
-                  </div>
-                )}
-                {c.monthly_fee_cents != null && c.monthly_fee_cents > 0 && (
-                  <div style={{ fontSize: 12, color: D.muted }}>
-                    💳 ${(c.monthly_fee_cents/100).toFixed(2)}/mo
-                  </div>
-                )}
               </div>
+              <button
+                onClick={e => { e.stopPropagation(); setStatus(c.id, "archived") }}
+                disabled={archiving === c.id}
+                style={{ marginTop: 14, width: "100%", padding: "7px 0", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: archiving === c.id ? 0.5 : 1 }}>
+                {archiving === c.id ? "Archiving…" : "Archive"}
+              </button>
             </div>
           )
         })}
       </div>
+
+      {/* Archived section */}
+      {archivedClients.length > 0 && (
+        <div>
+          <button onClick={() => setShowArchived(p => !p)}
+            style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "8px 0", marginBottom: 12 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: D.muted, letterSpacing: "0.10em", textTransform: "uppercase" }}>
+              Archived ({archivedClients.length})
+            </span>
+            <span style={{ fontSize: 12, color: D.muted }}>{showArchived ? "▲" : "▼"}</span>
+          </button>
+          {showArchived && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+              {archivedClients.map(c => (
+                <div key={c.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "16px 18px", opacity: 0.65 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: D.text2 }}>{c.display_name}</div>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: D.muted, background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: "2px 8px" }}>Archived</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: D.muted, marginBottom: 12 }}>/{c.slug}</div>
+                  <button
+                    onClick={() => setStatus(c.id, "active")}
+                    disabled={archiving === c.id}
+                    style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: `1px solid ${D.green}40`, background: D.greenBg, color: D.green, fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: archiving === c.id ? 0.5 : 1 }}>
+                    {archiving === c.id ? "Restoring…" : "Unarchive"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -2825,3 +2825,40 @@ def sync_tables_from_floor_plan(slug: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class PinChangeRequest(BaseModel):
+    current_pin: str = ""
+    new_pin:     str = ""
+
+@app.patch("/client/{slug}/admin/pin")
+def update_admin_pin(slug: str, req: PinChangeRequest):
+    """Client-side PIN change — authenticated by the current PIN, no owner secret required."""
+    try:
+        rest = supabase.table("restaurants").select("id").eq("slug", slug).limit(1).execute()
+        if not rest.data:
+            raise HTTPException(status_code=404, detail="Restaurant not found")
+        rid = rest.data[0]["id"]
+
+        cfg_res = supabase.table("restaurant_configs").select("guest_config").eq("restaurant_id", rid).limit(1).execute()
+        cfg = cfg_res.data[0] if cfg_res.data else {}
+        gc = cfg.get("guest_config") or {}
+        if isinstance(gc, str):
+            try: gc = _json.loads(gc)
+            except: gc = {}
+
+        stored_pin = str(gc.get("adminPin", ""))
+        if stored_pin and req.current_pin != stored_pin:
+            raise HTTPException(status_code=403, detail="Incorrect current PIN")
+
+        if req.new_pin:
+            gc["adminPin"] = req.new_pin
+        else:
+            gc.pop("adminPin", None)
+
+        supabase.table("restaurant_configs").update({"guest_config": _json.dumps(gc)}).eq("restaurant_id", rid).execute()
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
