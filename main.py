@@ -2738,21 +2738,27 @@ def get_client_config_by_slug(slug: str):
             raise HTTPException(status_code=404, detail="Restaurant not found")
         rid  = rest.data[0]["id"]
         name = rest.data[0]["name"]
-        cfg_res = supabase.table("restaurant_configs").select("guest_config, menu_config, display_name, nfc_url").eq("restaurant_id", rid).limit(1).execute()
+        cfg_res = supabase.table("restaurant_configs").select("guest_config, menu_config, floor_plan, display_name, nfc_url").eq("restaurant_id", rid).limit(1).execute()
         cfg = cfg_res.data[0] if cfg_res.data else {}
         gc = cfg.get("guest_config")
         mc = cfg.get("menu_config")
+        fp = cfg.get("floor_plan")
         if isinstance(gc, str):
             try: gc = _json.loads(gc)
             except: gc = None
         if isinstance(mc, str):
             try: mc = _json.loads(mc)
             except: mc = None
+        if isinstance(fp, str):
+            try: fp = _json.loads(fp)
+            except: fp = None
         return {
             "restaurant_id":  rid,
             "name":           cfg.get("display_name") or name,
             "guest_config":   gc,
             "menu_config":    mc,
+            "floor_plan":     fp,
+            "nfc_url":        cfg.get("nfc_url"),
         }
     except HTTPException:
         raise
