@@ -2031,7 +2031,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   onBack: () => void
   onUpdated: () => void
 }) {
-  const [tab, setTab] = useState<"overview"|"credentials"|"floor-map"|"guest-page"|"menu"|"documents">("overview")
+  const [tab, setTab] = useState<"overview"|"credentials"|"floor-map"|"guest-page"|"menu"|"reservations"|"documents">("overview")
   const [config, setConfig] = useState<{ guest_config?: Record<string,unknown>; menu_config?: { sections: MenuSection[] }; floor_plan?: FloorTable[]; settings?: Record<string,unknown> } | null>(null)
   const [configLoaded, setConfigLoaded] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
@@ -2041,18 +2041,22 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   const [floorObjects, setFloorObjects] = useState<FloorObject[]>([])
   const [canvasAspect, setCanvasAspect] = useState<number>(1.62)
   const [menuSections, setMenuSections] = useState<MenuSection[]>([])
+  // Per-party-size reservation blocking rules: party_size_str → minutes_before
+  const [resBlocking, setResBlocking] = useState<Record<string, number>>({})
   const [clientAgreements, setClientAgreements] = useState<AgreementRecord[]>([])
   const [agreementsLoaded, setAgreementsLoaded] = useState(false)
   const [floorEditMode, setFloorEditMode] = useState(false)
 
   useEffect(() => {
-    if ((tab === "overview" || tab === "floor-map" || tab === "guest-page" || tab === "menu") && !configLoaded) {
+    if ((tab === "overview" || tab === "floor-map" || tab === "guest-page" || tab === "menu" || tab === "reservations") && !configLoaded) {
       fetch(`${API}/owner/clients/${client.id}/config?secret=${encodeURIComponent(token)}`)
         .then(r => r.json())
         .then(async d => {
           setConfig(d)
           const mc = d.menu_config as { sections?: MenuSection[] } | null
           setMenuSections(mc?.sections || [])
+          const gc = d.guest_config as { reservationBlocking?: Record<string,number> } | null
+          setResBlocking(gc?.reservationBlocking || {})
           // Handle floor_plan: new format = { tables, canvasAspect } | old format = array
           const fp = d.floor_plan
           const fpTables: FloorTable[] = []
@@ -2109,6 +2113,11 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
     }
   }, [tab, configLoaded, agreementsLoaded, client.id, client.name, token])
 
+  async function saveResBlockingRules(rules: Record<string, number>) {
+    const existing = (config?.guest_config ?? {}) as Record<string, unknown>
+    await saveConfig({ guest_config: { ...existing, reservationBlocking: rules } })
+  }
+
   async function saveConfig(patch: { floor_plan?: FloorTable[]; menu_config?: { sections: MenuSection[] }; guest_config?: Record<string,unknown> }) {
     setSavingConfig(true); setSaveStatus("saving")
     try {
@@ -2127,12 +2136,13 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   }
 
   const tabs: { id: typeof tab; label: string; icon: string }[] = [
-    { id: "overview",    label: "Overview",    icon: "⊞" },
-    { id: "credentials", label: "Credentials", icon: "🔑" },
-    { id: "floor-map",   label: "Floor Map",   icon: "🗺" },
-    { id: "guest-page",  label: "Guest Page",  icon: "📱" },
-    { id: "menu",        label: "Menu",        icon: "🍽" },
-    { id: "documents",   label: "Documents",   icon: "📄" },
+    { id: "overview",     label: "Overview",     icon: "⊞" },
+    { id: "credentials",  label: "Credentials",  icon: "🔑" },
+    { id: "floor-map",    label: "Floor Map",     icon: "🗺" },
+    { id: "guest-page",   label: "Guest Page",    icon: "📱" },
+    { id: "menu",         label: "Menu",          icon: "🍽" },
+    { id: "reservations", label: "Reservations",  icon: "📅" },
+    { id: "documents",    label: "Documents",     icon: "📄" },
   ]
 
   return (
@@ -2249,6 +2259,70 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
                 </button>
               </div>
             </>
+          )}
+        </div>
+      )}
+
+      {/* Reservations tab */}
+      {tab === "reservations" && (
+        <div>
+          {!configLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
+            <div>
+              <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Reservation Blocking</h2>
+              <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px", lineHeight: 1.6 }}>
+                Set how many minutes before a reservation the table is blocked from being seated.
+                The floor map shows <span style={{ color: "#fbbf24", fontWeight: 600 }}>yellow</span> for upcoming,{" "}
+                <span style={{ color: "#f97316", fontWeight: 600 }}>orange</span> within the blocking window, and{" "}
+                <span style={{ color: "#ef4444", fontWeight: 600 }}>red</span> when locked.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 480 }}>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(ps => {
+                  const val = resBlocking[String(ps)] ?? (ps <= 2 ? 20 : ps <= 4 ? 30 : ps <= 6 ? 45 : 60)
+                  return (
+                    <div key={ps} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ width: 120, fontSize: 13, color: D.text2, flexShrink: 0 }}>
+                        Party of {ps}{ps === 10 ? "+" : ""}
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        max={240}
+                        value={resBlocking[String(ps)] ?? ""}
+                        placeholder={String(ps <= 2 ? 20 : ps <= 4 ? 30 : ps <= 6 ? 45 : 60)}
+                        onChange={e => {
+                          const v = parseInt(e.target.value)
+                          setResBlocking(prev => ({ ...prev, [String(ps)]: isNaN(v) ? 0 : Math.max(0, Math.min(240, v)) }))
+                        }}
+                        style={{ width: 80, padding: "8px 10px", borderRadius: 8, border: `1px solid ${D.border}`, background: D.surface, color: D.text, fontSize: 13, textAlign: "center" }}
+                      />
+                      <span style={{ fontSize: 12, color: D.muted }}>minutes before</span>
+                      <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: val === 0 ? D.muted : val <= 15 ? "#ef4444" : val <= 30 ? "#f97316" : "#fbbf24" }} />
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ marginTop: 20, display: "flex", gap: 10, alignItems: "center" }}>
+                <button onClick={() => saveResBlockingRules(resBlocking)} disabled={savingConfig}
+                  style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: savingConfig ? 0.6 : 1 }}>
+                  {savingConfig ? "Saving…" : "Save Blocking Rules"}
+                </button>
+                <button onClick={() => {
+                  const defaults: Record<string,number> = { "1": 20, "2": 20, "3": 30, "4": 30, "5": 45, "6": 45, "7": 60, "8": 60, "9": 60, "10": 60 }
+                  setResBlocking(defaults)
+                }} style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+                  Reset to defaults
+                </button>
+              </div>
+              <div style={{ marginTop: 24, padding: "14px 16px", background: D.surface, borderRadius: 10, border: `1px solid ${D.border}` }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: D.text, marginBottom: 8 }}>How it works</div>
+                <ul style={{ margin: 0, padding: "0 0 0 16px", fontSize: 12, color: D.text2, lineHeight: 1.8 }}>
+                  <li>Set 0 minutes to disable blocking for that party size</li>
+                  <li>Blocking only applies BEFORE the reservation starts — table clears normally after guests leave</li>
+                  <li>Host can override the warning and seat anyway — it&apos;s a soft lock, not a hard block</li>
+                  <li>Tables are hard-locked at the exact reservation time regardless of these settings</li>
+                </ul>
+              </div>
+            </div>
           )}
         </div>
       )}

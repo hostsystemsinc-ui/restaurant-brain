@@ -1,300 +1,1829 @@
 "use client"
 
-/**
- * /client/[slug]/station — Full HOST station for any restaurant.
- *
- * DATA ISOLATION GUARANTEE:
- *   Every fetch uses `slug` from the URL params → restaurant_id from Railway.
- *   No session cookies, no RESTAURANT_CONFIG, no connection to any other client.
- *   Joe's Pizza sees only Joe's Pizza data. Walnut sees only Walnut data.
- */
-
-import { useState, useEffect, useCallback, useRef, Suspense } from "react"
+import { useEffect, useState, useCallback, useRef, Suspense } from "react"
 import { useParams } from "next/navigation"
+import Link from "next/link"
+import {
+  Users, Clock, CheckCircle2, BellRing,
+  RefreshCw, Wifi, WifiOff, Plus, X,
+  LayoutDashboard, GripVertical, CalendarDays, CalendarCheck,
+  Copy, Check, Pencil, Activity, Trash2, BarChart2, AlertTriangle, ChevronLeft,
+} from "lucide-react"
+import {
+  DndContext, DragOverlay,
+  PointerSensor, TouchSensor,
+  useSensor, useSensors,
+  useDraggable, useDroppable,
+  pointerWithin, MeasuringStrategy,
+  type DragStartEvent, type DragEndEvent,
+  type Modifier,
+} from "@dnd-kit/core"
+import { CSS } from "@dnd-kit/utilities"
 
-const RAILWAY = "https://restaurant-brain-production.up.railway.app"
-
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const C = {
-  bg:           "#080C10",
-  panel:        "#0C1118",
-  surface:      "rgba(255,255,255,0.04)",
-  surface2:     "rgba(255,255,255,0.07)",
-  border:       "rgba(255,255,255,0.09)",
-  borderHi:     "rgba(255,255,255,0.16)",
-  text:         "#FFFFFF",
-  text2:        "rgba(255,255,255,0.60)",
-  muted:        "rgba(255,255,255,0.30)",
-  accent:       "#D9321C",
-  green:        "#22C55E",
-  greenBg:      "rgba(34,197,94,0.12)",
-  greenBorder:  "rgba(34,197,94,0.30)",
-  orange:       "#F59E0B",
-  orangeBg:     "rgba(245,158,11,0.12)",
-  orangeBorder: "rgba(245,158,11,0.30)",
-  red:          "#EF4444",
-  redBg:        "rgba(239,68,68,0.12)",
-  redBorder:    "rgba(239,68,68,0.30)",
-  purple:       "#A78BFA",
-  purpleBg:     "rgba(167,139,250,0.12)",
-  purpleBorder: "rgba(167,139,250,0.30)",
-  yellow:       "#FBBF24",
-  yellowBg:     "rgba(251,191,36,0.12)",
-  yellowBorder: "rgba(251,191,36,0.30)",
-  blue:         "#60A5FA",
-  blueBg:       "rgba(96,165,250,0.12)",
+// Snap drag ghost so cursor stays at top-left corner of ghost (+small offset).
+// This ensures the cursor IS the precise drop point the user sees.
+const snapGhostToCursor: Modifier = ({ activatorEvent, draggingNodeRect, transform }) => {
+  if (activatorEvent && draggingNodeRect) {
+    const ev = activatorEvent as PointerEvent
+    return {
+      ...transform,
+      x: transform.x + (ev.clientX - draggingNodeRect.left) - 12,
+      y: transform.y + (ev.clientY - draggingNodeRect.top)  - 12,
+    }
+  }
+  return transform
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface RestaurantInfo {
-  id:       string
-  name:     string
-  slug:     string
-  adminPin: string
-  logoUrl?: string
+const API                = "/api/brain"
+// rid, joinUrl, canvasW, canvasH, floor loaded dynamically from Railway by slug
+
+// Parse a backend timestamp as UTC milliseconds.
+// SQLite stores datetimes without timezone suffix (e.g. "2025-04-14 16:00:00").
+// Without 'Z', browsers parse them as LOCAL time → deadline appears hours in the future.
+// This helper forces UTC interpretation.
+function parseUTCMs(ts: string | null | undefined): number | null {
+  if (!ts) return null
+  const s = (ts.endsWith("Z") || /[+-]\d{2}:?\d{2}$/.test(ts))
+    ? ts
+    : ts.replace(" ", "T") + "Z"
+  const ms = new Date(s).getTime()
+  return isNaN(ms) ? null : ms
 }
 
-// Visual floor plan table (from config.floor_plan — wizard format)
+// The backend returns table_number as a string and may have duplicate rows per table
+// (tables were seeded multiple times). Normalize: coerce to number, then deduplicate
+// keeping the occupied row when there are multiples so /clear calls hit the right ID.
+function normalizeTables(raw: Table[]): Table[] {
+  const coerced = raw.map(t => ({ ...t, table_number: Number(t.table_number) }))
+  const byNumber = new Map<number, Table>()
+  for (const t of coerced) {
+    const existing = byNumber.get(t.table_number)
+    if (!existing || t.status === "occupied") byNumber.set(t.table_number, t)
+  }
+  return Array.from(byNumber.values())
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────────
+
+function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 10)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
+// ── Floor plan ─────────────────────────────────────────────────────────────────
+
+// Canvas dims and floor plan are loaded dynamically per restaurant
+const CANVAS_W = 920  // default fallback; overridden by canvasW state
+const CANVAS_H = 500  // default fallback; overridden by canvasH state
+
 interface FloorPos {
-  id?:      string
-  number:   number
-  label?:   string
-  capacity?: number
-  shape:    string   // "rect" | "circle" | "square" | "booth" | "diamond"
-  x:        number   // center_x as % of canvas width
-  y:        number   // center_y as % of canvas height
-  w:        number   // width  as % of canvas width
-  h:        number   // height as % of canvas height
+  number: number
+  label?: string
+  shape: "round" | "square" | "rect"
+  x: number; y: number; w: number; h: number
+  section: "main" | "bar"
 }
 
-// Live table record (from GET /tables?restaurant_id=X)
-interface LiveTable {
-  id:           string
+// Wizard floor plan converter
+// Wizard uses center-based % coords; station uses top-left px coords in canvasW×canvasH space
+interface WizardTable {
+  id?: string; number: number; label?: string; capacity?: number
+  shape: string; x: number; y: number; w: number; h: number
+}
+interface WizardFloorPlan { tables?: WizardTable[]; objects?: unknown[]; canvasAspect?: number }
+
+function convertWizardFloor(fp: WizardFloorPlan | null | undefined): { tables: FloorPos[]; canvasW: number; canvasH: number } | null {
+  if (!fp || !Array.isArray(fp.tables) || fp.tables.length === 0) return null
+  const asp = fp.canvasAspect ?? 1.62
+  const cW  = Math.round(asp * 100)
+  const cH  = 100
+  const shapeMap: Record<string, "round" | "square" | "rect"> = {
+    circle: "round", round: "round", square: "square", rect: "rect", booth: "rect", diamond: "rect",
+  }
+  const tables: FloorPos[] = fp.tables.map(t => ({
+    number:  t.number,
+    label:   t.label,
+    shape:   shapeMap[t.shape] ?? "rect",
+    x:       (t.x - t.w / 2) * asp,
+    y:       t.y - t.h / 2,
+    w:       t.w * asp,
+    h:       t.h,
+    section: "main" as const,
+  }))
+  return { tables, canvasW: cW, canvasH: cH }
+}
+
+// ── Seating History + Suggestions ──────────────────────────────────────────────
+
+interface SeatingRecord {
+  party_size:      number
+  quoted_wait:     number
+  actual_wait_min: number  // minutes from arrival_time to seated
+  seated_at:       number  // unix ms
+  day_of_week:     number  // 0–6
+  hour_of_day:     number  // 0–23
+}
+
+// ── Guest Log (rich per-day record for History page) ───────────────────────────
+export interface GuestLogRecord {
+  id:              string
+  name:            string
+  party_size:      number
+  source:          string
+  phone:           string | null
+  notes:           string | null
+  quoted_wait:     number | null
+  actual_wait_min: number | null  // null for removed guests
+  joined_ms:       number         // unix ms
+  resolved_ms:     number         // unix ms (seated or removed)
+  status:          "seated" | "removed"
+}
+
+const GUEST_LOG_KEY = (slug: string, dateStr: string) => `host_${slug}_log_${dateStr}`
+
+function addToGuestLog(r: GuestLogRecord) {
+  try {
+    const dateStr = getBusinessDate()
+    const key     = GUEST_LOG_KEY(_historySlug, dateStr)
+    const records: GuestLogRecord[] = JSON.parse(localStorage.getItem(key) ?? "[]")
+    // Replace if entry ID already present (e.g. re-seat after undo)
+    const idx = records.findIndex(x => x.id === r.id)
+    if (idx >= 0) records[idx] = r; else records.push(r)
+    localStorage.setItem(key, JSON.stringify(records))
+  } catch {}
+}
+
+// These are module-level but set per-instance via the slug
+let _historySlug = "demo"
+const HISTORY_KEY      = () => `host_${_historySlug}_seating_history`
+const HISTORY_DATE_KEY = () => `host_${_historySlug}_seating_history_date`
+const MAX_HISTORY      = 300
+// Minimum seatings needed before suggestions are considered statistically valid
+const MIN_SAMPLES_FOR_SUGGESTION = 8
+
+// Business day starts at 3am — history before 3am belongs to previous day
+function getBusinessDate(): string {
+  const now = new Date()
+  if (now.getHours() < 3) now.setDate(now.getDate() - 1)
+  return now.toLocaleDateString("en-CA")  // YYYY-MM-DD
+}
+
+function getHistory(): SeatingRecord[] {
+  try {
+    // Auto-wipe history at 3am (business day boundary)
+    const bd       = getBusinessDate()
+    const lastDate = localStorage.getItem(HISTORY_DATE_KEY())
+    if (lastDate && lastDate !== bd) {
+      localStorage.removeItem(HISTORY_KEY())
+      localStorage.setItem(HISTORY_DATE_KEY(), bd)
+      return []
+    }
+    return JSON.parse(localStorage.getItem(HISTORY_KEY()) ?? "[]")
+  } catch { return [] }
+}
+function addToHistory(r: SeatingRecord) {
+  try {
+    const h = getHistory(); h.push(r)
+    if (h.length > MAX_HISTORY) h.splice(0, h.length - MAX_HISTORY)
+    localStorage.setItem(HISTORY_KEY(), JSON.stringify(h))
+    localStorage.setItem(HISTORY_DATE_KEY(), getBusinessDate())
+  } catch {}
+}
+// Weighted suggestion: favors same party size + nearby hour of day.
+// Returns null until MIN_SAMPLES_FOR_SUGGESTION seatings have been recorded today.
+function suggestWait(partySize: number): number | null {
+  const hist = getHistory()
+  if (hist.length < MIN_SAMPLES_FOR_SUGGESTION) return null
+  const hour = new Date().getHours()
+  const scored = hist.flatMap(r => {
+    const sd = Math.abs(r.party_size - partySize)
+    const hd = Math.min(Math.abs(r.hour_of_day - hour), 24 - Math.abs(r.hour_of_day - hour))
+    if (sd > 4 || hd > 4) return []
+    return [{ wait: r.quoted_wait, w: (sd === 0 ? 4 : sd === 1 ? 2 : 1) * (hd <= 1 ? 2 : 1) }]
+  })
+  if (scored.length < 3) {
+    const s = hist.filter(r => r.party_size === partySize)
+    if (s.length < 3) return null          // not enough exact-size data either
+    return Math.round(s.reduce((a, r) => a + r.quoted_wait, 0) / s.length)
+  }
+  const tw = scored.reduce((a, r) => a + r.w, 0)
+  return Math.round(scored.reduce((a, r) => a + r.wait * r.w, 0) / tw)
+}
+// How many seatings still needed before suggestions unlock
+function samplesNeeded(): number {
+  return Math.max(0, MIN_SAMPLES_FOR_SUGGESTION - getHistory().length)
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface Table {
+  id: string
   table_number: number
-  label?:       string
-  capacity:     number
-  status:       "available" | "occupied"
-  party_name?:  string | null
+  capacity: number
+  status: "available" | "occupied" | "reserved"
 }
 
 interface QueueEntry {
-  id:           string
-  name:         string
-  party_size:   number
-  status:       "waiting" | "ready" | "seated" | "removed"
-  quoted_wait:  number | null
-  arrival_time: string | null
-  phone:        string | null
-  source:       string
-  notes?:       string | null
+  id: string
+  name: string
+  party_size: number
+  status: "waiting" | "ready" | "seated" | "removed"
+  source: string
+  quoted_wait: number | null
+  wait_estimate?: number
+  remaining_wait?: number
+  wait_set_at?: string | null
+  arrival_time: string
+  position?: number
+  paused?: boolean
+  phone: string | null
+  notes: string | null
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function timeAgo(iso: string | null): string {
-  if (!iso) return "—"
-  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)
-  if (m < 1)  return "just now"
-  if (m < 60) return `${m}m`
-  return `${Math.floor(m / 60)}h ${m % 60}m`
-}
-function clock(): string {
-  return new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
-}
-function sourceBadge(src: string) {
-  if (src === "host")        return { label: "Host",        color: C.green,  bg: C.greenBg  }
-  if (src === "analog")      return { label: "Walk-in",     color: C.orange, bg: C.orangeBg }
-  if (src === "reservation") return { label: "Reservation", color: C.purple, bg: C.purpleBg }
-  if (src === "nfc")         return { label: "NFC",         color: C.blue,   bg: C.blueBg   }
-  if (src === "qr")          return { label: "QR",          color: C.blue,   bg: C.blueBg   }
-  return { label: src, color: C.muted, bg: C.surface }
+interface LocalOccupant { name: string; party_size: number; entry_id?: string }
+
+interface Reservation {
+  id:         string
+  guest_name: string
+  party_size: number
+  date:       string   // "YYYY-MM-DD"
+  time:       string   // "HH:MM" or "HH:MM:SS"
+  status:     string
+  phone:      string | null
+  notes?:     string | null
 }
 
-// ── PIN Gate ──────────────────────────────────────────────────────────────────
-function PinGate({ name, onAuth, err }: { name: string; onAuth: (p: string) => void; err: boolean }) {
-  const [digits, setDigits] = useState(["", "", "", ""])
-  const refs = [useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null), useRef<HTMLInputElement>(null)]
-  function onDigit(i: number, v: string) {
-    const d = v.replace(/\D/g, "").slice(-1)
-    const next = [...digits]; next[i] = d; setDigits(next)
-    if (d && i < 3) refs[i + 1].current?.focus()
-    if (d && i === 3 && next.every(x => x)) onAuth(next.join(""))
+// Table pre-assigned to an upcoming reservation (local-only, persisted in localStorage)
+interface ReservedTable { resId: string; guestName: string; time: string }
+
+// Toast notification system
+type ToastItem = { id: number; msg: string; type: "ok" | "err" | "warn" }
+let _toastSeq = 0
+let _dispatchToast: ((msg: string, type: ToastItem["type"]) => void) | null = null
+function showToast(msg: string, type: ToastItem["type"] = "ok") { _dispatchToast?.(msg, type) }
+
+// fetch with AbortController timeout (default 10 s)
+async function fetchT(url: string, opts: RequestInit = {}, ms = 10_000): Promise<Response> {
+  const ctrl = new AbortController()
+  const tid  = setTimeout(() => ctrl.abort(), ms)
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal })
+  } finally {
+    clearTimeout(tid)
   }
-  function onKey(i: number, e: React.KeyboardEvent) {
-    if (e.key === "Backspace" && !digits[i] && i > 0) {
-      const next = [...digits]; next[i - 1] = ""; setDigits(next); refs[i - 1].current?.focus()
-    }
-  }
-  return (
-    <div style={{ minHeight: "100dvh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: "0.3em", color: C.text, marginBottom: 4 }}>HOST</div>
-        <div style={{ fontSize: 11, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 6 }}>Station</div>
-        <div style={{ fontSize: 18, fontWeight: 600, color: C.text2, marginBottom: 36 }}>{name}</div>
-        <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 14 }}>Admin PIN</div>
-        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 20 }}>
-          {digits.map((d, i) => (
-            <input key={i} ref={refs[i]} value={d} type="tel" inputMode="numeric" maxLength={1}
-              onChange={e => onDigit(i, e.target.value)} onKeyDown={e => onKey(i, e)}
-              onFocus={e => e.target.select()} autoFocus={i === 0}
-              style={{ width: 56, height: 68, borderRadius: 12, textAlign: "center", fontSize: 28, fontWeight: 700,
-                color: C.text, background: C.surface2, border: `2px solid ${err ? C.red : C.border}`,
-                outline: "none", caretColor: "transparent" }} />
-          ))}
-        </div>
-        {err && <div style={{ color: C.red, fontSize: 13, fontWeight: 600 }}>Incorrect PIN</div>}
-        <p style={{ fontSize: 11, color: C.muted, marginTop: 28, maxWidth: 240, lineHeight: 1.6 }}>
-          Set your Admin PIN in HOST Owner Console → Credentials
-        </p>
-      </div>
-    </div>
-  )
 }
 
-// ── Walk-in Modal ─────────────────────────────────────────────────────────────
-function WalkInModal({ rid, tableNumber, onClose, onDone }: {
-  rid: string; tableNumber?: number; onClose: () => void; onDone: () => void
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function timeWaiting(iso: string): string {
+  const diff = Math.floor((Date.now() - (parseUTCMs(iso) ?? Date.now())) / 1000)
+  if (diff < 60) return `${diff}s`
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`
+  return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`
+}
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function fmt12Res(t: string): string {
+  const [h, m] = t.split(":").map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`
+}
+
+type ResUrgency = "upcoming" | "arriving" | "now" | "late"
+
+function getResUrgency(dateStr: string, timeStr: string, now: Date): ResUrgency {
+  const [h, m] = timeStr.split(":").map(Number)
+  const [y, mo, d] = dateStr.split("-").map(Number)
+  const resTime = new Date(y, mo - 1, d, h, m, 0)
+  const diff = (resTime.getTime() - now.getTime()) / 60_000
+  if (diff > 30)  return "upcoming"
+  if (diff > 15)  return "arriving"
+  if (diff > -15) return "now"
+  return "late"
+}
+
+// Returns minutes until a reservation time (positive = future, negative = past/overdue)
+function getResMinutesUntil(timeStr: string, now: Date): number {
+  const [h, m] = timeStr.split(":").map(Number)
+  const resTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m, 0)
+  return (resTime.getTime() - now.getTime()) / 60_000
+}
+
+// ── Wait Time Modal ────────────────────────────────────────────────────────────
+
+function WaitTimeModal({
+  entryId, defaultMinutes, onClose,
+}: {
+  entryId: string
+  defaultMinutes: number
+  onClose: () => void
 }) {
-  const [name,      setName]      = useState("")
-  const [partySize, setPartySize] = useState(2)
-  const [phone,     setPhone]     = useState("")
-  const [notes,     setNotes]     = useState("")
-  const [busy,      setBusy]      = useState(false)
-  const [error,     setError]     = useState("")
+  const [minutes, setMinutes] = useState(defaultMinutes || 15)
+  const [saving,  setSaving]  = useState(false)
+  const PRESETS = [5, 10, 15, 20, 30, 45]
 
-  async function submit() {
-    if (!name.trim()) { setError("Name required"); return }
-    setBusy(true); setError("")
+  const save = async () => {
+    setSaving(true)
     try {
-      const r = await fetch(`${RAILWAY}/queue/join`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), party_size: partySize,
-          phone: phone.trim() || null, source: "analog",
-          restaurant_id: rid, notes: notes.trim() || null }),
-      })
-      if (!r.ok) { const d = await r.json(); throw new Error(d.detail || "Failed") }
-      onDone()
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : "Error") }
-    finally { setBusy(false) }
+      const r = await fetchT(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" })
+      if (!r.ok) throw new Error("server")
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && e.name === "AbortError"
+      showToast(isTimeout ? "Request timed out — try again." : "Could not update wait time.", "err")
+      setSaving(false)
+      return
+    }
+    setSaving(false)
+    onClose()
   }
 
-  const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "11px 14px",
-    borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface2,
-    color: C.text, fontSize: 15, outline: "none" }
-  const lbl: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: C.muted,
-    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6, display: "block" }
-
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 400, display: "flex", alignItems: "center",
-      justifyContent: "center", background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
-      <div style={{ background: C.panel, border: `1px solid ${C.borderHi}`, borderRadius: 18,
-        padding: 28, width: "100%", maxWidth: 420, fontFamily: "system-ui, sans-serif" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>
-            Walk-in{tableNumber != null ? ` — Table ${tableNumber}` : ""}
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[480px] rounded-t-3xl sm:rounded-3xl p-8"
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.14)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(var(--accent),0.18)" }} />
+
+        <p className="text-xs font-black tracking-[0.22em] uppercase mb-1" style={{ color: "rgba(var(--warm),0.45)" }}>
+          Estimated Wait
+        </p>
+        <p className="text-sm mb-7" style={{ color: "rgba(var(--warm),0.28)" }}>
+          The guest will see this count down live on their phone.
+        </p>
+
+        {/* Stepper */}
+        <div className="flex items-center justify-between mb-6 px-2">
+          <button
+            onClick={() => setMinutes(m => Math.max(1, m - 1))}
+            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125"
+            style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}
+          >−</button>
+          <div className="text-center">
+            <span className="text-7xl font-extralight tabular-nums leading-none" style={{ color: "rgba(var(--cream),0.95)" }}>
+              {minutes}
+            </span>
+            <span className="block text-sm mt-1" style={{ color: "rgba(var(--warm),0.40)" }}>min</span>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 20, cursor: "pointer" }}>✕</button>
+          <button
+            onClick={() => setMinutes(m => Math.min(120, m + 1))}
+            className="w-16 h-16 rounded-full flex items-center justify-center text-3xl font-light transition-all active:scale-95 hover:brightness-125"
+            style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}
+          >+</button>
         </div>
-        {/* Party size */}
-        <label style={lbl}>Party Size</label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-          {[1,2,3,4,5,6,7,8].map(n => (
-            <button key={n} onClick={() => setPartySize(n)}
-              style={{ width: 44, height: 44, borderRadius: 10,
-                border: `2px solid ${partySize === n ? C.accent : C.border}`,
-                background: partySize === n ? C.accent + "20" : "transparent",
-                color: partySize === n ? C.accent : C.text2,
-                fontSize: 16, fontWeight: 700, cursor: "pointer" }}>{n}</button>
+
+        {/* Preset grid */}
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          {PRESETS.map(p => (
+            <button
+              key={p}
+              onClick={() => setMinutes(p)}
+              className="flex flex-col items-center justify-center rounded-2xl transition-all active:scale-95"
+              style={{
+                height: 76,
+                background: minutes === p ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.05)",
+                border: `1.5px solid ${minutes === p ? "rgba(var(--accent),0.55)" : "rgba(var(--accent),0.11)"}`,
+                boxShadow: minutes === p ? "0 0 0 3px rgba(var(--accent),0.10)" : "none",
+              }}
+            >
+              <span style={{
+                fontSize: 30, fontWeight: 700, lineHeight: 1,
+                color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)",
+              }}>
+                {p}
+              </span>
+              <span style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: "0.1em",
+                color: minutes === p ? "rgba(var(--warm),0.60)" : "rgba(var(--accent),0.30)",
+                marginTop: 4,
+              }}>
+                MIN
+              </span>
+            </button>
           ))}
         </div>
-        <label style={lbl}>Name *</label>
-        <input value={name} onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && submit()}
-          placeholder="Guest name" style={{ ...inp, marginBottom: 12 }} autoFocus />
-        <label style={lbl}>Phone <span style={{ fontWeight: 400, textTransform: "none", color: C.muted }}>— optional</span></label>
-        <input value={phone} onChange={e => setPhone(e.target.value)} type="tel"
-          placeholder="(555) 555-5555" style={{ ...inp, marginBottom: 12 }} />
-        <label style={lbl}>Notes <span style={{ fontWeight: 400, textTransform: "none", color: C.muted }}>— optional</span></label>
-        <input value={notes} onChange={e => setNotes(e.target.value)}
-          placeholder="e.g. Birthday, high chair" style={{ ...inp, marginBottom: 20 }} />
-        {error && <div style={{ color: C.red, fontSize: 13, marginBottom: 12 }}>{error}</div>}
-        <button onClick={submit} disabled={busy}
-          style={{ width: "100%", padding: "14px 0", borderRadius: 12, border: "none",
-            background: busy ? C.muted : C.green, color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
-          {busy ? "Adding…" : "Add to Queue"}
+
+        <button
+          onClick={save}
+          disabled={saving}
+          className="w-full rounded-2xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
+          style={{ background: "#22c55e", color: "white", fontSize: 16, padding: "20px 0" }}
+        >
+          {saving ? "Saving…" : "Set Wait Time"}
+        </button>
+        <button
+          onClick={onClose}
+          className="w-full mt-3 py-3 text-sm transition-all"
+          style={{ color: "rgba(var(--warm),0.28)", background: "none", border: "none", cursor: "pointer" }}
+        >
+          Skip for now
         </button>
       </div>
     </div>
   )
 }
 
-// ── Table Action Modal (click a table) ───────────────────────────────────────
-function TableModal({ table, queue, rid, onClose, onDone }: {
-  table: LiveTable; queue: QueueEntry[]; rid: string
-  onClose: () => void; onDone: () => void
+// ── NFC Wait Panel (sidebar — floor map stays live) ─────────────────────────
+
+function NfcWaitPanel({
+  entryId, entryName, partySize, suggested, sidebarW, onClose,
+}: {
+  entryId:   string
+  entryName: string
+  partySize: number
+  suggested: number | null
+  sidebarW:  number
+  onClose:   () => void
 }) {
-  const [busy,      setBusy]      = useState(false)
-  const [showAdd,   setShowAdd]   = useState(false)
-  const waiting = queue.filter(q => q.status === "waiting" || q.status === "ready")
+  const [minutes, setMinutes] = useState(suggested ?? 15)
+  const [saving,  setSaving]  = useState(false)
+  const PRESETS = [5, 10, 15, 20, 30, 45]
 
-  async function seatFromQueue(entryId: string) {
-    setBusy(true)
-    await fetch(`${RAILWAY}/queue/${entryId}/seat-to-table/${table.id}`, { method: "POST" }).catch(() => {})
-    onDone()
+  const save = async () => {
+    setSaving(true)
+    try {
+      const r = await fetchT(`${API}/queue/${entryId}/wait?minutes=${minutes}`, { method: "PATCH" })
+      if (!r.ok) throw new Error("server")
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && e.name === "AbortError"
+      showToast(isTimeout ? "Request timed out — try again." : "Could not update wait time.", "err")
+      setSaving(false)
+      return
+    }
+    setSaving(false)
+    onClose()
   }
-  async function clearTable() {
-    setBusy(true)
-    await fetch(`${RAILWAY}/tables/${table.id}/clear`, { method: "POST" }).catch(() => {})
-    onDone()
-  }
-
-  if (showAdd) return <WalkInModal rid={rid} tableNumber={table.table_number} onClose={onClose} onDone={onDone} />
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 400, display: "flex", alignItems: "center",
-      justifyContent: "center", background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
-      <div style={{ background: C.panel, border: `1px solid ${C.borderHi}`, borderRadius: 18,
-        padding: 28, width: "100%", maxWidth: 420, fontFamily: "system-ui, sans-serif" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>
-              Table {table.label || table.table_number}
-            </div>
-            <div style={{ fontSize: 12, color: C.text2, marginTop: 2 }}>
-              {table.capacity} seats · {table.status === "occupied" ? `Occupied${table.party_name ? ` — ${table.party_name}` : ""}` : "Available"}
-            </div>
+    <div style={{
+      position: "fixed", top: 48, left: 0, bottom: 0,
+      width: sidebarW, zIndex: 46,
+      background: "var(--page-bg)",
+      borderTop: "1px solid rgba(99,179,237,0.30)",
+      borderRight: "1px solid rgba(99,179,237,0.18)",
+      display: "flex", flexDirection: "column",
+      overflowY: "auto",
+    }}>
+      {/* Header */}
+      <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid rgba(99,179,237,0.14)", flexShrink: 0 }}>
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(99,179,237,0.65)", marginBottom: 4 }}>
+          Quote Wait Time
+        </p>
+        <p style={{ fontSize: 16, fontWeight: 700, color: "rgba(var(--cream),0.95)", margin: 0 }}>
+          {entryName || "Guest"} <span style={{ fontSize: 13, fontWeight: 400, color: "rgba(var(--warm),0.50)" }}>· {partySize}p</span>
+        </p>
+        <p style={{ fontSize: 11, color: "rgba(var(--warm),0.32)", marginTop: 4, marginBottom: 0 }}>
+          The guest will see this count down on their phone.
+        </p>
+      </div>
+
+      {/* Body */}
+      <div style={{ padding: "16px 14px", flex: 1 }}>
+        {/* HOST suggestion chip */}
+        {suggested !== null && (
+          <button
+            onClick={() => setMinutes(suggested)}
+            style={{
+              width: "100%", padding: "8px 12px", borderRadius: 10, cursor: "pointer",
+              marginBottom: 14,
+              background: minutes === suggested ? "rgba(251,191,36,0.18)" : "rgba(251,191,36,0.07)",
+              border: `1.5px solid ${minutes === suggested ? "rgba(251,191,36,0.65)" : "rgba(251,191,36,0.22)"}`,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+            }}
+          >
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(251,191,36,0.75)" }}>
+              HOST Suggestion
+            </span>
+            <span style={{ fontSize: 22, fontWeight: 700, color: minutes === suggested ? "rgba(255,240,180,0.97)" : "rgba(255,220,140,0.75)" }}>
+              {suggested}<span style={{ fontSize: 11, fontWeight: 500, marginLeft: 3, color: "rgba(251,191,36,0.55)" }}>min</span>
+            </span>
+          </button>
+        )}
+
+        {/* Stepper */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
+          <button
+            onClick={() => setMinutes(m => Math.max(1, m - 1))}
+            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
+          >−</button>
+          <div style={{ textAlign: "center" }}>
+            <span style={{ fontSize: 60, fontWeight: 200, lineHeight: 1, color: "rgba(var(--cream),0.95)", fontVariantNumeric: "tabular-nums" }}>
+              {minutes}
+            </span>
+            <span style={{ display: "block", fontSize: 11, marginTop: 2, color: "rgba(var(--warm),0.40)" }}>min</span>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: C.muted, fontSize: 20, cursor: "pointer" }}>✕</button>
+          <button
+            onClick={() => setMinutes(m => Math.min(120, m + 1))}
+            style={{ width: 52, height: 52, borderRadius: "50%", border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)", fontSize: 26, fontWeight: 300, cursor: "pointer" }}
+          >+</button>
         </div>
 
-        {table.status === "occupied" ? (
-          <button onClick={clearTable} disabled={busy}
-            style={{ width: "100%", padding: "14px 0", borderRadius: 12, border: `1px solid ${C.redBorder}`,
-              background: C.redBg, color: C.red, fontSize: 15, fontWeight: 700, cursor: "pointer", marginTop: 8 }}>
-            {busy ? "Clearing…" : "✓ Clear Table"}
+        {/* Preset grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 20 }}>
+          {PRESETS.map(p => (
+            <button
+              key={p}
+              onClick={() => setMinutes(p)}
+              style={{
+                height: 64, borderRadius: 14, cursor: "pointer",
+                background: minutes === p ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.05)",
+                border: `1.5px solid ${minutes === p ? "rgba(var(--accent),0.55)" : "rgba(var(--accent),0.11)"}`,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+              }}
+            >
+              <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)" }}>
+                {p}
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.10em", color: minutes === p ? "rgba(var(--warm),0.60)" : "rgba(var(--accent),0.30)" }}>
+                MIN
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Confirm button */}
+        <button
+          onClick={save}
+          disabled={saving}
+          style={{
+            width: "100%", borderRadius: 14, fontWeight: 900, letterSpacing: "0.15em",
+            textTransform: "uppercase", fontSize: 15, padding: "18px 0",
+            background: "#22c55e", color: "white", border: "none", cursor: "pointer",
+            opacity: saving ? 0.4 : 1,
+          }}
+        >
+          {saving ? "Saving…" : "Set Wait Time"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Guest Edit Modal ────────────────────────────────────────────────────────────
+
+function GuestEditModal({
+  entry, displayWait, sidebarW, onClose, onSaved, onRemoved,
+}: {
+  entry: QueueEntry
+  displayWait: number
+  sidebarW: number
+  onClose: () => void
+  onSaved: () => void
+  onRemoved: () => void
+}) {
+  const [minutes,   setMinutes]   = useState(displayWait || entry.quoted_wait || entry.wait_estimate || 15)
+  const [partySize, setPartySize] = useState(entry.party_size)
+  const [phone,     setPhone]     = useState(entry.phone ?? "")
+  const [notes,     setNotes]     = useState(entry.notes ?? "")
+  const [saving,    setSaving]    = useState(false)
+  const [removing,  setRemoving]  = useState(false)
+  const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const r = await fetchT(`${API}/queue/${entry.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quoted_wait: minutes, party_size: partySize, phone: phone.trim() || null, notes: notes.trim() || null }),
+      })
+      if (!r.ok) throw new Error("server")
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && e.name === "AbortError"
+      showToast(isTimeout ? "Request timed out — try again." : "Could not save changes.", "err")
+      setSaving(false)
+      return   // Don't close modal on error
+    }
+    setSaving(false)
+    onSaved()
+    onClose()
+  }
+
+  const remove = async () => {
+    setRemoving(true)
+    try {
+      const r = await fetchT(`${API}/queue/${entry.id}/remove`, { method: "POST" })
+      if (!r.ok) throw new Error()
+    } catch {
+      showToast("Could not remove guest.", "err")
+      setRemoving(false)
+      return   // Don't close modal on error
+    }
+    addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(entry.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" })
+    setRemoving(false)
+    onRemoved()
+    onClose()
+  }
+
+  return (
+    <div style={{
+      position: "fixed", top: 48, left: 0, bottom: 0,
+      width: sidebarW, zIndex: 48,
+      background: "var(--card-bg)",
+      borderTop: "1px solid rgba(251,191,36,0.28)",
+      borderRight: "1px solid rgba(var(--accent),0.14)",
+      display: "flex", flexDirection: "column",
+      overflowY: "hidden",
+    }}>
+      {/* Scrollable content */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px 28px" }}>
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase" style={{ color: "rgba(var(--warm),0.40)" }}>Edit Guest</p>
+            <p className="text-lg font-semibold leading-tight" style={{ color: "rgba(var(--cream),0.95)" }}>{entry.name || "Guest"}</p>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-95 hover:brightness-125" style={{ color: "rgba(var(--warm),0.50)", border: "1px solid rgba(var(--accent),0.20)", background: "rgba(var(--accent),0.06)" }}>
+            <X className="w-4 h-4" />
           </button>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
-            {waiting.length > 0 && (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>
-                  Seat from queue
-                </div>
-                {waiting.slice(0, 5).map(q => (
-                  <button key={q.id} onClick={() => seatFromQueue(q.id)} disabled={busy}
-                    style={{ padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.border}`,
-                      background: C.surface2, color: C.text, fontSize: 14, cursor: "pointer",
-                      textAlign: "left", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontWeight: 600 }}>{q.name}</span>
-                    <span style={{ color: C.text2, fontSize: 12 }}>Party of {q.party_size} · {timeAgo(q.arrival_time)}</span>
-                  </button>
-                ))}
-                <div style={{ height: 1, background: C.border, margin: "4px 0" }} />
-              </>
+        </div>
+
+
+          {/* ── Set estimate ── */}
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-3" style={{ color: "rgba(var(--warm),0.45)" }}>Set Wait Time</p>
+          <div className="flex items-center justify-between mb-4 px-2">
+            <button onClick={() => setMinutes(m => Math.max(1, m - 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}>−</button>
+            <div className="text-center">
+              <span className="text-6xl font-extralight tabular-nums leading-none" style={{ color: "rgba(var(--cream),0.95)" }}>{minutes}</span>
+              <span className="text-sm ml-2" style={{ color: "rgba(var(--warm),0.40)" }}>min</span>
+            </div>
+            <button onClick={() => setMinutes(m => Math.min(120, m + 1))} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-light transition-all active:scale-95 hover:brightness-125" style={{ border: "1.5px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.7)", background: "rgba(var(--accent),0.06)" }}>+</button>
+          </div>
+          {/* Presets */}
+          <div className="grid grid-cols-6 gap-2 mb-5">
+            {PRESETS.map(p => (
+              <button key={p} onClick={() => setMinutes(p)} className="flex flex-col items-center justify-center rounded-xl transition-all active:scale-95" style={{ height: 52, background: minutes === p ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.05)", border: `1px solid ${minutes === p ? "rgba(var(--accent),0.50)" : "rgba(var(--accent),0.10)"}` }}>
+                <span style={{ fontSize: 17, fontWeight: 700, lineHeight: 1, color: minutes === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)" }}>{p}</span>
+                <span style={{ fontSize: 9, letterSpacing: "0.05em", color: minutes === p ? "rgba(var(--warm),0.55)" : "rgba(var(--accent),0.28)", marginTop: 2 }}>min</span>
+              </button>
+            ))}
+          </div>
+
+          {/* ── Party size ── */}
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(var(--warm),0.45)" }}>Party Size</p>
+          <div className="flex items-center rounded-xl mb-4" style={{ background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", padding: "0 12px", height: 56 }}>
+            <button onClick={() => setPartySize(p => Math.max(1, p - 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(var(--warm),0.7)" }}>−</button>
+            <span className="flex-1 text-center text-2xl font-light tabular-nums" style={{ color: "rgba(var(--cream),0.95)" }}>{partySize}</span>
+            <button onClick={() => setPartySize(p => Math.min(20, p + 1))} className="w-10 h-10 flex items-center justify-center rounded-lg text-2xl transition-all active:scale-95" style={{ color: "rgba(var(--warm),0.7)" }}>+</button>
+          </div>
+
+          {/* ── Phone ── */}
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(var(--warm),0.45)" }}>Phone <span style={{ color: "rgba(var(--warm),0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+          <input
+            type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))}
+            placeholder="(555) 000-0000"
+            className="w-full rounded-xl outline-none mb-4"
+            style={{ background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
+          />
+
+          {/* ── Notes ── */}
+          <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(var(--warm),0.45)" }}>Notes <span style={{ color: "rgba(var(--warm),0.25)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
+          <input
+            type="text" value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="Allergies, preferences, special occasion…"
+            className="w-full rounded-xl outline-none mb-5"
+            style={{ background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
+          />
+
+          {/* ── Save ── */}
+          <button onClick={save} disabled={saving} className="w-full rounded-xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 15, padding: "18px 0" }}>
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+
+          {/* ── Remove ── */}
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(239,68,68,0.10)" }}>
+            <button
+              onClick={remove}
+              disabled={removing}
+              className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] disabled:opacity-40"
+              style={{ background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.70)", border: "1px solid rgba(239,68,68,0.18)", fontSize: 14, padding: "18px 0" }}
+            >
+              {removing ? "Removing…" : "Remove from Waitlist"}
+            </button>
+          </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Draggable Queue Card ───────────────────────────────────────────────────────
+
+function DraggableQueueCard({
+  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved,
+}: {
+  entry: QueueEntry
+  onSeat: () => void
+  onNotify: () => void
+  isSelected?: boolean
+  onSelect?: () => void
+  onEdit?: (displayWait: number) => void
+  onRemoved?: () => void
+}) {
+  const isReady = entry.status === "ready"
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [removing,      setRemoving]      = useState(false)
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: entry.id,
+    data: { entry },
+  })
+
+  const handleRemove = async () => {
+    setRemoving(true)
+    onRemoved?.()  // optimistic: remove from UI immediately
+    try { await fetch(`${API}/queue/${entry.id}/remove`, { method: "POST" }) } catch {}
+    setRemoving(false)
+  }
+
+  // Per-card live countdown — driven by wait_set_at + quoted_wait for sub-minute accuracy,
+  // falls back to remaining_wait / wait_estimate when those are absent.
+  // secsLeft: seconds remaining (negative = overdue). Matches analog's deadlineMs logic.
+  const computeSecsLeft = useCallback(() => {
+    if (entry.paused) {
+      // paused: use remaining_wait as frozen minutes
+      return (entry.remaining_wait ?? 0) * 60
+    }
+    if (entry.wait_set_at && entry.quoted_wait != null) {
+      const deadlineMs = (parseUTCMs(entry.wait_set_at) ?? 0) + entry.quoted_wait * 60_000
+      return Math.round((deadlineMs - Date.now()) / 1000)
+    }
+    return (entry.remaining_wait ?? entry.wait_estimate ?? 0) * 60
+  }, [entry.paused, entry.wait_set_at, entry.quoted_wait, entry.remaining_wait, entry.wait_estimate])
+
+  const [secsLeft, setSecsLeft] = useState(computeSecsLeft)
+  const [showBar,  setShowBar]  = useState(false)
+
+  useEffect(() => { setSecsLeft(computeSecsLeft()) },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entry.wait_set_at, entry.quoted_wait, entry.remaining_wait, entry.wait_estimate, entry.paused])
+
+  useEffect(() => {
+    if (entry.paused) return
+    const t = setInterval(() => setSecsLeft(computeSecsLeft()), 1000)
+    return () => clearInterval(t)
+  }, [computeSecsLeft, entry.paused])
+
+  const displayWait = Math.ceil(secsLeft / 60)
+  const quotedTotal = entry.quoted_wait ?? entry.wait_estimate ?? 0
+  // Progress 0→1 from start to deadline; clamp 0–1
+  const progress = quotedTotal > 0 ? Math.max(0, Math.min(1, 1 - secsLeft / (quotedTotal * 60))) : 0
+  const isOverdue = secsLeft <= 0 && quotedTotal > 0
+  const barColor  = isOverdue ? "#ef4444" : secsLeft < 120 ? "#f97316" : "#22c55e"
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      onClick={() => { if (!isDragging) onSelect?.() }}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.35 : 1,
+        touchAction: "none",
+        background: isSelected ? "rgba(255,220,100,0.09)" : isReady ? "rgba(34,197,94,0.10)" : "rgba(var(--accent),0.06)",
+        border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "rgba(var(--accent),0.16)"}`,
+        boxShadow: isSelected ? "0 0 0 2px rgba(255,220,100,0.18), inset 0 0 10px rgba(255,220,100,0.05)" : undefined,
+        borderRadius: 12,
+        cursor: isDragging ? "grabbing" : "grab",
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        padding: "10px 12px",
+      }}
+    >
+      {/* ── Row 1: grip + position + name ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(var(--warm),0.45)" }} />
+        <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "rgba(var(--accent),0.12)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
+          {entry.position ?? "—"}
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
+          <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(var(--cream),0.97)", wordBreak: "break-word" }}>
+            {entry.name || "Guest"}
+          </span>
+          {isReady && (
+            <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Row 2: meta info ── */}
+      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(var(--warm),0.65)" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+          <Users className="w-2.5 h-2.5" />{entry.party_size}p
+        </span>
+        <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
+        <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }} title="Time since arrival">
+          <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
+        </span>
+        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
+          <>
+            <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
+            <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
+              {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
+            </span>
+            {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
+            {/* Progress bar toggle */}
+            <button
+              onPointerDown={e => { e.stopPropagation() }}
+              onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
+              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "rgba(var(--accent),0.08)", border: `1px solid ${showBar ? barColor : "rgba(var(--accent),0.20)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
+              title={showBar ? "Hide timer bar" : "Show timer bar"}
+            >
+              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(var(--accent),0.35)" }} />
+            </button>
+          </>
+        )}
+      </div>
+      {/* ── Progress bar (shown when toggled) ── */}
+      {showBar && quotedTotal > 0 && !isReady && (
+        <div onPointerDown={e => e.stopPropagation()} style={{ paddingLeft: 38, paddingRight: 4 }}>
+          <div style={{ height: 4, borderRadius: 2, background: "rgba(var(--accent),0.10)", overflow: "hidden", position: "relative" }}>
+            <div style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: `${(progress * 100).toFixed(1)}%`,
+              background: barColor,
+              borderRadius: 2,
+              transition: "width 1s linear, background 0.3s",
+            }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "rgba(var(--accent),0.40)" }}>
+            <span>0</span>
+            <span style={{ color: isOverdue ? "#ef4444" : "rgba(var(--accent),0.40)" }}>
+              {isOverdue ? `${Math.abs(Math.ceil(secsLeft / 60))}m over` : `${displayWait}m left`}
+            </span>
+            <span>{quotedTotal}m</span>
+          </div>
+        </div>
+      )}
+      {/* ── Row 2b: notes preview ── */}
+      {entry.notes && (
+        <div style={{ paddingLeft: 38, fontSize: 11, color: "rgba(var(--warm),0.50)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {entry.notes}
+        </div>
+      )}
+
+
+      {/* ── Row 3: action buttons or delete confirm ── */}
+      {confirmDelete ? (
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
+          <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", textAlign: "center" }}>
+            Remove {entry.name || "guest"}?
+          </span>
+          <div style={{ display: "flex", gap: 5, width: "100%" }}>
+            <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
+              className="h-11 rounded-xl text-xs font-semibold transition-all active:scale-95"
+              style={{ flex: 1, minWidth: 0, background: "rgba(var(--accent),0.08)", color: "rgba(var(--warm),0.60)", border: "1px solid rgba(var(--accent),0.15)" }}>
+              Cancel
+            </button>
+            <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
+              className="h-11 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+              style={{ flex: 1, minWidth: 0, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
+              {removing ? "…" : "Remove"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Full-width action row — buttons stretch to fill the card */
+        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5, marginTop: 4 }}>
+          {/* Seat — primary, gets most space */}
+          <button onClick={e => { e.stopPropagation(); onSeat() }}
+            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-bold"
+            style={{ flex: 2, height: 44, fontSize: 13, letterSpacing: "0.04em", background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Seat
+          </button>
+          {/* Notify (only when not yet ready) */}
+          {!isReady ? (
+            <button onClick={e => { e.stopPropagation(); onNotify() }}
+              className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
+              style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.28)" }}>
+              <BellRing className="w-3.5 h-3.5 shrink-0" />
+              <span style={{ letterSpacing: "0.02em" }}>Notify</span>
+            </button>
+          ) : null}
+          {/* Edit */}
+          <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
+            style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(251,191,36,0.09)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.22)" }}>
+            <Pencil className="w-3.5 h-3.5 shrink-0" />
+            <span style={{ letterSpacing: "0.02em" }}>Edit</span>
+          </button>
+          {/* Remove */}
+          <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+            className="flex items-center justify-center rounded-xl transition-all active:scale-95"
+            style={{ width: 44, height: 44, flexShrink: 0, background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.18)" }}>
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Drag ghost (DragOverlay) ───────────────────────────────────────────────────
+
+function DragGhost({ entry }: { entry: QueueEntry }) {
+  return (
+    <div
+      style={{
+        background: "rgba(10,6,3,0.96)",
+        border: "1px solid rgba(var(--accent),0.22)",
+        borderRadius: 10,
+        padding: "9px 13px",
+        boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+        cursor: "grabbing",
+        minWidth: 130,
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 13, color: "rgba(var(--cream),0.92)" }}>
+        {entry.name || "Guest"}
+      </div>
+      <div style={{ fontSize: 11, color: "rgba(var(--warm),0.4)", marginTop: 3, display: "flex", alignItems: "center", gap: 4 }}>
+        <Users style={{ width: 10, height: 10 }} />
+        {entry.party_size} guests
+      </div>
+    </div>
+  )
+}
+
+// ── Droppable floor table ──────────────────────────────────────────────────────
+
+function DroppableFloorTable({
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onTableClick, reservation, now, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H,
+}: {
+  pos: FloorPos
+  table?: Table
+  occupant?: LocalOccupant
+  onClear?: () => void
+  isDraggingOccupant?: boolean
+  isSelectMode?: boolean
+  onSeatFromSelect?: () => void
+  onTableClick?: () => void
+  reservation?: ReservedTable
+  now?: Date
+  canvasW?: number
+  canvasH?: number
+}) {
+  const isOccupied       = !!occupant || (!!table && table.status !== "available")
+  const hasLocalOccupant = !!occupant
+  const noTable          = !table
+  const avail            = !isOccupied
+
+  // Time-based reservation states
+  const resMinutes    = (reservation && !isOccupied && now) ? getResMinutesUntil(reservation.time, now) : undefined
+  const isResLocked   = resMinutes !== undefined && resMinutes <= 0          // at/past reservation time → hard lock
+  const isResWarning  = resMinutes !== undefined && resMinutes > 0 && resMinutes <= 60 // within 1 hr → warn
+  const hasReservation = !!reservation && !isOccupied && resMinutes !== undefined && resMinutes > 0
+
+  // Locked tables block all drops; warning/far-future reserved tables allow walk-ins
+  const canReceiveDrop = isResLocked ? false : (isDraggingOccupant ? !hasLocalOccupant : !isOccupied)
+  // Locked tables cannot be select-mode targets
+  const isSelectTargetBase = !!isSelectMode && !isOccupied && !isResLocked
+
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `table-${pos.number}`,
+    disabled: !canReceiveDrop,
+  })
+
+  const {
+    setNodeRef: setDragRef,
+    listeners: dragListeners,
+    attributes: dragAttrs,
+    isDragging,
+  } = useDraggable({
+    id: `occupant-${pos.number}`,
+    data: { type: "occupant", tableNumber: pos.number, occupant },
+    disabled: !hasLocalOccupant,
+  })
+
+  const setNodeRef = useCallback((el: HTMLElement | null) => {
+    setDropRef(el)
+    setDragRef(el)
+  }, [setDropRef, setDragRef])
+
+  const isSelectTarget = isSelectTargetBase
+
+  const bg = isOver && canReceiveDrop
+    ? "rgba(34,197,94,0.55)"
+    : isResLocked
+    ? "rgba(239,68,68,0.18)"
+    : isResWarning
+    ? "rgba(249,115,22,0.15)"
+    : hasReservation
+    ? "rgba(251,191,36,0.16)"
+    : isSelectTarget
+    ? "rgba(34,197,94,0.38)"
+    : isOccupied ? "rgba(239,68,68,0.28)"
+    : noTable ? "rgba(255,255,255,0.07)"
+    : "rgba(34,197,94,0.22)"
+
+  const borderColor = isOver && canReceiveDrop
+    ? "#22c55e"
+    : isResLocked
+    ? "rgba(239,68,68,0.90)"
+    : isResWarning
+    ? "rgba(249,115,22,0.85)"
+    : hasReservation
+    ? "rgba(251,191,36,0.75)"
+    : isSelectTarget
+    ? "#4ade80"
+    : isOccupied ? "rgba(239,68,68,0.90)"
+    : noTable ? "rgba(255,255,255,0.32)"
+    : "rgba(34,197,94,0.82)"
+
+  const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...(hasLocalOccupant ? dragListeners : {})}
+      {...(hasLocalOccupant ? dragAttrs : {})}
+      style={{
+        position: "absolute",
+        left: `${(pos.x / cW * 100).toFixed(3)}%`,
+        top: `${(pos.y / cH * 100).toFixed(3)}%`,
+        width: `${(pos.w / cW * 100).toFixed(3)}%`,
+        height: `${(pos.h / cH * 100).toFixed(3)}%`,
+        borderRadius,
+        clipPath: pos.shape === "round" ? "circle(50%)" : undefined,
+        background: bg,
+        border: `1.5px solid ${borderColor}`,
+        boxShadow: isOver && canReceiveDrop
+          ? "0 0 0 4px rgba(34,197,94,0.35), inset 0 0 20px rgba(34,197,94,0.10)"
+          : isResLocked  ? "0 0 0 2px rgba(239,68,68,0.30), inset 0 0 14px rgba(239,68,68,0.12)"
+          : isResWarning ? "0 0 0 2px rgba(249,115,22,0.25), inset 0 0 12px rgba(249,115,22,0.08)"
+          : hasReservation ? "0 0 0 2px rgba(251,191,36,0.20), inset 0 0 12px rgba(251,191,36,0.06)"
+          : isOccupied ? "0 0 0 2px rgba(239,68,68,0.18), inset 0 0 12px rgba(239,68,68,0.08)"
+          : avail ? "0 0 0 2px rgba(34,197,94,0.18), inset 0 0 12px rgba(34,197,94,0.06)"
+          : "none",
+        transition: "border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 2,
+        overflow: "hidden",
+        cursor: hasLocalOccupant ? "grab" : isSelectTarget ? "pointer" : isOccupied && onClear ? "pointer" : avail && !isResLocked && onTableClick ? "pointer" : canReceiveDrop ? "copy" : "default",
+        opacity: isDragging ? 0.4 : 1,
+      }}
+      onClick={
+        isSelectTarget && onSeatFromSelect
+          ? onSeatFromSelect
+          : isOccupied && onClear && !hasLocalOccupant
+          ? onClear
+          : avail && !isResLocked && onTableClick
+          ? onTableClick
+          : undefined
+      }
+    >
+      {isOccupied && onClear ? (
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onClear() }}
+          style={{
+            position: "absolute",
+            top: pos.shape === "round" ? "18%" : 4,
+            right: pos.shape === "round" ? "18%" : 4,
+            width: 16, height: 16,
+            borderRadius: "50%",
+            background: "rgba(239,68,68,0.75)",
+            border: "none",
+            cursor: "pointer",
+            color: "rgba(255,255,255,0.95)",
+            fontSize: 11,
+            fontWeight: 900,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+            padding: 0,
+          }}
+          title="Clear table"
+        >
+          ×
+        </button>
+      ) : (
+        <div style={{
+          position: "absolute",
+          top: pos.shape === "round" ? "18%" : 7,
+          right: pos.shape === "round" ? "18%" : 7,
+          width: 6, height: 6,
+          borderRadius: "50%",
+          background: isResLocked ? "rgba(239,68,68,0.90)" : isResWarning ? "rgba(249,115,22,0.85)" : hasReservation ? "rgba(251,191,36,0.80)" : noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
+          opacity: 0.85,
+        }} />
+      )}
+
+      {isOver && canReceiveDrop ? (
+        <span style={{
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: "0.12em",
+          color: "rgba(34,197,94,0.9)",
+        }}>
+          DROP
+        </span>
+      ) : isResLocked ? (
+        <>
+          <span style={{ fontSize: 7, fontWeight: 900, letterSpacing: "0.12em", color: "rgba(239,68,68,0.85)", textTransform: "uppercase" }}>
+            LOCKED
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 10 : 8,
+            fontWeight: 700,
+            color: "rgba(255,180,180,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 3,
+            overflow: "hidden",
+          }}>
+            {reservation!.guestName.split(" ")[0]}
+          </span>
+          <span style={{ fontSize: 7, color: "rgba(239,68,68,0.80)" }}>
+            {fmt12Res(reservation!.time)}
+          </span>
+        </>
+      ) : isResWarning ? (
+        <>
+          <span style={{ fontSize: 7, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(249,115,22,0.75)", textTransform: "uppercase" }}>
+            ⚠ Soon
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 10 : 8,
+            fontWeight: 700,
+            color: "rgba(255,220,160,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 3,
+            overflow: "hidden",
+          }}>
+            {reservation!.guestName.split(" ")[0]}
+          </span>
+          <span style={{ fontSize: 7, color: "rgba(249,115,22,0.80)" }}>
+            {fmt12Res(reservation!.time)}
+          </span>
+        </>
+      ) : hasReservation ? (
+        <>
+          <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.12em", color: "rgba(251,191,36,0.60)", textTransform: "uppercase" }}>
+            Rsvd
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 11 : 9,
+            fontWeight: 700,
+            color: "rgba(255,228,150,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 3,
+            overflow: "hidden",
+          }}>
+            {reservation!.guestName.split(" ")[0]}
+          </span>
+          <span style={{ fontSize: 8, color: "rgba(251,191,36,0.75)" }}>
+            {fmt12Res(reservation!.time)}
+          </span>
+        </>
+      ) : occupant ? (
+        <>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(var(--warm),0.75)", letterSpacing: "0.1em" }}>
+            T{pos.number}
+          </span>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 11 : 10,
+            fontWeight: 700,
+            color: "rgba(255,240,220,0.97)",
+            textAlign: "center",
+            lineHeight: 1.2,
+            paddingInline: 4,
+          }}>
+            {occupant.name}
+          </span>
+          <span style={{ fontSize: 9, color: "rgba(var(--warm),0.70)" }}>
+            {occupant.party_size}p
+          </span>
+        </>
+      ) : table && table.status !== "available" ? (
+        <>
+          <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(239,68,68,0.95)" }}>
+            {pos.number}
+          </span>
+          <span style={{ fontSize: 9, color: "rgba(239,68,68,0.72)" }}>{table.capacity}p</span>
+        </>
+      ) : (
+        <>
+          <span style={{
+            fontSize: pos.shape === "rect" ? 17 : 14,
+            fontWeight: 800,
+            color: table ? "#22c55e" : "rgba(var(--warm),0.55)",
+          }}>
+            {pos.number}
+          </span>
+          {table && (
+            <span style={{ fontSize: 10, color: "rgba(34,197,94,0.90)" }}>
+              {table.capacity}p
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Floor map ──────────────────────────────────────────────────────────────────
+
+function FloorMap({
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onTableClick, reservedTables, now, floor, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H,
+}: {
+  tables: Table[]
+  localOccupants: Map<number, LocalOccupant>
+  onClear: (tableId: string | undefined, tableNumber: number) => void
+  isDraggingOccupant: boolean
+  selectedEntry?: QueueEntry | null
+  onSeatFromSelect?: (tableNumber: number, tableId: string | undefined) => void
+  onTableClick?: (tableId: string | undefined, tableNumber: number) => void
+  reservedTables?: Map<number, ReservedTable>
+  now?: Date
+  floor?: FloorPos[]
+  canvasW?: number
+  canvasH?: number
+}) {
+  const floorPlan = floor ?? []
+  const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
+
+  return (
+    <div
+      className="flex-1 relative overflow-hidden"
+      style={{ background: "var(--page-deep)" }}
+    >
+      <span style={{
+        position: "absolute",
+        top: 14,
+        left: 18,
+        fontSize: 9,
+        fontWeight: 800,
+        letterSpacing: "0.2em",
+        color: "rgba(var(--warm),0.45)",
+        textTransform: "uppercase",
+        zIndex: 1,
+        pointerEvents: "none",
+      }}>
+        Floor Plan
+      </span>
+
+      <div style={{
+        position: "absolute",
+        inset: "30px 16px 40px 16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+        <div style={{
+          position: "relative",
+          width: "100%",
+          aspectRatio: `${cW} / ${cH}`,
+          maxHeight: "100%",
+        }}>
+          {/* Tables */}
+          {floorPlan.map(pos => {
+            const table = tableByNumber.get(pos.number)
+            const occupant = localOccupants.get(pos.number)
+            return (
+              <DroppableFloorTable
+                key={pos.number}
+                pos={pos}
+                table={table}
+                occupant={occupant}
+                reservation={reservedTables?.get(pos.number)}
+                onClear={() => onClear(table?.id, pos.number)}
+                isDraggingOccupant={isDraggingOccupant}
+                isSelectMode={!!selectedEntry}
+                onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
+                onTableClick={onTableClick ? () => onTableClick(table?.id, pos.number) : undefined}
+                now={now}
+                canvasW={cW}
+                canvasH={cH}
+              />
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Hint text */}
+      <div style={{
+        position: "absolute",
+        bottom: 14,
+        left: "50%",
+        transform: "translateX(-50%)",
+        fontSize: 10,
+        color: "rgba(var(--warm),0.45)",
+        letterSpacing: "0.1em",
+        whiteSpace: "nowrap",
+        pointerEvents: "none",
+      }}>
+        Tap a guest to select · tap a table to seat · or drag directly
+      </div>
+    </div>
+  )
+}
+
+// ── Seat Table Picker ──────────────────────────────────────────────────────────
+
+function SeatTablePicker({
+  guest, tables, localOccupants, onConfirm, onClose,
+  reservedTables, excludeResId, mode = "seat", now, floor,
+}: {
+  guest: { name: string | null; party_size: number }
+  tables: Table[]
+  localOccupants: Map<number, LocalOccupant>
+  onConfirm: (tableNumber: number, tableId: string | undefined) => void
+  onClose: () => void
+  reservedTables?: Map<number, ReservedTable>
+  excludeResId?: string   // allow re-selecting the table already held by this reservation
+  mode?: "seat" | "reserve"
+  now?: Date
+  floor?: FloorPos[]
+}) {
+  const floorPlan = floor ?? []
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-6"
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.09)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(var(--accent),0.12)" }} />
+
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+            {mode === "reserve" ? "Reserve Table" : "Seat Guest"}
+          </span>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(var(--warm),0.25)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="text-xs mb-6" style={{ color: "rgba(var(--warm),0.3)" }}>
+          {guest.name || "Guest"} · {guest.party_size}p —{" "}
+          {mode === "reserve" ? "choose a table to hold" : "choose a table"}
+        </p>
+
+        <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
+          {floorPlan.map(pos => {
+            const t = tables.find(t => t.table_number === pos.number)
+            // Occupied: either in-memory occupant map or DB status
+            const isOccupied = localOccupants.has(pos.number) || t?.status === "occupied"
+
+            // Reservation logic
+            const resInfo = reservedTables?.get(pos.number)
+            const hasOtherRes = !!(resInfo && resInfo.resId !== excludeResId)
+            let isResLocked = false
+            let isResWarn   = false
+            if (hasOtherRes) {
+              if (mode === "seat" && now) {
+                const mins = getResMinutesUntil(resInfo!.time, now)
+                if (mins <= 0) isResLocked = true
+                else if (mins <= 60) isResWarn = true
+                else isResLocked = true  // far future — block
+              } else {
+                isResLocked = true
+              }
+            }
+
+            const isBlocked  = isOccupied || isResLocked
+
+            // Colour scheme
+            const bg     = isOccupied   ? "rgba(239,68,68,0.10)"
+                         : isResWarn    ? "rgba(249,115,22,0.10)"
+                         : "rgba(34,197,94,0.07)"
+            const border = isOccupied   ? "rgba(239,68,68,0.45)"
+                         : isResWarn    ? "rgba(249,115,22,0.40)"
+                         : "rgba(34,197,94,0.25)"
+            const color  = isOccupied   ? "rgba(239,68,68,0.9)"
+                         : isResWarn    ? "rgba(249,115,22,0.9)"
+                         : "rgba(34,197,94,0.9)"
+            const subColor = isOccupied ? "rgba(239,68,68,0.5)"
+                           : isResWarn  ? "rgba(249,115,22,0.35)"
+                           : "rgba(34,197,94,0.3)"
+
+            return (
+              <button
+                key={pos.number}
+                disabled={isBlocked}
+                onClick={() => !isBlocked && onConfirm(pos.number, t?.id)}
+                className="flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all active:scale-95"
+                style={{
+                  background: bg,
+                  border: `1px solid ${border}`,
+                  opacity: isResLocked && !isOccupied ? 0.45 : 1,
+                  cursor: isBlocked ? "default" : "pointer",
+                }}
+              >
+                <span className="text-xl font-bold" style={{ color }}>
+                  {pos.number}
+                </span>
+                {isOccupied ? (
+                  <span className="text-[9px] font-bold" style={{ color: subColor }}>occupied</span>
+                ) : isResWarn ? (
+                  <span className="text-[9px] font-bold text-center leading-tight" style={{ color: subColor }}>
+                    ⚠ {fmt12Res(resInfo!.time)}
+                  </span>
+                ) : isResLocked ? (
+                  <span className="text-[9px] font-bold" style={{ color: subColor }}>reserved</span>
+                ) : t ? (
+                  <span className="text-[10px]" style={{ color: subColor }}>{t.capacity}p</span>
+                ) : null}
+                <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: subColor }}>
+                  {pos.section}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full mt-5 py-3 rounded-xl text-xs font-bold tracking-[0.1em] uppercase"
+          style={{ background: "rgba(var(--accent),0.05)", color: "rgba(var(--warm),0.35)", border: "1px solid rgba(var(--accent),0.07)" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Add Guest Drawer ───────────────────────────────────────────────────────────
+// Renders as a panel covering only the sidebar — floor map stays fully interactive.
+
+function AddGuestDrawer({
+  onClose, onAdded, sidebarW, rid,
+}: {
+  onClose: () => void
+  onAdded: (entryId: string) => void
+  sidebarW: number
+  rid: string
+}) {
+  const [name,      setName]      = useState("")
+  const [partySize, setPartySize] = useState(2)
+  const [phone,     setPhone]     = useState("")
+  const [notes,     setNotes]     = useState("")
+  const [waitMins,  setWaitMins]  = useState<number | null>(null)
+  const [loading,   setLoading]   = useState(false)
+  const [error,     setError]     = useState("")
+  const PRESETS = [5, 10, 15, 20, 30, 45]
+
+  const [bottomOffset, setBottomOffset] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      setBottomOffset(offset)
+    }
+    vv.addEventListener("resize", update)
+    vv.addEventListener("scroll", update)
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update) }
+  }, [])
+
+  // Recompute suggestion when party size changes; pre-select it if nothing chosen yet
+  const suggestion = suggestWait(partySize)
+  const needed     = samplesNeeded()
+  useEffect(() => {
+    if (suggestion !== null) setWaitMins(suggestion)
+    else setWaitMins(null)
+  }, [partySize, suggestion])
+
+  const submit = async () => {
+    setLoading(true); setError("")
+    try {
+      const r = await fetch(`${API}/queue/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name:          name.trim() || null,
+          party_size:    partySize,
+          phone:         phone.trim() || null,
+          notes:         notes.trim() || null,
+          preference:    "asap",
+          source:        "host",
+          restaurant_id: rid,
+        }),
+      })
+      if (!r.ok) throw new Error()
+      const data = await r.json()
+      const entryId = data.entry?.id ?? ""
+      // Apply wait immediately if one was selected
+      if (waitMins && entryId) {
+        await fetchT(`${API}/queue/${entryId}/wait?minutes=${waitMins}`, { method: "PATCH" }).catch(() => {})
+        showToast(`${name.trim() || "Guest"} added · ${waitMins}m wait set`, "ok")
+      } else {
+        showToast(`${name.trim() || "Guest"} added to queue`, "ok")
+      }
+      onAdded(entryId)
+    } catch {
+      setError("Could not add guest — try again.")
+      setLoading(false)
+    }
+  }
+
+  return (
+    /* Panel covers the sidebar only — floor map stays live behind it */
+    <div
+      style={{
+        position: "fixed",
+        top: 48,        // below header
+        left: 0,
+        bottom: bottomOffset,
+        width: sidebarW,
+        zIndex: 45,
+        background: "var(--page-bg)",
+        borderTop: "1px solid rgba(var(--accent),0.22)",
+        borderRight: "1px solid rgba(var(--accent),0.18)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px 10px", borderBottom: "1px solid rgba(var(--accent),0.12)", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,240,220,0.88)" }}>
+          Add Guest
+        </span>
+        <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "1px solid rgba(var(--accent),0.14)", cursor: "pointer", color: "rgba(var(--warm),0.45)" }}>
+          <X style={{ width: 14, height: 14 }} />
+        </button>
+      </div>
+
+      {/* ── Scrollable form body ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "14px 14px 0" }}>
+
+        {/* Party Size */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 8 }}>Party Size</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, padding: "0 4px" }}>
+          <button onClick={() => setPartySize(p => Math.max(1, p - 1))}
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.20)", color: "rgba(var(--warm),0.7)", cursor: "pointer" }}>−</button>
+          <span style={{ fontSize: 62, fontWeight: 200, color: "rgba(var(--cream),0.95)", letterSpacing: "-0.02em", lineHeight: 1, minWidth: 60, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+            {partySize}
+          </span>
+          <button onClick={() => setPartySize(p => Math.min(20, p + 1))}
+            style={{ width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 300, background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.20)", color: "rgba(var(--warm),0.7)", cursor: "pointer" }}>+</button>
+        </div>
+
+        {/* Name */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 6 }}>Name</p>
+        <input
+          type="text" value={name} onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && submit()} placeholder="Guest name" autoFocus
+          style={{ width: "100%", background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", borderRadius: 12, color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 12, outline: "none", boxSizing: "border-box" }}
+        />
+
+        {/* Phone */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 6 }}>
+          Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(var(--warm),0.28)" }}>— opt.</span>
+        </p>
+        <input
+          type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))}
+          onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
+          style={{ width: "100%", background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", borderRadius: 12, color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+        />
+
+        {/* Notes */}
+        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 6 }}>
+          Notes <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "rgba(var(--warm),0.28)" }}>— opt.</span>
+        </p>
+        <input
+          type="text" value={notes} onChange={e => setNotes(e.target.value)}
+          placeholder="Allergies, preferences, occasion…"
+          style={{ width: "100%", background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", borderRadius: 12, color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
+        />
+
+        {/* ── Quote Wait Time ── */}
+        <div style={{ borderTop: "1px solid rgba(var(--accent),0.12)", paddingTop: 12, marginBottom: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", margin: 0 }}>
+              Quote Wait
+            </p>
+            {waitMins !== null && (
+              <button
+                onClick={() => setWaitMins(null)}
+                style={{ fontSize: 9, color: "rgba(var(--warm),0.30)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              >
+                skip →
+              </button>
             )}
-            <button onClick={() => setShowAdd(true)}
-              style={{ padding: "13px 0", borderRadius: 12, border: "none",
-                background: C.accent, color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-              + Walk-in at This Table
+          </div>
+
+          {/* HOST suggestion chip — only shows after enough data */}
+          {suggestion !== null && (
+            <div style={{ marginBottom: 10 }}>
+              <button
+                onClick={() => setWaitMins(suggestion)}
+                style={{
+                  width: "100%", padding: "8px 10px", borderRadius: 10, cursor: "pointer",
+                  background: waitMins === suggestion ? "rgba(251,191,36,0.18)" : "rgba(251,191,36,0.07)",
+                  border: `1.5px solid ${waitMins === suggestion ? "rgba(251,191,36,0.65)" : "rgba(251,191,36,0.22)"}`,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  transition: "all 0.12s",
+                }}
+              >
+                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(251,191,36,0.75)" }}>
+                  HOST Suggestion
+                </span>
+                <span style={{ fontSize: 22, fontWeight: 700, color: waitMins === suggestion ? "rgba(255,240,180,0.97)" : "rgba(255,220,140,0.75)", letterSpacing: "-0.02em" }}>
+                  {suggestion}<span style={{ fontSize: 11, fontWeight: 500, marginLeft: 3, color: "rgba(251,191,36,0.55)" }}>min</span>
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Presets */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 4, marginBottom: 10 }}>
+            {PRESETS.map(p => (
+              <button key={p} onClick={() => setWaitMins(p)}
+                style={{
+                  height: 34, borderRadius: 8, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  background: waitMins === p ? "rgba(var(--accent),0.18)" : "rgba(var(--accent),0.05)",
+                  border: `1px solid ${waitMins === p ? "rgba(var(--accent),0.55)" : "rgba(var(--accent),0.12)"}`,
+                  cursor: "pointer", transition: "all 0.1s",
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1, color: waitMins === p ? "rgba(255,230,190,0.97)" : "rgba(var(--warm),0.50)" }}>{p}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Fine-tune stepper */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
+            <button onClick={() => setWaitMins(m => Math.max(1, (m ?? 15) - 1))}
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--warm),0.7)", cursor: "pointer", fontSize: 16 }}>−</button>
+            <span style={{ fontSize: 28, fontWeight: 700, color: waitMins !== null ? "rgba(var(--cream),0.95)" : "rgba(var(--warm),0.25)", letterSpacing: "-0.02em", minWidth: 50, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+              {waitMins ?? "—"}
+            </span>
+            <button onClick={() => setWaitMins(m => Math.min(120, (m ?? 14) + 1))}
+              style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--warm),0.7)", cursor: "pointer", fontSize: 16 }}>+</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Footer: error + submit ── */}
+      <div style={{ padding: "10px 14px 14px", borderTop: "1px solid rgba(var(--accent),0.10)", flexShrink: 0 }}>
+        {error && <p style={{ fontSize: 11, color: "rgba(248,113,113,0.90)", textAlign: "center", marginBottom: 8 }}>{error}</p>}
+        <button onClick={submit} disabled={loading}
+          style={{
+            width: "100%", height: 48, borderRadius: 14, border: "none", cursor: loading ? "default" : "pointer",
+            background: loading ? "rgba(var(--accent),0.08)" : "#22c55e",
+            color: "white", fontSize: 13, fontWeight: 900, letterSpacing: "0.12em", textTransform: "uppercase",
+            opacity: loading ? 0.5 : 1, transition: "opacity 0.12s",
+          }}
+        >
+          {loading ? "Adding…" : waitMins ? `Add · ${waitMins}m wait` : "Add to Queue"}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Table click modal ──────────────────────────────────────────────────────────
+
+function TableClickModal({
+  tableNumber, tableId, waitingGuests, onSeatExisting, onAddNew, onClose,
+}: {
+  tableNumber: number
+  tableId: string | undefined
+  waitingGuests: QueueEntry[]
+  onSeatExisting: (entry: QueueEntry) => void
+  onAddNew: (name: string, partySize: number, phone: string) => void
+  onClose: () => void
+}) {
+  const [mode, setMode] = useState<"pick" | "add">(waitingGuests.length > 0 ? "pick" : "add")
+  const [name,      setName]      = useState("")
+  const [partySize, setPartySize] = useState(2)
+  const [phone,     setPhone]     = useState("")
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-6"
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.14)", zIndex: 1 }}
+      >
+        <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(var(--accent),0.12)" }} />
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: "rgba(255,240,220,0.88)" }}>
+            Table {tableNumber}
+          </p>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: "rgba(var(--warm),0.25)" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Mode toggle */}
+        <div className="flex gap-2 mb-5">
+          <button
+            onClick={() => setMode("pick")}
+            className="flex-1 rounded-2xl font-bold transition-all active:scale-[0.98]"
+            style={{
+              padding: "14px 0",
+              fontSize: 14,
+              background: mode === "pick" ? "rgba(var(--accent),0.16)" : "rgba(var(--accent),0.04)",
+              border: `1px solid ${mode === "pick" ? "rgba(var(--accent),0.50)" : "rgba(var(--accent),0.10)"}`,
+              color: mode === "pick" ? "rgba(255,220,160,0.97)" : "rgba(var(--warm),0.35)",
+            }}
+          >
+            Waiting Guest {waitingGuests.length > 0 && `(${waitingGuests.length})`}
+          </button>
+          <button
+            onClick={() => setMode("add")}
+            className="flex-1 rounded-2xl font-bold transition-all active:scale-[0.98]"
+            style={{
+              padding: "14px 0",
+              fontSize: 14,
+              background: mode === "add" ? "rgba(34,197,94,0.16)" : "rgba(34,197,94,0.04)",
+              border: `1px solid ${mode === "add" ? "rgba(34,197,94,0.50)" : "rgba(34,197,94,0.10)"}`,
+              color: mode === "add" ? "rgba(100,240,160,0.97)" : "rgba(100,200,130,0.35)",
+            }}
+          >
+            New Walk-in
+          </button>
+        </div>
+
+        {mode === "pick" ? (
+          waitingGuests.length === 0 ? (
+            <p className="text-sm py-8 text-center" style={{ color: "rgba(var(--warm),0.40)" }}>
+              No guests waiting — add a new walk-in instead
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2.5 max-h-72 overflow-y-auto">
+              {waitingGuests.map(entry => (
+                <button
+                  key={entry.id}
+                  onClick={() => onSeatExisting(entry)}
+                  className="flex items-center justify-between rounded-2xl text-left transition-all hover:brightness-125 active:scale-[0.98]"
+                  style={{
+                    padding: "16px 18px",
+                    background: entry.status === "ready" ? "rgba(34,197,94,0.10)" : "rgba(var(--accent),0.07)",
+                    border: `1px solid ${entry.status === "ready" ? "rgba(34,197,94,0.35)" : "rgba(var(--accent),0.16)"}`,
+                  }}
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold truncate" style={{ fontSize: 16, color: "rgba(var(--cream),0.95)" }}>{entry.name || "Guest"}</p>
+                    <p className="mt-1" style={{ fontSize: 13, color: "rgba(var(--warm),0.55)" }}>
+                      {entry.party_size}p{entry.quoted_wait ? ` · ${entry.quoted_wait}m quoted` : ""}
+                    </p>
+                  </div>
+                  {entry.status === "ready"
+                    ? <span className="text-xs font-black ml-3 shrink-0 px-2 py-1 rounded-lg" style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e" }}>READY</span>
+                    : <span style={{ fontSize: 20, color: "rgba(var(--accent),0.30)", marginLeft: 12 }}>›</span>
+                  }
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="flex flex-col gap-3">
+            <input
+              placeholder="Guest name (optional)"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full rounded-2xl outline-none"
+              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--cream),0.92)" }}
+            />
+            <div className="flex items-center gap-3 rounded-2xl px-4" style={{ background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.16)", padding: "10px 16px" }}>
+              <span className="text-sm font-bold shrink-0" style={{ color: "rgba(var(--warm),0.65)" }}>Party size</span>
+              <div className="flex items-center gap-3 ml-auto">
+                <button
+                  onClick={() => setPartySize(p => Math.max(1, p - 1))}
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
+                  style={{ background: "rgba(var(--accent),0.10)", border: "1px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.80)" }}
+                >−</button>
+                <span className="w-8 text-center font-bold tabular-nums" style={{ fontSize: 18, color: "rgba(var(--cream),0.95)" }}>{partySize}</span>
+                <button
+                  onClick={() => setPartySize(p => p + 1)}
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-xl font-bold"
+                  style={{ background: "rgba(var(--accent),0.10)", border: "1px solid rgba(var(--accent),0.22)", color: "rgba(var(--warm),0.80)" }}
+                >+</button>
+              </div>
+            </div>
+            <input
+              placeholder="Phone (optional)"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              type="tel"
+              className="w-full rounded-2xl outline-none"
+              style={{ padding: "16px 18px", fontSize: 15, background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--cream),0.92)" }}
+            />
+            <button
+              onClick={() => onAddNew(name.trim(), partySize, phone.trim())}
+              className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125 mt-1"
+              style={{ fontSize: 17, padding: "22px 0", background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}
+            >
+              Seat at Table {tableNumber}
             </button>
           </div>
         )}
@@ -303,495 +1832,1787 @@ function TableModal({ table, queue, rid, onClose, onDone }: {
   )
 }
 
-// ── Visual Floor Map ──────────────────────────────────────────────────────────
-function FloorMap({ positions, liveTables, onTableClick }: {
-  positions:   FloorPos[]
-  liveTables:  LiveTable[]
-  onTableClick: (t: LiveTable | null, pos: FloorPos) => void
-}) {
-  // Build a lookup: table_number → live table record
-  const liveByNumber: Record<number, LiveTable> = {}
-  liveTables.forEach(t => { liveByNumber[t.table_number] = t })
+// ── Toast renderer ─────────────────────────────────────────────────────────────
 
-  if (positions.length === 0) {
-    return (
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-        color: C.muted, fontSize: 14, textAlign: "center", padding: 40 }}>
-        <div>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>🗺</div>
-          No floor plan configured.<br />Add one in Owner Console → Floor Map.
+function Toasts({ items }: { items: ToastItem[] }) {
+  if (!items.length) return null
+  return (
+    <div style={{ position: "fixed", bottom: 108, right: 24, zIndex: 300, display: "flex", flexDirection: "column", gap: 7, alignItems: "flex-end", pointerEvents: "none" }}>
+      {items.map(t => (
+        <div key={t.id} style={{
+          padding: "9px 16px",
+          borderRadius: 10,
+          background: t.type === "ok"  ? "rgba(34,197,94,0.16)"  : t.type === "err" ? "rgba(239,68,68,0.18)"  : "rgba(251,191,36,0.14)",
+          border:     `1px solid ${t.type === "ok" ? "rgba(34,197,94,0.48)" : t.type === "err" ? "rgba(239,68,68,0.48)" : "rgba(251,191,36,0.48)"}`,
+          backdropFilter: "blur(12px)",
+          color:  t.type === "ok" ? "#22c55e" : t.type === "err" ? "#f87171" : "#fbbf24",
+          fontSize: 12, fontWeight: 600,
+          maxWidth: 300,
+          boxShadow: "0 4px 18px rgba(0,0,0,0.40)",
+        }}>
+          {t.msg}
         </div>
-      </div>
-    )
+      ))}
+    </div>
+  )
+}
+
+// ── History Drawer ─────────────────────────────────────────────────────────────
+
+interface HistoryEntry {
+  id: string
+  name: string
+  party_size: number
+  status: "seated" | "removed"
+  arrival_time: string
+  quoted_wait: number | null
+  phone: string | null
+  notes: string | null
+}
+
+function HistoryDrawer({ onClose, onRestored, rid: histRid }: { onClose: () => void; onRestored: () => void; rid: string }) {
+  const [tab,       setTab]       = useState<"today" | "stats">("today")
+  const [entries,   setEntries]   = useState<HistoryEntry[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [restoring, setRestoring] = useState<string | null>(null)
+
+  // Local seating history for stats (localStorage)
+  const hist = getHistory()
+  const todayMs = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime() })()
+  const todayHist = hist.filter(r => r.seated_at >= todayMs)
+  const avgQuoted = hist.length ? Math.round(hist.reduce((a, r) => a + r.quoted_wait, 0) / hist.length) : null
+  const avgActual = hist.length ? Math.round(hist.reduce((a, r) => a + r.actual_wait_min, 0) / hist.length) : null
+  const hourCounts: Record<number, number> = {}
+  hist.forEach(r => { hourCounts[r.hour_of_day] = (hourCounts[r.hour_of_day] ?? 0) + 1 })
+  let busiestHour: number | null = null; let busiestCount = 0
+  for (const [h, c] of Object.entries(hourCounts)) { if (c > busiestCount) { busiestHour = Number(h); busiestCount = c } }
+  const fmtHour = (h: number) => `${h % 12 || 12}${h >= 12 ? "PM" : "AM"}`
+  const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 8]
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const r = await fetch(`${API}/queue/history?restaurant_id=${histRid}`)
+      if (r.ok) setEntries(await r.json())
+    } catch {}
+    setLoading(false)
+  }, [histRid])
+
+  useEffect(() => { load() }, [load])
+
+  const restore = async (entryId: string) => {
+    setRestoring(entryId)
+    try {
+      const r = await fetchT(`${API}/queue/${entryId}/restore`, { method: "POST" })
+      if (!r.ok) throw new Error()
+      setEntries(prev => prev.filter(e => e.id !== entryId))
+      onRestored()
+      showToast("Guest restored to waitlist", "ok")
+    } catch {
+      showToast("Could not restore guest.", "err")
+    }
+    setRestoring(null)
+  }
+
+  const fmtTime = (iso: string) => {
+    try {
+      const d = new Date(iso)
+      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+    } catch { return "—" }
   }
 
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative", overflow: "hidden",
-      background: "rgba(0,0,0,0.4)", borderRadius: 12, border: `1px solid ${C.border}` }}>
-      {positions.map(pos => {
-        const live    = liveByNumber[pos.number]
-        const isOcc   = live?.status === "occupied"
-        const label   = pos.label || String(pos.number)
-
-        // Center-based percentage positioning (wizard format)
-        const left   = `${pos.x - pos.w / 2}%`
-        const top    = `${pos.y - pos.h / 2}%`
-        const width  = `${pos.w}%`
-        const height = `${pos.h}%`
-
-        const shape = pos.shape === "circle" || pos.shape === "round" ? "50%"
-          : pos.shape === "diamond" ? "0"
-          : pos.shape === "booth"   ? "6px 6px 0 0"
-          : "8px"
-
-        const clipPath = pos.shape === "diamond"
-          ? "polygon(50% 0%,100% 50%,50% 100%,0% 50%)" : undefined
-
-        return (
-          <button key={pos.number} onClick={() => onTableClick(live ?? null, pos)}
-            title={isOcc ? `Table ${label} — ${live?.party_name || "Occupied"}` : `Table ${label} — Available`}
-            style={{
-              position: "absolute", left, top, width, height,
-              border: `2px solid ${isOcc ? C.red + "80" : C.green + "70"}`,
-              background: isOcc ? C.redBg : C.greenBg,
-              borderRadius: shape, clipPath,
-              cursor: "pointer",
-              display: "flex", flexDirection: "column",
-              alignItems: "center", justifyContent: "center",
-              transition: "filter 0.15s",
-              boxSizing: "border-box", padding: 2,
-            }}>
-            <span style={{ fontSize: "clamp(8px,1.4vw,13px)", fontWeight: 700,
-              color: C.text, lineHeight: 1, textAlign: "center" }}>
-              {label}
-            </span>
-            {isOcc && live?.party_name && (
-              <span style={{ fontSize: "clamp(6px,0.9vw,9px)", color: C.text2,
-                lineHeight: 1, marginTop: 2, overflow: "hidden",
-                maxWidth: "90%", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {live.party_name}
-              </span>
-            )}
+    <div className="fixed inset-0 z-[60] flex items-stretch sm:items-center justify-end">
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
+      <div
+        className="relative w-full sm:w-[400px] h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-2xl flex flex-col overflow-hidden"
+        style={{ background: "var(--card-bg)", border: "1px solid rgba(var(--accent),0.10)", zIndex: 1 }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div>
+            <p className="text-[10px] font-black tracking-[0.22em] uppercase mb-0.5" style={{ color: "rgba(255,255,255,0.22)" }}>
+              Host Log
+            </p>
+            <p className="text-lg font-bold" style={{ color: "rgba(255,255,255,0.92)" }}>History</p>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl" style={{ color: "rgba(255,255,255,0.35)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <X className="w-4 h-4" />
           </button>
-        )
-      })}
-    </div>
-  )
-}
+        </div>
 
-// ── Queue Card ────────────────────────────────────────────────────────────────
-function QueueCard({ entry, idx, onSeat, onReady, onRemove, busy }: {
-  entry:    QueueEntry
-  idx:      number
-  onSeat:   () => void
-  onReady:  () => void
-  onRemove: () => void
-  busy:     boolean
-}) {
-  const [exp, setExp] = useState(false)
-  const isReady = entry.status === "ready"
-  const sb      = sourceBadge(entry.source)
-  return (
-    <div style={{
-      background: isReady ? "rgba(251,191,36,0.06)" : C.surface,
-      border: `1px solid ${isReady ? C.yellowBorder : C.border}`,
-      borderRadius: 12, overflow: "hidden",
-    }}>
-      <div onClick={() => setExp(e => !e)}
-        style={{ display: "flex", alignItems: "center", padding: "12px 14px", gap: 10, cursor: "pointer" }}>
-        {/* Position badge */}
-        <div style={{ width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
-          background: isReady ? C.yellowBg : C.surface2,
-          border: `1px solid ${isReady ? C.yellowBorder : C.border}`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 11, fontWeight: 700, color: isReady ? C.yellow : C.muted }}>
-          {idx + 1}
-        </div>
-        {/* Name + meta */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.text,
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {entry.name}
-            </span>
-            {isReady && <span style={{ fontSize: 9, fontWeight: 800, color: C.yellow, letterSpacing: "0.06em" }}>READY</span>}
-          </div>
-          <div style={{ fontSize: 11, color: C.text2, marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <span>{entry.party_size} {entry.party_size === 1 ? "guest" : "guests"}</span>
-            <span style={{ color: C.muted }}>·</span>
-            <span>{timeAgo(entry.arrival_time)}</span>
-            {entry.quoted_wait && <><span style={{ color: C.muted }}>·</span><span>~{entry.quoted_wait}m</span></>}
-            {entry.phone && <><span style={{ color: C.muted }}>·</span><span>📱</span></>}
-          </div>
-          {entry.notes && <div style={{ fontSize: 11, color: C.muted, marginTop: 2, fontStyle: "italic" }}>{entry.notes}</div>}
-        </div>
-        {/* Source badge */}
-        <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 20, padding: "3px 8px",
-          color: sb.color, background: sb.bg, border: `1px solid ${sb.color}40`,
-          whiteSpace: "nowrap", flexShrink: 0 }}>
-          {sb.label}
-        </span>
-        <span style={{ color: C.muted, fontSize: 14, flexShrink: 0 }}>{exp ? "▲" : "▼"}</span>
-      </div>
-      {exp && (
-        <div style={{ display: "flex", gap: 8, padding: "0 14px 12px", borderTop: `1px solid ${C.border}`, paddingTop: 10, flexWrap: "wrap" }}>
-          {entry.status === "waiting" && (
-            <button onClick={onReady} disabled={busy}
-              style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${C.yellowBorder}`,
-                background: C.yellowBg, color: C.yellow, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-              📣 Mark Ready
+        {/* Tabs */}
+        <div className="flex shrink-0 px-5 pt-4 gap-2">
+          {(["today", "stats"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                height: 34, padding: "0 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                background: tab === t ? "rgba(255,255,255,0.1)" : "transparent",
+                border: `1px solid ${tab === t ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.07)"}`,
+                color: tab === t ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.38)",
+                cursor: "pointer", transition: "all 0.12s",
+              }}
+            >
+              {t === "today" ? `Today${entries.length > 0 ? ` · ${entries.length}` : ""}` : "Stats"}
+            </button>
+          ))}
+          {tab === "today" && (
+            <button onClick={load} style={{ marginLeft: "auto", width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "1px solid rgba(255,255,255,0.07)", cursor: "pointer", color: "rgba(255,255,255,0.35)" }}>
+              <RefreshCw style={{ width: 13, height: 13 }} />
             </button>
           )}
-          <button onClick={onSeat} disabled={busy}
-            style={{ padding: "8px 16px", borderRadius: 8, border: "none",
-              background: busy ? C.muted : C.green, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-            ✓ Seat Party
-          </button>
-          <button onClick={onRemove} disabled={busy}
-            style={{ padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.redBorder}`,
-              background: C.redBg, color: C.red, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-            ✕ Remove
-          </button>
         </div>
-      )}
+
+        <div className="flex-1 overflow-y-auto px-5 pb-5 flex flex-col mt-3">
+          {tab === "today" ? (
+            loading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="animate-spin" style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.08)", borderTopColor: "rgba(255,255,255,0.5)" }} />
+              </div>
+            ) : entries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                <Clock className="w-7 h-7" style={{ color: "rgba(255,255,255,0.15)" }} />
+                <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.35)" }}>No history yet today</p>
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.18)", maxWidth: 200, lineHeight: 1.6 }}>Seated and removed guests will appear here.</p>
+              </div>
+            ) : (() => {
+              const seated  = entries.filter(e => e.status === "seated")
+              const removed = entries.filter(e => e.status === "removed")
+              const sections = [
+                { key: "seated",  label: "Seated",  color: "#22c55e", items: seated  },
+                { key: "removed", label: "Removed", color: "#f87171", items: removed },
+              ].filter(s => s.items.length > 0)
+              return sections.map(section => (
+                <div key={section.key} style={{ marginBottom: 24 }}>
+                  {/* Section header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)" }}>
+                      {section.label}
+                    </span>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: section.color, opacity: 0.75 }}>
+                      {section.items.length}
+                    </span>
+                  </div>
+                  {/* Rows */}
+                  <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    {section.items.map((e, i) => (
+                      <div
+                        key={e.id}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "13px 14px",
+                          background: i % 2 === 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.015)",
+                          borderTop: i > 0 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                        }}
+                      >
+                        {/* Color accent bar */}
+                        <div style={{ width: 3, height: 38, borderRadius: 2, background: section.color, opacity: 0.55, flexShrink: 0 }} />
+                        {/* Text content */}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
+                            <span style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {e.name || "Guest"}
+                            </span>
+                            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.32)", flexShrink: 0 }}>
+                              {fmtTime(e.arrival_time)}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.42)", display: "flex", gap: 6 }}>
+                            <span>{e.party_size} {e.party_size === 1 ? "guest" : "guests"}</span>
+                            {e.quoted_wait != null && <><span style={{ opacity: 0.4 }}>·</span><span>{e.quoted_wait}m quoted</span></>}
+                          </div>
+                          {e.notes && (
+                            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.26)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {e.notes}
+                            </div>
+                          )}
+                        </div>
+                        {/* Restore button — available for both seated and removed */}
+                        <button
+                          onClick={() => restore(e.id)}
+                          disabled={restoring === e.id}
+                          style={{
+                            flexShrink: 0, height: 32, padding: "0 13px",
+                            borderRadius: 8, fontSize: 12, fontWeight: 600,
+                            background: "rgba(147,207,255,0.08)",
+                            color: "rgba(147,207,255,0.85)",
+                            border: "1px solid rgba(147,207,255,0.2)",
+                            cursor: "pointer",
+                            opacity: restoring === e.id ? 0.45 : 1,
+                            transition: "opacity 0.15s",
+                          }}
+                        >
+                          {restoring === e.id ? "…" : "Restore"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            })()
+          ) : (
+            // Stats tab
+            hist.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+                <BarChart2 className="w-8 h-8" style={{ color: "rgba(255,255,255,0.12)" }} />
+                <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.32)" }}>No seating data yet</p>
+                <p className="text-xs" style={{ color: "rgba(255,255,255,0.18)", maxWidth: 220, lineHeight: 1.6 }}>Seat guests to build wait-time suggestions.</p>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: 20 }}>
+                  <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.25)" }}>
+                    Today · {todayHist.length} parties
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: "Parties", value: todayHist.length, unit: "" },
+                      { label: "Avg Quoted", value: avgQuoted, unit: "min" },
+                      { label: "Avg Actual", value: avgActual, unit: "min" },
+                    ].map(({ label, value, unit }) => (
+                      <div key={label} className="flex flex-col items-center justify-center rounded-xl py-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                        <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1, color: "rgba(255,255,255,0.92)", letterSpacing: "-0.02em" }}>{value ?? "—"}</span>
+                        {unit && value != null && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 2 }}>{unit}</span>}
+                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginTop: 5, textAlign: "center" }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-3" style={{ color: "rgba(255,255,255,0.25)" }}>
+                    All Time · {hist.length} parties
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {busiestHour !== null && (
+                      <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 5 }}>Busiest Hour</p>
+                        <p style={{ fontSize: 24, fontWeight: 700, color: "rgba(255,255,255,0.92)", lineHeight: 1, letterSpacing: "-0.02em" }}>{fmtHour(busiestHour)}</p>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 3 }}>{busiestCount} parties</p>
+                      </div>
+                    )}
+                    {avgQuoted != null && avgActual != null && (
+                      <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                        <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 5 }}>Accuracy</p>
+                        <p style={{ fontSize: 24, fontWeight: 700, lineHeight: 1, letterSpacing: "-0.02em", color: Math.abs(avgQuoted - avgActual) <= 3 ? "#22c55e" : "rgba(251,191,36,0.90)" }}>
+                          {Math.abs(avgQuoted - avgActual) <= 3 ? "Great" : avgActual > avgQuoted ? "Under" : "Over"}
+                        </p>
+                        <p style={{ fontSize: 10, color: "rgba(255,255,255,0.32)", marginTop: 3 }}>
+                          {Math.abs(avgQuoted - avgActual)}m {avgActual > avgQuoted ? "longer" : "shorter"} than quoted
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-black tracking-[0.18em] uppercase mb-1" style={{ color: "rgba(255,255,255,0.25)" }}>Suggested Wait Times</p>
+                  <p className="text-[10px] mb-3" style={{ color: "rgba(255,255,255,0.20)" }}>Based on {hist.length} seatings · adjusted for time of day</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {PARTY_SIZES.map(n => {
+                      const suggestion = suggestWait(n)
+                      return (
+                        <div key={n} className="flex flex-col items-center justify-center rounded-xl py-3" style={{ background: suggestion ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.02)", border: `1px solid ${suggestion ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)"}` }}>
+                          <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 3 }}>{n}{n === 8 ? "+" : ""}p</span>
+                          <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, color: suggestion ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.18)", letterSpacing: "-0.02em" }}>{suggestion ?? "—"}</span>
+                          {suggestion != null && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", marginTop: 1 }}>min</span>}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </>
+            )
+          )}
+        </div>
+
+        {/* Footer — Today tab */}
+        {entries.length > 0 && tab === "today" && (
+          <div className="px-5 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <button
+              onClick={() => {
+                const headers = ["Name","Party Size","Status","Arrival","Quoted Wait (min)","Phone","Notes"]
+                const csvRows = entries.map(e => [e.name || "Guest", e.party_size, e.status, fmtTime(e.arrival_time), e.quoted_wait ?? "", e.phone ?? "", (e.notes ?? "").replace(/"/g, '""')])
+                const csv = [headers, ...csvRows].map(r => r.map(v => `"${v}"`).join(",")).join("\n")
+                const blob = new Blob([csv], { type: "text/csv" })
+                const url  = URL.createObjectURL(blob)
+                const a    = document.createElement("a"); a.href = url
+                a.download = `history-${getBusinessDate()}.csv`; a.click()
+                URL.revokeObjectURL(url); showToast("Exported to CSV", "ok")
+              }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(34,197,94,0.07)", color: "rgba(34,197,94,0.65)", border: "1px solid rgba(34,197,94,0.18)", padding: "10px 0" }}
+            >
+              Export to CSV
+            </button>
+            <button
+              onClick={() => {
+                setEntries([])
+                showToast("History cleared", "ok")
+              }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.45)", border: "1px solid rgba(239,68,68,0.12)", padding: "10px 0" }}
+            >
+              Clear History
+            </button>
+          </div>
+        )}
+        {/* Footer — Stats tab */}
+        {hist.length > 0 && tab === "stats" && (
+          <div className="px-5 py-4 shrink-0 flex flex-col gap-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <button
+              onClick={() => {
+                const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
+                const headers = ["Seated At","Party Size","Quoted Wait (min)","Actual Wait (min)","Day","Hour"]
+                const rows = hist.map(r => [new Date(r.seated_at).toLocaleString(), r.party_size, r.quoted_wait, r.actual_wait_min, DAYS[r.day_of_week], r.hour_of_day])
+                const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(",")).join("\n")
+                const blob = new Blob([csv], { type: "text/csv" })
+                const url  = URL.createObjectURL(blob)
+                const a    = document.createElement("a"); a.href = url
+                a.download = `seating-${getBusinessDate()}.csv`; a.click()
+                URL.revokeObjectURL(url); showToast("Exported to CSV", "ok")
+              }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(34,197,94,0.07)", color: "rgba(34,197,94,0.65)", border: "1px solid rgba(34,197,94,0.18)", padding: "10px 0" }}
+            >
+              Export to CSV
+            </button>
+            <button
+              onClick={() => {
+                try { localStorage.removeItem(HISTORY_KEY()); localStorage.removeItem(HISTORY_DATE_KEY()) } catch {}
+                onClose(); showToast("History cleared", "ok")
+              }}
+              className="w-full rounded-xl text-xs font-bold tracking-[0.1em] uppercase transition-all hover:brightness-125"
+              style={{ background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.45)", border: "1px solid rgba(239,68,68,0.12)", padding: "10px 0" }}
+            >
+              Clear Stats
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-// ── Main Station ──────────────────────────────────────────────────────────────
-function StationInner() {
+// ── Main Dashboard ─────────────────────────────────────────────────────────────
+
+function ClientStationInner() {
   const params = useParams()
   const slug   = typeof params.slug === "string" ? params.slug : ""
 
-  // Restaurant info (loaded from Railway by slug — this restaurant ONLY)
-  const [info,       setInfo]       = useState<RestaurantInfo | null>(null)
-  const [loading,    setLoading]    = useState(true)
-  const [authed,     setAuthed]     = useState(false)
-  const [pinErr,     setPinErr]     = useState(false)
+  // Config loaded from Railway by slug
+  const [rid,      setRid]      = useState("")
+  const [joinUrl,  setJoinUrl]  = useState("")
+  const [floor,    setFloor]    = useState<FloorPos[]>([])
+  const [canvasW,  setCanvasW]  = useState(CANVAS_W)
+  const [canvasH,  setCanvasH]  = useState(CANVAS_H)
+  const [adminPin, setAdminPin] = useState("")
+  const [loading,  setLoading]  = useState(true)
+  const [loadErr,  setLoadErr]  = useState("")
+  const [pinInput, setPinInput] = useState("")
+  const [pinErr,   setPinErr]   = useState(false)
+  const [pinOk,    setPinOk]    = useState(() => {
+    try { return !!slug && localStorage.getItem(`${slug}:pinOk`) === "1" } catch { return false }
+  })
+  const [authed, setAuthed] = useState(true)
+  const [tables, setTables]               = useState<Table[]>([])
+  const [queue, setQueue]                 = useState<QueueEntry[]>([])
+  const queueRef = useRef<QueueEntry[]>([])
+  const [online, setOnline]               = useState(true)
+  const [lastSync, setLastSync]           = useState(new Date())
+  const [showAdd, setShowAdd]             = useState(false)
+  const [waitModal, setWaitModal]         = useState<{ id: string; defaultMinutes: number } | null>(null)
+  const [nfcWaitPanel, setNfcWaitPanel]   = useState<{ id: string; name: string; party_size: number; suggested: number | null } | null>(null)
+  const [editModal, setEditModal]         = useState<{ entry: QueueEntry; displayWait: number } | null>(null)
+  const [avgWait, setAvgWait]             = useState(0)
+  const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
+  const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
+  const [resPicker, setResPicker]         = useState<Reservation | null>(null)
+  const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
+  const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
+  const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [tableSeatPicker, setTableSeatPicker] = useState<{ tableId: string | undefined; tableNumber: number } | null>(null)
+  const [sidebarW, setSidebarW]           = useState(300)
+  const [zoom,     setZoom]               = useState(() => { try { return parseFloat(localStorage.getItem(`${slug}:zoom`) || "1") } catch { return 1 } })
+  useEffect(() => { try { localStorage.setItem(`${slug}:zoom`, String(zoom)) } catch {} }, [zoom, slug])
+  const [theme,    setTheme]              = useState<"dark"|"light">(() => { try { return (localStorage.getItem(`${slug}:theme`) as "dark"|"light") || "dark" } catch { return "dark" } })
+  useEffect(() => { try { localStorage.setItem(`${slug}:theme`, theme) } catch {} }, [theme, slug])
+  const [linkCopied, setLinkCopied]       = useState(false)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [toasts, setToasts]               = useState<ToastItem[]>([])
+  const [resTblPicker, setResTblPicker]   = useState<Reservation | null>(null)
+  const [resSeatWarning, setResSeatWarning] = useState<{ entry: QueueEntry; tableNumber: number; tableId: string | undefined; resInfo: ReservedTable } | null>(null)
+  const [reservedTables, setReservedTables] = useState<Map<number, ReservedTable>>(() => {
+    try {
+      const s = localStorage.getItem(`${slug}:reserved_tables`)
+      return s ? new Map(JSON.parse(s) as [number, ReservedTable][]) : new Map()
+    } catch { return new Map() }
+  })
+  const toastSeqRef     = useRef(0)
+  const isResizing      = useRef(false)
+  const resizeStartX    = useRef(0)
+  const resizeStartW    = useRef(0)
 
-  // Floor plan from restaurant config (visual layout, wizard format)
-  const [positions,  setPositions]  = useState<FloorPos[]>([])
+  // Set history slug for scoped localStorage
+  useEffect(() => { _historySlug = slug || "demo" }, [slug])
 
-  // Live data — all scoped to this restaurant's ID only
-  const [queue,      setQueue]      = useState<QueueEntry[]>([])
-  const [tables,     setTables]     = useState<LiveTable[]>([])
-  const [lastUpd,    setLastUpd]    = useState<Date | null>(null)
-  const [syncing,    setSyncing]    = useState(false)
-  const [refreshKey, setRefreshKey] = useState(0)
-
-  // UI
-  const [clockStr,   setClockStr]   = useState(clock())
-  const [showAdd,    setShowAdd]    = useState(false)
-  const [tableModal, setTableModal] = useState<{ pos: FloorPos; live: LiveTable | null } | null>(null)
-  const [flash,      setFlash]      = useState<{ ok: boolean; msg: string } | null>(null)
-  const [busyId,     setBusyId]     = useState<string | null>(null)
-
-  // Clock
-  useEffect(() => {
-    const iv = setInterval(() => setClockStr(clock()), 30_000)
-    return () => clearInterval(iv)
-  }, [])
-
-  // Flash helper
-  function showFlash(ok: boolean, msg: string) {
-    setFlash({ ok, msg }); setTimeout(() => setFlash(null), 2500)
-  }
-
-  // ── Load restaurant info by slug ──────────────────────────────────────────
-  // Uses ONLY the slug from the URL to identify this restaurant.
-  // No session cookie, no shared config — completely isolated.
+  // Load restaurant config from Railway by slug
   useEffect(() => {
     if (!slug) return
-    fetch(`${RAILWAY}/client/${encodeURIComponent(slug)}/config`, { cache: "no-store" })
-      .then(r => r.ok ? r.json() : Promise.reject("not found"))
-      .then(d => {
-        const gc = (d.guest_config || {}) as Record<string, unknown>
-        setInfo({
-          id:       String(d.restaurant_id || ""),
-          name:     String(gc.restaurantName || d.name || slug),
-          slug,
-          adminPin: typeof gc.adminPin === "string" ? gc.adminPin : "",
-          logoUrl:  typeof gc.logoUrl  === "string" ? gc.logoUrl  : undefined,
-        })
-        // Load visual floor plan positions (wizard format: center-based %)
-        const fp = d.floor_plan
-        if (fp && typeof fp === "object" && !Array.isArray(fp)) {
-          const tables = (fp as Record<string, unknown>).tables
-          if (Array.isArray(tables)) setPositions(tables as FloorPos[])
+    ;(async () => {
+      try {
+        const r = await fetch(`https://restaurant-brain-production.up.railway.app/client/${encodeURIComponent(slug)}/config`, { cache: "no-store" })
+        if (!r.ok) { setLoadErr("Restaurant not found"); setLoading(false); return }
+        const d = await r.json()
+        setRid(d.restaurant_id ?? "")
+        setJoinUrl(d.nfc_url ?? `https://hostplatform.net/client/${slug}/join`)
+        const gc = d.guest_config ?? {}
+        if (gc.adminPin) setAdminPin(String(gc.adminPin))
+        const converted = convertWizardFloor(d.floor_plan)
+        if (converted) {
+          setFloor(converted.tables)
+          setCanvasW(converted.canvasW)
+          setCanvasH(converted.canvasH)
         }
-        // Restore station auth from sessionStorage
-        if (sessionStorage.getItem(`station_auth_${slug}`) === "1") setAuthed(true)
-      })
-      .catch(() => setInfo({ id: "", name: slug, slug, adminPin: "" }))
-      .finally(() => setLoading(false))
+        setLoading(false)
+      } catch (e) {
+        setLoadErr("Could not load restaurant data"); setLoading(false)
+      }
+    })()
   }, [slug])
 
-  // ── Load live data (queue + tables) ──────────────────────────────────────
-  const loadData = useCallback(async () => {
-    if (!info?.id || !authed) return
-    setSyncing(true)
+  // Wire module-level toast dispatcher to component state
+  useEffect(() => {
+    _dispatchToast = (msg, type) => {
+      const id = ++toastSeqRef.current
+      setToasts(p => [...p, { id, msg, type }])
+      setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 3500)
+    }
+    return () => { _dispatchToast = null }
+  }, [])
+
+  // Persist reserved table pre-assignments
+  useEffect(() => {
+    try { localStorage.setItem(`${slug}:reserved_tables`, JSON.stringify([...reservedTables])) } catch {}
+  }, [reservedTables])
+
+  const handleResizePointerMove = useCallback((e: PointerEvent) => {
+    if (!isResizing.current) return
+    const delta = e.clientX - resizeStartX.current
+    setSidebarW(Math.max(220, Math.min(520, resizeStartW.current + delta)))
+  }, [])
+
+  const handleResizePointerUp = useCallback(() => {
+    isResizing.current = false
+    document.removeEventListener("pointermove", handleResizePointerMove)
+    document.removeEventListener("pointerup", handleResizePointerUp)
+    document.body.style.cursor = ""
+    document.body.style.userSelect = ""
+  }, [handleResizePointerMove])
+
+  const startResize = useCallback((e: React.PointerEvent) => {
+    isResizing.current = true
+    resizeStartX.current = e.clientX
+    resizeStartW.current = sidebarW
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+    document.addEventListener("pointermove", handleResizePointerMove)
+    document.addEventListener("pointerup", handleResizePointerUp)
+  }, [sidebarW, handleResizePointerMove, handleResizePointerUp])
+
+  const [now, setNow] = useState(() => new Date())
+  const [localOccupants, setLocalOccupants] = useState<Map<number, LocalOccupant>>(() => {
     try {
-      const [qr, tr] = await Promise.all([
-        fetch(`${RAILWAY}/queue?restaurant_id=${info.id}`,  { cache: "no-store" }),
-        fetch(`${RAILWAY}/tables?restaurant_id=${info.id}`, { cache: "no-store" }),
-      ])
-      if (qr.ok) setQueue(await qr.json())
-      if (tr.ok) setTables(await tr.json())
-      setLastUpd(new Date())
-    } catch { /* network hiccup — keep existing data */ }
-    finally { setSyncing(false) }
-  }, [info?.id, authed])
+      const s = localStorage.getItem(`${slug}:occupants`)
+      return s ? new Map(JSON.parse(s) as [number, LocalOccupant][]) : new Map()
+    } catch { return new Map() }
+  })
+  // Tables seated from THIS view — protected from syncOccupants wiping them during the
+  // brief window between the optimistic set and the backend commit (avoids race condition)
+  const recentlySeateddRef = useRef<Map<number, number>>(new Map()) // tableNum → expiry ms
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 5 } }),
+  )
+
+  // Persist floor map occupancy to localStorage (separate key from Walter's)
+  useEffect(() => {
+    try { localStorage.setItem(`${slug}:occupants`, JSON.stringify([...localOccupants])) } catch {}
+  }, [localOccupants])
+
+  // Live clock
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const fetchTables   = useCallback(async () => {
+    if (!rid) return
+    try {
+      const r = await fetch(`${API}/tables?restaurant_id=${rid}`)
+      if (r.ok) setTables(normalizeTables(await r.json()))
+    } catch {}
+  }, [rid])
+  const fetchQueue    = useCallback(async () => {
+    if (!rid) return
+    try {
+      const r = await fetch(`${API}/queue?restaurant_id=${rid}`)
+      if (r.ok) {
+        const data: QueueEntry[] = await r.json()
+        setQueue(data); queueRef.current = data; setOnline(true); setLastSync(new Date())
+      }
+    } catch { setOnline(false) }
+    finally   { setIsInitialLoad(false) }
+  }, [rid])
+  const fetchInsights = useCallback(async () => { if (!rid) return; try { const r = await fetch(`${API}/insights?restaurant_id=${rid}`); if (r.ok) { const d = await r.json(); setAvgWait(d.avg_wait_estimate ?? 0) } } catch {} }, [rid])
+  // Sync table occupants from backend (covers seating done on HOST analog)
+  const syncOccupants = useCallback(async () => {
+    if (!rid) return
+    try {
+      const r = await fetch(`${API}/tables/occupants?restaurant_id=${rid}`)
+      if (!r.ok) return
+      const data: Record<string, { name: string; party_size: number; entry_id?: string }> = await r.json()
+      // Full replace from backend — authoritative source for cross-view sync.
+      // Preserves tables seated from THIS view during a brief grace period (5s) to avoid
+      // the race where the interval fires before the seat-to-table DB write is visible.
+      setLocalOccupants(prev => {
+        const now2 = Date.now()
+        const next = new Map<number, LocalOccupant>()
+        // Add everything from backend
+        for (const [numStr, occ] of Object.entries(data)) {
+          next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id })
+        }
+        // Keep any recently-seated local entry that backend hasn't picked up yet
+        for (const [tNum, expiry] of recentlySeateddRef.current) {
+          if (expiry > now2 && prev.has(tNum) && !next.has(tNum)) {
+            next.set(tNum, prev.get(tNum)!)
+          } else if (expiry <= now2) {
+            recentlySeateddRef.current.delete(tNum)
+          }
+        }
+        return next
+      })
+    } catch {}
+  }, [rid])
+  const refreshAll    = useCallback(() => { if (!rid) return; fetchTables(); fetchQueue(); syncOccupants() }, [rid, fetchTables, fetchQueue, syncOccupants])
+
+  const fetchReservations = useCallback(async () => {
+    if (!rid) return
+    try {
+      const r = await fetch(`${API}/reservations?restaurant_id=${rid}`)
+      if (r.ok) {
+        const all: Reservation[] = await r.json()
+        const todayStr = toLocalDateStr(new Date())
+        setTodayRes(
+          all
+            .filter(r => r.date === todayStr && r.status === "confirmed")
+            .sort((a, b) => a.time.localeCompare(b.time))
+        )
+      }
+    } catch {}
+  }, [rid])
 
   useEffect(() => {
-    loadData()
-    const iv = setInterval(loadData, 20_000)
-    return () => clearInterval(iv)
-  }, [loadData, refreshKey])
+    if (!rid) return
+    refreshAll(); fetchInsights(); fetchReservations()
+    const fast      = setInterval(refreshAll, 2000)
+    const slow      = setInterval(fetchInsights, 30000)
+    const resInt    = setInterval(fetchReservations, 30000)
+    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rid, refreshAll, fetchInsights, fetchReservations])
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  function tryPin(pin: string) {
-    if (!info) return
-    const correct = info.adminPin
-    if (!correct || pin === correct) {
-      sessionStorage.setItem(`station_auth_${slug}`, "1")
-      setAuthed(true); setPinErr(false)
+  const seat   = useCallback(async (id: string) => {
+    setQueue(prev => prev.filter(e => e.id !== id))  // optimistic
+    try { const r = await fetchT(`${API}/queue/${id}/seat`, { method: "POST" }); if (!r.ok) throw new Error(); refreshAll() }
+    catch { showToast("Could not seat guest — try again.", "err"); refreshAll() }
+  }, [refreshAll])
+  const notify = useCallback(async (id: string) => {
+    setQueue(prev => prev.map(e => e.id === id ? { ...e, status: "ready" as const } : e))  // optimistic
+    try {
+      const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" })
+      if (!r.ok) throw new Error()
+      const data = await r.json()
+      if (data.sms_error) {
+        showToast(`Marked ready. SMS failed: ${data.sms_error}`, "warn")
+      } else if (data.sms_sent) {
+        showToast("Guest notified by text", "ok")
+      } else {
+        showToast("Marked ready (no phone on file)", "ok")
+      }
+      refreshAll()
+    } catch { showToast("Could not notify guest.", "err"); refreshAll() }
+  }, [refreshAll])
+
+  const remove = useCallback(async (id: string) => {
+    const entry = queueRef.current.find(e => e.id === id)
+    setQueue(prev => prev.filter(e => e.id !== id))  // optimistic UI
+    try {
+      const r = await fetchT(`${API}/queue/${id}/remove`, { method: "POST" })
+      if (!r.ok) throw new Error()
+      if (entry) {
+        addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(entry.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" })
+      }
+      refreshAll()
+    } catch {
+      showToast("Could not remove guest.", "err")
+      refreshAll()  // revert on failure
+    }
+  }, [refreshAll])
+
+  const openSeatPicker = useCallback((entry: QueueEntry) => {
+    setSeatPicker(entry)
+    setSelectedEntry(null)
+    // Fetch fresh table + occupant data so the picker shows live availability
+    fetchTables()
+    fetch(`${API}/tables/occupants?restaurant_id=${rid}`)
+      .then(r => r.ok ? r.json() : {})
+      .then((data: Record<string, { name: string; party_size: number; entry_id?: string }>) => {
+        setLocalOccupants(prev => {
+          const now2 = Date.now()
+          const next = new Map<number, LocalOccupant>()
+          for (const [numStr, occ] of Object.entries(data)) {
+            next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id })
+          }
+          for (const [tNum, expiry] of recentlySeateddRef.current) {
+            if (expiry > now2 && prev.has(tNum) && !next.has(tNum)) {
+              next.set(tNum, prev.get(tNum)!)
+            } else if (expiry <= now2) {
+              recentlySeateddRef.current.delete(tNum)
+            }
+          }
+          return next
+        })
+      })
+      .catch(() => {})
+  }, [fetchTables])
+
+  // Core seat action — called directly or after warning confirmation
+  const doSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
+    // Resolve tableId — prefer passed value, then current tables state, then fetch fresh
+    // (ensures seat-to-table is always used, never the generic /seat fallback)
+    let resolvedTableId = tableId ?? tables.find(t => t.table_number === tableNumber)?.id
+    if (!resolvedTableId) {
+      try {
+        const r = await fetch(`${API}/tables?restaurant_id=${rid}`)
+        if (r.ok) {
+          resolvedTableId = normalizeTables(await r.json()).find(t => t.table_number === tableNumber)?.id
+        }
+      } catch {}
+    }
+    // Capacity warning (non-blocking)
+    const apiTable = tables.find(t => resolvedTableId ? t.id === resolvedTableId : t.table_number === tableNumber)
+    if (apiTable && entry.party_size > apiTable.capacity) {
+      showToast(`Table ${tableNumber} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
+    }
+    try {
+      const r = resolvedTableId
+        ? await fetchT(`${API}/queue/${entry.id}/seat-to-table/${resolvedTableId}`, { method: "POST" })
+        : await fetchT(`${API}/queue/${entry.id}/seat`, { method: "POST" })
+      if (!r.ok) throw new Error()
+    } catch {
+      showToast("Could not seat guest — please try again.", "err")
+      return
+    }
+    recentlySeateddRef.current.set(tableNumber, Date.now() + 5000) // protect for 5s
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
+    setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+    // Record seating history for suggestions + guest log
+    {
+      const arrivalMs  = (parseUTCMs(entry.arrival_time) ?? Date.now())
+      const resolvedMs = Date.now()
+      const actualWait = Math.round((resolvedMs - arrivalMs) / 60_000)
+      const now        = new Date()
+      if (entry.quoted_wait) {
+        addToHistory({ party_size: entry.party_size, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, seated_at: resolvedMs, day_of_week: now.getDay(), hour_of_day: now.getHours() })
+      }
+      addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, joined_ms: arrivalMs, resolved_ms: resolvedMs, status: "seated" })
+    }
+    showToast(`${entry.name || "Guest"} seated at Table ${tableNumber}`)
+    refreshAll()
+  }, [refreshAll, tables])
+
+  const confirmSeat = useCallback(async (entry: QueueEntry, tableNumber: number, tableId: string | undefined) => {
+    setSeatPicker(null)
+    // Reservation conflict — BLOCKING warning before seating
+    const resTableInfo = reservedTables.get(tableNumber)
+    if (resTableInfo) {
+      const mins = getResMinutesUntil(resTableInfo.time, new Date())
+      if (mins > -15 && mins <= 60) {
+        setResSeatWarning({ entry, tableNumber, tableId, resInfo: resTableInfo })
+        return
+      }
+    }
+    await doSeat(entry, tableNumber, tableId)
+  }, [doSeat, reservedTables])
+
+  const checkInConfirm = useCallback(async (res: Reservation, tableNumber: number, tableId: string | undefined) => {
+    setResPicker(null)
+    try { await fetchT(`${API}/reservations/${res.id}/status?status=seated`, { method: "PATCH" }) } catch {}
+    setTodayRes(prev => prev.filter(r => r.id !== res.id))
+    // Clear this reservation's pre-assignment
+    setReservedTables(prev => {
+      const next = new Map(prev)
+      for (const [tNum, info] of next) { if (info.resId === res.id) { next.delete(tNum); break } }
+      return next
+    })
+    if (tableId) {
+      try { await fetchT(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
+      fetchTables()
+    }
+    recentlySeateddRef.current.set(tableNumber, Date.now() + 5000)
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
+    showToast(`${res.guest_name} checked in at Table ${tableNumber}`)
+  }, [fetchTables])
+
+  // mode: "restore" → clear table + return guest to waitlist
+  //       "cancel"  → clear table + mark guest as removed (gone)
+  const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string, mode: "restore" | "cancel" = "restore") => {
+    recentlySeateddRef.current.delete(tableNumber) // allow immediate eviction
+    setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+    // Resolve tableId if not passed — look it up from current tables state,
+    // or fetch fresh if state is stale/empty (critical: without this the API
+    // call is skipped and syncOccupants re-adds the occupant 2s later)
+    let resolvedTableId = tableId ?? tables.find(t => t.table_number === tableNumber)?.id
+    if (!resolvedTableId) {
+      try {
+        const r = await fetch(`${API}/tables?restaurant_id=${rid}`)
+        if (r.ok) {
+          resolvedTableId = normalizeTables(await r.json()).find(t => t.table_number === tableNumber)?.id
+        }
+      } catch {}
+    }
+    if (resolvedTableId) {
+      try { await fetch(`${API}/tables/${resolvedTableId}/clear`, { method: "POST" }) } catch {}
+    }
+    if (entryId) {
+      if (mode === "restore") {
+        try { await fetch(`${API}/queue/${entryId}/restore`, { method: "POST" }) } catch {}
+      } else {
+        try { await fetch(`${API}/queue/${entryId}/remove`, { method: "POST" }) } catch {}
+      }
+    }
+    refreshAll()
+  }, [refreshAll, tables])
+
+  // Returns the pre-assigned table number for a given reservation, if any
+  const tableForRes = useCallback((resId: string): number | undefined => {
+    for (const [tNum, info] of reservedTables) { if (info.resId === resId) return tNum }
+    return undefined
+  }, [reservedTables])
+
+  // Pre-assign a table to a reservation (turns it yellow on the floor map)
+  const assignResTable = useCallback((res: Reservation, tableNumber: number) => {
+    setReservedTables(prev => new Map(prev).set(tableNumber, {
+      resId: res.id, guestName: res.guest_name, time: res.time,
+    }))
+    showToast(`Table ${tableNumber} held for ${res.guest_name} at ${fmt12Res(res.time)}`)
+  }, [])
+
+  function handleDragStart(event: DragStartEvent) {
+    setSelectedEntry(null)
+    const data = event.active.data.current as Record<string, unknown> | undefined
+    if (data?.type === "occupant") {
+      setActiveDragOccupant({ tableNumber: data.tableNumber as number, occupant: data.occupant as LocalOccupant })
+      setActiveDrag(null)
     } else {
-      setPinErr(true); setTimeout(() => setPinErr(false), 1500)
+      setActiveDrag((data as { entry?: QueueEntry } | undefined)?.entry ?? null)
+      setActiveDragOccupant(null)
     }
   }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
-  async function seatParty(id: string) {
-    if (busyId) return; setBusyId(id)
-    setQueue(prev => prev.map(q => q.id === id ? { ...q, status: "seated" as const } : q))
-    try {
-      const ok = (await fetch(`${RAILWAY}/queue/${id}/seat`, { method: "POST" })).ok
-      showFlash(ok, ok ? "Party seated ✓" : "Seat failed")
-    } catch { showFlash(false, "Network error") }
-    finally { setBusyId(null); setRefreshKey(k => k + 1) }
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    setActiveDrag(null)
+    setActiveDragOccupant(null)
+    if (!over || !active) return
+
+    const targetTable = parseInt((over.id as string).replace("table-", ""))
+    if (isNaN(targetTable)) return
+
+    const data = active.data.current as Record<string, unknown> | undefined
+
+    if (data?.type === "occupant") {
+      const sourceTable = data.tableNumber as number
+      const occupant = data.occupant as LocalOccupant
+      if (sourceTable === targetTable) return
+
+      // Use in-memory tables (already normalized) — no network round-trip before UI update
+      const sourceApiTable = tables.find(t => t.table_number === sourceTable)
+      const targetApiTable = tables.find(t => t.table_number === targetTable)
+
+      if (!sourceApiTable || !targetApiTable) {
+        showToast("Could not resolve table IDs — please try again.", "err")
+        return
+      }
+
+      const displaced = localOccupants.get(targetTable)
+
+      // Optimistic update first — UI is instant
+      recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
+      if (displaced) recentlySeateddRef.current.set(sourceTable, Date.now() + 5000)
+      setLocalOccupants(prev => {
+        const next = new Map(prev)
+        next.delete(sourceTable)
+        if (displaced) next.set(sourceTable, displaced)
+        next.set(targetTable, occupant)
+        return next
+      })
+
+      // Fire backend calls in background — UI already updated
+      ;(async () => {
+        try {
+          await fetch(`${API}/tables/${targetApiTable.id}/occupy`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }),
+          })
+          if (displaced) {
+            await fetch(`${API}/tables/${sourceApiTable.id}/occupy`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: displaced.name, party_size: displaced.party_size, entry_id: displaced.entry_id }),
+            })
+          } else {
+            await fetch(`${API}/tables/${sourceApiTable.id}/clear`, { method: "POST" })
+          }
+        } catch {
+          showToast("Move saved locally — sync may differ.", "warn")
+        }
+        refreshAll()
+      })()
+      return
+    }
+
+    const entry = (data as { entry?: QueueEntry } | undefined)?.entry
+    if (!entry) return
+    if (localOccupants.has(targetTable)) return
+
+    // Use in-memory normalized tables — they're kept fresh by 2s polling
+    const apiTable = tables.find(t => t.table_number === targetTable)
+    if (!apiTable) {
+      showToast(`Table ${targetTable} not found — please try again.`, "err")
+      return
+    }
+    if (localOccupants.has(targetTable) || apiTable.status === "occupied") {
+      showToast(`Table ${targetTable} is already occupied.`, "err")
+      return
+    }
+    if (entry.party_size > apiTable.capacity) {
+      showToast(`Table ${targetTable} fits ${apiTable.capacity}p but party is ${entry.party_size}p`, "warn")
+    }
+
+    const resolvedMs = Date.now()
+    const arrivalMs  = (parseUTCMs(entry.arrival_time) ?? Date.now())
+    const actualWait = Math.round((resolvedMs - arrivalMs) / 60_000)
+
+    // Optimistic update — show table as occupied immediately
+    recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
+    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
+    setReservedTables(prev => { const n = new Map(prev); n.delete(targetTable); return n })
+
+    // Reservation warning
+    const dragResInfo = reservedTables.get(targetTable)
+    if (dragResInfo) {
+      const mins = getResMinutesUntil(dragResInfo.time, new Date())
+      if (mins <= 0) {
+        // Undo optimistic — this is a locked reserved table
+        setLocalOccupants(prev => { const n = new Map(prev); n.delete(targetTable); return n })
+        recentlySeateddRef.current.delete(targetTable)
+        return
+      }
+      if (mins <= 60) showToast(`${dragResInfo.guestName} reserved this table at ${fmt12Res(dragResInfo.time)}`, "warn")
+    }
+
+    fetchT(`${API}/queue/${entry.id}/seat-to-table/${apiTable.id}`, { method: "POST" })
+      .then(r => { if (!r.ok) { showToast("Could not seat guest.", "err"); refreshAll() } else refreshAll() })
+      .catch(() => { showToast("Could not seat guest.", "err"); refreshAll() })
+
+    // Log to guest history
+    if (entry.quoted_wait) {
+      addToHistory({ party_size: entry.party_size, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, seated_at: resolvedMs, day_of_week: new Date().getDay(), hour_of_day: new Date().getHours() })
+    }
+    addToGuestLog({ id: entry.id, name: entry.name || "Guest", party_size: entry.party_size, source: entry.source || "walk-in", phone: entry.phone, notes: entry.notes, quoted_wait: entry.quoted_wait, actual_wait_min: actualWait, joined_ms: arrivalMs, resolved_ms: resolvedMs, status: "seated" })
   }
 
-  async function markReady(id: string) {
-    const ok = (await fetch(`${RAILWAY}/queue/${id}/ready`, { method: "POST" })).ok
-    showFlash(ok, ok ? "Marked ready — SMS sent if phone on file" : "Failed")
-    setRefreshKey(k => k + 1)
+  const floorOccupied = floor.filter(pos => {
+    if (localOccupants.has(pos.number)) return true
+    const t = tables.find(t => t.table_number === pos.number)
+    return !!t && t.status !== "available"
+  }).length
+  const available   = floor.length - floorOccupied
+  const readyList      = queue.filter(q => q.status === "ready")
+  const waitingList    = queue.filter(q => q.status === "waiting")
+  const needsQuoteList = waitingList.filter(q => q.quoted_wait == null)
+  const quotedWaiting  = waitingList.filter(q => q.quoted_wait != null)
+
+  const urgencyOrder: Record<ResUrgency, number> = { late: 0, now: 1, arriving: 2, upcoming: 3 }
+  const activeRes = todayReservations
+    .filter(r => {
+      const [h, m] = r.time.split(":").map(Number)
+      const [y, mo, d] = r.date.split("-").map(Number)
+      const resTime = new Date(y, mo - 1, d, h, m)
+      const diffMin = (resTime.getTime() - now.getTime()) / 60_000
+      return diffMin > -30 && diffMin < 60
+    })
+    .sort((a, b) => {
+      const ua = urgencyOrder[getResUrgency(a.date, a.time, now)]
+      const ub = urgencyOrder[getResUrgency(b.date, b.time, now)]
+      if (ua !== ub) return ua - ub
+      return a.time.localeCompare(b.time)
+    })
+
+  const clockStr = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+
+  function copyNfcLink() {
+    navigator.clipboard.writeText(joinUrl).then(() => {
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 2000)
+    })
   }
 
-  async function removeParty(id: string, name: string) {
-    if (!confirm(`Remove ${name} from the queue?`)) return
-    setQueue(prev => prev.filter(q => q.id !== id))
-    try { await fetch(`${RAILWAY}/queue/${id}/remove`, { method: "POST" }) }
-    catch { /* best effort */ }
-    finally { setRefreshKey(k => k + 1) }
-  }
+  if (!authed) return null
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-  const active      = queue.filter(q => q.status === "waiting" || q.status === "ready")
-  const reservations = queue.filter(q => q.source === "reservation" && (q.status === "waiting" || q.status === "ready"))
-  const seatedToday = queue.filter(q => q.status === "seated").length
-  const openTables  = tables.filter(t => t.status === "available").length
-
-  // ── Loading / PIN / Render ────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div style={{ minHeight: "100dvh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ color: C.muted, fontSize: 14, fontFamily: "system-ui, sans-serif" }}>Loading…</div>
+  if (loading) return (
+    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050709", color: "rgba(255,255,255,0.5)", fontSize: 14 }}>
+      Loading…
+    </div>
+  )
+  if (loadErr) return (
+    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050709", color: "#ef4444", fontSize: 14 }}>
+      {loadErr}
+    </div>
+  )
+  if (adminPin && !pinOk) return (
+    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050709" }}>
+      <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "40px 48px", textAlign: "center", width: 320 }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>🔒</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Host Station</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 24 }}>Enter your PIN to continue</div>
+        <input
+          type="password"
+          inputMode="numeric"
+          placeholder="PIN"
+          value={pinInput}
+          onChange={e => { setPinInput(e.target.value); setPinErr(false) }}
+          onKeyDown={e => {
+            if (e.key === "Enter") {
+              if (pinInput === adminPin) { setPinOk(true); try { localStorage.setItem(`${slug}:pinOk`, "1") } catch {} }
+              else { setPinErr(true); setPinInput("") }
+            }
+          }}
+          style={{ width: "100%", padding: "12px 16px", borderRadius: 10, border: `1px solid ${pinErr ? "#ef4444" : "rgba(255,255,255,0.12)"}`, background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 20, textAlign: "center", outline: "none", letterSpacing: "0.3em", boxSizing: "border-box" }}
+          autoFocus
+        />
+        {pinErr && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 8 }}>Incorrect PIN</div>}
+        <button
+          onClick={() => {
+            if (pinInput === adminPin) { setPinOk(true); try { localStorage.setItem(`${slug}:pinOk`, "1") } catch {} }
+            else { setPinErr(true); setPinInput("") }
+          }}
+          style={{ marginTop: 16, width: "100%", padding: "12px 0", borderRadius: 10, background: "#22c55e", color: "#fff", border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}
+        >
+          Unlock
+        </button>
       </div>
-    )
-  }
-  if (!authed) return <PinGate name={info?.name || slug} onAuth={tryPin} err={pinErr} />
-
-  const SIDEBAR = 340  // px — queue panel width
+    </div>
+  )
 
   return (
-    <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: "system-ui, sans-serif",
-      color: C.text, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      {/* Theme CSS variables — drives light/dark without touching every inline style */}
+      <style>{`
+        [data-host-theme="dark"]  { --accent:255,185,100; --warm:255,200,150; --cream:255,248,240; --page-bg:#0C0907; --card-bg:#100C09; --page-deep:#0a0704; --header-bg:rgba(7,4,2,0.98); --header-border:rgba(var(--accent),0.18); --divider:rgba(var(--accent),0.16); }
+        [data-host-theme="light"] { --accent:160,90,0;   --warm:110,60,5;    --cream:18,10,3;     --page-bg:#F5F2EE; --card-bg:#FFFFFF;   --page-deep:#EDE9E3; --header-bg:rgba(252,249,245,0.98); --header-border:rgba(160,90,0,0.18); --divider:rgba(160,90,0,0.14); }
+      `}</style>
 
-      {/* Flash */}
-      {flash && (
-        <div style={{ position: "fixed", top: 14, left: "50%", transform: "translateX(-50%)", zIndex: 500,
-          background: flash.ok ? C.greenBg : C.redBg,
-          border: `1px solid ${flash.ok ? C.greenBorder : C.redBorder}`,
-          borderRadius: 10, padding: "10px 22px", fontSize: 14, fontWeight: 600,
-          color: flash.ok ? C.green : C.red, whiteSpace: "nowrap" }}>
-          {flash.msg}
-        </div>
-      )}
+      {/* Outer clip wrapper — always exactly viewport size */}
+      <div data-host-theme={theme} style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--page-bg)" }}>
+      {/* Inner scaled container — transform:scale keeps getBoundingClientRect in viewport coords,
+          fixing @dnd-kit collision detection accuracy regardless of zoom level */}
+      <div
+        className="flex flex-col"
+        style={{
+          width:           `${(1 / zoom * 100).toFixed(6)}vw`,
+          height:          `${(1 / zoom * 100).toFixed(6)}dvh`,
+          background:      "var(--page-bg)",
+          transform:       `scale(${zoom})`,
+          transformOrigin: "top left",
+          overflow:        "hidden",
+        }}
+      >
 
-      {/* Modals */}
-      {showAdd && info && (
-        <WalkInModal rid={info.id} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); setRefreshKey(k => k+1); showFlash(true, "Walk-in added ✓") }} />
-      )}
-      {tableModal && info && (
-        <TableModal
-          table={tableModal.live ?? { id: "", table_number: tableModal.pos.number, label: tableModal.pos.label,
-            capacity: tableModal.pos.capacity || 2, status: "available", party_name: null }}
-          queue={active} rid={info.id}
-          onClose={() => setTableModal(null)}
-          onDone={() => { setTableModal(null); setRefreshKey(k => k + 1); showFlash(true, "Done ✓") }}
-        />
-      )}
+        {/* ── Header ─────────────────────────────────────────────────── */}
+        <header
+          className="flex items-center justify-between px-5 h-12 shrink-0"
+          style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)" }}
+        >
+          <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
+            {/* Back arrow → Analog + Demo Restaurant wordmark */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Link href={`/client/${slug}/analog`} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--warm),0.65)", textDecoration: "none", flexShrink: 0, transition: "background 0.15s" }} title="Switch to Analog">
+                <ChevronLeft style={{ width: 16, height: 16 }} />
+              </Link>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(var(--cream),0.95)" }}>{slug}</span>
+                <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(var(--warm),0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
+              </div>
+            </div>
 
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div style={{ height: 52, padding: "0 18px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        flexShrink: 0, background: C.panel }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 16, fontWeight: 900, letterSpacing: "0.28em", color: C.text }}>HOST</span>
-          <div style={{ width: 1, height: 18, background: C.border }} />
-          {info?.logoUrl && (
-            <img src={info.logoUrl} alt="" style={{ height: 26, width: "auto", objectFit: "contain", borderRadius: 4 }} />
-          )}
-          <span style={{ fontSize: 15, fontWeight: 600, color: C.text2 }}>{info?.name}</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 13, color: C.muted, fontVariantNumeric: "tabular-nums" }}>{clockStr}</span>
-          {lastUpd && <span style={{ fontSize: 11, color: C.muted }}>{lastUpd.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>}
-          <button onClick={() => setRefreshKey(k => k + 1)} disabled={syncing}
-            style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`,
-              background: "transparent", color: C.text2, fontSize: 13, cursor: "pointer" }}>
-            {syncing ? "…" : "↻"}
-          </button>
-          <button onClick={() => { sessionStorage.removeItem(`station_auth_${slug}`); setAuthed(false) }}
-            style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`,
-              background: C.surface, color: C.text2, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-            ⚙ Admin
-          </button>
-        </div>
-      </div>
+            <div className="w-px h-5 shrink-0" style={{ background: "rgba(var(--accent),0.20)" }} />
 
-      {/* ── Stat bar ────────────────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 10, padding: "10px 18px",
-        borderBottom: `1px solid ${C.border}`, flexShrink: 0, background: C.panel,
-        alignItems: "center" }}>
-        {[
-          { label: "In Queue",     value: active.length,        color: active.length > 0 ? C.orange : C.green },
-          { label: "Tables Open",  value: `${openTables}/${tables.length}`, color: openTables > 0 ? C.green : C.red },
-          { label: "Reservations", value: reservations.length,  color: reservations.length > 0 ? C.purple : C.muted },
-          { label: "Seated Today", value: seatedToday,          color: C.blue },
-        ].map(s => (
-          <div key={s.label} style={{ background: C.surface2, border: `1px solid ${C.border}`,
-            borderRadius: 10, padding: "8px 14px", flexShrink: 0 }}>
-            <div style={{ fontSize: 9, color: C.muted, textTransform: "uppercase", letterSpacing: "0.09em", marginBottom: 2 }}>{s.label}</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            {/* Stats */}
+            <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.16)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: available > 0 ? "#22c55e" : "#ef4444" }}>{available}</span>
+                <span className="text-xs" style={{ color: "rgba(var(--accent),0.50)" }}>/{floor.length}</span>
+                <span className="text-[10px] ml-0.5" style={{ color: "rgba(var(--warm),0.60)" }}>free</span>
+              </div>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg shrink-0" style={{ background: "rgba(var(--accent),0.07)", border: "1px solid rgba(var(--accent),0.16)" }}>
+                <span className="text-xs font-bold tabular-nums" style={{ color: waitingList.length > 0 ? "#f97316" : "rgba(var(--warm),0.60)" }}>{waitingList.length}</span>
+                <span className="text-[10px]" style={{ color: "rgba(var(--warm),0.60)" }}>waiting</span>
+              </div>
+              {readyList.length > 0 && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg shrink-0 animate-pulse" style={{ background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)" }}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                  <span className="text-xs font-bold" style={{ color: "#22c55e" }}>{readyList.length} ready</span>
+                </div>
+              )}
+            </div>
           </div>
-        ))}
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button onClick={() => setShowAdd(true)}
-            style={{ padding: "9px 18px", borderRadius: 10, border: "none",
-              background: C.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-            + Walk-in
-          </button>
-        </div>
-      </div>
 
-      {/* ── Main area: floor map (left) + queue (right) ──────────────── */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Live clock */}
+            <span
+              className="hidden sm:block text-[11px] tabular-nums font-medium px-2"
+              style={{ color: "rgba(var(--warm),0.65)", letterSpacing: "0.04em" }}
+            >
+              {clockStr}
+            </span>
 
-        {/* Floor map panel */}
-        <div style={{ flex: 1, padding: 16, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase",
-            letterSpacing: "0.1em", marginBottom: 10 }}>
-            Floor Plan
-            {tables.length > 0 && (
-              <span style={{ marginLeft: 10, color: C.text2, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-                {openTables} open · {tables.length - openTables} occupied
+            {/* Copy NFC Link button */}
+            <button
+              onClick={copyNfcLink}
+              className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium transition-colors"
+              style={{
+                color: linkCopied ? "#22c55e" : "rgba(var(--warm),0.65)",
+                background: linkCopied ? "rgba(34,197,94,0.1)" : "transparent",
+                border: linkCopied ? "1px solid rgba(34,197,94,0.3)" : "1px solid transparent",
+              }}
+              title={joinUrl}
+            >
+              {linkCopied
+                ? <><Check className="w-3 h-3" /> Copied!</>
+                : <><Copy className="w-3 h-3" /> NFC Link</>
+              }
+            </button>
+
+            <Link href={`/client/${slug}/history`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
+              <BarChart2 className="w-3 h-3" /> History
+            </Link>
+
+            <Link href={`/client/${slug}/reservations`} className="hidden sm:flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-medium hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.65)" }}>
+              <CalendarDays className="w-3 h-3" /> Reservations
+            </Link>
+
+            {/* Zoom controls */}
+            <div className="hidden sm:flex items-center gap-0.5 rounded-lg overflow-hidden" style={{ border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
+              <button
+                onClick={() => setZoom(z => Math.max(0.7, Math.round((z - 0.1) * 10) / 10))}
+                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
+                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}
+                title="Zoom out"
+              >−</button>
+              <span className="text-[10px] tabular-nums font-semibold px-1" style={{ color: "rgba(var(--warm),0.45)", minWidth: 28, textAlign: "center" }}>
+                {Math.round(zoom * 100)}%
               </span>
-            )}
+              <button
+                onClick={() => setZoom(z => Math.min(1.4, Math.round((z + 0.1) * 10) / 10))}
+                className="h-7 w-7 flex items-center justify-center transition-colors hover:bg-white/8"
+                style={{ color: "rgba(var(--warm),0.60)", fontSize: 14, fontWeight: 300 }}
+                title="Zoom in"
+              >+</button>
+            </div>
+
+            {/* Light / Dark toggle */}
+            <button
+              onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+              className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold transition-colors hover:bg-white/8"
+              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? "☀︎" : "◗"} {theme === "dark" ? "Light" : "Dark"}
+            </button>
+
+            <div className="h-7 w-7 flex items-center justify-center" style={{ color: online ? "rgba(34,197,94,0.85)" : "rgba(239,68,68,0.85)" }}>
+              {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+            </div>
+            <button onClick={refreshAll} className="h-7 w-7 flex items-center justify-center rounded-lg hover:bg-white/8 transition-colors" style={{ color: "rgba(var(--warm),0.55)" }}>
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
           </div>
-          {/* Floor map — fills available space */}
-          <div style={{ flex: 1, position: "relative" }}>
+        </header>
+
+        {/* ── Body ───────────────────────────────────────────────────── */}
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* ── Queue sidebar (resizable) ──────────────────────── */}
+          <div
+            className="flex flex-col shrink-0 overflow-hidden"
+            style={{
+              width: sidebarW,
+              position: "relative",
+              background: "var(--page-bg)",
+            }}
+          >
+            {/* Drag-to-resize handle */}
+            <div
+              onPointerDown={startResize}
+              style={{
+                position: "absolute", right: 0, top: 0, bottom: 0, width: 6,
+                cursor: "col-resize", zIndex: 20,
+                background: "transparent",
+                borderRight: "1px solid rgba(var(--accent),0.16)",
+              }}
+              title="Drag to resize"
+            >
+              <div style={{
+                position: "absolute", top: "50%", left: "50%",
+                transform: "translate(-50%, -50%)",
+                display: "flex", flexDirection: "column", gap: 3,
+              }}>
+                {[0,1,2].map(i => (
+                  <div key={i} style={{ width: 2, height: 2, borderRadius: "50%", background: "rgba(var(--accent),0.28)" }} />
+                ))}
+              </div>
+            </div>
+
+            {/* ── Today's reservations ──────────────────────────── */}
+            {activeRes.length > 0 && (
+              <div
+                style={{
+                  padding: "8px 12px 8px",
+                  borderBottom: "1px solid rgba(var(--accent),0.16)",
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7, padding: "0 2px" }}>
+                  <CalendarDays style={{ width: 9, height: 9, color: "rgba(99,179,237,0.80)" }} />
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: "0.16em",
+                    color: "rgba(99,179,237,0.75)", textTransform: "uppercase",
+                  }}>
+                    Reservations · {activeRes.length}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {activeRes.map(res => {
+                    const urgency = getResUrgency(res.date, res.time, now)
+                    const isLate     = urgency === "late"
+                    const isNow      = urgency === "now"
+                    const isArriving = urgency === "arriving"
+                    const assignedTableNum = tableForRes(res.id)
+                    const assignedApiTable = assignedTableNum !== undefined
+                      ? tables.find(t => t.table_number === assignedTableNum)
+                      : undefined
+
+                    return (
+                      <div
+                        key={res.id}
+                        style={{
+                          display: "flex", alignItems: "flex-start", gap: 8,
+                          padding: "7px 9px", borderRadius: 9,
+                          background: isLate
+                            ? "rgba(239,68,68,0.12)"
+                            : isNow
+                            ? "rgba(249,115,22,0.10)"
+                            : isArriving
+                            ? "rgba(251,191,36,0.08)"
+                            : "rgba(99,179,237,0.06)",
+                          border: `1px solid ${isLate
+                            ? "rgba(239,68,68,0.45)"
+                            : isNow
+                            ? "rgba(249,115,22,0.40)"
+                            : isArriving
+                            ? "rgba(251,191,36,0.35)"
+                            : "rgba(99,179,237,0.22)"}`,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 12, fontWeight: 600,
+                            color: "rgba(var(--cream),0.97)",
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            marginBottom: 2,
+                          }}>
+                            {res.guest_name}
+                          </div>
+                          <div style={{
+                            fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap",
+                            color: "rgba(var(--warm),0.70)",
+                          }}>
+                            <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
+                            <span>·</span>
+                            <span>{res.party_size}p</span>
+                            {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
+                            {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
+                            {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
+                            {/* Pre-assigned table badge */}
+                            {assignedTableNum !== undefined && (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(251,191,36,0.95)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 4, padding: "1px 5px" }}>
+                                  T{assignedTableNum}
+                                </span>
+                                <button
+                                  onPointerDown={e => e.stopPropagation()}
+                                  onClick={e => { e.stopPropagation(); setReservedTables(prev => { const n = new Map(prev); n.delete(assignedTableNum); return n }) }}
+                                  style={{ fontSize: 10, color: "rgba(251,191,36,0.45)", cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1 }}
+                                  title="Clear table assignment"
+                                >✕</button>
+                              </span>
+                            )}
+                          </div>
+                          {/* Notes — visible on the card so staff never misses them */}
+                          {res.notes && (
+                            <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {res.notes}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Action buttons column */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", flexShrink: 0 }}>
+                          {/* Check In — auto-uses pre-assigned table if set */}
+                          <button
+                            onClick={() => {
+                              if (assignedTableNum !== undefined) {
+                                checkInConfirm(res, assignedTableNum, assignedApiTable?.id)
+                              } else {
+                                setResPicker(res)
+                              }
+                            }}
+                            style={{
+                              height: 24, padding: "0 8px", borderRadius: 6, border: "none",
+                              cursor: "pointer", fontSize: 9, fontWeight: 800,
+                              letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
+                              background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                            }}
+                          >
+                            {assignedTableNum !== undefined ? `Check In → T${assignedTableNum}` : "Check In"}
+                          </button>
+                          {/* Assign Table — only shown when no table is pre-assigned */}
+                          {assignedTableNum === undefined && (
+                            <button
+                              onClick={() => setResTblPicker(res)}
+                              style={{
+                                height: 20, padding: "0 7px", borderRadius: 5,
+                                border: "1px solid rgba(251,191,36,0.28)",
+                                cursor: "pointer", fontSize: 8, fontWeight: 700,
+                                letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
+                                background: "rgba(251,191,36,0.06)", color: "rgba(251,191,36,0.75)",
+                              }}
+                            >
+                              Assign Table
+                            </button>
+                          )}
+                          {/* No Show — cancel reservation for non-arrivals */}
+                          <button
+                            onPointerDown={e => e.stopPropagation()}
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              await fetchT(`${API}/reservations/${res.id}/status?status=no-show`, { method: "PATCH" }).catch(() => {})
+                              fetchReservations()
+                              showToast(`${res.guest_name} marked as no-show`, "warn")
+                            }}
+                            style={{
+                              height: 20, padding: "0 7px", borderRadius: 5,
+                              border: "1px solid rgba(239,68,68,0.22)",
+                              cursor: "pointer", fontSize: 8, fontWeight: 700,
+                              letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" as never,
+                              background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.62)",
+                            }}
+                          >
+                            No Show
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Ready section */}
+            {readyList.length > 0 && (
+              <div className="px-3 pt-3 pb-1 shrink-0">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(34,197,94,0.90)" }}>
+                    Ready · {readyList.length}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1.5 pr-1">
+                  {readyList.map(e => (
+                    <DraggableQueueCard key={e.id} entry={e}
+                      isSelected={selectedEntry?.id === e.id}
+                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onRemoved={() => refreshAll()} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Divider */}
+            {readyList.length > 0 && waitingList.length > 0 && (
+              <div className="mx-3 my-2 shrink-0" style={{ height: 1, background: "rgba(var(--accent),0.14)" }} />
+            )}
+
+            {/* Needs Quote section — guests who joined without a quoted time */}
+            {needsQuoteList.length > 0 && (
+              <div className="px-3 pt-2 pb-1 shrink-0">
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#60a5fa" }} />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(99,179,237,0.90)" }}>
+                    Needs Quote · {needsQuoteList.length}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1.5 pr-1">
+                  {needsQuoteList.map(e => (
+                    <div
+                      key={e.id}
+                      style={{
+                        borderRadius: 12, padding: "10px 12px",
+                        background: "rgba(99,179,237,0.07)",
+                        border: "1px solid rgba(99,179,237,0.30)",
+                        display: "flex", alignItems: "center", gap: 8,
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.name || "Guest"}
+                        </div>
+                        <div style={{ fontSize: 11, color: "rgba(147,207,255,0.65)", display: "flex", gap: 6, marginTop: 2 }}>
+                          <span>{e.party_size}p</span>
+                          <span style={{ opacity: 0.5 }}>·</span>
+                          <span>{timeWaiting(e.arrival_time)} waiting</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setEditModal({ entry: e, displayWait: 0 })}
+                        style={{
+                          flexShrink: 0, height: 30, padding: "0 12px",
+                          borderRadius: 8, fontSize: 11, fontWeight: 700,
+                          background: "rgba(99,179,237,0.16)",
+                          color: "rgba(147,207,255,0.95)",
+                          border: "1px solid rgba(99,179,237,0.40)",
+                          cursor: "pointer", letterSpacing: "0.04em",
+                        }}
+                      >
+                        Quote
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {needsQuoteList.length > 0 && waitingList.length > needsQuoteList.length && (
+              <div className="mx-3 my-1.5 shrink-0" style={{ height: 1, background: "rgba(99,179,237,0.14)" }} />
+            )}
+
+            {/* Waiting section — only shows guests that have been quoted */}
+            <div className="px-3 pt-2 flex-1 overflow-y-auto">
+              {quotedWaiting.length > 0 && (
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
+                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(var(--warm),0.65)" }}>
+                    Waiting · {quotedWaiting.length}
+                  </span>
+                </div>
+              )}
+              {isInitialLoad ? (
+                <div className="flex items-center justify-center py-16">
+                  <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(var(--accent),0.18)", borderTopColor: "rgba(var(--accent),0.65)" }} />
+                </div>
+              ) : queue.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid rgba(var(--accent),0.14)", borderRadius: 12 }}>
+                  <CheckCircle2 className="w-7 h-7" style={{ color: "rgba(var(--accent),0.30)" }} />
+                  <p className="text-[11px] font-medium" style={{ color: "rgba(var(--warm),0.50)" }}>Queue is clear</p>
+                </div>
+              ) : quotedWaiting.length > 0 ? (
+                <div className="flex flex-col gap-1.5 pb-24 pr-1">
+                  {quotedWaiting.map(e => (
+                    <DraggableQueueCard key={e.id} entry={e}
+                      isSelected={selectedEntry?.id === e.id}
+                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onRemoved={() => refreshAll()} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+          </div>
+
+          {/* ── Floor map (desktop only) ───────────────────────────── */}
+          <div className="flex-1 overflow-hidden hidden lg:flex">
             <FloorMap
-              positions={positions}
-              liveTables={tables}
-              onTableClick={(live, pos) => {
-                // If we have a live table record, use it; otherwise create a stub from floor plan pos
-                const liveRecord = live ?? tables.find(t => t.table_number === pos.number) ?? null
-                setTableModal({ pos, live: liveRecord })
+              tables={tables}
+              localOccupants={localOccupants}
+              reservedTables={reservedTables}
+              now={now}
+              floor={floor}
+              canvasW={canvasW}
+              canvasH={canvasH}
+              onClear={(tableId, tableNumber) => {
+                const occupant = localOccupants.get(tableNumber)
+                const dbOccupied = tables.find(t => t.table_number === tableNumber)?.status === "occupied"
+                // Always confirm before clearing — prevents accidental wipes when a table
+                // is occupied in DB but not yet reflected in localOccupants
+                if (occupant || dbOccupied) {
+                  setClearConfirm({ tableId, tableNumber, occupant: occupant ?? { name: "Guest", party_size: 2 } })
+                } else {
+                  clearTable(tableId, tableNumber)
+                }
+              }}
+              isDraggingOccupant={!!activeDragOccupant}
+              selectedEntry={selectedEntry}
+              onSeatFromSelect={(tableNumber, tableId) => {
+                if (!selectedEntry) return
+                confirmSeat(selectedEntry, tableNumber, tableId)
+                setSelectedEntry(null)
+              }}
+              onTableClick={(tableId, tableNumber) => {
+                const isOccupied = localOccupants.has(tableNumber) || tables.find(t => t.table_number === tableNumber)?.status === "occupied"
+                if (!isOccupied) {
+                  setTableSeatPicker({ tableId, tableNumber })
+                  fetchTables()
+                  syncOccupants()
+                }
               }}
             />
           </div>
 
-          {/* Table grid legend (below map) */}
-          {tables.length > 0 && positions.length === 0 && (
-            <div style={{ marginTop: 16, display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
-              {tables.map(t => {
-                const isOcc = t.status === "occupied"
-                return (
-                  <button key={t.id} onClick={() => setTableModal({ pos: { number: t.table_number, label: t.label, shape: "rect", x: 0, y: 0, w: 0, h: 0 }, live: t })}
-                    style={{ background: isOcc ? C.redBg : C.greenBg, border: `1px solid ${isOcc ? C.redBorder : C.greenBorder}`,
-                      borderRadius: 10, padding: "12px 8px", textAlign: "center", cursor: "pointer" }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: C.text }}>{t.label || `T${t.table_number}`}</div>
-                    <div style={{ fontSize: 10, color: isOcc ? C.red : C.green, fontWeight: 700, textTransform: "uppercase", marginTop: 2 }}>
-                      {isOcc ? "occupied" : "open"}
-                    </div>
-                    {t.party_name && <div style={{ fontSize: 10, color: C.text2, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.party_name}</div>}
-                  </button>
-                )
-              })}
-            </div>
-          )}
+          {/* ── Mobile: no floor map ─────────────────── */}
+          <div className="flex-1 lg:hidden overflow-y-auto p-4 flex flex-col gap-4">
+            <p className="text-xs text-center py-8" style={{ color: "rgba(var(--warm),0.50)" }}>
+              Floor map available on larger screens
+            </p>
+          </div>
         </div>
 
-        {/* Queue panel */}
-        <div style={{ width: SIDEBAR, flexShrink: 0, borderLeft: `1px solid ${C.border}`,
-          display: "flex", flexDirection: "column", overflow: "hidden", background: C.panel }}>
-          <div style={{ padding: "14px 16px 10px", borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
-              Queue {active.length > 0 ? `(${active.length} waiting)` : "(empty)"}
+        {/* ── Add Guest FAB ─────────────────────────────────────────── */}
+        <button
+          onClick={() => setShowAdd(true)}
+          className="fixed bottom-6 right-6 flex items-center gap-2.5 h-16 px-8 rounded-full text-sm font-black tracking-[0.1em] uppercase shadow-2xl transition-all active:scale-95 hover:scale-[1.03] z-30"
+          style={{ background: "#22c55e", color: "white", boxShadow: "0 4px 28px rgba(34,197,94,0.35)" }}
+        >
+          <Plus className="w-5 h-5" /> Add Guest
+        </button>
+
+        {showAdd && (
+          <AddGuestDrawer
+            sidebarW={sidebarW}
+            rid={rid}
+            onClose={() => setShowAdd(false)}
+            onAdded={(id) => {
+              setShowAdd(false)
+              refreshAll()
+            }}
+          />
+        )}
+
+        {nfcWaitPanel && (
+          <NfcWaitPanel
+            entryId={nfcWaitPanel.id}
+            entryName={nfcWaitPanel.name}
+            partySize={nfcWaitPanel.party_size}
+            suggested={nfcWaitPanel.suggested}
+            sidebarW={sidebarW}
+            onClose={() => {
+              setNfcWaitPanel(null)
+              refreshAll()
+            }}
+          />
+        )}
+
+        {waitModal && (
+          <WaitTimeModal
+            entryId={waitModal.id}
+            defaultMinutes={waitModal.defaultMinutes}
+            onClose={() => { setWaitModal(null); refreshAll() }}
+          />
+        )}
+
+        {editModal && (
+          <GuestEditModal
+            entry={editModal.entry}
+            displayWait={editModal.displayWait}
+            sidebarW={sidebarW}
+            onClose={() => setEditModal(null)}
+            onSaved={() => { setEditModal(null); refreshAll() }}
+            onRemoved={() => { setEditModal(null); refreshAll() }}
+          />
+        )}
+
+        {/* ── Selected guest hint bar ───────────────────────────── */}
+        {selectedEntry && (
+          <div
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 px-4 py-2.5 rounded-full"
+            style={{
+              background: "rgba(12,6,3,0.93)",
+              border: "1px solid rgba(255,220,100,0.38)",
+              backdropFilter: "blur(12px)",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.55)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span className="text-xs font-bold" style={{ color: "rgba(255,220,100,0.95)" }}>
+              {selectedEntry.name || "Guest"} · {selectedEntry.party_size}p
+            </span>
+            <span className="text-[10px]" style={{ color: "rgba(255,220,100,0.48)" }}>
+              — tap a table to seat
+            </span>
+            <button
+              onClick={() => setSelectedEntry(null)}
+              className="w-5 h-5 flex items-center justify-center rounded-full ml-1 transition-all hover:bg-yellow-400/10"
+              style={{ color: "rgba(255,220,100,0.6)" }}
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* ── Clear Table Confirmation ──────────────────────────── */}
+        {clearConfirm && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setClearConfirm(null)} />
+            <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
+              <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(var(--accent),0.18)" }} />
+              <p className="text-base font-bold mb-1" style={{ color: "rgba(var(--cream),0.92)" }}>Table {clearConfirm.tableNumber}</p>
+              <p className="text-sm mb-8" style={{ color: "rgba(var(--warm),0.55)" }}>
+                What would you like to do with{" "}
+                <strong style={{ color: "rgba(var(--cream),0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
+                ({clearConfirm.occupant.party_size}p)?
+              </p>
+              <div className="flex flex-col gap-3">
+                {clearConfirm.occupant.entry_id && (
+                  <button
+                    onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "restore"); setClearConfirm(null) }}
+                    className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                    style={{ background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.35)", fontSize: 16, padding: "20px 0" }}
+                  >
+                    Return to Waitlist
+                  </button>
+                )}
+                <button
+                  onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "cancel"); setClearConfirm(null) }}
+                  className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                  style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.28)", fontSize: 16, padding: "20px 0" }}
+                >
+                  Clear Table
+                </button>
+                <button
+                  onClick={() => setClearConfirm(null)}
+                  className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                  style={{ background: "rgba(var(--accent),0.06)", color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.12)", fontSize: 15, padding: "18px 0" }}
+                >
+                  Keep Seated
+                </button>
+              </div>
             </div>
           </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-            {active.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "48px 0", color: C.muted, fontSize: 14 }}>
-                <div style={{ fontSize: 36, marginBottom: 10 }}>🎉</div>
-                Queue is empty
+        )}
+
+        {/* ── Seat from table click ──────────────────────────────── */}
+        {tableSeatPicker && (
+          <TableClickModal
+            tableNumber={tableSeatPicker.tableNumber}
+            tableId={tableSeatPicker.tableId}
+            waitingGuests={[...readyList, ...waitingList]}
+            onSeatExisting={(entry) => { setTableSeatPicker(null); confirmSeat(entry, tableSeatPicker.tableNumber, tableSeatPicker.tableId) }}
+            onAddNew={async (name, partySize, phone) => {
+              // Capture before nulling state
+              const tNum = tableSeatPicker.tableNumber
+              const tId  = tableSeatPicker.tableId
+              setTableSeatPicker(null)
+              try {
+                const r = await fetch(`${API}/queue/join`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ name: name || null, party_size: partySize, phone: phone || null, preference: "asap", source: "host", restaurant_id: rid }),
+                })
+                if (!r.ok) throw new Error()
+                const data = await r.json()
+                const entryId = data.entry?.id ?? data.id ?? ""
+                if (entryId && tId) {
+                  await fetch(`${API}/queue/${entryId}/seat-to-table/${tId}`, { method: "POST" })
+                  recentlySeateddRef.current.set(tNum, Date.now() + 5000)
+                  setLocalOccupants(prev => new Map(prev).set(tNum, { name: name || "Guest", party_size: partySize, entry_id: entryId }))
+                }
+                showToast(`${name || "Guest"} seated at Table ${tNum}`)
+              } catch { showToast("Could not add guest", "err") }
+              refreshAll()
+            }}
+            onClose={() => setTableSeatPicker(null)}
+          />
+        )}
+
+        {/* Queue seat picker */}
+        {seatPicker && (
+          <SeatTablePicker
+            guest={seatPicker}
+            tables={tables}
+            localOccupants={localOccupants}
+            reservedTables={reservedTables}
+            now={now}
+            floor={floor}
+            onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
+            onClose={() => setSeatPicker(null)}
+          />
+        )}
+
+        {/* Reservation check-in picker */}
+        {resPicker && (
+          <SeatTablePicker
+            guest={{ name: resPicker.guest_name, party_size: resPicker.party_size }}
+            tables={tables}
+            localOccupants={localOccupants}
+            reservedTables={reservedTables}
+            excludeResId={resPicker.id}
+            floor={floor}
+            onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
+            onClose={() => setResPicker(null)}
+          />
+        )}
+
+        {/* Reservation table pre-assignment picker */}
+        {resTblPicker && (
+          <SeatTablePicker
+            guest={{ name: resTblPicker.guest_name, party_size: resTblPicker.party_size }}
+            tables={tables}
+            localOccupants={localOccupants}
+            reservedTables={reservedTables}
+            excludeResId={resTblPicker.id}
+            mode="reserve"
+            floor={floor}
+            onConfirm={(tableNumber) => { assignResTable(resTblPicker, tableNumber); setResTblPicker(null) }}
+            onClose={() => setResTblPicker(null)}
+          />
+        )}
+
+        {/* ── Reservation seat warning modal (blocking) ─────────── */}
+        {resSeatWarning && (
+          <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center">
+            <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+            <div
+              className="relative w-full sm:w-[420px] rounded-t-3xl sm:rounded-2xl p-7"
+              style={{ background: "var(--card-bg)", border: "1px solid rgba(249,115,22,0.35)", zIndex: 1 }}
+            >
+              <div className="sm:hidden w-8 h-[3px] rounded-full mx-auto mb-5" style={{ background: "rgba(var(--accent),0.18)" }} />
+
+              <div className="flex items-start gap-3 mb-5">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: "rgba(249,115,22,0.14)", border: "1px solid rgba(249,115,22,0.35)", color: "rgba(249,115,22,0.85)" }}
+                >
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm mb-1" style={{ color: "rgba(255,240,220,0.97)" }}>Table Reserved</p>
+                  <p className="text-xs" style={{ color: "rgba(var(--warm),0.55)", lineHeight: 1.5 }}>
+                    Table {resSeatWarning.tableNumber} is held for{" "}
+                    <strong style={{ color: "rgba(255,240,220,0.88)" }}>{resSeatWarning.resInfo.guestName}</strong>{" "}
+                    at <strong style={{ color: "rgba(249,115,22,0.95)" }}>{fmt12Res(resSeatWarning.resInfo.time)}</strong>.
+                  </p>
+                </div>
               </div>
-            ) : active.map((q, i) => (
-              <QueueCard key={q.id} entry={q} idx={i}
-                onSeat={() => seatParty(q.id)}
-                onReady={() => markReady(q.id)}
-                onRemove={() => removeParty(q.id, q.name)}
-                busy={busyId === q.id}
-              />
-            ))}
-          </div>
-          {/* Reservations section */}
-          {reservations.length > 0 && (
-            <div style={{ borderTop: `1px solid ${C.border}`, padding: "12px", flexShrink: 0 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.purple, textTransform: "uppercase",
-                letterSpacing: "0.08em", marginBottom: 8 }}>
-                Reservations ({reservations.length})
+
+              <div className="mb-5 p-3 rounded-xl" style={{ background: "rgba(249,115,22,0.07)", border: "1px solid rgba(249,115,22,0.18)" }}>
+                <p className="text-xs" style={{ color: "rgba(var(--warm),0.60)", lineHeight: 1.5 }}>
+                  Seating{" "}
+                  <strong style={{ color: "rgba(255,240,220,0.88)" }}>{resSeatWarning.entry.name || "this guest"}</strong>{" "}
+                  ({resSeatWarning.entry.party_size}p) here may conflict with the upcoming reservation.
+                </p>
               </div>
-              {reservations.map(r => {
-                const arr = r.arrival_time ? new Date(r.arrival_time) : null
-                return (
-                  <div key={r.id} style={{ padding: "8px 10px", borderRadius: 8,
-                    background: C.purpleBg, border: `1px solid ${C.purpleBorder}`,
-                    marginBottom: 6, fontSize: 13 }}>
-                    <div style={{ fontWeight: 600, color: C.text }}>{r.name}</div>
-                    <div style={{ color: C.text2, fontSize: 11, marginTop: 2 }}>
-                      Party of {r.party_size}
-                      {arr && <span style={{ color: C.purple, marginLeft: 8 }}>
-                        {arr.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                      </span>}
-                    </div>
-                  </div>
-                )
-              })}
+
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => {
+                    const w = resSeatWarning
+                    setResSeatWarning(null)
+                    doSeat(w.entry, w.tableNumber, w.tableId)
+                  }}
+                  className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] hover:brightness-110"
+                  style={{ background: "rgba(249,115,22,0.16)", color: "#f97316", border: "1px solid rgba(249,115,22,0.40)", fontSize: 14, padding: "16px 0" }}
+                >
+                  Seat Anyway
+                </button>
+                <button
+                  onClick={() => {
+                    const entry = resSeatWarning.entry
+                    setResSeatWarning(null)
+                    setSeatPicker(entry)
+                  }}
+                  className="w-full rounded-xl font-bold tracking-[0.08em] uppercase transition-all active:scale-[0.98] hover:brightness-110"
+                  style={{ background: "rgba(34,197,94,0.10)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.30)", fontSize: 14, padding: "16px 0" }}
+                >
+                  Choose Different Table
+                </button>
+                <button
+                  onClick={() => setResSeatWarning(null)}
+                  className="w-full py-3 text-xs transition-all"
+                  style={{ color: "rgba(var(--warm),0.28)", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Toast notifications */}
+      <Toasts items={toasts} />
+
+
+      {/* ── Drag overlay ──────────────────────────────────────────── */}
+      <DragOverlay dropAnimation={null} modifiers={[snapGhostToCursor]}>
+        {activeDragEntry && <DragGhost entry={activeDragEntry} />}
+        {activeDragOccupant && (
+          <div style={{
+            background: "rgba(239,68,68,0.35)",
+            border: "1.5px solid rgba(239,68,68,0.90)",
+            borderRadius: 10,
+            padding: "6px 12px",
+            color: "rgba(255,240,220,0.97)",
+            fontSize: 11,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+          }}>
+            {activeDragOccupant.occupant.name} · {activeDragOccupant.occupant.party_size}p
+          </div>
+        )}
+      </DragOverlay>
+      </div>{/* end outer clip wrapper */}
+    </DndContext>
   )
 }
 
 export default function ClientStationPage() {
-  return (
-    <Suspense>
-      <StationInner />
-    </Suspense>
-  )
+  return <Suspense><ClientStationInner /></Suspense>
 }
