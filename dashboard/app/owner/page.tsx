@@ -2112,12 +2112,13 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   async function saveConfig(patch: { floor_plan?: FloorTable[]; menu_config?: { sections: MenuSection[] }; guest_config?: Record<string,unknown> }) {
     setSavingConfig(true); setSaveStatus("saving")
     try {
-      await fetch(`${API}/owner/clients/${client.id}/config?secret=${encodeURIComponent(token)}`, {
+      const r = await fetch(`${API}/owner/clients/${client.id}/config?secret=${encodeURIComponent(token)}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       })
+      if (!r.ok) throw new Error(`Server returned ${r.status}`)
       setSaveStatus("saved")
-      setTimeout(() => setSaveStatus(""), 2500)
+      setTimeout(() => setSaveStatus(""), 3000)
     } catch {
       setSaveStatus("error")
     } finally {
@@ -2166,13 +2167,18 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
         ))}
       </div>
 
-      {/* Save status */}
+      {/* Save status — fixed top-of-screen toast */}
       {saveStatus && (
-        <div style={{ marginBottom: 16, padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-          background: saveStatus === "saved" ? D.greenBg : saveStatus === "error" ? D.redBg : D.blueBg,
+        <div style={{
+          position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
+          zIndex: 9999, padding: "12px 28px", borderRadius: 12, fontSize: 14, fontWeight: 700,
+          boxShadow: "0 4px 24px rgba(0,0,0,0.55)", pointerEvents: "none",
+          background: saveStatus === "saved" ? "rgba(34,197,94,0.18)" : saveStatus === "error" ? "rgba(239,68,68,0.18)" : "rgba(96,165,250,0.18)",
           color: saveStatus === "saved" ? D.green : saveStatus === "error" ? D.red : D.blue,
-          border: `1px solid ${saveStatus === "saved" ? D.greenBorder : saveStatus === "error" ? D.red + "40" : D.blueBorder}` }}>
-          {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved" : "Error saving"}
+          border: `1px solid ${saveStatus === "saved" ? D.greenBorder : saveStatus === "error" ? D.red + "55" : D.blueBorder}`,
+          backdropFilter: "blur(12px)",
+        }}>
+          {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Changes saved" : "⚠ Save failed — check your connection"}
         </div>
       )}
 
