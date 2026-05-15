@@ -2716,15 +2716,12 @@ def batch_save_tables(restaurant_id: str, req: BatchTablesRequest, secret: Optio
         for t in req.tables:
             if not t.get("table_number"):
                 continue
-            row: dict = {
+            rows.append({
                 "restaurant_id": restaurant_id,
                 "table_number":  int(t["table_number"]),
                 "capacity":      int(t.get("capacity", 2)),
                 "status":        "available",
-            }
-            for f in ("shape", "label"):
-                if f in t: row[f] = t[f]
-            rows.append(row)
+            })
         if rows:
             supabase.table("tables").insert(rows).execute()
         return {"ok": True, "count": len(rows)}
@@ -2806,15 +2803,12 @@ def sync_tables_from_floor_plan(slug: str):
             num = int(t.get("number", 0) or t.get("table_number", 0))
             if not num or num in existing_nums:
                 continue
-            row: dict = {
+            rows.append({
                 "restaurant_id": rid,
                 "table_number":  num,
                 "capacity":      int(t.get("capacity", 2)),
                 "status":        "available",
-            }
-            if t.get("shape"):  row["shape"] = t["shape"]
-            if t.get("label"):  row["label"] = t["label"]
-            rows.append(row)
+            })
 
         if rows:
             supabase.table("tables").insert(rows).execute()

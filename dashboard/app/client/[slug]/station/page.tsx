@@ -3426,41 +3426,32 @@ function ClientStationInner() {
             waitingGuests={[...readyList, ...waitingList]}
             onSeatExisting={(entry) => { setTableSeatPicker(null); confirmSeat(entry, tableSeatPicker.tableNumber, tableSeatPicker.tableId) }}
             onAddNew={async (name, partySize, phone) => {
-              // Capture before nulling state
               const tNum = tableSeatPicker.tableNumber
               let tId  = tableSeatPicker.tableId
               setTableSeatPicker(null)
               try {
-                // Resolve table ID if not cached (new restaurant with empty tables state)
+                // Resolve table ID if not cached
                 if (!tId) {
                   const fresh = await fetch(`${API}/tables?restaurant_id=${rid}`).then(r => r.ok ? r.json() : [])
                   const normalized = normalizeTables(fresh)
                   setTables(normalized)
                   tId = normalized.find(t => t.table_number === tNum)?.id
                 }
-                // If still no table ID, auto-provision and retry once
-                if (!tId && slug) {
-                  await fetch(`https://restaurant-brain-production.up.railway.app/client/${encodeURIComponent(slug)}/tables/sync`, { method: "POST" })
-                  const fresh2 = await fetch(`${API}/tables?restaurant_id=${rid}`).then(r => r.ok ? r.json() : [])
-                  const normalized2 = normalizeTables(fresh2)
-                  setTables(normalized2)
-                  tId = normalized2.find(t => t.table_number === tNum)?.id
-                }
-                const r = await fetch(`${API}/queue/join`, {
+                if (!tId) { showToast("Table not ready — try again.", "err"); refreshAll(); return }
+                // Atomic: creates entry as already-seated + claims table in one call.
+                // Avoids the race where /queue/join + /seat-to-table shows guest in queue briefly.
+                const r = await fetch(`${API}/queue/walkin-at-table/${tId}`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name: name || null, party_size: partySize, phone: phone || null, preference: "asap", source: "host", restaurant_id: rid }),
+                  body: JSON.stringify({ name: name || null, party_size: partySize, phone: phone || null, restaurant_id: rid }),
                 })
-                if (!r.ok) throw new Error()
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Failed")
                 const data = await r.json()
                 const entryId = data.entry?.id ?? data.id ?? ""
-                if (entryId && tId) {
-                  await fetch(`${API}/queue/${entryId}/seat-to-table/${tId}`, { method: "POST" })
-                  recentlySeateddRef.current.set(tNum, Date.now() + 5000)
-                  setLocalOccupants(prev => new Map(prev).set(tNum, { name: name || "Guest", party_size: partySize, entry_id: entryId }))
-                }
+                recentlySeateddRef.current.set(tNum, Date.now() + 8000)
+                setLocalOccupants(prev => new Map(prev).set(tNum, { name: name || "Guest", party_size: partySize, entry_id: entryId }))
                 showToast(`${name || "Guest"} seated at Table ${tNum}`)
-              } catch { showToast("Could not add guest", "err") }
+              } catch (err) { showToast((err as Error).message || "Could not add guest", "err") }
               refreshAll()
             }}
             onClose={() => setTableSeatPicker(null)}
