@@ -3172,39 +3172,12 @@ function ClientStationInner() {
                 </div>
                 <div className="flex flex-col gap-1.5 pr-1">
                   {needsQuoteList.map(e => (
-                    <div
-                      key={e.id}
-                      style={{
-                        borderRadius: 12, padding: "10px 12px",
-                        background: "rgba(99,179,237,0.07)",
-                        border: "1px solid rgba(99,179,237,0.30)",
-                        display: "flex", alignItems: "center", gap: 8,
-                      }}
-                    >
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {e.name || "Guest"}
-                        </div>
-                        <div style={{ fontSize: 11, color: "rgba(147,207,255,0.65)", display: "flex", gap: 6, marginTop: 2 }}>
-                          <span>{e.party_size}p</span>
-                          <span style={{ opacity: 0.5 }}>·</span>
-                          <span>{timeWaiting(e.arrival_time)} waiting</span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setEditModal({ entry: e, displayWait: 0 })}
-                        style={{
-                          flexShrink: 0, height: 30, padding: "0 12px",
-                          borderRadius: 8, fontSize: 11, fontWeight: 700,
-                          background: "rgba(99,179,237,0.16)",
-                          color: "rgba(147,207,255,0.95)",
-                          border: "1px solid rgba(99,179,237,0.40)",
-                          cursor: "pointer", letterSpacing: "0.04em",
-                        }}
-                      >
-                        Quote
-                      </button>
-                    </div>
+                    <DraggableQueueCard key={e.id} entry={e}
+                      isSelected={selectedEntry?.id === e.id}
+                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onRemoved={() => refreshAll()} />
                   ))}
                 </div>
               </div>
