@@ -723,7 +723,7 @@ function GuestEditModal({
 // ── Draggable Queue Card ───────────────────────────────────────────────────────
 
 function DraggableQueueCard({
-  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved,
+  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved, isNeedsQuote,
 }: {
   entry: QueueEntry
   onSeat: () => void
@@ -732,6 +732,7 @@ function DraggableQueueCard({
   onSelect?: () => void
   onEdit?: (displayWait: number) => void
   onRemoved?: () => void
+  isNeedsQuote?: boolean
 }) {
   const isReady = entry.status === "ready"
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -906,8 +907,8 @@ function DraggableQueueCard({
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             Seat
           </button>
-          {/* Notify (only when not yet ready) */}
-          {!isReady ? (
+          {/* Notify (only when not yet ready and already quoted) */}
+          {!isReady && !isNeedsQuote ? (
             <button onClick={e => { e.stopPropagation(); onNotify() }}
               className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
               style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.28)" }}>
@@ -915,13 +916,22 @@ function DraggableQueueCard({
               <span style={{ letterSpacing: "0.02em" }}>Notify</span>
             </button>
           ) : null}
-          {/* Edit */}
-          <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
-            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
-            style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(251,191,36,0.09)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.22)" }}>
-            <Pencil className="w-3.5 h-3.5 shrink-0" />
-            <span style={{ letterSpacing: "0.02em" }}>Edit</span>
-          </button>
+          {/* Edit or Quote */}
+          {isNeedsQuote ? (
+            <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+              className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-bold"
+              style={{ flex: 2, height: 44, fontSize: 13, background: "rgba(99,179,237,0.15)", color: "#60a5fa", border: "1px solid rgba(99,179,237,0.40)" }}>
+              <Pencil className="w-4 h-4 shrink-0" />
+              <span style={{ letterSpacing: "0.04em" }}>Quote</span>
+            </button>
+          ) : (
+            <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+              className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
+              style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(251,191,36,0.09)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.22)" }}>
+              <Pencil className="w-3.5 h-3.5 shrink-0" />
+              <span style={{ letterSpacing: "0.02em" }}>Edit</span>
+            </button>
+          )}
           {/* Remove */}
           <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
             className="flex items-center justify-center rounded-xl transition-all active:scale-95"
@@ -1232,7 +1242,7 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onTableClick, reservedTables, now, floor, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H, showCapacity, resAlertBySize,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onTableClick, reservedTables, now, floor, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H, showCapacity, resAlertBySize, resSelectMode,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -1246,6 +1256,7 @@ function FloorMap({
   floor?: FloorPos[]
   canvasW?: number
   canvasH?: number
+  resSelectMode?: boolean
   showCapacity?: boolean
   resAlertBySize?: AlertBySize
 }) {
@@ -1298,7 +1309,7 @@ function FloorMap({
                 reservation={reservedTables?.get(pos.number)}
                 onClear={() => onClear(table?.id, pos.number)}
                 isDraggingOccupant={isDraggingOccupant}
-                isSelectMode={!!selectedEntry}
+                isSelectMode={!!selectedEntry || !!resSelectMode}
                 onSeatFromSelect={selectedEntry ? () => onSeatFromSelect?.(pos.number, table?.id) : undefined}
                 onTableClick={onTableClick ? () => onTableClick(table?.id, pos.number) : undefined}
                 now={now}
@@ -2196,6 +2207,136 @@ function HistoryDrawer({ onClose, onRestored, rid: histRid }: { onClose: () => v
   )
 }
 
+// ── Draggable reservation sidebar card ────────────────────────────────────────
+
+function DraggableResCard({
+  res, now, assignedTableNum, assignedApiTable,
+  isSelected, onSelect, onSeat, onAssign, onClearAssignment, onNoShow,
+}: {
+  res: Reservation
+  now: Date
+  assignedTableNum: number | undefined
+  assignedApiTable?: Table
+  isSelected?: boolean
+  onSelect?: () => void
+  onSeat: () => void
+  onAssign: () => void
+  onClearAssignment: () => void
+  onNoShow: () => void
+}) {
+  const urgency    = getResUrgency(res.date, res.time, now)
+  const isLate     = urgency === "late"
+  const isNow      = urgency === "now"
+  const isArriving = urgency === "arriving"
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: `res-${res.id}`,
+    data: { type: "reservation", res },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      onClick={() => { if (!isDragging) onSelect?.() }}
+      style={{
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0.35 : 1,
+        touchAction: "none",
+        display: "flex",
+        flexDirection: "column",
+        gap: 0,
+        padding: "7px 9px",
+        borderRadius: 9,
+        background: isSelected
+          ? "rgba(99,179,237,0.14)"
+          : isLate
+          ? "rgba(239,68,68,0.12)"
+          : isNow
+          ? "rgba(249,115,22,0.10)"
+          : isArriving
+          ? "rgba(251,191,36,0.08)"
+          : "rgba(99,179,237,0.06)",
+        border: `1px solid ${isSelected
+          ? "rgba(99,179,237,0.55)"
+          : isLate
+          ? "rgba(239,68,68,0.45)"
+          : isNow
+          ? "rgba(249,115,22,0.40)"
+          : isArriving
+          ? "rgba(251,191,36,0.35)"
+          : "rgba(99,179,237,0.22)"}`,
+        boxShadow: isSelected ? "0 0 0 2px rgba(99,179,237,0.18), inset 0 0 10px rgba(99,179,237,0.05)" : undefined,
+        cursor: isDragging ? "grabbing" : "grab",
+      }}
+    >
+      {/* Guest info */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream),0.97)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
+            {res.guest_name}
+          </div>
+          <div style={{ fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", color: "rgba(var(--warm),0.70)" }}>
+            <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
+            <span>·</span>
+            <span>{res.party_size}p</span>
+            {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
+            {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
+            {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
+            {assignedTableNum !== undefined && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(251,191,36,0.95)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 4, padding: "1px 5px" }}>
+                  T{assignedTableNum}
+                </span>
+                <button
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => { e.stopPropagation(); onClearAssignment() }}
+                  style={{ color: "rgba(251,191,36,0.45)", cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1, display: "flex", alignItems: "center" }}
+                  title="Clear table assignment"
+                ><X style={{ width: 9, height: 9 }} /></button>
+              </span>
+            )}
+            {isSelected && (
+              <span className="animate-pulse" style={{ color: "rgba(99,179,237,0.90)", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>TAP TABLE TO SEAT</span>
+            )}
+          </div>
+          {res.notes && (
+            <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {res.notes}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 6, marginTop: 8 }}>
+        <button
+          onClick={e => { e.stopPropagation(); onSeat() }}
+          style={{ flex: 1, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, background: "rgba(34,197,94,0.15)", color: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          {assignedTableNum !== undefined ? `Seat → T${assignedTableNum}` : "Seat Guest"}
+        </button>
+        {assignedTableNum === undefined && (
+          <button
+            onClick={e => { e.stopPropagation(); onAssign() }}
+            style={{ height: 34, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.35)", cursor: "pointer", fontSize: 11, fontWeight: 700, background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.85)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            Assign Table
+          </button>
+        )}
+        <button
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); onNoShow() }}
+          style={{ height: 34, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.30)", cursor: "pointer", fontSize: 11, fontWeight: 700, background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.80)", display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          No Show
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 
 function ClientStationInner() {
@@ -2233,10 +2374,12 @@ function ClientStationInner() {
   const [avgWait, setAvgWait]             = useState(0)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [activeDragRes, setActiveDragRes] = useState<Reservation | null>(null)
   const [seatPicker, setSeatPicker]       = useState<QueueEntry | null>(null)
   const [resPicker, setResPicker]         = useState<Reservation | null>(null)
   const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
+  const [selectedRes, setSelectedRes]     = useState<Reservation | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [pendingOccupantMove, setPendingOccupantMove] = useState<{ tableNumber: number; tableId: string | undefined; occupant: LocalOccupant } | null>(null)
   const [tableSeatPicker, setTableSeatPicker] = useState<{ tableId: string | undefined; tableNumber: number } | null>(null)
@@ -2684,13 +2827,20 @@ function ClientStationInner() {
 
   function handleDragStart(event: DragStartEvent) {
     setSelectedEntry(null)
+    setSelectedRes(null)
     const data = event.active.data.current as Record<string, unknown> | undefined
     if (data?.type === "occupant") {
       setActiveDragOccupant({ tableNumber: data.tableNumber as number, occupant: data.occupant as LocalOccupant })
       setActiveDrag(null)
+      setActiveDragRes(null)
+    } else if (data?.type === "reservation") {
+      setActiveDragRes(data.res as Reservation)
+      setActiveDrag(null)
+      setActiveDragOccupant(null)
     } else {
       setActiveDrag((data as { entry?: QueueEntry } | undefined)?.entry ?? null)
       setActiveDragOccupant(null)
+      setActiveDragRes(null)
     }
   }
 
@@ -2698,12 +2848,25 @@ function ClientStationInner() {
     const { active, over } = event
     setActiveDrag(null)
     setActiveDragOccupant(null)
+    setActiveDragRes(null)
     if (!over || !active) return
 
     const targetTable = parseInt((over.id as string).replace("table-", ""))
     if (isNaN(targetTable)) return
 
     const data = active.data.current as Record<string, unknown> | undefined
+
+    if (data?.type === "reservation") {
+      const res = data.res as Reservation
+      const isOccupied = localOccupants.has(targetTable) || tables.find(t => t.table_number === targetTable)?.status === "occupied"
+      if (isOccupied) {
+        showToast(`Table ${targetTable} is already occupied.`, "err")
+        return
+      }
+      const apiTable = tables.find(t => t.table_number === targetTable)
+      checkInConfirm(res, targetTable, apiTable?.id)
+      return
+    }
 
     if (data?.type === "occupant") {
       const sourceTable = data.tableNumber as number
@@ -3071,145 +3234,39 @@ function ClientStationInner() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {activeRes.map(res => {
-                    const urgency = getResUrgency(res.date, res.time, now)
-                    const isLate     = urgency === "late"
-                    const isNow      = urgency === "now"
-                    const isArriving = urgency === "arriving"
                     const assignedTableNum = tableForRes(res.id)
                     const assignedApiTable = assignedTableNum !== undefined
                       ? tables.find(t => t.table_number === assignedTableNum)
                       : undefined
-
                     return (
-                      <div
+                      <DraggableResCard
                         key={res.id}
-                        style={{
-                          display: "flex", alignItems: "flex-start", gap: 8,
-                          padding: "7px 9px", borderRadius: 9,
-                          background: isLate
-                            ? "rgba(239,68,68,0.12)"
-                            : isNow
-                            ? "rgba(249,115,22,0.10)"
-                            : isArriving
-                            ? "rgba(251,191,36,0.08)"
-                            : "rgba(99,179,237,0.06)",
-                          border: `1px solid ${isLate
-                            ? "rgba(239,68,68,0.45)"
-                            : isNow
-                            ? "rgba(249,115,22,0.40)"
-                            : isArriving
-                            ? "rgba(251,191,36,0.35)"
-                            : "rgba(99,179,237,0.22)"}`,
+                        res={res}
+                        now={now}
+                        assignedTableNum={assignedTableNum}
+                        assignedApiTable={assignedApiTable}
+                        isSelected={selectedRes?.id === res.id}
+                        onSelect={() => setSelectedRes(prev => prev?.id === res.id ? null : res)}
+                        onSeat={() => {
+                          if (assignedTableNum !== undefined) {
+                            checkInConfirm(res, assignedTableNum, assignedApiTable?.id)
+                          } else {
+                            setResPicker(res)
+                          }
                         }}
-                      >
-                        {/* Top row: guest info */}
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{
-                              fontSize: 13, fontWeight: 700,
-                              color: "rgba(var(--cream),0.97)",
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                              marginBottom: 2,
-                            }}>
-                              {res.guest_name}
-                            </div>
-                            <div style={{
-                              fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap",
-                              color: "rgba(var(--warm),0.70)",
-                            }}>
-                              <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
-                              <span>·</span>
-                              <span>{res.party_size}p</span>
-                              {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
-                              {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
-                              {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
-                              {/* Pre-assigned table badge */}
-                              {assignedTableNum !== undefined && (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                  <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(251,191,36,0.95)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 4, padding: "1px 5px" }}>
-                                    T{assignedTableNum}
-                                  </span>
-                                  <button
-                                    onPointerDown={e => e.stopPropagation()}
-                                    onClick={e => { e.stopPropagation(); setReservedTables(prev => { const n = new Map(prev); n.delete(assignedTableNum); return n }) }}
-                                    style={{ fontSize: 10, color: "rgba(251,191,36,0.45)", cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1, display: "flex", alignItems: "center" }}
-                                    title="Clear table assignment"
-                                  ><X style={{ width: 9, height: 9 }} /></button>
-                                </span>
-                              )}
-                            </div>
-                            {/* Notes */}
-                            {res.notes && (
-                              <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {res.notes}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Action buttons row — full width, bigger tap targets */}
-                        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                          {/* Seat Guest / Check In */}
-                          <button
-                            onClick={() => {
-                              if (assignedTableNum !== undefined) {
-                                checkInConfirm(res, assignedTableNum, assignedApiTable?.id)
-                              } else {
-                                setResPicker(res)
-                              }
-                            }}
-                            style={{
-                              flex: 1, height: 34, borderRadius: 8, border: "none",
-                              cursor: "pointer", fontSize: 11, fontWeight: 800,
-                              letterSpacing: "0.08em", textTransform: "uppercase",
-                              background: "rgba(34,197,94,0.15)", color: "#22c55e",
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                            }}
-                          >
-                            {assignedTableNum !== undefined ? `Seat → T${assignedTableNum}` : "Seat Guest"}
-                          </button>
-                          {/* Assign Table — shown when no table pre-assigned */}
-                          {assignedTableNum === undefined && (
-                            <button
-                              onClick={() => setResTblPicker(res)}
-                              style={{
-                                height: 34, padding: "0 10px", borderRadius: 8,
-                                border: "1px solid rgba(251,191,36,0.35)",
-                                cursor: "pointer", fontSize: 11, fontWeight: 700,
-                                background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.85)",
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                              }}
-                            >
-                              Assign Table
-                            </button>
-                          )}
-                          {/* No Show */}
-                          <button
-                            onPointerDown={e => e.stopPropagation()}
-                            onClick={async (e) => {
-                              e.stopPropagation()
-                              // Clear pre-assigned table immediately
-                              setReservedTables(prev => {
-                                const n = new Map(prev)
-                                for (const [k, v] of n) { if (v.resId === res.id) { n.delete(k); break } }
-                                return n
-                              })
-                              setTodayRes(prev => prev.filter(r => r.id !== res.id))
-                              await fetchT(`${API}/reservations/${res.id}/status?status=no-show`, { method: "PATCH" }).catch(() => {})
-                              showToast(`${res.guest_name} marked as no-show`, "warn")
-                            }}
-                            style={{
-                              height: 34, padding: "0 10px", borderRadius: 8,
-                              border: "1px solid rgba(239,68,68,0.30)",
-                              cursor: "pointer", fontSize: 11, fontWeight: 700,
-                              background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.80)",
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                            }}
-                          >
-                            No Show
-                          </button>
-                        </div>
-                      </div>
+                        onAssign={() => setResTblPicker(res)}
+                        onClearAssignment={() => setReservedTables(prev => { const n = new Map(prev); n.delete(assignedTableNum!); return n })}
+                        onNoShow={async () => {
+                          setReservedTables(prev => {
+                            const n = new Map(prev)
+                            for (const [k, v] of n) { if (v.resId === res.id) { n.delete(k); break } }
+                            return n
+                          })
+                          setTodayRes(prev => prev.filter(r => r.id !== res.id))
+                          await fetchT(`${API}/reservations/${res.id}/status?status=no-show`, { method: "PATCH" }).catch(() => {})
+                          showToast(`${res.guest_name} marked as no-show`, "warn")
+                        }}
+                      />
                     )
                   })}
                 </div>
@@ -3255,6 +3312,7 @@ function ClientStationInner() {
                 <div className="flex flex-col gap-1.5 pr-1">
                   {needsQuoteList.map(e => (
                     <DraggableQueueCard key={e.id} entry={e}
+                      isNeedsQuote
                       isSelected={selectedEntry?.id === e.id}
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
@@ -3332,6 +3390,14 @@ function ClientStationInner() {
                 setSelectedEntry(null)
               }}
               onTableClick={(tableId, tableNumber) => {
+                // Tap-to-seat: if a reservation is selected, seat it at the tapped table
+                if (selectedRes) {
+                  const isOccupied = localOccupants.has(tableNumber) || tables.find(t => t.table_number === tableNumber)?.status === "occupied"
+                  if (isOccupied) { showToast(`Table ${tableNumber} is already occupied.`, "err"); return }
+                  checkInConfirm(selectedRes, tableNumber, tableId)
+                  setSelectedRes(null)
+                  return
+                }
                 if (pendingOccupantMove) {
                   if (tableNumber === pendingOccupantMove.tableNumber) { setPendingOccupantMove(null); return }
                   const isOccupied = localOccupants.has(tableNumber) || tables.find(t => t.table_number === tableNumber)?.status === "occupied"
@@ -3370,6 +3436,7 @@ function ClientStationInner() {
               }}
               showCapacity={showCapacity}
               resAlertBySize={resAlertBySize}
+              resSelectMode={!!selectedRes}
             />
           </div>
 
@@ -3733,6 +3800,21 @@ function ClientStationInner() {
             boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
           }}>
             {activeDragOccupant.occupant.name} · {activeDragOccupant.occupant.party_size}p
+          </div>
+        )}
+        {activeDragRes && (
+          <div style={{
+            background: "rgba(99,179,237,0.25)",
+            border: "1.5px solid rgba(99,179,237,0.80)",
+            borderRadius: 10,
+            padding: "6px 12px",
+            color: "rgba(255,240,220,0.97)",
+            fontSize: 11,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+          }}>
+            {activeDragRes.guest_name} · {activeDragRes.party_size}p · {fmt12Res(activeDragRes.time)}
           </div>
         )}
       </DragOverlay>

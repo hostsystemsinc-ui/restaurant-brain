@@ -3419,8 +3419,11 @@ function AnalyticsView({ token, clients }: { token: string; clients: Client[] })
 
   useEffect(() => { load() }, [load])
 
-  // Build restaurant list from data
-  const restaurants = Array.from(new Set(data.map(e => e.restaurant_id).filter((x): x is string => x !== null)))
+  // Build restaurant list: all known clients + any IDs seen in analytics data
+  const restaurants = Array.from(new Set([
+    ...clients.map(c => c.id).filter((x): x is string => !!x),
+    ...data.map(e => e.restaurant_id).filter((x): x is string => x !== null),
+  ]))
   const filtered = data.filter(e => restFilter === "all" || e.restaurant_id === restFilter)
 
   // Sort
