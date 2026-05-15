@@ -362,6 +362,7 @@ function ClientAdminInner() {
 
   const [rid,      setRid]      = useState("")
   const [ridError, setRidError] = useState(false)
+  const [restName, setRestName] = useState("")
   const [online,   setOnline]   = useState(true)
   const [lastSync, setLastSync] = useState<Date | null>(null)
 
@@ -379,6 +380,7 @@ function ClientAdminInner() {
         if (d?.restaurant_id) {
           setRid(d.restaurant_id)
           setRidError(false)
+          if (d.guest_config?.restaurantName) setRestName(d.guest_config.restaurantName)
         } else {
           setRidError(true)
         }
@@ -524,7 +526,7 @@ function ClientAdminInner() {
           </Link>
           <div>
             <p style={{ fontSize: 13, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>
-              {slug}
+              {restName || slug}
             </p>
             <p style={{ fontSize: 10, color: C.muted, letterSpacing: "0.10em", textTransform: "uppercase" }}>
               Admin Dashboard

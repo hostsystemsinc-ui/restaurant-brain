@@ -2448,6 +2448,71 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   )
 }
 
+// ── Logo Drop Zone ─────────────────────────────────────────────────────────────
+function LogoDropZone({ currentUrl, onUrl }: { currentUrl: string; onUrl: (url: string) => void }) {
+  const [dragging, setDragging] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function readFile(file: File) {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const result = e.target?.result
+      if (typeof result === "string") onUrl(result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault(); setDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file && file.type.startsWith("image/")) readFile(file)
+  }
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) readFile(file)
+  }
+
+  const hasImage = !!currentUrl
+
+  return (
+    <div
+      onClick={() => inputRef.current?.click()}
+      onDragOver={e => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={onDrop}
+      style={{
+        border: `2px dashed ${dragging ? D.accent : (hasImage ? D.green : D.border)}`,
+        borderRadius: 12,
+        padding: "16px 20px",
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        cursor: "pointer",
+        background: dragging ? "rgba(217,50,28,0.05)" : (hasImage ? D.greenBg : D.surface),
+        transition: "border-color 0.15s, background 0.15s",
+        minHeight: 72,
+      }}
+    >
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onFileChange} />
+      {hasImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={currentUrl} alt="Logo" style={{ height: 48, maxWidth: 100, objectFit: "contain", borderRadius: 6, flexShrink: 0, background: "rgba(255,255,255,0.06)" }} />
+      ) : (
+        <div style={{ width: 48, height: 48, borderRadius: 8, background: D.surface2, border: `1px solid ${D.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: 20 }}>🖼</span>
+        </div>
+      )}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: D.text2 }}>
+          {dragging ? "Drop to upload" : hasImage ? "Logo set — click or drop to replace" : "Click or drag an image file here"}
+        </div>
+        <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>PNG, JPG, SVG, or WebP — stored as data URL</div>
+      </div>
+    </div>
+  )
+}
+
 // ── Guest Page Editor ──────────────────────────────────────────────────────────
 interface GuestPageConfig {
   bgColor:         string
@@ -2579,9 +2644,15 @@ function GuestPageEditor({ initial, onSave, saving }: { initial: GuestPageConfig
         <Input value={cfg.tagline || ""} onChange={v => setCfg(p => ({ ...p, tagline: v }))} placeholder="Powered by HOST" />
       </div>
       <div style={{ gridColumn: "1/-1" }}>
-        <FieldLabel>Logo URL</FieldLabel>
-        <Input value={cfg.logoUrl || ""} onChange={v => setCfg(p => ({ ...p, logoUrl: v }))} placeholder="https://…" />
-        <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Direct image URL for your restaurant logo (PNG, JPG, or SVG)</div>
+        <FieldLabel>Logo</FieldLabel>
+        <Input value={cfg.logoUrl || ""} onChange={v => setCfg(p => ({ ...p, logoUrl: v }))} placeholder="https://… or drag an image file below" />
+        <div style={{ fontSize: 11, color: D.muted, marginTop: 4, marginBottom: 8 }}>
+          Paste a direct image URL above — or drag &amp; drop / click to upload a file:
+        </div>
+        <LogoDropZone
+          currentUrl={cfg.logoUrl || ""}
+          onUrl={url => setCfg(p => ({ ...p, logoUrl: url }))}
+        />
       </div>
       <div style={{ gridColumn: "1/-1" }}>
         <FieldLabel>Wait Messages (one per line — shown on the waiting page)</FieldLabel>

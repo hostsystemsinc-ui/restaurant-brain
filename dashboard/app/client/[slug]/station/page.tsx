@@ -2201,12 +2201,14 @@ function ClientStationInner() {
   const slug   = typeof params.slug === "string" ? params.slug : ""
 
   // Config loaded from Railway by slug
-  const [rid,      setRid]      = useState("")
-  const [joinUrl,  setJoinUrl]  = useState("")
-  const [floor,    setFloor]    = useState<FloorPos[]>([])
-  const [canvasW,  setCanvasW]  = useState(CANVAS_W)
-  const [canvasH,  setCanvasH]  = useState(CANVAS_H)
-  const [adminPin, setAdminPin] = useState("")
+  const [rid,          setRid]          = useState("")
+  const [joinUrl,      setJoinUrl]      = useState("")
+  const [restName,     setRestName]     = useState("")
+  const [restLogoUrl,  setRestLogoUrl]  = useState("")
+  const [floor,        setFloor]        = useState<FloorPos[]>([])
+  const [canvasW,      setCanvasW]      = useState(CANVAS_W)
+  const [canvasH,      setCanvasH]      = useState(CANVAS_H)
+  const [adminPin,     setAdminPin]     = useState("")
   const [loading,  setLoading]  = useState(true)
   const [loadErr,  setLoadErr]  = useState("")
   const [pinInput, setPinInput] = useState("")
@@ -2268,7 +2270,9 @@ function ClientStationInner() {
         setRid(d.restaurant_id ?? "")
         setJoinUrl(d.nfc_url ?? `https://hostplatform.net/client/${slug}/join`)
         const gc = d.guest_config ?? {}
-        if (gc.adminPin) setAdminPin(String(gc.adminPin))
+        if (gc.restaurantName) setRestName(gc.restaurantName)
+        if (gc.logoUrl)        setRestLogoUrl(gc.logoUrl)
+        if (gc.adminPin)       setAdminPin(String(gc.adminPin))
         const converted = convertWizardFloor(d.floor_plan)
         if (converted) {
           setFloor(converted.tables)
@@ -2650,12 +2654,22 @@ function ClientStationInner() {
       const occupant = data.occupant as LocalOccupant
       if (sourceTable === targetTable) return
 
-      // Use in-memory tables (already normalized) — no network round-trip before UI update
-      const sourceApiTable = tables.find(t => t.table_number === sourceTable)
-      const targetApiTable = tables.find(t => t.table_number === targetTable)
+      // Use in-memory tables first; fall back to a live fetch if they're stale/empty
+      let sourceApiTable = tables.find(t => t.table_number === sourceTable)
+      let targetApiTable = tables.find(t => t.table_number === targetTable)
 
       if (!sourceApiTable || !targetApiTable) {
-        showToast("Could not resolve table IDs — please try again.", "err")
+        try {
+          const fresh = await fetch(`${API}/tables?restaurant_id=${rid}`).then(r => r.ok ? r.json() : [])
+          const normalized = normalizeTables(fresh)
+          setTables(normalized)
+          sourceApiTable = normalized.find(t => t.table_number === sourceTable)
+          targetApiTable = normalized.find(t => t.table_number === targetTable)
+        } catch {}
+      }
+
+      if (!sourceApiTable || !targetApiTable) {
+        showToast("Table data not ready — try again in a moment.", "err")
         return
       }
 
@@ -2868,13 +2882,19 @@ function ClientStationInner() {
         >
           <div className="flex items-center gap-3.5 min-w-0 flex-1 overflow-hidden">
             {/* Back arrow → Analog + Demo Restaurant wordmark */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Link href={`/client/${slug}/analog`} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--warm),0.65)", textDecoration: "none", flexShrink: 0, transition: "background 0.15s" }} title="Switch to Analog">
                 <ChevronLeft style={{ width: 16, height: 16 }} />
               </Link>
+              {restLogoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={restLogoUrl} alt={restName || slug} style={{ height: 28, maxWidth: 80, objectFit: "contain", flexShrink: 0 }} />
+              )}
               <div style={{ display: "flex", flexDirection: "column" }}>
-                <span style={{ fontSize: 18, fontWeight: 800, letterSpacing: "0.06em", color: "rgba(var(--cream),0.95)" }}>{slug}</span>
-                <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(var(--warm),0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
+                <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(var(--cream),0.95)", lineHeight: 1.2, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {restName || slug}
+                </span>
+                <span style={{ fontSize: 7.5, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(var(--warm),0.40)", textTransform: "uppercase" }}>Powered by HOST</span>
               </div>
             </div>
 
@@ -3460,9 +3480,24 @@ function ClientStationInner() {
             onAddNew={async (name, partySize, phone) => {
               // Capture before nulling state
               const tNum = tableSeatPicker.tableNumber
-              const tId  = tableSeatPicker.tableId
+              let tId  = tableSeatPicker.tableId
               setTableSeatPicker(null)
               try {
+                // Resolve table ID if not cached (new restaurant with empty tables state)
+                if (!tId) {
+                  const fresh = await fetch(`${API}/tables?restaurant_id=${rid}`).then(r => r.ok ? r.json() : [])
+                  const normalized = normalizeTables(fresh)
+                  setTables(normalized)
+                  tId = normalized.find(t => t.table_number === tNum)?.id
+                }
+                // If still no table ID, auto-provision and retry once
+                if (!tId && slug) {
+                  await fetch(`https://restaurant-brain-production.up.railway.app/client/${encodeURIComponent(slug)}/tables/sync`, { method: "POST" })
+                  const fresh2 = await fetch(`${API}/tables?restaurant_id=${rid}`).then(r => r.ok ? r.json() : [])
+                  const normalized2 = normalizeTables(fresh2)
+                  setTables(normalized2)
+                  tId = normalized2.find(t => t.table_number === tNum)?.id
+                }
                 const r = await fetch(`${API}/queue/join`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
