@@ -2335,7 +2335,8 @@ function ClientStationInner() {
   })
   // Tables seated from THIS view — protected from syncOccupants wiping them during the
   // brief window between the optimistic set and the backend commit (avoids race condition)
-  const recentlySeateddRef = useRef<Map<number, number>>(new Map()) // tableNum → expiry ms
+  const recentlySeateddRef  = useRef<Map<number, number>>(new Map()) // tableNum → expiry ms
+  const recentlyClearedRef  = useRef<Map<number, number>>(new Map()) // tableNum → expiry ms
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -2385,9 +2386,13 @@ function ClientStationInner() {
       setLocalOccupants(prev => {
         const now2 = Date.now()
         const next = new Map<number, LocalOccupant>()
-        // Add everything from backend
+        // Add everything from backend — but skip tables we just cleared (backend lags behind)
         for (const [numStr, occ] of Object.entries(data)) {
-          next.set(parseInt(numStr, 10), { name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id })
+          const tNum = parseInt(numStr, 10)
+          const clearedExpiry = recentlyClearedRef.current.get(tNum)
+          if (clearedExpiry && clearedExpiry > now2) continue // don't restore a just-cleared table
+          if (clearedExpiry && clearedExpiry <= now2) recentlyClearedRef.current.delete(tNum)
+          next.set(tNum, { name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id })
         }
         // Keep any recently-seated local entry that backend hasn't picked up yet
         for (const [tNum, expiry] of recentlySeateddRef.current) {
@@ -2679,6 +2684,7 @@ function ClientStationInner() {
       // Optimistic update first — UI is instant
       recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
       if (displaced) recentlySeateddRef.current.set(sourceTable, Date.now() + 5000)
+      else recentlyClearedRef.current.set(sourceTable, Date.now() + 5000)
       setLocalOccupants(prev => {
         const next = new Map(prev)
         next.delete(sourceTable)
@@ -3550,7 +3556,34 @@ function ClientStationInner() {
 
       {/* ── History side panel ─────────────────────────────────────── */}
       {showHistoryPanel && (
-        <StationHistoryPanel slug={slug} onClose={() => setShowHistoryPanel(false)} />
+        <StationHistoryPanel
+          slug={slug}
+          rid={rid ?? ""}
+          onClose={() => setShowHistoryPanel(false)}
+          onWaitlistGuest={async (r) => {
+            await fetch(`${API}/queue/join`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: r.name, party_size: r.party_size, phone: r.phone || null, restaurant_id: rid }),
+            })
+            fetchQueue()
+          }}
+          onSeatGuest={async (r) => {
+            const res = await fetch(`${API}/queue/join`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: r.name, party_size: r.party_size, phone: r.phone || null, restaurant_id: rid }),
+            })
+            if (res.ok) {
+              const entry: QueueEntry = await res.json()
+              setShowHistoryPanel(false)
+              openSeatPicker(entry)
+            } else {
+              fetchQueue()
+              setShowHistoryPanel(false)
+            }
+          }}
+        />
       )}
 
 
@@ -3584,15 +3617,24 @@ export default function ClientStationPage() {
 
 // ── Station History Side Panel ─────────────────────────────────────────────────
 
-function StationHistoryPanel({ slug, onClose }: { slug: string; onClose: () => void }) {
+function StationHistoryPanel({
+  slug, rid, onClose, onSeatGuest, onWaitlistGuest,
+}: {
+  slug: string
+  rid: string
+  onClose: () => void
+  onSeatGuest: (r: GuestLogRecord) => void
+  onWaitlistGuest: (r: GuestLogRecord) => void
+}) {
   const now = new Date()
   if (now.getHours() < 3) now.setDate(now.getDate() - 1)
   const todayStr = toLocalDateStr(now)
 
-  const records: GuestLogRecord[] = (() => {
+  const [records, setRecords] = useState<GuestLogRecord[]>(() => {
     try { return JSON.parse(localStorage.getItem(`host_${slug}_log_${todayStr}`) ?? "[]") }
     catch { return [] }
-  })()
+  })
+  const [actioningId, setActioningId] = useState<string | null>(null)
 
   const seated  = records.filter(r => r.status === "seated")
   const removed = records.filter(r => r.status === "removed")
@@ -3602,6 +3644,24 @@ function StationHistoryPanel({ slug, onClose }: { slug: string; onClose: () => v
     return new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
   }
 
+  async function handleWaitlist(r: GuestLogRecord) {
+    setActioningId(r.id)
+    try {
+      await onWaitlistGuest(r)
+    } finally {
+      setActioningId(null)
+    }
+  }
+
+  async function handleSeat(r: GuestLogRecord) {
+    setActioningId(r.id)
+    try {
+      await onSeatGuest(r)
+    } finally {
+      setActioningId(null)
+    }
+  }
+
   return (
     <>
       {/* Backdrop */}
@@ -3609,7 +3669,7 @@ function StationHistoryPanel({ slug, onClose }: { slug: string; onClose: () => v
       {/* Panel */}
       <div style={{
         position: "fixed", top: 0, right: 0, bottom: 0, zIndex: 50,
-        width: 360, maxWidth: "90vw",
+        width: 400, maxWidth: "95vw",
         background: "var(--card-bg,#100C09)",
         borderLeft: "1px solid rgba(var(--accent,255,185,100),0.18)",
         display: "flex", flexDirection: "column",
@@ -3654,17 +3714,34 @@ function StationHistoryPanel({ slug, onClose }: { slug: string; onClose: () => v
               </div>
             </div>
           ) : sorted.map(r => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderRadius: 10, marginBottom: 6, background: "rgba(var(--accent,255,185,100),0.04)", border: "1px solid rgba(var(--accent,255,185,100),0.10)" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream,255,248,240),0.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
-                <div style={{ fontSize: 11, color: "rgba(var(--warm,255,200,150),0.45)", marginTop: 2 }}>
-                  {r.party_size}p · {fmtTime(r.joined_ms)}
-                  {r.actual_wait_min != null ? ` · ${r.actual_wait_min}m wait` : ""}
+            <div key={r.id} style={{ padding: "10px 12px", borderRadius: 10, marginBottom: 8, background: "rgba(var(--accent,255,185,100),0.04)", border: "1px solid rgba(var(--accent,255,185,100),0.10)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream,255,248,240),0.88)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                  <div style={{ fontSize: 11, color: "rgba(var(--warm,255,200,150),0.45)", marginTop: 2 }}>
+                    {r.party_size}p · {fmtTime(r.joined_ms)}
+                    {r.actual_wait_min != null ? ` · ${r.actual_wait_min}m wait` : ""}
+                  </div>
                 </div>
+                <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 6, background: r.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", color: r.status === "seated" ? "#22c55e" : "#ef4444" }}>
+                  {r.status}
+                </span>
               </div>
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 6, background: r.status === "seated" ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)", color: r.status === "seated" ? "#22c55e" : "#ef4444" }}>
-                {r.status}
-              </span>
+              {/* Action buttons */}
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  disabled={actioningId === r.id}
+                  onClick={() => handleWaitlist(r)}
+                  style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(249,115,22,0.35)", background: "rgba(249,115,22,0.10)", color: "#f97316", fontSize: 11, fontWeight: 700, cursor: actioningId === r.id ? "default" : "pointer", opacity: actioningId === r.id ? 0.5 : 1 }}>
+                  + Waitlist
+                </button>
+                <button
+                  disabled={actioningId === r.id}
+                  onClick={() => handleSeat(r)}
+                  style={{ flex: 1, padding: "6px 0", borderRadius: 8, border: "1px solid rgba(34,197,94,0.35)", background: "rgba(34,197,94,0.10)", color: "#22c55e", fontSize: 11, fontWeight: 700, cursor: actioningId === r.id ? "default" : "pointer", opacity: actioningId === r.id ? 0.5 : 1 }}>
+                  Seat
+                </button>
+              </div>
             </div>
           ))}
         </div>

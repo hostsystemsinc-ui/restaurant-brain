@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Delete, Eye, EyeOff, ArrowLeft, Check, AlertCircle, Loader2 } from "lucide-react"
 
@@ -170,8 +169,6 @@ function ResultMsg({ result }: { result: { ok: boolean; msg: string } | null }) 
 // ── Logins Page ───────────────────────────────────────────────────────────────
 
 export default function LoginsPage() {
-  const router = useRouter()
-  const [agreementSigned, setAgreementSigned] = useState<boolean | null>(null)
   const [pinOk,           setPinOk]           = useState<boolean | null>(null)
 
   // PIN change
@@ -186,20 +183,6 @@ export default function LoginsPage() {
   const [origResult, setOrigResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [sideResult, setSideResult] = useState<{ ok: boolean; msg: string } | null>(null)
   const [saving,     setSaving]     = useState<string | null>(null)
-
-  // Gate: check agreement is signed before showing anything
-  useEffect(() => {
-    fetch(`${API}/agreements/status?business_name=Walnut+Caf%C3%A9`)
-      .then(r => r.json())
-      .then(d => {
-        if (!d.signed) {
-          router.replace("/walnut/agreement")
-        } else {
-          setAgreementSigned(true)
-        }
-      })
-      .catch(() => setAgreementSigned(true))  // fail open on network error
-  }, [router])
 
   // Check PIN cookie on mount
   useEffect(() => {
@@ -281,16 +264,6 @@ export default function LoginsPage() {
   const backspacePinDigit = () => setNewPin(prev => prev.slice(0, -1))
 
   const PAD = [["1","2","3"],["4","5","6"],["7","8","9"],["","0","⌫"]]
-
-  // ── Agreement gate ──────────────────────────────────────────────────────────
-  if (agreementSigned === null) {
-    return (
-      <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <Loader2 style={{ width: 24, height: 24, color: C.green, animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
-      </div>
-    )
-  }
 
   // ── Loading / PIN gate ──────────────────────────────────────────────────────
   if (pinOk === null) {

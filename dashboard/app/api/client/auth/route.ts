@@ -3,7 +3,7 @@ import { cookies } from "next/headers"
 import { getCredentialOverride } from "@/lib/walnut-settings"
 
 const RAILWAY_API   = "https://restaurant-brain-production.up.railway.app"
-const OWNER_SECRET  = process.env.OWNER_SECRET || ""
+const OWNER_SECRET  = process.env.OWNER_SECRET || process.env.OWNER_PASS || ""
 
 // Known legacy accounts: maps username → { envKey, redirect, maxAge }
 // New clients created via the wizard are authenticated dynamically via Railway.

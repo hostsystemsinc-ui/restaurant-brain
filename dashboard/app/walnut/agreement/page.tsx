@@ -303,18 +303,9 @@ export default function WalnutAgreementPage() {
   const [error,    setError]    = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // If already signed, bounce straight to logins
+  // Agreement no longer required — redirect to logins
   useEffect(() => {
-    fetch(`${API}/agreements/status?business_name=Walnut+Caf%C3%A9`)
-      .then(r => r.json())
-      .then(d => {
-        if (d.signed) {
-          router.replace("/walnut/logins")
-        } else {
-          setChecking(false)
-        }
-      })
-      .catch(() => setChecking(false))  // can't reach API — show the form anyway
+    router.replace("/walnut/logins")
   }, [router])
 
   const canSign = name.trim().length >= 2 && email.trim().includes("@") && agreed && !loading

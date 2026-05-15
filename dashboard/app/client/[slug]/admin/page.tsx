@@ -363,11 +363,14 @@ function ClientAdminInner() {
   const [rid,      setRid]      = useState("")
   const [ridError, setRidError] = useState(false)
   const [restName, setRestName] = useState("")
-  const [adminPin, setAdminPin] = useState("")
-  const [pinOk,    setPinOk]    = useState(false)
-  const [pinInput, setPinInput] = useState("")
-  const [pinErr,   setPinErr]   = useState(false)
-  const [activeTab, setActiveTab] = useState<"overview" | "logins">("overview")
+  const [adminPin, setAdminPin]     = useState("")
+  const [pinOk,    setPinOk]        = useState(false)
+  const [pinInput, setPinInput]     = useState("")
+  const [pinErr,   setPinErr]       = useState(false)
+  const [activeTab, setActiveTab]   = useState<"overview" | "logins">("overview")
+  const [loginsUnlocked, setLoginsUnlocked] = useState(false)
+  const [loginsPinInput, setLoginsPinInput] = useState("")
+  const [loginsPinErr,   setLoginsPinErr]   = useState(false)
   const [online,   setOnline]   = useState(true)
   const [lastSync, setLastSync] = useState<Date | null>(null)
 
@@ -465,7 +468,7 @@ function ClientAdminInner() {
 
   const containerStyle: React.CSSProperties = {
     minHeight: "100dvh",
-    background: C.bg,
+    background: "#000000",
     color: C.text,
     fontFamily: "var(--font-geist, var(--font-sans), system-ui, sans-serif)",
   }
@@ -525,7 +528,7 @@ function ClientAdminInner() {
   }
 
   if (adminPin && !pinOk) return (
-    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bg }}>
+    <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#000000" }}>
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "44px 52px", textAlign: "center", width: 340 }}>
         <div style={{ fontSize: 30, marginBottom: 10 }}>🔒</div>
         <div style={{ fontSize: 17, fontWeight: 800, color: C.text, marginBottom: 4 }}>{restName || slug}</div>
@@ -584,7 +587,7 @@ function ClientAdminInner() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* Tabs */}
           {(["overview", "logins"] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
+            <button key={tab} onClick={() => { setActiveTab(tab); if (tab !== "logins") setLoginsUnlocked(false) }}
               style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${activeTab === tab ? C.orange : C.border}`, background: activeTab === tab ? C.orangeBg : "transparent", color: activeTab === tab ? C.orange : C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
               {tab}
             </button>
@@ -615,8 +618,38 @@ function ClientAdminInner() {
         </div>
       )}
 
-      {activeTab === "logins" && (
-        <LoginsTab slug={slug} adminPin={adminPin} onPinChanged={newPin => {
+      {activeTab === "logins" && !loginsUnlocked && adminPin && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
+          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "44px 52px", textAlign: "center", width: 340 }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>🔑</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>Confirm your PIN</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Enter your admin PIN to view login credentials</div>
+            <input
+              type="password" inputMode="numeric" placeholder="PIN"
+              value={loginsPinInput}
+              onChange={e => { setLoginsPinInput(e.target.value); setLoginsPinErr(false) }}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  if (loginsPinInput === adminPin) { setLoginsUnlocked(true); setLoginsPinInput("") }
+                  else { setLoginsPinErr(true); setLoginsPinInput("") }
+                }
+              }}
+              style={{ width: "100%", padding: "13px 18px", borderRadius: 12, border: `1px solid ${loginsPinErr ? C.red : C.border}`, background: C.surface2, color: C.text, fontSize: 22, textAlign: "center", outline: "none", letterSpacing: "0.35em", boxSizing: "border-box" }}
+              autoFocus
+            />
+            {loginsPinErr && <div style={{ color: C.red, fontSize: 12, marginTop: 8 }}>Incorrect PIN</div>}
+            <button onClick={() => {
+              if (loginsPinInput === adminPin) { setLoginsUnlocked(true); setLoginsPinInput("") }
+              else { setLoginsPinErr(true); setLoginsPinInput("") }
+            }}
+              style={{ marginTop: 18, width: "100%", padding: "13px 0", borderRadius: 12, background: C.orange, color: "#fff", border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+              Confirm
+            </button>
+          </div>
+        </div>
+      )}
+      {activeTab === "logins" && (loginsUnlocked || !adminPin) && (
+        <LoginsTab slug={slug} rid={rid} adminPin={adminPin} onPinChanged={newPin => {
           setAdminPin(newPin)
           try { if (!newPin) localStorage.removeItem(`${slug}:adminPinOk`); else localStorage.setItem(`${slug}:adminPinOk`, "1") } catch {}
         }} />
@@ -627,8 +660,9 @@ function ClientAdminInner() {
 
 // ── Logins Tab ────────────────────────────────────────────────────────────────
 
-function LoginsTab({ slug, adminPin, onPinChanged }: {
+function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
   slug: string
+  rid: string
   adminPin: string
   onPinChanged: (newPin: string) => void
 }) {
@@ -637,6 +671,58 @@ function LoginsTab({ slug, adminPin, onPinChanged }: {
   const [confirmPin, setConfirmPin] = useState("")
   const [saving,     setSaving]     = useState(false)
   const [saveMsg,    setSaveMsg]    = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Login credential state
+  const [credId,       setCredId]       = useState<string | null>(null)
+  const [credPassword, setCredPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
+  const [newPassword,  setNewPassword]  = useState("")
+  const [credSaving,   setCredSaving]   = useState(false)
+  const [credMsg,      setCredMsg]      = useState<{ ok: boolean; text: string } | null>(null)
+  const [credLoading,  setCredLoading]  = useState(true)
+
+  // Fetch existing login credentials on mount
+  useEffect(() => {
+    if (!rid) return
+    fetch(`/api/client/credentials?rid=${encodeURIComponent(rid)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        const creds: Array<{ id: string; credential_type: string; value: string }> = d?.credentials || []
+        const login = creds.find(c => c.credential_type === "login")
+        if (login) {
+          setCredId(login.id)
+          const colonIdx = login.value.indexOf(":")
+          setCredPassword(colonIdx >= 0 ? login.value.slice(colonIdx + 1) : login.value)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCredLoading(false))
+  }, [rid])
+
+  async function saveLoginCredential() {
+    const p = newPassword.trim()
+    if (!p) { setCredMsg({ ok: false, text: "New password cannot be empty" }); return }
+    setCredSaving(true); setCredMsg(null)
+    try {
+      // Username is always the slug — auth route uses slug to look up the restaurant
+      const value = `${slug}:${p}`
+      const r = await fetch("/api/client/credentials", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rid, cred_id: credId || undefined, value }),
+      })
+      if (!r.ok) throw new Error("Failed to save")
+      const d = await r.json()
+      if (d.id && !credId) setCredId(d.id)
+      setCredPassword(p)
+      setNewPassword("")
+      setCredMsg({ ok: true, text: "Password updated" })
+    } catch {
+      setCredMsg({ ok: false, text: "Could not save password" })
+    }
+    setCredSaving(false)
+    setTimeout(() => setCredMsg(null), 4000)
+  }
 
   async function changePin() {
     if (!newPin) { setSaveMsg({ ok: false, text: "New PIN cannot be empty" }); return }
@@ -666,13 +752,66 @@ function LoginsTab({ slug, adminPin, onPinChanged }: {
     width: "100%", padding: "11px 14px", borderRadius: 10,
     border: `1px solid ${C.border}`, background: C.surface2,
     color: C.text, fontSize: 14, outline: "none",
-    boxSizing: "border-box", letterSpacing: newPin ? "0.25em" : "normal",
+    boxSizing: "border-box",
   }
 
   return (
     <div style={{ padding: "28px 24px 48px", maxWidth: 560, margin: "0 auto" }}>
 
-      {/* Current PIN */}
+      {/* ── Login Credentials ── */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 14 }}>
+          Station Login
+        </div>
+        {credLoading ? (
+          <div style={{ fontSize: 13, color: C.muted }}>Loading…</div>
+        ) : (
+          <>
+            {/* Current credentials display */}
+            <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 10, background: C.surface2, border: `1px solid ${C.border}` }}>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 3 }}>Username</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: C.text2 }}>{slug}</div>
+                <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>Username is always your restaurant ID and cannot be changed</div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 3 }}>Password</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: showPassword ? "normal" : "0.2em" }}>
+                    {credPassword ? (showPassword ? credPassword : "•".repeat(Math.min(credPassword.length, 10))) : <span style={{ color: C.muted, fontStyle: "italic", fontSize: 13 }}>not set</span>}
+                  </div>
+                </div>
+                {credPassword && (
+                  <button onClick={() => setShowPassword(p => !p)}
+                    style={{ fontSize: 12, fontWeight: 600, color: C.text2, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7, padding: "5px 12px", cursor: "pointer" }}>
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Change password form */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.text2, marginBottom: 5 }}>New Password</div>
+                <input type="password" placeholder="Enter new password" value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && saveLoginCredential()}
+                  style={inputStyle} autoComplete="new-password" />
+              </div>
+              {credMsg && (
+                <div style={{ fontSize: 13, fontWeight: 600, color: credMsg.ok ? C.green : C.red }}>{credMsg.text}</div>
+              )}
+              <button onClick={saveLoginCredential} disabled={credSaving}
+                style={{ padding: "11px 0", borderRadius: 10, border: "none", background: credSaving ? C.muted : C.orange, color: "#fff", fontSize: 14, fontWeight: 700, cursor: credSaving ? "default" : "pointer" }}>
+                {credSaving ? "Saving…" : credPassword ? "Update Password" : "Set Password"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Admin PIN ── */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 14 }}>Current Admin PIN</div>
         {adminPin ? (
@@ -690,7 +829,7 @@ function LoginsTab({ slug, adminPin, onPinChanged }: {
         )}
       </div>
 
-      {/* Change PIN form */}
+      {/* ── Change PIN form ── */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px" }}>
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 16 }}>
           {adminPin ? "Change PIN" : "Set PIN"}
@@ -700,14 +839,14 @@ function LoginsTab({ slug, adminPin, onPinChanged }: {
             <div style={{ fontSize: 11, fontWeight: 700, color: C.text2, marginBottom: 5 }}>New PIN</div>
             <input type="password" inputMode="numeric" placeholder="Enter new PIN" value={newPin}
               onChange={e => setNewPin(e.target.value)}
-              style={inputStyle} />
+              style={{ ...inputStyle, letterSpacing: newPin ? "0.25em" : "normal" }} />
           </div>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: C.text2, marginBottom: 5 }}>Confirm PIN</div>
             <input type="password" inputMode="numeric" placeholder="Re-enter new PIN" value={confirmPin}
               onChange={e => setConfirmPin(e.target.value)}
               onKeyDown={e => e.key === "Enter" && changePin()}
-              style={inputStyle} />
+              style={{ ...inputStyle, letterSpacing: confirmPin ? "0.25em" : "normal" }} />
           </div>
           {saveMsg && (
             <div style={{ fontSize: 13, fontWeight: 600, color: saveMsg.ok ? C.green : C.red }}>{saveMsg.text}</div>
