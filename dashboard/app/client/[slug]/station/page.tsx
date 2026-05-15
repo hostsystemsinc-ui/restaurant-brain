@@ -1198,6 +1198,10 @@ function DroppableFloorTable({
             textAlign: "center",
             lineHeight: 1.2,
             paddingInline: 4,
+            maxWidth: "100%",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}>
             {occupant.name}
           </span>
@@ -2358,7 +2362,16 @@ function ClientStationInner() {
     if (!rid) return
     try {
       const r = await fetch(`${API}/tables?restaurant_id=${rid}`)
-      if (r.ok) setTables(normalizeTables(await r.json()))
+      if (!r.ok) return
+      const now2 = Date.now()
+      const raw  = normalizeTables(await r.json())
+      // Don't let backend "occupied" status override our optimistic clear
+      const patched = raw.map(t => {
+        const exp = recentlyClearedRef.current.get(t.table_number as number)
+        if (exp && exp > now2) return { ...t, status: "available" as const }
+        return t
+      })
+      setTables(patched)
     } catch {}
   }, [rid])
   const fetchQueue    = useCallback(async () => {
