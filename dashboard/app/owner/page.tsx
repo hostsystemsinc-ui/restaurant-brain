@@ -4431,16 +4431,25 @@ export default function OwnerPage() {
 
         {/* Success toast after wizard */}
         {wizardDone && (
-          <div style={{ marginBottom: 24, padding: "14px 20px", background: D.greenBg, border: `1px solid ${D.greenBorder}`, borderRadius: 10,
-            display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <span style={{ color: D.green, fontWeight: 700 }}>✓ {wizardDone.name} created!</span>
-              <span style={{ color: D.text2, fontSize: 13, marginLeft: 12 }}>
-                Join: <a href={wizardDone.join_url} target="_blank" rel="noopener noreferrer" style={{ color: D.blue }}>{wizardDone.join_url}</a>
-              </span>
+          <div style={{ marginBottom: 24, padding: "16px 20px", background: D.greenBg, border: `1px solid ${D.greenBorder}`, borderRadius: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div style={{ color: D.green, fontWeight: 700, fontSize: 15, marginBottom: 8 }}>✓ {wizardDone.name} created!</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ fontSize: 13, color: D.text2 }}>
+                    Guest join: <a href={wizardDone.join_url} target="_blank" rel="noopener noreferrer" style={{ color: D.blue }}>{wizardDone.join_url}</a>
+                  </div>
+                  <div style={{ fontSize: 13, color: D.text2 }}>
+                    Host station: <a href={wizardDone.station_url} target="_blank" rel="noopener noreferrer" style={{ color: D.blue }}>{wizardDone.station_url}</a>
+                  </div>
+                  <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>
+                    Login with slug: <code style={{ color: D.orange, background: "rgba(245,158,11,0.08)", padding: "1px 5px", borderRadius: 3 }}>{wizardDone.slug}</code> + the password you set in step 5
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setWizardDone(null)}
+                style={{ background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 18, marginLeft: 16 }}>✕</button>
             </div>
-            <button onClick={() => setWizardDone(null)}
-              style={{ background: "none", border: "none", color: D.muted, cursor: "pointer", fontSize: 18 }}>✕</button>
           </div>
         )}
 
