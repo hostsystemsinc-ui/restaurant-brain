@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, Suspense } from "react"
+import { useState, useEffect, useCallback, useRef, Suspense } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import {
@@ -9,24 +9,24 @@ import {
 
 const API = "https://restaurant-brain-production.up.railway.app"
 
-// ── Color system (dark — matches HOST globals.css) ────────────────────────────
+// ── Color system (light) ──────────────────────────────────────────────────────
 const C = {
-  bg:        "#050709",
-  surface:   "#0c0f12",
-  surface2:  "#111518",
-  border:    "rgba(255,190,110,0.16)",
-  text:      "rgba(255,248,240,0.96)",
-  text2:     "rgba(255,220,180,0.70)",
-  muted:     "rgba(255,220,180,0.42)",
-  green:     "#22c55e",
-  greenBg:   "rgba(34,197,94,0.10)",
-  greenBdr:  "rgba(34,197,94,0.28)",
-  orange:    "#f97316",
-  orangeBg:  "rgba(249,115,22,0.10)",
-  orangeBdr: "rgba(249,115,22,0.28)",
-  red:       "#ef4444",
-  redBg:     "rgba(239,68,68,0.10)",
-  redBdr:    "rgba(239,68,68,0.28)",
+  bg:        "#f5f6f8",
+  surface:   "#ffffff",
+  surface2:  "#f0f1f3",
+  border:    "rgba(0,0,0,0.09)",
+  text:      "#111827",
+  text2:     "#374151",
+  muted:     "#9ca3af",
+  green:     "#16a34a",
+  greenBg:   "rgba(22,163,74,0.08)",
+  greenBdr:  "rgba(22,163,74,0.22)",
+  orange:    "#ea580c",
+  orangeBg:  "rgba(234,88,12,0.08)",
+  orangeBdr: "rgba(234,88,12,0.22)",
+  red:       "#dc2626",
+  redBg:     "rgba(220,38,38,0.08)",
+  redBdr:    "rgba(220,38,38,0.22)",
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -64,6 +64,12 @@ interface Insights {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getBusinessDateStr(): string {
+  const now = new Date()
+  if (now.getHours() < 3) now.setDate(now.getDate() - 1)
+  return now.toLocaleDateString("en-CA")
+}
 
 function parseUTCMs(ts: string | null | undefined): number | null {
   if (!ts) return null
@@ -269,7 +275,7 @@ function TablesSection({ tables }: { tables: TableRow[] }) {
 
 // ── History section ───────────────────────────────────────────────────────────
 
-function HistorySection({ history }: { history: HistoryEntry[] }) {
+function HistorySection({ history, onClear }: { history: HistoryEntry[]; onClear?: () => void }) {
   const seated  = history.filter(e => e.status === "seated")
   const removed = history.filter(e => e.status === "removed")
 
@@ -283,7 +289,7 @@ function HistorySection({ history }: { history: HistoryEntry[] }) {
     <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <SectionHeading>History (Today)</SectionHeading>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{
             fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20,
             background: C.greenBg, color: C.green, border: `1px solid ${C.greenBdr}`,
@@ -292,6 +298,12 @@ function HistorySection({ history }: { history: HistoryEntry[] }) {
             fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20,
             background: C.surface2, color: C.muted, border: `1px solid ${C.border}`,
           }}>{removed.length} removed</span>
+          {onClear && history.length > 0 && (
+            <button onClick={onClear}
+              style={{ fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 20, background: C.redBg, color: C.red, border: `1px solid ${C.redBdr}`, cursor: "pointer" }}>
+              Clear
+            </button>
+          )}
         </div>
       </div>
       {sorted.length === 0 ? (
@@ -367,7 +379,7 @@ function ClientAdminInner() {
   const [pinOk,    setPinOk]        = useState(false)
   const [pinInput, setPinInput]     = useState("")
   const [pinErr,   setPinErr]       = useState(false)
-  const [activeTab, setActiveTab]   = useState<"overview" | "logins">("overview")
+  const [activeTab, setActiveTab]   = useState<"overview" | "logins" | "settings">("overview")
   const [loginsUnlocked, setLoginsUnlocked] = useState(false)
   const [loginsPinInput, setLoginsPinInput] = useState("")
   const [loginsPinErr,   setLoginsPinErr]   = useState(false)
@@ -391,7 +403,7 @@ function ClientAdminInner() {
           if (d.guest_config?.restaurantName) setRestName(d.guest_config.restaurantName)
           if (d.guest_config?.adminPin) {
             setAdminPin(String(d.guest_config.adminPin))
-            try { setPinOk(localStorage.getItem(`${slug}:adminPinOk`) === "1") } catch {}
+            // always require PIN on every visit
           } else {
             setPinOk(true) // no PIN configured → open
           }
@@ -446,6 +458,15 @@ function ClientAdminInner() {
     return () => clearInterval(t)
   }, [rid, fetchAll])
 
+  function clearHistory() {
+    // Clear today's guest log from localStorage (same key format as station page)
+    try {
+      const dateStr = getBusinessDateStr()
+      localStorage.removeItem(`host_${slug}_log_${dateStr}`)
+    } catch {}
+    setHistory([])
+  }
+
   // ── Derived stats ──────────────────────────────────────────────────────────
 
   // Deduplicated tables for stats
@@ -468,7 +489,7 @@ function ClientAdminInner() {
 
   const containerStyle: React.CSSProperties = {
     minHeight: "100dvh",
-    background: "#000000",
+    background: C.bg,
     color: C.text,
     fontFamily: "var(--font-geist, var(--font-sans), system-ui, sans-serif)",
   }
@@ -505,7 +526,7 @@ function ClientAdminInner() {
           <div style={{
             width: 36, height: 36, borderRadius: "50%",
             border: `3px solid ${C.border}`,
-            borderTopColor: C.orange,
+            borderTopColor: C.green,
             margin: "0 auto 16px",
             animation: "spin 0.8s linear infinite",
           }} />
@@ -529,7 +550,6 @@ function ClientAdminInner() {
     if (next.length === 4) {
       if (next === adminPin) {
         setPinOk(true)
-        try { localStorage.setItem(`${slug}:adminPinOk`, "1") } catch {}
       } else {
         setPinErr(true)
         setTimeout(() => { setPinInput(""); setPinErr(false) }, 600)
@@ -538,13 +558,15 @@ function ClientAdminInner() {
   }
 
   if (adminPin && !pinOk) return (
-    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#000000", gap: 32 }}>
+    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, gap: 32 }}>
       <style>{`@keyframes pinShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}`}</style>
+
+      <p style={{ fontSize: 15, fontWeight: 700, color: C.text2, letterSpacing: "0.04em" }}>Admin PIN</p>
 
       {/* Dots */}
       <div style={{ display: "flex", gap: 18, animation: pinErr ? "pinShake 0.5s ease" : "none" }}>
         {[0,1,2,3].map(i => (
-          <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", background: pinInput.length > i ? (pinErr ? C.red : C.text) : "transparent", border: `2.5px solid ${pinInput.length > i ? (pinErr ? C.red : C.text) : "rgba(255,255,255,0.25)"}`, transition: "all 0.12s" }} />
+          <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", background: pinInput.length > i ? (pinErr ? C.red : C.text) : "transparent", border: `2.5px solid ${pinInput.length > i ? (pinErr ? C.red : C.text) : C.border}`, transition: "all 0.12s" }} />
         ))}
       </div>
 
@@ -552,13 +574,13 @@ function ClientAdminInner() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 88px)", gridTemplateRows: "repeat(4, 88px)", gap: 12 }}>
         {PIN_PAD.flat().map((d, i) => (
           <button key={i} onClick={() => d && onPinDigit(d)} disabled={!d}
-            style={{ borderRadius: 20, fontSize: d === "⌫" ? 20 : 28, fontWeight: 600, background: d === "⌫" ? "rgba(239,68,68,0.12)" : d ? "rgba(255,255,255,0.07)" : "transparent", border: d === "⌫" ? "1.5px solid rgba(239,68,68,0.28)" : d ? "1.5px solid rgba(255,255,255,0.10)" : "none", color: d === "⌫" ? C.red : d ? C.text : "transparent", cursor: d ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.1s" }}>
+            style={{ borderRadius: 20, fontSize: d === "⌫" ? 20 : 28, fontWeight: 600, background: d === "⌫" ? C.redBg : d ? C.surface : "transparent", border: d === "⌫" ? `1.5px solid ${C.redBdr}` : d ? `1.5px solid ${C.border}` : "none", color: d === "⌫" ? C.red : d ? C.text : "transparent", cursor: d ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.1s", boxShadow: d && d !== "⌫" ? "0 1px 3px rgba(0,0,0,0.06)" : "none" }}>
             {d === "⌫" ? "⌫" : d}
           </button>
         ))}
       </div>
 
-      <Link href={`/client/${slug}/station`} style={{ fontSize: 13, color: "rgba(255,255,255,0.30)", textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
+      <Link href={`/client/${slug}/station`} style={{ fontSize: 13, color: C.muted, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
         ← Back to restaurant
       </Link>
     </div>
@@ -597,9 +619,9 @@ function ClientAdminInner() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* Tabs */}
-          {(["overview", "logins"] as const).map(tab => (
+          {(["overview", "logins", "settings"] as const).map(tab => (
             <button key={tab} onClick={() => { setActiveTab(tab); if (tab !== "logins") setLoginsUnlocked(false) }}
-              style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${activeTab === tab ? C.orange : C.border}`, background: activeTab === tab ? C.orangeBg : "transparent", color: activeTab === tab ? C.orange : C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
+              style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${activeTab === tab ? C.green : C.border}`, background: activeTab === tab ? C.greenBg : "transparent", color: activeTab === tab ? C.green : C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
               {tab}
             </button>
           ))}
@@ -625,45 +647,54 @@ function ClientAdminInner() {
           </div>
           <div style={{ marginBottom: 20 }}><QueueSection queue={queue} /></div>
           <div style={{ marginBottom: 20 }}><TablesSection tables={tables} /></div>
-          <div style={{ marginBottom: 20 }}><HistorySection history={history} /></div>
+          <div style={{ marginBottom: 20 }}><HistorySection history={history} onClear={clearHistory} /></div>
         </div>
       )}
 
       {activeTab === "logins" && !loginsUnlocked && adminPin && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px" }}>
-          <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "44px 52px", textAlign: "center", width: 340 }}>
-            <div style={{ fontSize: 28, marginBottom: 10 }}>🔑</div>
-            <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginBottom: 4 }}>Confirm your PIN</div>
-            <div style={{ fontSize: 13, color: C.muted, marginBottom: 24 }}>Enter your admin PIN to view login credentials</div>
-            <input
-              type="password" inputMode="numeric" placeholder="PIN"
-              value={loginsPinInput}
-              onChange={e => { setLoginsPinInput(e.target.value); setLoginsPinErr(false) }}
-              onKeyDown={e => {
-                if (e.key === "Enter") {
-                  if (loginsPinInput === adminPin) { setLoginsUnlocked(true); setLoginsPinInput("") }
-                  else { setLoginsPinErr(true); setLoginsPinInput("") }
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 24px", gap: 32 }}>
+          <style>{`@keyframes loginsShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}`}</style>
+
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.text2, letterSpacing: "0.04em" }}>Confirm PIN to view logins</p>
+
+          {/* Dots */}
+          <div style={{ display: "flex", gap: 18, animation: loginsPinErr ? "loginsShake 0.5s ease" : "none" }}>
+            {[0,1,2,3].map(i => (
+              <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", background: loginsPinInput.length > i ? (loginsPinErr ? C.red : C.text) : "transparent", border: `2.5px solid ${loginsPinInput.length > i ? (loginsPinErr ? C.red : C.text) : C.border}`, transition: "all 0.12s" }} />
+            ))}
+          </div>
+
+          {/* Numpad */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 88px)", gridTemplateRows: "repeat(4, 88px)", gap: 12 }}>
+            {PIN_PAD.flat().map((d, i) => {
+              function onLoginsPinDigit(digit: string) {
+                if (digit === "⌫") { setLoginsPinInput(p => p.slice(0, -1)); setLoginsPinErr(false); return }
+                if (loginsPinInput.length >= 4) return
+                const next = loginsPinInput + digit
+                setLoginsPinInput(next); setLoginsPinErr(false)
+                if (next.length === 4) {
+                  if (next === adminPin) { setLoginsUnlocked(true); setLoginsPinInput("") }
+                  else { setLoginsPinErr(true); setTimeout(() => { setLoginsPinInput(""); setLoginsPinErr(false) }, 600) }
                 }
-              }}
-              style={{ width: "100%", padding: "13px 18px", borderRadius: 12, border: `1px solid ${loginsPinErr ? C.red : C.border}`, background: C.surface2, color: C.text, fontSize: 22, textAlign: "center", outline: "none", letterSpacing: "0.35em", boxSizing: "border-box" }}
-              autoFocus
-            />
-            {loginsPinErr && <div style={{ color: C.red, fontSize: 12, marginTop: 8 }}>Incorrect PIN</div>}
-            <button onClick={() => {
-              if (loginsPinInput === adminPin) { setLoginsUnlocked(true); setLoginsPinInput("") }
-              else { setLoginsPinErr(true); setLoginsPinInput("") }
-            }}
-              style={{ marginTop: 18, width: "100%", padding: "13px 0", borderRadius: 12, background: C.orange, color: "#fff", border: "none", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-              Confirm
-            </button>
+              }
+              return (
+                <button key={i} onClick={() => d && onLoginsPinDigit(d)} disabled={!d}
+                  style={{ borderRadius: 20, fontSize: d === "⌫" ? 20 : 28, fontWeight: 600, background: d === "⌫" ? C.redBg : d ? C.surface : "transparent", border: d === "⌫" ? `1.5px solid ${C.redBdr}` : d ? `1.5px solid ${C.border}` : "none", color: d === "⌫" ? C.red : d ? C.text : "transparent", cursor: d ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.1s", boxShadow: d && d !== "⌫" ? "0 1px 3px rgba(0,0,0,0.06)" : "none" }}>
+                  {d}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
       {activeTab === "logins" && (loginsUnlocked || !adminPin) && (
         <LoginsTab slug={slug} rid={rid} adminPin={adminPin} onPinChanged={newPin => {
           setAdminPin(newPin)
-          try { if (!newPin) localStorage.removeItem(`${slug}:adminPinOk`); else localStorage.setItem(`${slug}:adminPinOk`, "1") } catch {}
-        }} />
+        }} onBack={() => setActiveTab("overview")} />
+      )}
+
+      {activeTab === "settings" && (
+        <SettingsTab slug={slug} rid={rid} onBack={() => setActiveTab("overview")} />
       )}
     </div>
   )
@@ -673,11 +704,12 @@ function ClientAdminInner() {
 
 const PIN_PAD_ROWS = [["1","2","3"],["4","5","6"],["7","8","9"],["","0","⌫"]]
 
-function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
+function LoginsTab({ slug, rid, adminPin, onPinChanged, onBack }: {
   slug: string
   rid: string
   adminPin: string
   onPinChanged: (newPin: string) => void
+  onBack?: () => void
 }) {
   // PIN change via pad
   const [pinDigits,  setPinDigits]  = useState<string[]>([])
@@ -705,6 +737,7 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
         if (login) {
           setCredId(login.id)
           const idx = login.value.indexOf(":")
+          // Password is always the portion after the first colon
           setCredPassword(idx >= 0 ? login.value.slice(idx + 1) : login.value)
         }
       })
@@ -714,9 +747,10 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
 
   async function saveLoginCredential() {
     const p = newPassword.trim()
-    if (!p) { setCredMsg({ ok: false, text: "New password cannot be empty" }); return }
+    if (!p) { setCredMsg({ ok: false, text: "Password cannot be empty" }); return }
     setCredSaving(true); setCredMsg(null)
     try {
+      // Always store as "slug:password" — slug is the permanent login username
       const r = await fetch("/api/client/credentials", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -726,7 +760,7 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
       const d = await r.json()
       if (d.id && !credId) setCredId(d.id)
       setCredPassword(p); setNewPassword("")
-      setCredMsg({ ok: true, text: "Password updated" })
+      setCredMsg({ ok: true, text: "Password updated — sign in with the username above" })
     } catch { setCredMsg({ ok: false, text: "Could not save password" }) }
     setCredSaving(false)
     setTimeout(() => setCredMsg(null), 4000)
@@ -770,6 +804,12 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
 
   return (
     <div style={{ padding: "28px 24px 48px", maxWidth: 560, margin: "0 auto" }}>
+
+      {onBack && (
+        <button onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: "0 0 20px", marginLeft: -2 }}>
+          <ChevronLeft size={14} /> Back to Overview
+        </button>
+      )}
 
       {/* ── Admin PIN (pad) ── */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
@@ -819,41 +859,47 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
           Station Login
         </div>
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>
-          Login username: <strong style={{ color: C.text2 }}>{slug}</strong>
+          Credentials used to sign in at hostplatform.net
         </div>
 
         {credLoading ? (
           <div style={{ fontSize: 13, color: C.muted }}>Loading…</div>
         ) : (
           <>
-            {credPassword && (
-              <div style={{ marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 14, color: C.text, letterSpacing: showPassword ? "normal" : "0.18em", fontWeight: 600 }}>
-                  {showPassword ? credPassword : "•".repeat(Math.min(credPassword.length, 12))}
-                </span>
-                <button onClick={() => setShowPassword(p => !p)}
-                  style={{ fontSize: 11, fontWeight: 600, color: C.text2, background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}>
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            )}
+            {/* Username — fixed to slug, read-only */}
+            <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: C.surface2, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: C.muted, marginBottom: 2 }}>Username (login ID)</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: "monospace" }}>{slug}</div>
+            </div>
+
             <div style={{ marginBottom: 8 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>New Password</label>
-              <div style={{ position: "relative" }}>
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter new password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && saveLoginCredential()}
-                  style={inputStyle}
-                  autoComplete="new-password"
-                />
-              </div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>
+                {credPassword ? "Change Password" : "Set Password"}
+                {credPassword && (
+                  <button onClick={() => setShowPassword(p => !p)}
+                    style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                    {showPassword ? "Hide" : "Show current"}
+                  </button>
+                )}
+              </label>
+              {credPassword && showPassword && (
+                <div style={{ marginBottom: 8, padding: "8px 12px", borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, fontSize: 14, fontFamily: "monospace", color: C.text, letterSpacing: "0.08em" }}>
+                  {credPassword}
+                </div>
+              )}
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder={credPassword ? "Enter new password" : "Set a password"}
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && saveLoginCredential()}
+                style={inputStyle}
+                autoComplete="new-password"
+              />
             </div>
             {credMsg && <div style={{ fontSize: 13, fontWeight: 600, color: credMsg.ok ? C.green : C.red, marginBottom: 8 }}>{credMsg.text}</div>}
             <button onClick={saveLoginCredential} disabled={credSaving || !newPassword.trim()}
-              style={{ marginTop: 4, padding: "10px 20px", borderRadius: 10, background: newPassword.trim() ? C.orange : C.surface2, color: newPassword.trim() ? "#fff" : C.muted, border: `1px solid ${newPassword.trim() ? C.orange : C.border}`, fontWeight: 600, fontSize: 13, cursor: newPassword.trim() && !credSaving ? "pointer" : "default", transition: "all 0.15s", opacity: credSaving ? 0.6 : 1 }}>
+              style={{ marginTop: 4, padding: "10px 20px", borderRadius: 10, background: newPassword.trim() ? C.green : C.surface2, color: newPassword.trim() ? "#fff" : C.muted, border: `1px solid ${newPassword.trim() ? C.green : C.border}`, fontWeight: 600, fontSize: 13, cursor: !newPassword.trim() || credSaving ? "default" : "pointer", transition: "all 0.15s", opacity: credSaving ? 0.6 : 1 }}>
               {credSaving ? "Saving…" : credPassword ? "Update Password" : "Set Password"}
             </button>
           </>
@@ -863,13 +909,361 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged }: {
   )
 }
 
+// ── Settings Tab ─────────────────────────────────────────────────────────────
+
+interface EditorTable {
+  number: number
+  shape: string
+  x: number; y: number   // center, wizard coords (0-100 height-based units)
+  w: number; h: number   // size, same units
+  capacity: number
+}
+
+const EDITOR_W = 560
+const EDITOR_H = 347  // 560 / 1.615 ≈ golden ratio
+
+function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?: () => void }) {
+  const [loading,      setLoading]      = useState(true)
+  const [saving,       setSaving]       = useState(false)
+  const [msg,          setMsg]          = useState<{ ok: boolean; text: string } | null>(null)
+  const [showCapacity, setShowCapacity] = useState(false)
+  const [alertBySize,  setAlertBySize]  = useState({ small: 30, medium: 45, large: 60, xlarge: 90 })
+  const [tables,       setTables]       = useState<EditorTable[]>([])
+  const [canvasAspect, setCanvasAspect] = useState(1.615)
+  const [selectedIdx,  setSelectedIdx]  = useState<number | null>(null)
+
+  // Full guest_config from Railway (to merge, not overwrite)
+  const fullGuestConfigRef = useRef<Record<string, unknown>>({})
+
+  const dragRef = useRef<{
+    idx: number
+    startClientX: number; startClientY: number
+    origX: number; origY: number
+  } | null>(null)
+
+  const canvasRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!slug) return
+    fetch(`https://restaurant-brain-production.up.railway.app/client/${encodeURIComponent(slug)}/config`, { cache: "no-store" })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return
+        const gc = d.guest_config ?? {}
+        fullGuestConfigRef.current = gc
+        setShowCapacity(!!gc.showCapacity)
+        if (gc.reservationAlertBySize) {
+          setAlertBySize(prev => ({ ...prev, ...gc.reservationAlertBySize }))
+        } else if (gc.reservationAlertMinutes) {
+          const m = Number(gc.reservationAlertMinutes) || 45
+          setAlertBySize({ small: m, medium: m, large: m, xlarge: m })
+        }
+        const fp = d.floor_plan
+        if (fp?.tables?.length) {
+          const asp = fp.canvasAspect ?? 1.615
+          setCanvasAspect(asp)
+          setTables(fp.tables.map((t: { number?: number; shape?: string; x?: number; y?: number; w?: number; h?: number; capacity?: number }, i: number) => ({
+            number:   t.number   ?? (i + 1),
+            shape:    t.shape    ?? "square",
+            x:        t.x        ?? 50,
+            y:        t.y        ?? 50,
+            w:        t.w        ?? 8,
+            h:        t.h        ?? 8,
+            capacity: t.capacity ?? 4,
+          })))
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [slug])
+
+  // Mouse/touch drag handlers
+  useEffect(() => {
+    function onMove(e: MouseEvent | TouchEvent) {
+      const dr = dragRef.current
+      if (!dr || !canvasRef.current) return
+      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY
+      const dx = (clientX - dr.startClientX) / EDITOR_W * 100
+      const dy = (clientY - dr.startClientY) / EDITOR_H * 100
+      setTables(prev => prev.map((t, i) => {
+        if (i !== dr.idx) return t
+        const newX = Math.max(t.w / 2, Math.min(100 - t.w / 2, dr.origX + dx))
+        const newY = Math.max(t.h / 2, Math.min(100 - t.h / 2, dr.origY + dy))
+        return { ...t, x: newX, y: newY }
+      }))
+    }
+    function onUp() { dragRef.current = null }
+    document.addEventListener("mousemove", onMove)
+    document.addEventListener("mouseup",   onUp)
+    document.addEventListener("touchmove", onMove, { passive: true })
+    document.addEventListener("touchend",  onUp)
+    return () => {
+      document.removeEventListener("mousemove", onMove)
+      document.removeEventListener("mouseup",   onUp)
+      document.removeEventListener("touchmove", onMove)
+      document.removeEventListener("touchend",  onUp)
+    }
+  }, [])
+
+  function startDrag(e: React.MouseEvent | React.TouchEvent, idx: number) {
+    e.preventDefault()
+    e.stopPropagation()
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY
+    dragRef.current = { idx, startClientX: clientX, startClientY: clientY, origX: tables[idx].x, origY: tables[idx].y }
+    setSelectedIdx(idx)
+  }
+
+  function addTable() {
+    const maxNum = tables.reduce((m, t) => Math.max(m, t.number), 0)
+    setTables(prev => [...prev, { number: maxNum + 1, shape: "square", x: 50, y: 50, w: 9, h: 9, capacity: 4 }])
+    setSelectedIdx(tables.length)
+  }
+
+  function deleteTable(idx: number) {
+    setTables(prev => prev.filter((_, i) => i !== idx))
+    setSelectedIdx(null)
+  }
+
+  function updateTable(idx: number, patch: Partial<EditorTable>) {
+    setTables(prev => prev.map((t, i) => i === idx ? { ...t, ...patch } : t))
+  }
+
+  async function saveSettings() {
+    setSaving(true); setMsg(null)
+    try {
+      // Merge only our fields into the existing guest_config
+      const mergedGc = {
+        ...fullGuestConfigRef.current,
+        showCapacity,
+        reservationAlertBySize: alertBySize,
+      }
+      const floorPlan = { tables, canvasAspect }
+
+      // Save config (guest_config + floor_plan)
+      const r1 = await fetch("/api/client/config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rid, guest_config: mergedGc, floor_plan: floorPlan }),
+      })
+      if (!r1.ok) throw new Error("config save failed")
+
+      // Sync capacity to tables DB (table_number + capacity)
+      const dbTables = tables.map(t => ({ table_number: t.number, capacity: t.capacity }))
+      await fetch("/api/client/tables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rid, tables: dbTables }),
+      })
+
+      setMsg({ ok: true, text: "Settings saved — changes live immediately" })
+    } catch {
+      setMsg({ ok: false, text: "Could not save settings" })
+    }
+    setSaving(false)
+    setTimeout(() => setMsg(null), 5000)
+  }
+
+  const sel = selectedIdx !== null ? tables[selectedIdx] : null
+
+  if (loading) return (
+    <div style={{ padding: 40, textAlign: "center", color: C.muted, fontSize: 13 }}>Loading settings…</div>
+  )
+
+  return (
+    <div style={{ padding: "24px 24px 60px", maxWidth: 900, margin: "0 auto" }}>
+
+      {onBack && (
+        <button onClick={onBack} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: "0 0 20px", marginLeft: -2 }}>
+          <ChevronLeft size={14} /> Back to Overview
+        </button>
+      )}
+
+      {/* ── Display settings ── */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 16 }}>
+          Display Settings
+        </div>
+
+        {/* Capacity toggle */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Table capacity labels</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Show "4P" on each table on the floor map</div>
+          </div>
+          <button onClick={() => setShowCapacity(p => !p)}
+            style={{ width: 44, height: 24, borderRadius: 12, background: showCapacity ? C.green : C.surface2, border: `1px solid ${showCapacity ? C.greenBdr : C.border}`, position: "relative", cursor: "pointer", transition: "background 0.2s, border-color 0.2s", flexShrink: 0 }}>
+            <div style={{ position: "absolute", top: 2, left: showCapacity ? 22 : 2, width: 18, height: 18, borderRadius: "50%", background: showCapacity ? "#fff" : C.muted, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+
+        {/* Reservation alert time — per party size */}
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Reservation alert time</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Minutes before a reservation when the assigned table turns yellow — set per party size</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+            {([
+              { key: "small",  label: "1–2p" },
+              { key: "medium", label: "3–4p" },
+              { key: "large",  label: "5–6p" },
+              { key: "xlarge", label: "7+p"  },
+            ] as { key: keyof typeof alertBySize; label: string }[]).map(({ key, label }) => (
+              <div key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, textAlign: "center" }}>{label}</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <input
+                    type="number" min={5} max={240}
+                    value={alertBySize[key]}
+                    onChange={e => setAlertBySize(prev => ({ ...prev, [key]: Math.max(5, Math.min(240, Number(e.target.value))) }))}
+                    style={{ flex: 1, padding: "7px 6px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, color: C.text, fontSize: 14, fontWeight: 600, textAlign: "center", outline: "none", minWidth: 0 }}
+                  />
+                  <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>m</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Table Map Editor ── */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted }}>
+            Table Map
+          </div>
+          <button onClick={addTable}
+            style={{ padding: "5px 14px", borderRadius: 8, background: C.greenBg, border: `1px solid ${C.greenBdr}`, color: C.green, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+            + Add Table
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+          {/* Canvas */}
+          <div
+            ref={canvasRef}
+            style={{
+              position: "relative",
+              width: EDITOR_W,
+              height: EDITOR_H,
+              background: "#e8ece6",
+              borderRadius: 10,
+              border: `1.5px solid ${C.border}`,
+              overflow: "hidden",
+              flexShrink: 0,
+              cursor: "default",
+              touchAction: "none",
+            }}
+            onClick={() => setSelectedIdx(null)}
+          >
+            {/* Grid lines */}
+            {[25, 50, 75].map(pct => (
+              <div key={`h${pct}`} style={{ position: "absolute", left: 0, right: 0, top: `${pct}%`, borderTop: "1px dashed rgba(0,0,0,0.08)", pointerEvents: "none" }} />
+            ))}
+            {[25, 50, 75].map(pct => (
+              <div key={`v${pct}`} style={{ position: "absolute", top: 0, bottom: 0, left: `${pct}%`, borderLeft: "1px dashed rgba(0,0,0,0.08)", pointerEvents: "none" }} />
+            ))}
+
+            {tables.map((t, idx) => {
+              const left   = (t.x - t.w / 2) / 100 * EDITOR_W
+              const top    = (t.y - t.h / 2) / 100 * EDITOR_H
+              const width  = t.w / 100 * EDITOR_W
+              const height = t.h / 100 * EDITOR_H
+              const isSel  = idx === selectedIdx
+              const borderRadius = t.shape === "round" ? "50%" : t.shape === "square" ? 8 : 6
+              return (
+                <div
+                  key={idx}
+                  onMouseDown={e => startDrag(e, idx)}
+                  onTouchStart={e => startDrag(e, idx)}
+                  onClick={e => { e.stopPropagation(); setSelectedIdx(idx) }}
+                  style={{
+                    position: "absolute", left, top, width, height,
+                    borderRadius,
+                    clipPath: t.shape === "round" ? "circle(50%)" : undefined,
+                    background: isSel ? C.green : "#374151",
+                    border: `2px solid ${isSel ? C.green : "rgba(0,0,0,0.25)"}`,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    cursor: "grab", userSelect: "none", boxShadow: isSel ? `0 0 0 3px ${C.greenBg}` : "0 1px 4px rgba(0,0,0,0.15)",
+                    transition: "background 0.1s, border-color 0.1s",
+                  }}
+                >
+                  <span style={{ fontSize: Math.min(width, height) > 40 ? 12 : 9, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
+                    {t.number}
+                  </span>
+                  {showCapacity && width > 32 && (
+                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.75)" }}>{t.capacity}p</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Table editor panel */}
+          {sel !== null && selectedIdx !== null ? (
+            <div style={{ flex: 1, minWidth: 180, background: C.surface2, borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 12 }}>
+                Table {sel.number}
+              </div>
+
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 4 }}>Table #</label>
+              <input type="number" min={1} max={999} value={sel.number}
+                onChange={e => updateTable(selectedIdx, { number: Number(e.target.value) })}
+                style={{ width: "100%", padding: "6px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, marginBottom: 10, boxSizing: "border-box", outline: "none" }} />
+
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 4 }}>Shape</label>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                {(["round", "square", "rect"] as const).map(s => (
+                  <button key={s} onClick={() => updateTable(selectedIdx, { shape: s, w: s === "round" ? 8 : s === "square" ? 9 : 15, h: s === "round" ? 8 : s === "square" ? 9 : 9 })}
+                    style={{ flex: 1, padding: "5px 4px", borderRadius: 6, border: `1px solid ${sel.shape === s ? C.green : C.border}`, background: sel.shape === s ? C.greenBg : "transparent", color: sel.shape === s ? C.green : C.text2, fontSize: 10, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 4 }}>Capacity</label>
+              <input type="number" min={1} max={50} value={sel.capacity}
+                onChange={e => updateTable(selectedIdx, { capacity: Number(e.target.value) })}
+                style={{ width: "100%", padding: "6px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, marginBottom: 16, boxSizing: "border-box", outline: "none" }} />
+
+              <button onClick={() => deleteTable(selectedIdx)}
+                style={{ width: "100%", padding: "7px 0", borderRadius: 7, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                Delete Table
+              </button>
+            </div>
+          ) : (
+            <div style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", justifyContent: "center", color: C.muted, fontSize: 12, textAlign: "center", padding: "20px 0" }}>
+              Tap a table to edit · drag to reposition
+            </div>
+          )}
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 11, color: C.muted }}>
+          {tables.length} table{tables.length !== 1 ? "s" : ""} · Drag to reposition · Select to edit shape and capacity
+        </div>
+      </div>
+
+      {/* ── Save ── */}
+      {msg && (
+        <div style={{ marginBottom: 12, padding: "10px 16px", borderRadius: 10, background: msg.ok ? C.greenBg : C.redBg, border: `1px solid ${msg.ok ? C.greenBdr : C.redBdr}`, color: msg.ok ? C.green : C.red, fontSize: 13, fontWeight: 600 }}>
+          {msg.text}
+        </div>
+      )}
+      <button onClick={saveSettings} disabled={saving}
+        style={{ padding: "12px 28px", borderRadius: 12, background: saving ? C.surface2 : C.green, color: saving ? C.muted : "#fff", border: `1px solid ${saving ? C.border : C.green}`, fontWeight: 700, fontSize: 14, cursor: saving ? "default" : "pointer", transition: "all 0.15s", opacity: saving ? 0.7 : 1 }}>
+        {saving ? "Saving…" : "Save Settings"}
+      </button>
+    </div>
+  )
+}
+
 // ── Export (wrapped in Suspense for useParams) ────────────────────────────────
 
 export default function ClientAdminPage() {
   return (
     <Suspense fallback={
-      <div style={{ minHeight: "100dvh", background: "#050709", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <p style={{ color: "rgba(255,220,180,0.42)", fontSize: 13 }}>Loading…</p>
+      <div style={{ minHeight: "100dvh", background: "#f5f6f8", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "#9ca3af", fontSize: 13 }}>Loading…</p>
       </div>
     }>
       <ClientAdminInner />

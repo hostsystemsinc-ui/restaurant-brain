@@ -256,7 +256,16 @@ interface Reservation {
 }
 
 // Table pre-assigned to an upcoming reservation (local-only, persisted in localStorage)
-interface ReservedTable { resId: string; guestName: string; time: string }
+interface ReservedTable { resId: string; guestName: string; time: string; partySize?: number }
+
+type AlertBySize = { small: number; medium: number; large: number; xlarge: number }
+const DEFAULT_ALERT_BY_SIZE: AlertBySize = { small: 30, medium: 45, large: 60, xlarge: 90 }
+function lookupAlertMins(partySize: number, bySize: AlertBySize): number {
+  if (partySize <= 2) return bySize.small
+  if (partySize <= 4) return bySize.medium
+  if (partySize <= 6) return bySize.large
+  return bySize.xlarge
+}
 
 // Toast notification system
 type ToastItem = { id: number; msg: string; type: "ok" | "err" | "warn" }
@@ -954,7 +963,7 @@ function DragGhost({ entry }: { entry: QueueEntry }) {
 // ── Droppable floor table ──────────────────────────────────────────────────────
 
 function DroppableFloorTable({
-  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onTableClick, reservation, now, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H,
+  pos, table, occupant, onClear, isDraggingOccupant, isSelectMode, onSeatFromSelect, onTableClick, reservation, now, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H, showCapacity, resAlertBySize,
 }: {
   pos: FloorPos
   table?: Table
@@ -968,6 +977,8 @@ function DroppableFloorTable({
   now?: Date
   canvasW?: number
   canvasH?: number
+  showCapacity?: boolean
+  resAlertBySize?: AlertBySize
 }) {
   const isOccupied       = !!occupant || (!!table && table.status !== "available")
   const hasLocalOccupant = !!occupant
@@ -976,8 +987,9 @@ function DroppableFloorTable({
 
   // Time-based reservation states
   const resMinutes    = (reservation && !isOccupied && now) ? getResMinutesUntil(reservation.time, now) : undefined
-  const isResLocked   = resMinutes !== undefined && resMinutes <= 0          // at/past reservation time → hard lock
-  const isResWarning  = resMinutes !== undefined && resMinutes > 0 && resMinutes <= 60 // within 1 hr → warn
+  const isResLocked   = resMinutes !== undefined && resMinutes <= 0
+  const effectiveAlertMins = reservation ? lookupAlertMins(reservation.partySize ?? 2, resAlertBySize ?? DEFAULT_ALERT_BY_SIZE) : 60
+  const isResWarning  = resMinutes !== undefined && resMinutes > 0 && resMinutes <= effectiveAlertMins
   const hasReservation = !!reservation && !isOccupied && resMinutes !== undefined && resMinutes > 0
 
   // Locked tables block all drops; warning/far-future reserved tables allow walk-ins
@@ -1072,50 +1084,22 @@ function DroppableFloorTable({
       onClick={
         isSelectTarget && onSeatFromSelect
           ? onSeatFromSelect
-          : isOccupied && onClear && !hasLocalOccupant
-          ? onClear
+          : isOccupied && onClear
+          ? () => onClear()
           : avail && !isResLocked && onTableClick
           ? onTableClick
           : undefined
       }
     >
-      {isOccupied && onClear ? (
-        <button
-          onPointerDown={e => e.stopPropagation()}
-          onClick={e => { e.stopPropagation(); onClear() }}
-          style={{
-            position: "absolute",
-            top: pos.shape === "round" ? "18%" : 4,
-            right: pos.shape === "round" ? "18%" : 4,
-            width: 16, height: 16,
-            borderRadius: "50%",
-            background: "rgba(239,68,68,0.75)",
-            border: "none",
-            cursor: "pointer",
-            color: "rgba(255,255,255,0.95)",
-            fontSize: 11,
-            fontWeight: 900,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            lineHeight: 1,
-            padding: 0,
-          }}
-          title="Clear table"
-        >
-          ×
-        </button>
-      ) : (
-        <div style={{
-          position: "absolute",
-          top: pos.shape === "round" ? "18%" : 7,
-          right: pos.shape === "round" ? "18%" : 7,
-          width: 6, height: 6,
-          borderRadius: "50%",
-          background: isResLocked ? "rgba(239,68,68,0.90)" : isResWarning ? "rgba(249,115,22,0.85)" : hasReservation ? "rgba(251,191,36,0.80)" : noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
-          opacity: 0.85,
-        }} />
-      )}
+      <div style={{
+        position: "absolute",
+        top: pos.shape === "round" ? "18%" : 7,
+        right: pos.shape === "round" ? "18%" : 7,
+        width: 6, height: 6,
+        borderRadius: "50%",
+        background: isResLocked ? "rgba(239,68,68,0.90)" : isResWarning ? "rgba(249,115,22,0.85)" : hasReservation ? "rgba(251,191,36,0.80)" : isOccupied ? "rgba(239,68,68,0.80)" : noTable ? "rgba(255,255,255,0.28)" : "#22c55e",
+        opacity: 0.85,
+      }} />
 
       {isOver && canReceiveDrop ? (
         <span style={{
@@ -1137,8 +1121,11 @@ function DroppableFloorTable({
             color: "rgba(255,180,180,0.97)",
             textAlign: "center",
             lineHeight: 1.2,
+            width: "100%",
             paddingInline: 3,
             overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}>
             {reservation!.guestName.split(" ")[0]}
           </span>
@@ -1157,8 +1144,11 @@ function DroppableFloorTable({
             color: "rgba(255,220,160,0.97)",
             textAlign: "center",
             lineHeight: 1.2,
+            width: "100%",
             paddingInline: 3,
             overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}>
             {reservation!.guestName.split(" ")[0]}
           </span>
@@ -1177,8 +1167,11 @@ function DroppableFloorTable({
             color: "rgba(255,228,150,0.97)",
             textAlign: "center",
             lineHeight: 1.2,
+            width: "100%",
             paddingInline: 3,
             overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
           }}>
             {reservation!.guestName.split(" ")[0]}
           </span>
@@ -1197,13 +1190,13 @@ function DroppableFloorTable({
             color: "rgba(255,240,220,0.97)",
             textAlign: "center",
             lineHeight: 1.2,
+            width: "100%",
             paddingInline: 4,
-            maxWidth: "100%",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
           }}>
-            {occupant.name}
+            {(occupant.name || "Guest").split(" ")[0]}
           </span>
           <span style={{ fontSize: 9, color: "rgba(var(--warm),0.70)" }}>
             {occupant.party_size}p
@@ -1214,7 +1207,7 @@ function DroppableFloorTable({
           <span style={{ fontSize: pos.shape === "rect" ? 16 : 14, fontWeight: 800, color: "rgba(239,68,68,0.95)" }}>
             {pos.number}
           </span>
-          <span style={{ fontSize: 9, color: "rgba(239,68,68,0.72)" }}>{table.capacity}p</span>
+          {showCapacity && <span style={{ fontSize: 9, color: "rgba(239,68,68,0.72)" }}>{table.capacity}p</span>}
         </>
       ) : (
         <>
@@ -1225,7 +1218,7 @@ function DroppableFloorTable({
           }}>
             {pos.number}
           </span>
-          {table && (
+          {showCapacity && table && (
             <span style={{ fontSize: 10, color: "rgba(34,197,94,0.90)" }}>
               {table.capacity}p
             </span>
@@ -1239,7 +1232,7 @@ function DroppableFloorTable({
 // ── Floor map ──────────────────────────────────────────────────────────────────
 
 function FloorMap({
-  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onTableClick, reservedTables, now, floor, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H,
+  tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onTableClick, reservedTables, now, floor, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H, showCapacity, resAlertBySize,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -1253,6 +1246,8 @@ function FloorMap({
   floor?: FloorPos[]
   canvasW?: number
   canvasH?: number
+  showCapacity?: boolean
+  resAlertBySize?: AlertBySize
 }) {
   const floorPlan = floor ?? []
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
@@ -1309,6 +1304,8 @@ function FloorMap({
                 now={now}
                 canvasW={cW}
                 canvasH={cH}
+                showCapacity={showCapacity}
+                resAlertBySize={resAlertBySize}
               />
             )
           })}
@@ -1337,7 +1334,7 @@ function FloorMap({
 
 function SeatTablePicker({
   guest, tables, localOccupants, onConfirm, onClose,
-  reservedTables, excludeResId, mode = "seat", now, floor,
+  reservedTables, excludeResId, mode = "seat", now, floor, resAlertBySize,
 }: {
   guest: { name: string | null; party_size: number }
   tables: Table[]
@@ -1345,10 +1342,11 @@ function SeatTablePicker({
   onConfirm: (tableNumber: number, tableId: string | undefined) => void
   onClose: () => void
   reservedTables?: Map<number, ReservedTable>
-  excludeResId?: string   // allow re-selecting the table already held by this reservation
+  excludeResId?: string
   mode?: "seat" | "reserve"
   now?: Date
   floor?: FloorPos[]
+  resAlertBySize?: AlertBySize
 }) {
   const floorPlan = floor ?? []
   return (
@@ -1388,7 +1386,7 @@ function SeatTablePicker({
               if (mode === "seat" && now) {
                 const mins = getResMinutesUntil(resInfo!.time, now)
                 if (mins <= 0) isResLocked = true
-                else if (mins <= 60) isResWarn = true
+                else if (mins <= lookupAlertMins(resInfo!.partySize ?? 2, resAlertBySize ?? DEFAULT_ALERT_BY_SIZE)) isResWarn = true
                 else isResLocked = true  // far future — block
               } else {
                 isResLocked = true
@@ -2212,7 +2210,9 @@ function ClientStationInner() {
   const [floor,        setFloor]        = useState<FloorPos[]>([])
   const [canvasW,      setCanvasW]      = useState(CANVAS_W)
   const [canvasH,      setCanvasH]      = useState(CANVAS_H)
-  const [adminPin,     setAdminPin]     = useState("")
+  const [adminPin,        setAdminPin]        = useState("")
+  const [showCapacity,  setShowCapacity]  = useState(false)
+  const [resAlertBySize, setResAlertBySize] = useState<AlertBySize>(DEFAULT_ALERT_BY_SIZE)
   const [loading,  setLoading]  = useState(true)
   const [loadErr,  setLoadErr]  = useState("")
   const [pinInput, setPinInput] = useState("")
@@ -2238,6 +2238,7 @@ function ClientStationInner() {
   const [todayReservations, setTodayRes]  = useState<Reservation[]>([])
   const [selectedEntry, setSelectedEntry] = useState<QueueEntry | null>(null)
   const [clearConfirm, setClearConfirm]   = useState<{ tableId: string | undefined; tableNumber: number; occupant: LocalOccupant } | null>(null)
+  const [pendingOccupantMove, setPendingOccupantMove] = useState<{ tableNumber: number; tableId: string | undefined; occupant: LocalOccupant } | null>(null)
   const [tableSeatPicker, setTableSeatPicker] = useState<{ tableId: string | undefined; tableNumber: number } | null>(null)
   const [showHistoryPanel, setShowHistoryPanel] = useState(false)
   const [sidebarW, setSidebarW]           = useState(300)
@@ -2253,7 +2254,7 @@ function ClientStationInner() {
   const [reservedTables, setReservedTables] = useState<Map<number, ReservedTable>>(() => {
     try {
       const s = localStorage.getItem(`${slug}:reserved_tables`)
-      return s ? new Map(JSON.parse(s) as [number, ReservedTable][]) : new Map()
+      return s ? new Map((JSON.parse(s) as [unknown, ReservedTable][]).map(([k, v]) => [Number(k), v])) : new Map()
     } catch { return new Map() }
   })
   const toastSeqRef     = useRef(0)
@@ -2278,6 +2279,12 @@ function ClientStationInner() {
         if (gc.restaurantName) setRestName(gc.restaurantName)
         if (gc.logoUrl)        setRestLogoUrl(gc.logoUrl)
         if (gc.adminPin)       setAdminPin(String(gc.adminPin))
+        if (gc.showCapacity !== undefined) setShowCapacity(!!gc.showCapacity)
+        if (gc.reservationAlertBySize) setResAlertBySize(prev => ({ ...prev, ...gc.reservationAlertBySize }))
+        else if (gc.reservationAlertMinutes !== undefined) {
+          const m = Number(gc.reservationAlertMinutes) || 60
+          setResAlertBySize({ small: m, medium: m, large: m, xlarge: m })
+        }
         const converted = convertWizardFloor(d.floor_plan)
         if (converted) {
           setFloor(converted.tables)
@@ -2305,6 +2312,20 @@ function ClientStationInner() {
   useEffect(() => {
     try { localStorage.setItem(`${slug}:reserved_tables`, JSON.stringify([...reservedTables])) } catch {}
   }, [reservedTables])
+
+  // Sync reserved table assignments written by the reservations page (different tab)
+  useEffect(() => {
+    if (!slug) return
+    const key = `${slug}:reserved_tables`
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== key || e.newValue === null) return
+      try {
+        setReservedTables(new Map((JSON.parse(e.newValue) as [unknown, ReservedTable][]).map(([k, v]) => [Number(k), v])))
+      } catch {}
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [slug])
 
   const handleResizePointerMove = useCallback((e: PointerEvent) => {
     if (!isResizing.current) return
@@ -2598,6 +2619,20 @@ function ClientStationInner() {
     }
     recentlySeateddRef.current.set(tableNumber, Date.now() + 5000)
     setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
+    // Record in guest history so reservation check-ins appear on the History page
+    addToGuestLog({
+      id:              res.id,
+      name:            res.guest_name,
+      party_size:      res.party_size,
+      source:          "reservation",
+      phone:           res.phone ?? null,
+      notes:           res.notes ?? null,
+      quoted_wait:     null,
+      actual_wait_min: null,
+      joined_ms:       Date.now(),
+      resolved_ms:     Date.now(),
+      status:          "seated",
+    })
     showToast(`${res.guest_name} checked in at Table ${tableNumber}`)
   }, [fetchTables])
 
@@ -2606,6 +2641,8 @@ function ClientStationInner() {
   const clearTable = useCallback(async (tableId: string | undefined, tableNumber: number, entryId?: string, mode: "restore" | "cancel" = "restore") => {
     recentlySeateddRef.current.delete(tableNumber) // allow immediate eviction
     setLocalOccupants(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
+    recentlyClearedRef.current.set(tableNumber, Date.now() + 5000)
+    setTables(prev => prev.map(t => t.table_number === tableNumber ? { ...t, status: "available" as const } : t))
     // Resolve tableId if not passed — look it up from current tables state,
     // or fetch fresh if state is stale/empty (critical: without this the API
     // call is skipped and syncOccupants re-adds the occupant 2s later)
@@ -2640,7 +2677,7 @@ function ClientStationInner() {
   // Pre-assign a table to a reservation (turns it yellow on the floor map)
   const assignResTable = useCallback((res: Reservation, tableNumber: number) => {
     setReservedTables(prev => new Map(prev).set(tableNumber, {
-      resId: res.id, guestName: res.guest_name, time: res.time,
+      resId: res.id, guestName: res.guest_name, time: res.time, partySize: res.party_size,
     }))
     showToast(`Table ${tableNumber} held for ${res.guest_name} at ${fmt12Res(res.time)}`)
   }, [])
@@ -2705,6 +2742,13 @@ function ClientStationInner() {
         next.set(targetTable, occupant)
         return next
       })
+      setTables(prev => prev.map(t => {
+        const n = t.table_number as number
+        if (n === sourceTable && !displaced) return { ...t, status: "available" as const }
+        if (n === targetTable) return { ...t, status: "occupied" as const }
+        if (displaced && n === sourceTable) return { ...t, status: "occupied" as const }
+        return t
+      }))
 
       // Fire backend calls in background — UI already updated
       ;(async () => {
@@ -2855,25 +2899,12 @@ function ClientStationInner() {
       `}</style>
 
       {/* Outer clip wrapper — always exactly viewport size */}
-      <div data-host-theme={theme} style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--page-bg)" }}>
-      {/* Inner scaled container — transform:scale keeps getBoundingClientRect in viewport coords,
-          fixing @dnd-kit collision detection accuracy regardless of zoom level */}
-      <div
-        className="flex flex-col"
-        style={{
-          width:           `${(1 / zoom * 100).toFixed(6)}vw`,
-          height:          `${(1 / zoom * 100).toFixed(6)}dvh`,
-          background:      "var(--page-bg)",
-          transform:       `scale(${zoom})`,
-          transformOrigin: "top left",
-          overflow:        "hidden",
-        }}
-      >
+      <div data-host-theme={theme} style={{ width: "100vw", height: "100dvh", overflow: "hidden", position: "relative", background: "var(--page-bg)", display: "flex", flexDirection: "column" }}>
 
-        {/* ── Header ─────────────────────────────────────────────────── */}
+        {/* ── Header — never zooms, always 48px high ─────────────────── */}
         <header
           className="flex items-center justify-between px-4 h-12 shrink-0"
-          style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)" }}
+          style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)", zIndex: 20, position: "relative" }}
         >
           {/* Left: restaurant identity + live stats */}
           <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
@@ -2954,6 +2985,13 @@ function ClientStationInner() {
               <BarChart2 className="w-3 h-3" /> History
             </button>
 
+            {/* Reservations */}
+            <Link href={`/client/${slug}/reservations`}
+              className="hidden sm:flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold hover:bg-white/8"
+              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)", textDecoration: "none" }}>
+              <CalendarDays className="w-3 h-3" /> Reservations
+            </Link>
+
             {/* Admin */}
             <Link href={`/client/${slug}/admin`}
               className="hidden sm:flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold hover:bg-white/8"
@@ -2963,8 +3001,23 @@ function ClientStationInner() {
           </div>
         </header>
 
+        {/* Scaled body — only the queue+floor scales, header stays fixed */}
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        {/* Inner scaled container — transform:scale keeps getBoundingClientRect in viewport coords,
+            fixing @dnd-kit collision detection accuracy regardless of zoom level */}
+        <div
+          style={{
+            width:           `${(1 / zoom * 100).toFixed(6)}%`,
+            height:          `${(1 / zoom * 100).toFixed(6)}%`,
+            background:      "var(--page-bg)",
+            transform:       `scale(${zoom})`,
+            transformOrigin: "top left",
+            overflow:        "hidden",
+          }}
+        >
+
         {/* ── Body ───────────────────────────────────────────────────── */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden" style={{ height: "100%" }}>
 
           {/* ── Queue sidebar (resizable) ──────────────────────── */}
           <div
@@ -3049,51 +3102,54 @@ function ClientStationInner() {
                             : "rgba(99,179,237,0.22)"}`,
                         }}
                       >
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{
-                            fontSize: 12, fontWeight: 600,
-                            color: "rgba(var(--cream),0.97)",
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            marginBottom: 2,
-                          }}>
-                            {res.guest_name}
-                          </div>
-                          <div style={{
-                            fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap",
-                            color: "rgba(var(--warm),0.70)",
-                          }}>
-                            <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
-                            <span>·</span>
-                            <span>{res.party_size}p</span>
-                            {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
-                            {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
-                            {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
-                            {/* Pre-assigned table badge */}
-                            {assignedTableNum !== undefined && (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                                <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(251,191,36,0.95)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 4, padding: "1px 5px" }}>
-                                  T{assignedTableNum}
+                        {/* Top row: guest info */}
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{
+                              fontSize: 13, fontWeight: 700,
+                              color: "rgba(var(--cream),0.97)",
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                              marginBottom: 2,
+                            }}>
+                              {res.guest_name}
+                            </div>
+                            <div style={{
+                              fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap",
+                              color: "rgba(var(--warm),0.70)",
+                            }}>
+                              <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
+                              <span>·</span>
+                              <span>{res.party_size}p</span>
+                              {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
+                              {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
+                              {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
+                              {/* Pre-assigned table badge */}
+                              {assignedTableNum !== undefined && (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                  <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(251,191,36,0.95)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 4, padding: "1px 5px" }}>
+                                    T{assignedTableNum}
+                                  </span>
+                                  <button
+                                    onPointerDown={e => e.stopPropagation()}
+                                    onClick={e => { e.stopPropagation(); setReservedTables(prev => { const n = new Map(prev); n.delete(assignedTableNum); return n }) }}
+                                    style={{ fontSize: 10, color: "rgba(251,191,36,0.45)", cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1, display: "flex", alignItems: "center" }}
+                                    title="Clear table assignment"
+                                  ><X style={{ width: 9, height: 9 }} /></button>
                                 </span>
-                                <button
-                                  onPointerDown={e => e.stopPropagation()}
-                                  onClick={e => { e.stopPropagation(); setReservedTables(prev => { const n = new Map(prev); n.delete(assignedTableNum); return n }) }}
-                                  style={{ fontSize: 10, color: "rgba(251,191,36,0.45)", cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1 }}
-                                  title="Clear table assignment"
-                                >✕</button>
-                              </span>
+                              )}
+                            </div>
+                            {/* Notes */}
+                            {res.notes && (
+                              <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {res.notes}
+                              </div>
                             )}
                           </div>
-                          {/* Notes — visible on the card so staff never misses them */}
-                          {res.notes && (
-                            <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {res.notes}
-                            </div>
-                          )}
                         </div>
 
-                        {/* Action buttons column */}
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end", flexShrink: 0 }}>
-                          {/* Check In — auto-uses pre-assigned table if set */}
+                        {/* Action buttons row — full width, bigger tap targets */}
+                        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                          {/* Seat Guest / Check In */}
                           <button
                             onClick={() => {
                               if (assignedTableNum !== undefined) {
@@ -3103,44 +3159,51 @@ function ClientStationInner() {
                               }
                             }}
                             style={{
-                              height: 24, padding: "0 8px", borderRadius: 6, border: "none",
-                              cursor: "pointer", fontSize: 9, fontWeight: 800,
-                              letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
-                              background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                              flex: 1, height: 34, borderRadius: 8, border: "none",
+                              cursor: "pointer", fontSize: 11, fontWeight: 800,
+                              letterSpacing: "0.08em", textTransform: "uppercase",
+                              background: "rgba(34,197,94,0.15)", color: "#22c55e",
+                              display: "flex", alignItems: "center", justifyContent: "center",
                             }}
                           >
-                            {assignedTableNum !== undefined ? `Check In → T${assignedTableNum}` : "Check In"}
+                            {assignedTableNum !== undefined ? `Seat → T${assignedTableNum}` : "Seat Guest"}
                           </button>
-                          {/* Assign Table — only shown when no table is pre-assigned */}
+                          {/* Assign Table — shown when no table pre-assigned */}
                           {assignedTableNum === undefined && (
                             <button
                               onClick={() => setResTblPicker(res)}
                               style={{
-                                height: 20, padding: "0 7px", borderRadius: 5,
-                                border: "1px solid rgba(251,191,36,0.28)",
-                                cursor: "pointer", fontSize: 8, fontWeight: 700,
-                                letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap",
-                                background: "rgba(251,191,36,0.06)", color: "rgba(251,191,36,0.75)",
+                                height: 34, padding: "0 10px", borderRadius: 8,
+                                border: "1px solid rgba(251,191,36,0.35)",
+                                cursor: "pointer", fontSize: 11, fontWeight: 700,
+                                background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.85)",
+                                display: "flex", alignItems: "center", justifyContent: "center",
                               }}
                             >
                               Assign Table
                             </button>
                           )}
-                          {/* No Show — cancel reservation for non-arrivals */}
+                          {/* No Show */}
                           <button
                             onPointerDown={e => e.stopPropagation()}
                             onClick={async (e) => {
                               e.stopPropagation()
+                              // Clear pre-assigned table immediately
+                              setReservedTables(prev => {
+                                const n = new Map(prev)
+                                for (const [k, v] of n) { if (v.resId === res.id) { n.delete(k); break } }
+                                return n
+                              })
+                              setTodayRes(prev => prev.filter(r => r.id !== res.id))
                               await fetchT(`${API}/reservations/${res.id}/status?status=no-show`, { method: "PATCH" }).catch(() => {})
-                              fetchReservations()
                               showToast(`${res.guest_name} marked as no-show`, "warn")
                             }}
                             style={{
-                              height: 20, padding: "0 7px", borderRadius: 5,
-                              border: "1px solid rgba(239,68,68,0.22)",
-                              cursor: "pointer", fontSize: 8, fontWeight: 700,
-                              letterSpacing: "0.1em", textTransform: "uppercase", whiteSpace: "nowrap" as never,
-                              background: "rgba(239,68,68,0.06)", color: "rgba(239,68,68,0.62)",
+                              height: 34, padding: "0 10px", borderRadius: 8,
+                              border: "1px solid rgba(239,68,68,0.30)",
+                              cursor: "pointer", fontSize: 11, fontWeight: 700,
+                              background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.80)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
                             }}
                           >
                             No Show
@@ -3269,13 +3332,44 @@ function ClientStationInner() {
                 setSelectedEntry(null)
               }}
               onTableClick={(tableId, tableNumber) => {
+                if (pendingOccupantMove) {
+                  if (tableNumber === pendingOccupantMove.tableNumber) { setPendingOccupantMove(null); return }
+                  const isOccupied = localOccupants.has(tableNumber) || tables.find(t => t.table_number === tableNumber)?.status === "occupied"
+                  if (isOccupied) { showToast(`Table ${tableNumber} is already occupied.`, "err"); return }
+                  const sourceTable = pendingOccupantMove.tableNumber
+                  const targetTable = tableNumber
+                  const occupant = pendingOccupantMove.occupant
+                  const sourceApiTable = tables.find(t => t.table_number === sourceTable)
+                  const targetApiTable = tables.find(t => t.table_number === targetTable)
+                  setPendingOccupantMove(null)
+                  recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
+                  recentlyClearedRef.current.set(sourceTable, Date.now() + 5000)
+                  setLocalOccupants(prev => { const n = new Map(prev); n.delete(sourceTable); n.set(targetTable, occupant); return n })
+                  setTables(prev => prev.map(t => {
+                    const n = t.table_number as number
+                    if (n === sourceTable) return { ...t, status: "available" as const }
+                    if (n === targetTable) return { ...t, status: "occupied" as const }
+                    return t
+                  }));
+                  (async () => {
+                    if (targetApiTable) await fetch(`${API}/tables/${targetApiTable.id}/occupy`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: occupant.name, party_size: occupant.party_size, entry_id: occupant.entry_id }) }).catch(() => {})
+                    if (sourceApiTable) await fetch(`${API}/tables/${sourceApiTable.id}/clear`, { method: "POST" }).catch(() => {})
+                    refreshAll()
+                  })()
+                  return
+                }
                 const isOccupied = localOccupants.has(tableNumber) || tables.find(t => t.table_number === tableNumber)?.status === "occupied"
-                if (!isOccupied) {
+                if (isOccupied) {
+                  const occupant = localOccupants.get(tableNumber) ?? { name: "Guest", party_size: 2 }
+                  setClearConfirm({ tableId, tableNumber, occupant })
+                } else {
                   setTableSeatPicker({ tableId, tableNumber })
                   fetchTables()
                   syncOccupants()
                 }
               }}
+              showCapacity={showCapacity}
+              resAlertBySize={resAlertBySize}
             />
           </div>
 
@@ -3369,6 +3463,15 @@ function ClientStationInner() {
           </div>
         )}
 
+        {pendingOccupantMove && (
+          <div className="fixed top-14 left-1/2 z-50 flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl" style={{ transform: "translateX(-50%)", background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.40)", backdropFilter: "blur(16px)" }}>
+            <span className="text-sm font-bold" style={{ color: "#93c5fd" }}>
+              Tap a table to move <strong style={{ color: "#fff" }}>{pendingOccupantMove.occupant.name}</strong> there
+            </span>
+            <button onClick={() => setPendingOccupantMove(null)} style={{ fontSize: 12, color: "rgba(147,197,253,0.7)", background: "none", border: "none", cursor: "pointer" }}>Cancel</button>
+          </div>
+        )}
+
         {/* ── Clear Table Confirmation ──────────────────────────── */}
         {clearConfirm && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -3391,6 +3494,16 @@ function ClientStationInner() {
                     Return to Waitlist
                   </button>
                 )}
+                <button
+                  onClick={() => {
+                    setPendingOccupantMove({ tableNumber: clearConfirm.tableNumber, tableId: clearConfirm.tableId, occupant: clearConfirm.occupant })
+                    setClearConfirm(null)
+                  }}
+                  className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
+                  style={{ background: "rgba(59,130,246,0.12)", color: "#3b82f6", border: "1px solid rgba(59,130,246,0.28)", fontSize: 16, padding: "20px 0" }}
+                >
+                  Move to Another Table
+                </button>
                 <button
                   onClick={() => { clearTable(clearConfirm.tableId, clearConfirm.tableNumber, clearConfirm.occupant.entry_id, "cancel"); setClearConfirm(null) }}
                   className="w-full rounded-2xl font-bold tracking-wide transition-all active:scale-[0.98] hover:brightness-125"
@@ -3459,6 +3572,7 @@ function ClientStationInner() {
             reservedTables={reservedTables}
             now={now}
             floor={floor}
+            resAlertBySize={resAlertBySize}
             onConfirm={(tableNumber, tableId) => confirmSeat(seatPicker, tableNumber, tableId)}
             onClose={() => setSeatPicker(null)}
           />
@@ -3473,6 +3587,7 @@ function ClientStationInner() {
             reservedTables={reservedTables}
             excludeResId={resPicker.id}
             floor={floor}
+            resAlertBySize={resAlertBySize}
             onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
             onClose={() => setResPicker(null)}
           />
@@ -3488,6 +3603,7 @@ function ClientStationInner() {
             excludeResId={resTblPicker.id}
             mode="reserve"
             floor={floor}
+            resAlertBySize={resAlertBySize}
             onConfirm={(tableNumber) => { assignResTable(resTblPicker, tableNumber); setResTblPicker(null) }}
             onClose={() => setResTblPicker(null)}
           />
@@ -3562,7 +3678,8 @@ function ClientStationInner() {
             </div>
           </div>
         )}
-      </div>
+      </div>{/* end inner scaled container */}
+      </div>{/* end scaled body clip */}
 
       {/* Toast notifications */}
       <Toasts items={toasts} />
@@ -3697,7 +3814,7 @@ function StationHistoryPanel({
             <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.22em", textTransform: "uppercase", color: "rgba(var(--warm,255,200,150),0.50)" }}>
               Today&apos;s History
             </span>
-            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid rgba(var(--accent,255,185,100),0.18)", background: "rgba(var(--accent,255,185,100),0.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(var(--warm,255,200,150),0.65)", fontSize: 14 }}>✕</button>
+            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: "1px solid rgba(var(--accent,255,185,100),0.18)", background: "rgba(var(--accent,255,185,100),0.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(var(--warm,255,200,150),0.65)" }}><X style={{ width: 14, height: 14 }} /></button>
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "rgba(var(--cream,255,248,240),0.92)" }}>
             {seated.length} seated · <span style={{ color: "rgba(239,100,100,0.85)" }}>{removed.length} removed</span>

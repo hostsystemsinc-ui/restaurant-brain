@@ -50,9 +50,8 @@ async function tryRailwayAuth(slug: string, password: string): Promise<string | 
     const creds: Array<{ credential_type: string; value: string }> = data.credentials || []
 
     // 3. Find a "login" credential and verify the password.
-    //    The wizard stores credentials as "username:password".
-    //    When the login username = slug, we just check the password portion
-    //    (everything after the first colon, or the whole value if no colon).
+    //    Credentials stored as "username:password" — only the password portion is checked.
+    //    The login username is always the restaurant slug (used for the config lookup above).
     const loginCred = creds.find(c => c.credential_type === "login")
     if (!loginCred) return null
 

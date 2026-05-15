@@ -20,9 +20,9 @@ interface Table {
   status: "available" | "occupied" | "reserved"
 }
 
-interface ReservedTable { resId: string; guestName: string; time: string }
+interface ReservedTable { resId: string; guestName: string; time: string; partySize?: number }
 
-const RESERVED_TABLES_KEY = "host_demo_reserved_tables"
+const reservedTablesKey = (slug: string) => `${slug}:reserved_tables`
 
 interface Reservation {
   id:         string
@@ -362,12 +362,12 @@ function ResCard({ res, onEdit, onDelete, onMarkNoShow, onAssignTable, onClearTa
                 border: "1px solid rgba(251,191,36,0.30)", borderRadius: 5,
                 padding: "1px 7px",
               }}>
-                🪑 T{assignedTableNum}
+                T{assignedTableNum}
                 <button
                   onClick={e => { e.stopPropagation(); onClearTable?.() }}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(251,191,36,0.55)", fontSize: 11, padding: 0, lineHeight: 1, marginLeft: 1 }}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(251,191,36,0.55)", fontSize: 11, padding: 0, lineHeight: 1, marginLeft: 1, display: "flex", alignItems: "center" }}
                   title="Clear table"
-                >✕</button>
+                ><X style={{ width: 9, height: 9 }} /></button>
               </span>
             )}
           </div>
@@ -423,7 +423,7 @@ function ResCard({ res, onEdit, onDelete, onMarkNoShow, onAssignTable, onClearTa
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             }}
           >
-            🪑 {assignedTableNum !== undefined ? `Change Table (T${assignedTableNum})` : "Assign Table"}
+            {assignedTableNum !== undefined ? `Change Table (T${assignedTableNum})` : "Assign Table"}
           </button>
 
           {/* No Show button — visible when arriving / due now / late */}
@@ -843,8 +843,8 @@ function ReservationsContent() {
   const [tablePicker,     setTablePicker]     = useState<Reservation | null>(null)
   const [reservedTables,  setReservedTables]  = useState<Map<number, ReservedTable>>(() => {
     try {
-      const s = localStorage.getItem(RESERVED_TABLES_KEY)
-      return s ? new Map(JSON.parse(s) as [number, ReservedTable][]) : new Map()
+      const s = localStorage.getItem(reservedTablesKey(slug))
+      return s ? new Map((JSON.parse(s) as [unknown, ReservedTable][]).map(([k, v]) => [Number(k), v])) : new Map()
     } catch { return new Map() }
   })
 
@@ -894,7 +894,7 @@ function ReservationsContent() {
 
   // Persist reserved table pre-assignments (shared with station via localStorage)
   useEffect(() => {
-    try { localStorage.setItem(RESERVED_TABLES_KEY, JSON.stringify([...reservedTables])) } catch {}
+    try { localStorage.setItem(reservedTablesKey(slug), JSON.stringify([...reservedTables])) } catch {}
   }, [reservedTables])
 
   // Returns pre-assigned table number for a reservation, if any
@@ -906,7 +906,7 @@ function ReservationsContent() {
   // Assign a table to a reservation (writes to shared localStorage)
   const assignResTable = useCallback((res: Reservation, tableNumber: number) => {
     setReservedTables(prev => new Map(prev).set(tableNumber, {
-      resId: res.id, guestName: res.guest_name, time: res.time,
+      resId: res.id, guestName: res.guest_name, time: res.time, partySize: res.party_size,
     }))
   }, [])
 
@@ -1045,7 +1045,7 @@ function ReservationsContent() {
 
           <Link href={`/client/${slug}/station`} style={{ textDecoration: "none" }}>
             <button style={{ height: 30, padding: "0 11px", borderRadius: 8, background: "rgba(255,185,100,0.16)", border: `1px solid ${BR}`, cursor: "pointer", fontSize: 11, fontWeight: 600, color: MU, display: "flex", alignItems: "center", gap: 5 }}>
-              ← Host View
+              <ChevronLeft style={{ width: 12, height: 12 }} /> Host View
             </button>
           </Link>
         </div>

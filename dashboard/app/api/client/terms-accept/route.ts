@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
     await fetch(
       `${API}/owner/clients/${restaurantId}/config?secret=${encodeURIComponent(OWNER_SECRET)}`,
       {
-        method:  "PATCH",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
           guest_config: {
