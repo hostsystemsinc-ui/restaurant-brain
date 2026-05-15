@@ -1019,7 +1019,6 @@ function DroppableFloorTable({
     : isSelectTarget
     ? "rgba(34,197,94,0.38)"
     : isOccupied ? "rgba(239,68,68,0.28)"
-    : noTable ? "rgba(255,255,255,0.07)"
     : "rgba(34,197,94,0.22)"
 
   const borderColor = isOver && canReceiveDrop
@@ -1033,7 +1032,6 @@ function DroppableFloorTable({
     : isSelectTarget
     ? "#4ade80"
     : isOccupied ? "rgba(239,68,68,0.90)"
-    : noTable ? "rgba(255,255,255,0.32)"
     : "rgba(34,197,94,0.82)"
 
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10

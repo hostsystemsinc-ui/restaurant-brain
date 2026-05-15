@@ -936,14 +936,55 @@ function TableDesigner({ tables, walls, objects, onChange, onObjectsChange, aspe
           </div>
         )}
 
+        {/* Arrange panel */}
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: D.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>Arrange</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <button onClick={() => {
+              if (tables.length === 0) return
+              const minX = Math.min(...tables.map(t => t.x - t.w / 2))
+              const maxX = Math.max(...tables.map(t => t.x + t.w / 2))
+              const minY = Math.min(...tables.map(t => t.y - t.h / 2))
+              const maxY = Math.max(...tables.map(t => t.y + t.h / 2))
+              const dx = 50 - (minX + maxX) / 2
+              const dy = 50 - (minY + maxY) / 2
+              onChange(tables.map(t => ({ ...t, x: Math.max(t.w/2, Math.min(100-t.w/2, t.x + dx)), y: Math.max(t.h/2, Math.min(100-t.h/2, t.y + dy)) })))
+            }} style={{ padding: "6px 0", borderRadius: 6, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              ⊞ Center All
+            </button>
+            {selectedTable && (
+              <>
+                <div style={{ fontSize: 10, color: D.muted, marginTop: 2 }}>Align selected to edge:</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>
+                  {[
+                    { label: "⬅", title: "Align left",     fn: () => updateTable({ x: selectedTable.w / 2 }) },
+                    { label: "↔", title: "Center horiz",   fn: () => updateTable({ x: 50 }) },
+                    { label: "➡", title: "Align right",    fn: () => updateTable({ x: 100 - selectedTable.w / 2 }) },
+                    { label: "⬆", title: "Align top",      fn: () => updateTable({ y: selectedTable.h / 2 }) },
+                    { label: "↕", title: "Center vert",    fn: () => updateTable({ y: 50 }) },
+                    { label: "⬇", title: "Align bottom",   fn: () => updateTable({ y: 100 - selectedTable.h / 2 }) },
+                  ].map(({ label, title, fn }) => (
+                    <button key={title} onClick={fn} title={title}
+                      style={{ padding: "5px 0", borderRadius: 5, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+            {!selectedTable && <div style={{ fontSize: 11, color: D.muted }}>Select a table to align it</div>}
+          </div>
+        </div>
+
         {!selectedTable && !selectedObj && (
           <div style={{ color: D.muted, fontSize: 12, padding: "6px 4px" }}>Click to select · Drag to move · Drag corner to resize · Del to delete</div>
         )}
       </div>
 
       {/* Canvas */}
+      <div style={{ flex: 1 }}>
       <div ref={canvasRef} onClick={handleCanvasClick}
-        style={{ flex: 1, minHeight: 560, background: "rgba(0,0,0,0.45)",
+        style={{ width: "100%", aspectRatio: String(aspectRatio), background: "rgba(0,0,0,0.45)",
           border: `2px dashed ${addMode === "table" ? D.blue : addMode === "object" ? D.purple : D.border}`,
           borderRadius: 12, position: "relative", overflow: "hidden",
           cursor: addMode ? "crosshair" : "default", transition: "border-color 0.15s" }}>
@@ -1009,6 +1050,7 @@ function TableDesigner({ tables, walls, objects, onChange, onObjectsChange, aspe
             Click to place {newObj.label || newObj.type}
           </div>
         )}
+      </div>
       </div>
     </div>
   )
@@ -2135,6 +2177,19 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
     }
   }
 
+  async function saveFloorPlan() {
+    await saveConfig({ floor_plan: { tables: floorTables, walls: floorWalls, objects: floorObjects, canvasAspect } as unknown as FloorTable[] })
+    // Sync table records so the station page shows green tables and drag-to-move works
+    if (floorTables.length > 0) {
+      try {
+        await fetch(`${API}/owner/clients/${client.id}/tables/batch?secret=${encodeURIComponent(token)}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tables: floorTables.map(t => ({ table_number: t.number, capacity: t.capacity, shape: t.shape, label: t.label })) }),
+        })
+      } catch { /* non-critical — floor plan config already saved */ }
+    }
+  }
+
   const tabs: { id: typeof tab; label: string; icon: string }[] = [
     { id: "overview",     label: "Overview",     icon: "⊞" },
     { id: "credentials",  label: "Credentials",  icon: "🔑" },
@@ -2207,8 +2262,25 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
             <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div>
           ) : (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <div style={{ fontSize: 13, color: D.muted }}>{floorTables.length} tables · {floorWalls.length} walls</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ fontSize: 13, color: D.muted }}>{floorTables.length} tables · {floorWalls.length} walls</div>
+                  {floorEditMode && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11, color: D.muted, whiteSpace: "nowrap" }}>Map shape:</span>
+                      <select value={canvasAspect} onChange={e => setCanvasAspect(parseFloat(e.target.value))}
+                        style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, border: `1px solid ${D.border}`, background: D.surface, color: D.text, cursor: "pointer" }}>
+                        <option value={1.0}>Square (1:1)</option>
+                        <option value={1.33}>Wide-ish (4:3)</option>
+                        <option value={1.62}>Standard (16:10)</option>
+                        <option value={2.0}>Wide (2:1)</option>
+                        <option value={2.5}>Extra Wide (5:2)</option>
+                        <option value={3.0}>Long (3:1)</option>
+                        <option value={0.75}>Portrait (3:4)</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => setFloorEditMode(m => !m)}
                     style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${floorEditMode ? D.blue : D.border}`,
@@ -2217,7 +2289,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
                     {floorEditMode ? "✏ Editing" : "✏ Edit"}
                   </button>
                   {floorEditMode && (
-                    <button onClick={() => saveConfig({ floor_plan: { tables: floorTables, walls: floorWalls, objects: floorObjects, canvasAspect } as unknown as FloorTable[] })} disabled={savingConfig}
+                    <button onClick={saveFloorPlan} disabled={savingConfig}
                       style={{ padding: "7px 20px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                       {savingConfig ? "Saving…" : "Save"}
                     </button>
