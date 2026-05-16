@@ -1076,15 +1076,15 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
   const [applied,      setApplied]      = useState(false)
 
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (!files.length) return
     setImporting(true)
     setImportError(null)
     setPreview(null)
     setApplied(false)
     try {
       const fd = new FormData()
-      fd.append("file", file)
+      files.forEach(f => fd.append("file", f))
       const res = await fetch("/api/owner/menu-parse", { method: "POST", body: fd })
       const data = await res.json()
       if (!res.ok) {
@@ -1096,7 +1096,6 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
       setImportError("Network error — could not reach server")
     } finally {
       setImporting(false)
-      // Reset file input so user can re-select same file
       e.target.value = ""
     }
   }
@@ -1192,9 +1191,9 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
             {!importing && !preview && !applied && (
               <div>
                 <label style={{ display: "block", fontSize: 12, color: D.text2, marginBottom: 8 }}>
-                  Choose an image (JPG, PNG, WEBP) or document (PDF, TXT, CSV):
+                  Select one or more files (JPG, PNG, WEBP, PDF, TXT) — select all pages at once:
                 </label>
-                <input type="file" accept="image/*,.pdf,.txt,.csv"
+                <input type="file" accept="image/*,.pdf,.txt,.csv" multiple
                   onChange={handleImportFile}
                   style={{ fontSize: 12, color: D.text2, cursor: "pointer" }} />
               </div>
@@ -1203,7 +1202,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
             {importing && (
               <div style={{ fontSize: 13, color: D.blue, display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⟳</span>
-                Parsing menu with AI…
+                Parsing menu with AI… (this may take a few seconds)
               </div>
             )}
 

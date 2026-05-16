@@ -3,12 +3,12 @@ import re
 import json as _json
 import uuid as _uuid
 import threading
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from supabase import create_client
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Any
+from typing import List, Optional, Any
 from datetime import datetime, timezone
 
 # ── Environment ─────────────────────────────────────────────────────────────
@@ -382,6 +382,98 @@ class AgreementAcceptRequest(BaseModel):
     agreement_version:  str
     ip_address:         Optional[str] = None
     user_agent:         Optional[str] = None
+
+@app.post("/menu/parse")
+async def menu_parse(files: List[UploadFile] = File(...)):
+    """Parse one or more menu images/documents with Claude and return structured sections."""
+    import base64, urllib.request, urllib.parse, json as _json2
+
+    if not ANTHROPIC_KEY:
+        raise HTTPException(status_code=500, detail="Missing Anthropic API key")
+
+    IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+    content: list = []
+
+    for f in files:
+        data = await f.read()
+        mime = (f.content_type or "application/octet-stream").split(";")[0].strip()
+        if mime in IMAGE_TYPES:
+            b64 = base64.b64encode(data).decode()
+            claude_mime = "image/jpeg" if mime == "image/jpg" else mime
+            content.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": claude_mime, "data": b64},
+            })
+        else:
+            text = data.decode("utf-8", errors="replace").strip()
+            if text:
+                content.append({"type": "text", "text": f"Menu file content:\n{text}"})
+
+    if not content:
+        raise HTTPException(status_code=400, detail="No readable content in uploaded files")
+
+    content.append({
+        "type": "text",
+        "text": (
+            "Parse all pages of this restaurant menu and return a JSON array of menu sections. "
+            "Each section must have: title (string), items (array of objects with name, description, price, tags). "
+            "tags is an array of strings like 'vegetarian', 'spicy', 'gluten-free'. "
+            "Combine all pages into one unified menu — merge duplicate section names. "
+            "Return ONLY valid JSON, no markdown code blocks, no explanation."
+        ),
+    })
+
+    payload = _json2.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": content}],
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        method="POST",
+        headers={
+            "x-api-key":         ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type":      "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = _json2.loads(resp.read())
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI request failed: {e}")
+
+    raw = result.get("content", [{}])[0].get("text", "").strip()
+    cleaned = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
+    try:
+        parsed = _json2.loads(cleaned)
+    except Exception:
+        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
+
+    if not isinstance(parsed, list):
+        raise HTTPException(status_code=502, detail="AI returned unexpected format")
+
+    sections = [
+        {
+            "id": str(_uuid.uuid4()),
+            "title": str(s.get("title", "Section")),
+            "items": [
+                {
+                    "id": str(_uuid.uuid4()),
+                    "name": str(i.get("name", "Item")),
+                    "description": str(i.get("description", "")),
+                    "price": str(i.get("price", "")),
+                    "tags": [str(t) for t in i.get("tags", [])] if isinstance(i.get("tags"), list) else [],
+                }
+                for i in (s.get("items") or [])
+            ],
+        }
+        for s in parsed
+    ]
+    return {"sections": sections}
+
 
 @app.post("/agreements/accept")
 def accept_agreement(req: AgreementAcceptRequest):
