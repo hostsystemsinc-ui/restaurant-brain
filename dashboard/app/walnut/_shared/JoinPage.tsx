@@ -23,28 +23,43 @@ interface Props {
 }
 
 interface LiveInfo { available: number; waitMin: number | null; ahead: number }
+interface SectionsConfig { enabled: boolean; sections: string[] }
 
 export default function WalnutJoinPage({ restaurantId, restaurantName, sessionKey, totalTables = 16 }: Props) {
   const router = useRouter()
-  const [partySize, setPartySize] = useState(2)
-  const [name,      setName]      = useState("")
-  const [phone,     setPhone]     = useState("")
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState("")
-  const [live,      setLive]      = useState<LiveInfo | null>(null)
-  const [joined,    setJoined]    = useState(false)
-  const [menuOpen,  setMenuOpen]  = useState(false)
+  const [partySize,       setPartySize]       = useState(2)
+  const [name,            setName]            = useState("")
+  const [phone,           setPhone]           = useState("")
+  const [loading,         setLoading]         = useState(false)
+  const [error,           setError]           = useState("")
+  const [live,            setLive]            = useState<LiveInfo | null>(null)
+  const [joined,          setJoined]          = useState(false)
+  const [menuOpen,        setMenuOpen]        = useState(false)
+  const [sectionsConfig,  setSectionsConfig]  = useState<SectionsConfig | null>(null)
+  const [selectedSection, setSelectedSection] = useState<string>("anywhere")
+  const [sectionCounts,   setSectionCounts]   = useState<Record<string, number>>({})
 
   const fetchLive = useCallback(async () => {
     try {
-      const [tablesRes, insightsRes] = await Promise.all([
+      const [tablesRes, insightsRes, queueRes] = await Promise.all([
         fetch(`${API}/tables?restaurant_id=${restaurantId}`),
         fetch(`${API}/insights?restaurant_id=${restaurantId}`),
+        fetch(`${API}/queue?restaurant_id=${restaurantId}`),
       ])
       const tables   = tablesRes.ok   ? await tablesRes.json()   : []
       const insights = insightsRes.ok ? await insightsRes.json() : null
+      const queueRaw = queueRes.ok    ? await queueRes.json()    : []
       const apiOccupied = Array.isArray(tables)
         ? tables.filter((t: { status: string }) => t.status !== "available").length : 0
+      const waiting: { status: string; section_preference?: string | null }[] =
+        Array.isArray(queueRaw) ? queueRaw.filter((e: { status: string }) => e.status === "waiting") : []
+      const counts: Record<string, number> = {}
+      counts["anywhere"] = waiting.length  // "Sit Anywhere" always shows total queue
+      for (const e of waiting) {
+        const sec = e.section_preference
+        if (sec) counts[sec] = (counts[sec] ?? 0) + 1
+      }
+      setSectionCounts(counts)
       setLive({
         available: Math.max(0, totalTables - apiOccupied),
         ahead:     insights?.parties_waiting ?? 0,
@@ -54,6 +69,13 @@ export default function WalnutJoinPage({ restaurantId, restaurantName, sessionKe
       setLive(prev => prev ?? { available: 0, waitMin: null, ahead: 0 })
     }
   }, [restaurantId, totalTables])
+
+  useEffect(() => {
+    fetch(`${API}/sections?restaurant_id=${restaurantId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setSectionsConfig(d) })
+      .catch(() => {})
+  }, [restaurantId])
 
   useEffect(() => {
     fetchLive()
@@ -87,17 +109,19 @@ export default function WalnutJoinPage({ restaurantId, restaurantName, sessionKe
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 10_000)
     try {
+      const secPref = sectionsConfig?.enabled && selectedSection !== "anywhere" ? selectedSection : null
       const res = await fetch(`${API}/queue/join`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         signal:  controller.signal,
         body: JSON.stringify({
-          name:          name.trim(),
-          party_size:    partySize,
-          phone:         phone.trim() || null,
-          preference:    "asap",
-          source:        "nfc",
-          restaurant_id: restaurantId,
+          name:               name.trim(),
+          party_size:         partySize,
+          phone:              phone.trim() || null,
+          preference:         "asap",
+          source:             "nfc",
+          restaurant_id:      restaurantId,
+          section_preference: secPref,
         }),
       })
       clearTimeout(timeout)
@@ -184,6 +208,36 @@ export default function WalnutJoinPage({ restaurantId, restaurantName, sessionKe
               style={{ width: 42, height: 42, borderRadius: "50%", background: DARK4, border: `1.5px solid ${DARK5}`, color: partySize >= 20 ? DARK3 : DARK, fontSize: 20, cursor: partySize >= 20 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "transform .12s" }}>+</button>
           </div>
         </div>
+
+        {/* Section Picker — only when feature is enabled and sections exist */}
+        {sectionsConfig?.enabled && sectionsConfig.sections.length > 0 && (
+          <div style={{ background: DARK4, border: `1px solid ${DARK5}`, borderRadius: 16, padding: "12px 16px 14px", flexShrink: 0 }}>
+            <div style={{ fontSize: ".57rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: DARK3, marginBottom: 10 }}>Seating Preference</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+              {["anywhere", ...sectionsConfig.sections].map(sec => {
+                const label   = sec === "anywhere" ? "Sit Anywhere" : sec
+                const count   = sectionCounts[sec] ?? 0
+                const isActive = selectedSection === sec
+                return (
+                  <button key={sec} onClick={() => setSelectedSection(sec)} style={{
+                    padding: "8px 14px", borderRadius: 12,
+                    background: isActive ? DARK : DARK4,
+                    border: `1.5px solid ${isActive ? DARK : DARK5}`,
+                    color: isActive ? BG : DARK,
+                    fontSize: ".80rem", fontWeight: 700, cursor: "pointer",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                    transition: "all .12s",
+                  }}>
+                    <span>{label}</span>
+                    <span style={{ fontSize: ".65rem", fontWeight: 400, opacity: 0.65 }}>
+                      {count === 0 ? "No wait" : `${count} ${count === 1 ? "party" : "parties"} ahead`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Name */}
         <div style={{ flexShrink: 0 }}>

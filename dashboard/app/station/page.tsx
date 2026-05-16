@@ -21,6 +21,13 @@ import { CSS } from "@dnd-kit/utilities"
 
 const API = "https://restaurant-brain-production.up.railway.app"
 
+const formatPhone = (val: string) => {
+  const d = val.replace(/\D/g, "").slice(0, 10)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
 // ── Clear-table API with retry ─────────────────────────────────────────────────
 // A dropped clear request leaves the DB row "occupied" AND _table_occupants populated —
 // which means after the next reload the server returns the table as still occupied and the
@@ -283,7 +290,10 @@ interface QueueEntry {
   paused?: boolean
   phone: string | null
   notes: string | null
+  section_preference?: string | null
 }
+
+interface SectionsConfig { enabled: boolean; sections: string[] }
 
 interface LocalOccupant { name: string; party_size: number; entry_id?: string }
 
@@ -389,7 +399,7 @@ function WaitTimeModal({
 // ── Guest Edit Modal (sidebar panel — floor map stays live) ───────────────────
 
 function GuestEditModal({
-  entry, displayWait, sidebarW, onClose, onSaved, onRemoved,
+  entry, displayWait, sidebarW, onClose, onSaved, onRemoved, sections,
 }: {
   entry: QueueEntry
   displayWait: number
@@ -397,13 +407,15 @@ function GuestEditModal({
   onClose: () => void
   onSaved: () => void
   onRemoved: () => void
+  sections?: string[]
 }) {
-  const [minutes,   setMinutes]   = useState(displayWait || entry.quoted_wait || entry.wait_estimate || 15)
-  const [partySize, setPartySize] = useState(entry.party_size)
-  const [phone,     setPhone]     = useState(entry.phone ?? "")
-  const [notes,     setNotes]     = useState(entry.notes ?? "")
-  const [saving,    setSaving]    = useState(false)
-  const [removing,  setRemoving]  = useState(false)
+  const [minutes,     setMinutes]     = useState(15)
+  const [partySize,   setPartySize]   = useState(entry.party_size)
+  const [phone,       setPhone]       = useState(entry.phone ?? "")
+  const [notes,       setNotes]       = useState(entry.notes ?? "")
+  const [sectionPref, setSectionPref] = useState<string>(entry.section_preference ?? "anywhere")
+  const [saving,      setSaving]      = useState(false)
+  const [removing,    setRemoving]    = useState(false)
   const PRESETS = [5, 10, 15, 20, 30, 45]
 
   const save = async () => {
@@ -412,7 +424,13 @@ function GuestEditModal({
       await fetch(`${API}/queue/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quoted_wait: minutes, party_size: partySize, phone: phone.trim() || null, notes: notes.trim() || null }),
+        body: JSON.stringify({
+          quoted_wait:        minutes,
+          party_size:         partySize,
+          phone:              phone.trim() || null,
+          notes:              notes.trim() || null,
+          section_preference: sections ? (sectionPref === "anywhere" ? "" : sectionPref) : undefined,
+        }),
       })
     } catch {}
     setSaving(false)
@@ -480,11 +498,32 @@ function GuestEditModal({
 
         {/* Phone */}
         <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Phone <span style={{ color: "var(--text-dim5)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
-        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="(555) 000-0000" className="w-full rounded-xl outline-none mb-4" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", color: "var(--text-hi)", fontSize: 15, padding: "15px 14px", height: 56 }} />
+        <input type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))} placeholder="(555) 000-0000" className="w-full rounded-xl outline-none mb-4" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", color: "var(--text-hi)", fontSize: 15, padding: "15px 14px", height: 56 }} />
 
         {/* Notes */}
         <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Notes <span style={{ color: "var(--text-dim5)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>optional</span></p>
         <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Allergies, preferences, occasion…" className="w-full rounded-xl outline-none mb-5" style={{ background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", color: "var(--text-hi)", fontSize: 15, padding: "15px 14px", height: 56 }} />
+
+        {/* Section preference */}
+        {sections && sections.length > 0 && (
+          <div className="mb-5">
+            <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "var(--text-muted3)" }}>Section Preference</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["anywhere", ...sections].map(s => (
+                <button key={s} onClick={() => setSectionPref(s)}
+                  style={{
+                    padding: "7px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    background: sectionPref === s ? "var(--bdr-3)" : "var(--surf-6)",
+                    border: `1px solid ${sectionPref === s ? "var(--bdr-9)" : "var(--surf-4)"}`,
+                    color: sectionPref === s ? "rgba(255,230,190,0.97)" : "var(--text-muted2)",
+                    transition: "all 0.1s",
+                  }}>
+                  {s === "anywhere" ? "Sit Anywhere" : s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Save */}
         <button onClick={save} disabled={saving} className="w-full rounded-xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 15, padding: "18px 0" }}>
@@ -1490,7 +1529,7 @@ function TableGuestPicker({
                   style={{ background: "var(--surf-7)", border: "1px solid var(--bdr-8)", color: "var(--text-warm3)" }}>+</button>
               </div>
             </div>
-            <input placeholder="Phone (optional)" value={phone} onChange={e => setPhone(e.target.value)} type="tel"
+            <input placeholder="Phone (optional)" value={phone} onChange={e => setPhone(formatPhone(e.target.value))} type="tel"
               className="w-full rounded-2xl outline-none"
               style={{ padding: "16px 18px", fontSize: 15, background: "var(--surf-3)", border: "1px solid var(--bdr-2)", color: "var(--text-hi)" }} />
             <button onClick={addWalkIn} disabled={submitting}
@@ -1516,19 +1555,21 @@ function TableGuestPicker({
 // Includes inline wait-time quoting so no second modal is needed.
 
 function AddGuestDrawer({
-  onClose, onAdded, restaurantId, sidebarW,
+  onClose, onAdded, restaurantId, sidebarW, sections,
 }: {
   onClose: () => void
   onAdded: () => void
   restaurantId: string
   sidebarW: number
+  sections?: string[]
 }) {
-  const [name,      setName]      = useState("")
-  const [partySize, setPartySize] = useState(2)
-  const [phone,     setPhone]     = useState("")
-  const [waitMins,  setWaitMins]  = useState<number | null>(15)
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState("")
+  const [name,            setName]            = useState("")
+  const [partySize,       setPartySize]       = useState(2)
+  const [phone,           setPhone]           = useState("")
+  const [waitMins,        setWaitMins]        = useState<number | null>(15)
+  const [loading,         setLoading]         = useState(false)
+  const [error,           setError]           = useState("")
+  const [sectionPref,     setSectionPref]     = useState<string>("anywhere")
   const PRESETS = [5, 10, 15, 20, 30, 45]
 
   // Track visual viewport so the panel rises with the keyboard on mobile
@@ -1549,12 +1590,13 @@ function AddGuestDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name.trim() || null,
-          party_size: partySize,
-          phone: phone.trim() || null,
-          preference: "asap",
-          source: "host",
-          restaurant_id: restaurantId,
+          name:               name.trim() || null,
+          party_size:         partySize,
+          phone:              phone.trim() || null,
+          preference:         "asap",
+          source:             "host",
+          restaurant_id:      restaurantId,
+          section_preference: sections ? (sectionPref === "anywhere" ? null : sectionPref) : undefined,
         }),
       })
       if (!r.ok) throw new Error()
@@ -1625,10 +1667,31 @@ function AddGuestDrawer({
           Phone <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-dim4)" }}>— opt.</span>
         </p>
         <input
-          type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+          type="tel" value={phone} onChange={e => setPhone(formatPhone(e.target.value))}
           onKeyDown={e => e.key === "Enter" && submit()} placeholder="(555) 000-0000"
           style={{ width: "100%", background: "var(--surf-3)", border: "1.5px solid var(--bdr-1)", borderRadius: 12, color: "var(--text-hi)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
         />
+
+        {/* Section Preference — only when sections are configured */}
+        {sections && sections.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--text-muted3)", marginBottom: 8 }}>Section</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {["anywhere", ...sections].map(s => (
+                <button key={s} onClick={() => setSectionPref(s)}
+                  style={{
+                    padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    background: sectionPref === s ? "var(--bdr-3)" : "var(--surf-6)",
+                    border: `1px solid ${sectionPref === s ? "var(--bdr-9)" : "var(--surf-4)"}`,
+                    color: sectionPref === s ? "rgba(255,230,190,0.97)" : "var(--text-muted2)",
+                    transition: "all 0.1s",
+                  }}>
+                  {s === "anywhere" ? "Anywhere" : s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Inline wait quote */}
         <div style={{ borderTop: "1px solid var(--surf-4)", paddingTop: 12, marginBottom: 4 }}>
@@ -1913,6 +1976,7 @@ export default function HostDashboard() {
   const [restaurantId,   setRestaurantId]   = useState<string>("")
   const [restaurantName, setRestaurantName] = useState<string>("")
   const [restaurantLogo, setRestaurantLogo] = useState<string>("")
+  const [sectionsConfig, setSectionsConfig] = useState<SectionsConfig | null>(null)
   const [southsideTab,   setSouthsideTab]   = useState<"indoor" | "outdoor">("indoor")
   const [zoom, setZoom] = useState(() => { try { return parseFloat(localStorage.getItem("host_walnut_zoom") || "1") } catch { return 1 } })
   useEffect(() => { try { localStorage.setItem("host_walnut_zoom", String(zoom)) } catch {} }, [zoom])
@@ -2003,6 +2067,15 @@ export default function HostDashboard() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor,   { activationConstraint: { delay: 200, tolerance: 5 } }),
   )
+
+  // Fetch sections config when restaurantId is known
+  useEffect(() => {
+    if (!restaurantId) return
+    fetch(`${API}/sections?restaurant_id=${restaurantId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setSectionsConfig(d) })
+      .catch(() => {})
+  }, [restaurantId])
 
   // Load occupants from the restaurant-scoped key once restaurantId is known.
   // This prevents one client's floor map state from bleeding into another.
@@ -3052,6 +3125,11 @@ export default function HostDashboard() {
                           <span>{timeWaiting(e.arrival_time)} waiting</span>
                         </div>
                       </div>
+                      {e.section_preference && (
+                        <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: "rgba(147,207,255,0.75)" }}>
+                          {e.section_preference}
+                        </span>
+                      )}
                       <button
                         onClick={() => setEditModal({ entry: e, displayWait: 0 })}
                         style={{
@@ -3076,14 +3154,6 @@ export default function HostDashboard() {
 
             {/* Waiting section — only guests that have been quoted */}
             <div className="px-3 pt-2 flex-1 overflow-y-auto">
-              {quotedWaiting.length > 0 && (
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
-                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "var(--text-warm2)" }}>
-                    Waiting · {quotedWaiting.length}
-                  </span>
-                </div>
-              )}
 
               {queue.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid var(--bdr-1)", borderRadius: 12 }}>
@@ -3095,17 +3165,79 @@ export default function HostDashboard() {
                   <p className="text-xs" style={{ color: "var(--text-muted2)" }}>No one else waiting</p>
                 </div>
               ) : quotedWaiting.length > 0 ? (
-                <div className="flex flex-col gap-1.5 pb-24">
-                  {quotedWaiting.map(e => (
-                    <DraggableQueueCard key={e.id} entry={e}
-                      isSelected={selectedEntry?.id === e.id}
-                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                      onRemoved={() => refreshAll()}
-                      onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
-                  ))}
-                </div>
+                (() => {
+                  const sectionsEnabled = sectionsConfig?.enabled && (sectionsConfig.sections?.length ?? 0) > 0
+                  if (!sectionsEnabled) {
+                    return (
+                      <div className="flex flex-col gap-1.5 pb-24">
+                        {quotedWaiting.map(e => (
+                          <DraggableQueueCard key={e.id} entry={e}
+                            isSelected={selectedEntry?.id === e.id}
+                            onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                            onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                            onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                            onRemoved={() => refreshAll()}
+                            onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
+                        ))}
+                      </div>
+                    )
+                  }
+                  const configuredSections = sectionsConfig!.sections
+                  const SECTION_COLORS = ["#60a5fa","#f472b6","#fb923c","#a78bfa","#34d399","#facc15","#f87171","#38bdf8"]
+                  const sectionColor = (sec: string) => {
+                    if (sec === "__anywhere__") return "#4ade80"
+                    const idx = configuredSections.indexOf(sec)
+                    return SECTION_COLORS[idx % SECTION_COLORS.length]
+                  }
+                  const groups = new Map<string, QueueEntry[]>()
+                  for (const s of configuredSections) groups.set(s, [])
+                  groups.set("__anywhere__", [])
+                  for (const e of quotedWaiting) {
+                    const sec = e.section_preference && configuredSections.includes(e.section_preference)
+                      ? e.section_preference : "__anywhere__"
+                    groups.get(sec)!.push(e)
+                  }
+                  const orderedKeys = ["__anywhere__", ...configuredSections].filter(k => (groups.get(k)?.length ?? 0) > 0)
+                  return (
+                    <div className="flex flex-col gap-3 pb-24">
+                      {orderedKeys.map(sec => {
+                        const entries = groups.get(sec)!
+                        const label   = sec === "__anywhere__" ? "Sit Anywhere" : sec
+                        const color   = sectionColor(sec)
+                        return (
+                          <div key={sec}>
+                            <div className="flex items-center gap-2 mb-1.5 px-1">
+                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                              <span className="text-[9px] font-black tracking-[0.16em] uppercase" style={{ color }}>
+                                {label} · {entries.length}
+                              </span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              {entries.map((e, idx) => (
+                                <div key={e.id} style={{ position: "relative" }}>
+                                  <div style={{
+                                    position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)",
+                                    zIndex: 1, fontSize: 9, fontWeight: 900, color: "var(--text-muted3)",
+                                    lineHeight: 1, minWidth: 12, textAlign: "center",
+                                  }}>{idx + 1}</div>
+                                  <div style={{ paddingLeft: 22 }}>
+                                    <DraggableQueueCard entry={e}
+                                      isSelected={selectedEntry?.id === e.id}
+                                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                                      onRemoved={() => refreshAll()}
+                                      onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()
               ) : null}
             </div>
 
@@ -3194,6 +3326,7 @@ export default function HostDashboard() {
             onAdded={() => { setShowAdd(false); refreshAll() }}
             restaurantId={restaurantId}
             sidebarW={sidebarW}
+            sections={sectionsConfig?.enabled ? sectionsConfig.sections : undefined}
           />
         )}
 
@@ -3213,6 +3346,7 @@ export default function HostDashboard() {
             onClose={() => setEditModal(null)}
             onSaved={() => { setEditModal(null); refreshAll() }}
             onRemoved={() => { setEditModal(null); refreshAll() }}
+            sections={sectionsConfig?.enabled ? sectionsConfig.sections : undefined}
           />
         )}
 

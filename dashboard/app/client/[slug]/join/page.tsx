@@ -8,8 +8,8 @@ const API = "https://restaurant-brain-production.up.railway.app"
 
 interface GuestConfig {
   bgColor:         string
-  darkColor?:      string   // light theme: text + button color
-  accentColor?:    string   // dark theme: accent/button color
+  darkColor?:      string
+  accentColor?:    string
   buttonTextColor: string
   restaurantName:  string
   tagline?:        string
@@ -30,6 +30,11 @@ interface LiveInfo {
   ahead:     number
 }
 
+interface SectionsConfig {
+  enabled:  boolean
+  sections: string[]
+}
+
 const DEFAULT_CONFIG: GuestConfig = {
   bgColor:         "#000000",
   accentColor:     "#ffffff",
@@ -37,6 +42,13 @@ const DEFAULT_CONFIG: GuestConfig = {
   restaurantName:  "Restaurant",
   tagline:         "Powered by HOST",
   logoUrl:         "",
+}
+
+const formatPhone = (val: string) => {
+  const d = val.replace(/\D/g, "").slice(0, 10)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -70,11 +82,14 @@ function ClientJoinInner() {
   const searchParams = useSearchParams()
   const src          = searchParams.get("src") ?? "qr"
 
-  const [restaurantId, setRestaurantId] = useState<string | null>(null)
-  const [cfg,          setCfg]          = useState<GuestConfig>(DEFAULT_CONFIG)
-  const [menuSections, setMenuSections] = useState<MenuSection[]>([])
-  const [configLoaded, setConfigLoaded] = useState(false)
-  const [live,         setLive]         = useState<LiveInfo | null>(null)
+  const [restaurantId,   setRestaurantId]   = useState<string | null>(null)
+  const [cfg,            setCfg]            = useState<GuestConfig>(DEFAULT_CONFIG)
+  const [menuSections,   setMenuSections]   = useState<MenuSection[]>([])
+  const [configLoaded,   setConfigLoaded]   = useState(false)
+  const [live,           setLive]           = useState<LiveInfo | null>(null)
+  const [sectionsConfig, setSectionsConfig] = useState<SectionsConfig | null>(null)
+  const [selectedSection, setSelectedSection] = useState<string>("anywhere")
+  const [sectionCounts,  setSectionCounts]  = useState<Record<string, number>>({})
 
   const [name,      setName]      = useState("")
   const [phone,     setPhone]     = useState("")
@@ -98,17 +113,36 @@ function ClientJoinInner() {
       .catch(() => setConfigLoaded(true))
   }, [slug])
 
+  useEffect(() => {
+    if (!restaurantId) return
+    fetch(`${API}/sections?restaurant_id=${restaurantId}`)
+      .then(r => r.json())
+      .then(d => setSectionsConfig(d))
+      .catch(() => {})
+  }, [restaurantId])
+
   const fetchLive = useCallback(async () => {
     if (!restaurantId) return
     try {
-      const [tRes, iRes] = await Promise.all([
+      const [tRes, iRes, qRes] = await Promise.all([
         fetch(`${API}/tables?restaurant_id=${restaurantId}`),
         fetch(`${API}/insights?restaurant_id=${restaurantId}`),
+        fetch(`${API}/queue?restaurant_id=${restaurantId}`),
       ])
       const tables   = tRes.ok ? await tRes.json() : []
       const insights = iRes.ok ? await iRes.json() : null
+      const queueRaw = qRes.ok ? await qRes.json() : []
       const total    = Array.isArray(tables) ? tables.length : 0
       const occupied = Array.isArray(tables) ? tables.filter((t: { status: string }) => t.status !== "available").length : 0
+
+      const waiting: { status: string; section_preference?: string | null }[] =
+        Array.isArray(queueRaw) ? queueRaw.filter((e: { status: string }) => e.status === "waiting") : []
+      const counts: Record<string, number> = { anywhere: waiting.length }
+      for (const e of waiting) {
+        if (e.section_preference) counts[e.section_preference] = (counts[e.section_preference] ?? 0) + 1
+      }
+      setSectionCounts(counts)
+
       setLive({
         available: Math.max(0, total - occupied),
         ahead:     insights?.parties_waiting ?? 0,
@@ -140,7 +174,14 @@ function ClientJoinInner() {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         signal:  controller.signal,
-        body:    JSON.stringify({ name: name.trim(), phone: phone.trim() || null, party_size: partySize, source: src, restaurant_id: restaurantId }),
+        body:    JSON.stringify({
+          name:               name.trim(),
+          phone:              phone.trim() || null,
+          party_size:         partySize,
+          source:             src,
+          restaurant_id:      restaurantId,
+          section_preference: sectionsConfig?.enabled && selectedSection !== "anywhere" ? selectedSection : null,
+        }),
       })
       clearTimeout(timeout)
       const d = await r.json()
@@ -158,22 +199,18 @@ function ClientJoinInner() {
     }
   }
 
-  // ── Theme derivation (matches owner console preview logic exactly) ─────────────
-  const BG          = cfg.bgColor || "#000000"
-  const lum         = bgLuminance(BG)
-  const isDark      = lum < 0.25
-
-  // Light theme (Walnut model): darkColor is text + button bg
-  // Dark theme (Demo model): accentColor is button bg, white is text
-  const DARK        = isDark ? "" : (cfg.darkColor || "#111111")
-  const ACCENT      = isDark ? (cfg.accentColor || "#ffffff") : (cfg.darkColor || "#111111")
-  const BTN_TEXT    = isDark ? (cfg.buttonTextColor || "#000000") : BG
-  const TXT         = isDark ? "rgba(255,255,255,0.92)" : DARK
-  const TXT2        = isDark ? "rgba(255,255,255,0.55)" : hexToRgba(DARK, 0.55)
-  const TXT3        = isDark ? "rgba(255,255,255,0.28)" : hexToRgba(DARK, 0.28)
-  const SURFACE     = isDark ? "rgba(255,255,255,0.04)" : hexToRgba(DARK, 0.05)
-  const BORDER      = isDark ? "rgba(255,255,255,0.10)" : hexToRgba(DARK, 0.10)
-  const BORDER2     = isDark ? "rgba(255,255,255,0.06)" : hexToRgba(DARK, 0.06)
+  // ── Theme derivation ───────────────────────────────────────────────────────────
+  const BG       = cfg.bgColor || "#000000"
+  const lum      = bgLuminance(BG)
+  const isDark   = lum < 0.25
+  const DARK     = isDark ? "" : (cfg.darkColor || "#111111")
+  const ACCENT   = isDark ? (cfg.accentColor || "#ffffff") : (cfg.darkColor || "#111111")
+  const BTN_TEXT = isDark ? (cfg.buttonTextColor || "#000000") : BG
+  const TXT      = isDark ? "rgba(255,255,255,0.92)" : DARK
+  const TXT2     = isDark ? "rgba(255,255,255,0.55)" : hexToRgba(DARK, 0.55)
+  const TXT3     = isDark ? "rgba(255,255,255,0.28)" : hexToRgba(DARK, 0.28)
+  const SURFACE  = isDark ? "rgba(255,255,255,0.04)" : hexToRgba(DARK, 0.05)
+  const BORDER   = isDark ? "rgba(255,255,255,0.10)" : hexToRgba(DARK, 0.10)
 
   if (!configLoaded) {
     return (
@@ -184,7 +221,6 @@ function ClientJoinInner() {
     )
   }
 
-  // ── Joined overlay ─────────────────────────────────────────────────────────────
   if (joined) {
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: BG, animation: "overlayIn 0.28s ease both" }}>
@@ -241,13 +277,19 @@ function ClientJoinInner() {
         {cfg.tagline && cfg.tagline !== "Powered by HOST" && (
           <div style={{ fontSize: ".7rem", color: TXT3, marginTop: 5 }}>{cfg.tagline}</div>
         )}
-        {live !== null && (live.ahead > 0 || live.waitMin) && (
-          <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: ".78rem" }}>
-            {live.ahead > 0 && <span style={{ fontWeight: 700, color: TXT2 }}>{live.ahead} {live.ahead === 1 ? "party" : "parties"} ahead</span>}
-            {live.ahead > 0 && live.waitMin && <span style={{ color: TXT3 }}>·</span>}
-            {live.waitMin && <span style={{ color: TXT3 }}>~{Math.round(live.waitMin)}m wait</span>}
-          </div>
-        )}
+        {live !== null && (() => {
+          const count = sectionsConfig?.enabled && sectionsConfig.sections.length > 0
+            ? (sectionCounts[selectedSection] ?? 0)
+            : live.ahead
+          if (count === 0 && !live.waitMin) return null
+          return (
+            <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: ".78rem" }}>
+              <span style={{ fontWeight: 700, color: TXT2 }}>{count} {count === 1 ? "party" : "parties"} ahead</span>
+              {count > 0 && live.waitMin && <span style={{ color: TXT3 }}>·</span>}
+              {count > 0 && live.waitMin && <span style={{ color: TXT3 }}>~{Math.round(live.waitMin)}m wait</span>}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Form */}
@@ -271,6 +313,36 @@ function ClientJoinInner() {
           </div>
         </div>
 
+        {/* Section picker */}
+        {sectionsConfig?.enabled && sectionsConfig.sections.length > 0 && (
+          <div style={{ flexShrink: 0, paddingLeft: 2 }}>
+            <div style={{ fontSize: ".57rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: TXT3, marginBottom: 7 }}>Seating Preference</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["anywhere", ...sectionsConfig.sections].map(sec => {
+                const label    = sec === "anywhere" ? "Sit Anywhere" : sec
+                const count    = sectionCounts[sec] ?? 0
+                const isActive = selectedSection === sec
+                return (
+                  <button key={sec} onClick={() => setSelectedSection(sec)} style={{
+                    padding: "5px 13px", borderRadius: 20,
+                    background: isActive ? ACCENT : "transparent",
+                    border: `1.5px solid ${isActive ? ACCENT : BORDER}`,
+                    color: isActive ? BTN_TEXT : TXT2,
+                    fontSize: ".78rem", fontWeight: 700, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    transition: "all .12s",
+                  }}>
+                    {label}
+                    <span style={{ fontSize: ".65rem", fontWeight: 400, opacity: 0.7 }}>
+                      {count === 0 ? "no wait" : `${count} ahead`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Name */}
         <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: ".57rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: TXT3, marginBottom: 7 }}>Name</div>
@@ -285,7 +357,7 @@ function ClientJoinInner() {
             Phone <span style={{ fontWeight: 400, letterSpacing: ".02em", textTransform: "none", color: TXT3 }}>— optional</span>
           </div>
           <input className="jw-input" type="tel" placeholder="(720) 000-0000" value={phone}
-            onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && join()} autoComplete="tel"
+            onChange={e => setPhone(formatPhone(e.target.value))} onKeyDown={e => e.key === "Enter" && join()} autoComplete="tel"
             style={{ width: "100%", borderRadius: 13, padding: "13px 15px", fontSize: ".95rem", boxSizing: "border-box" as const, caretColor: TXT }} />
           <p style={{ fontSize: 10, color: TXT3, marginTop: 5, lineHeight: 1.4 }}>By providing your number you agree to receive a one-time SMS update. Reply STOP to opt out.</p>
         </div>
@@ -340,11 +412,9 @@ function MenuDrawer({ sections, restaurantName, onClose }: {
         style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", animation: "backdropIn 0.3s ease-out both" }}
       />
       <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, height: "90dvh", background: "#0D0D0D", borderRadius: "22px 22px 0 0", border: "1px solid rgba(255,255,255,0.09)", borderBottom: "none", display: "flex", flexDirection: "column", overflow: "hidden", animation: "sheetUp 0.42s cubic-bezier(0.32,0.72,0,1) both" }}>
-        {/* Handle */}
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 14, paddingBottom: 4, flexShrink: 0 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
         </div>
-        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px 14px", borderBottom: "1px solid rgba(255,255,255,0.07)", flexShrink: 0 }}>
           <div>
             <p style={{ fontSize: 10, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(255,255,255,0.30)", marginBottom: 3 }}>{restaurantName}</p>
@@ -354,7 +424,6 @@ function MenuDrawer({ sections, restaurantName, onClose }: {
             <X size={16} />
           </button>
         </div>
-        {/* Content */}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0 40px" }}>
           {sections.length === 0 ? (
             <p style={{ textAlign: "center", fontSize: 13, color: "rgba(255,255,255,0.28)", padding: "40px 24px" }}>Menu not available</p>
