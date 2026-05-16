@@ -631,14 +631,15 @@ def delete_agreement(agreement_id: str, secret: Optional[str] = None):
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
 class JoinQueueRequest(BaseModel):
-    name:          Optional[str] = None
-    party_size:    int = Field(ge=1, le=20)
-    phone:         Optional[str] = None
-    notes:         Optional[str] = None
-    preference:    Optional[str] = "asap"  # asap | 15min | 30min | HH:MM
-    source:        Optional[str] = "nfc"   # nfc | host | phone | web
-    restaurant_id: Optional[str] = None    # override env RESTAURANT_ID
-    quoted_wait:   Optional[int] = None    # host-set wait time (minutes)
+    name:               Optional[str] = None
+    party_size:         int = Field(ge=1, le=20)
+    phone:              Optional[str] = None
+    notes:              Optional[str] = None
+    preference:         Optional[str] = "asap"  # asap | 15min | 30min | HH:MM
+    source:             Optional[str] = "nfc"   # nfc | host | phone | web
+    restaurant_id:      Optional[str] = None    # override env RESTAURANT_ID
+    quoted_wait:        Optional[int] = None    # host-set wait time (minutes)
+    section_preference: Optional[str] = None   # e.g. "Outside", "Bar"; null = anywhere
 
 class CameraEventRequest(BaseModel):
     zone:         str
@@ -679,11 +680,16 @@ class ReservationRequest(BaseModel):
         return v
 
 class QueueUpdateRequest(BaseModel):
-    quoted_wait: Optional[int]  = Field(None, ge=1, le=180)
-    party_size:  Optional[int]  = Field(None, ge=1, le=20)
-    phone:       Optional[str]  = None
-    notes:       Optional[str]  = None
-    paused:      Optional[bool] = None
+    quoted_wait:        Optional[int]  = Field(None, ge=1, le=180)
+    party_size:         Optional[int]  = Field(None, ge=1, le=20)
+    phone:              Optional[str]  = None
+    notes:              Optional[str]  = None
+    paused:             Optional[bool] = None
+    section_preference: Optional[str]  = None
+
+class SectionsConfigRequest(BaseModel):
+    enabled:  bool       = False
+    sections: List[str]  = []
 
 class SettingsRequest(BaseModel):
     opentable_ical_url: Optional[str] = None
@@ -1317,14 +1323,17 @@ def join_queue(req: JoinQueueRequest, background_tasks: BackgroundTasks):
             "arrival_time":  join_time,
             "notes":         req.notes or None,
         }
-        # Include quoted_wait_set_at only when a wait is being set (column may not exist pre-migration)
+        # Include optional columns only when set (column may not exist pre-migration)
         if req.quoted_wait is not None:
             base_insert["quoted_wait_set_at"] = join_time
+        if req.section_preference:
+            base_insert["section_preference"] = req.section_preference
         try:
             entry = supabase.table("queue_entries").insert(base_insert).execute()
         except Exception:
-            # quoted_wait_set_at column missing — retry without it
+            # A new column may not exist yet — retry with only the safe core fields
             base_insert.pop("quoted_wait_set_at", None)
+            base_insert.pop("section_preference", None)
             entry = supabase.table("queue_entries").insert(base_insert).execute()
         try:
             supabase.table("wait_quotes").insert({
@@ -1825,6 +1834,8 @@ def update_entry(entry_id: str, req: QueueUpdateRequest):
         update["notes"] = req.notes or None
     if req.paused is not None:
         update["paused"] = req.paused
+    if req.section_preference is not None:
+        update["section_preference"] = req.section_preference if req.section_preference != "" else None
     if not update and req.quoted_wait is None:
         return {"status": "nothing_to_update"}
     if update:
@@ -1839,6 +1850,32 @@ def seat_next():
     if not res.data:
         return {"status": "no_parties_waiting"}
     return seat_entry(res.data[0]["id"])
+
+# ── Sections config ───────────────────────────────────────────────────────────
+
+@app.get("/sections")
+def get_sections_config(restaurant_id: str):
+    """Return sections config (enabled + list) for a restaurant."""
+    try:
+        res = supabase.table("clients").select("config").eq("id", restaurant_id).execute()
+        if res.data:
+            cfg = res.data[0].get("config") or {}
+            return cfg.get("sections_config", {"enabled": False, "sections": []})
+    except Exception:
+        pass
+    return {"enabled": False, "sections": []}
+
+@app.post("/sections")
+def set_sections_config(restaurant_id: str, req: SectionsConfigRequest):
+    """Persist sections config for a restaurant (stored in clients.config JSON)."""
+    try:
+        res = supabase.table("clients").select("config").eq("id", restaurant_id).execute()
+        existing_cfg = (res.data[0].get("config") or {}) if res.data else {}
+        existing_cfg["sections_config"] = {"enabled": req.enabled, "sections": req.sections}
+        supabase.table("clients").update({"config": existing_cfg}).eq("id", restaurant_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True}
 
 # ── Insights ─────────────────────────────────────────────────────────────────
 
