@@ -793,9 +793,12 @@ function DraggableQueueCard({
         <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "rgba(var(--accent),0.12)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
           {entry.position ?? "—"}
         </div>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 7 }}>
           <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(var(--cream),0.97)", wordBreak: "break-word" }}>
             {entry.name || "Guest"}
+          </span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15, fontWeight: 800, color: "#fff", background: "rgba(99,179,237,0.18)", border: "1px solid rgba(99,179,237,0.30)", borderRadius: 6, padding: "1px 8px", flexShrink: 0 }}>
+            <Users className="w-3.5 h-3.5" />{entry.party_size}p
           </span>
           {isReady && (
             <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
@@ -805,10 +808,6 @@ function DraggableQueueCard({
 
       {/* ── Row 2: meta info ── */}
       <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(var(--warm),0.65)" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <Users className="w-2.5 h-2.5" />{entry.party_size}p
-        </span>
-        <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
         <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }} title="Time since arrival">
           <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
         </span>
