@@ -398,11 +398,25 @@ async def menu_parse(file: List[UploadFile] = File(...)):
         data = await f.read()
         mime = (f.content_type or "application/octet-stream").split(";")[0].strip()
         if mime in IMAGE_TYPES:
+            # Resize to max 1024px on the long edge — keeps text readable while
+            # staying well under Anthropic's per-minute token limits
+            try:
+                from PIL import Image as _PIL
+                import io as _io
+                img = _PIL.open(_io.BytesIO(data))
+                if max(img.size) > 1024:
+                    img.thumbnail((1024, 1024), _PIL.LANCZOS)
+                img = img.convert("RGB")
+                buf = _io.BytesIO()
+                img.save(buf, format="JPEG", quality=85)
+                data = buf.getvalue()
+                mime = "image/jpeg"
+            except Exception:
+                pass  # If Pillow fails, send original
             b64 = base64.b64encode(data).decode()
-            claude_mime = "image/jpeg" if mime == "image/jpg" else mime
             content.append({
                 "type": "image",
-                "source": {"type": "base64", "media_type": claude_mime, "data": b64},
+                "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
             })
         else:
             text = data.decode("utf-8", errors="replace").strip()
