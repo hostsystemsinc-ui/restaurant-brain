@@ -1116,7 +1116,8 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
       const res = await fetch("/api/owner/menu-parse", { method: "POST", body: fd })
       const data = await res.json()
       if (!res.ok) {
-        setImportError(data.error ?? "Import failed")
+        const raw = data.error ?? data.detail ?? "Import failed"
+        setImportError(typeof raw === "string" ? raw : JSON.stringify(raw))
       } else {
         // Normalize to ensure items/tags are always arrays (guards against malformed AI output)
         const raw = Array.isArray(data.sections) ? data.sections : []

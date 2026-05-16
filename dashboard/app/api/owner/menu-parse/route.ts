@@ -5,10 +5,10 @@ const BACKEND = "https://restaurant-brain-production.up.railway.app"
 // Allow up to 60 s for Claude to process large menus
 export const maxDuration = 60
 
-// Thin proxy — pipe the raw multipart bytes straight to Railway.
-// We do NOT call req.formData() here; instead we stream req.body verbatim so
-// the multipart boundary is preserved and large files (4+ images) don't hit
-// Next.js's default 4 MB body-parser limit.
+// Thin proxy — buffer the full multipart body and forward it verbatim.
+// We use req.arrayBuffer() rather than streaming req.body because Next.js /
+// Node environments vary in their duplex-streaming support, and the arrayBuffer
+// approach reliably preserves the multipart boundary for any file size.
 export async function POST(req: Request) {
   try {
     const contentType = req.headers.get("content-type") ?? ""
@@ -16,23 +16,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Expected multipart/form-data" }, { status: 400 })
     }
 
+    const body = await req.arrayBuffer()
+
     const upstream = await fetch(`${BACKEND}/menu/parse`, {
       method: "POST",
-      // Forward the content-type header so the boundary is preserved
       headers: { "content-type": contentType },
-      // Stream the raw body — avoids buffering / re-serialisation
-      body: req.body,
-      // Required for body streaming in some Node runtimes
-      // @ts-ignore
-      duplex: "half",
+      body: body,
     })
 
     const data = await upstream.json()
     if (!upstream.ok) {
-      return NextResponse.json(
-        { error: data.detail ?? "Parsing failed" },
-        { status: upstream.status }
-      )
+      // FastAPI validation errors arrive as detail: [{type, loc, msg, input}]
+      // Convert to a readable string before passing to the client
+      const detail = data.detail
+      const errorMsg =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+          ? detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join("; ")
+          : "Parsing failed"
+      return NextResponse.json({ error: errorMsg }, { status: upstream.status })
     }
 
     return NextResponse.json(data)
