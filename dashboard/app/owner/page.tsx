@@ -4926,7 +4926,7 @@ export default function OwnerPage() {
         {view === "dashboard"    && <DashboardView token={token} clients={allClients} onCreateClient={handleAddNew} />}
         {view === "clients"      && <ClientsView key={clientListKey} token={token} onSelectClient={handleSelectClient} onAddNew={handleAddNew} />}
         {view === "client-detail" && selectedClient && (
-          <ClientDetailView client={selectedClient} token={token} onBack={() => setView("clients")} onUpdated={() => {}} />
+          <ClientDetailView key={selectedClient.id} client={selectedClient} token={token} onBack={() => setView("clients")} onUpdated={() => {}} />
         )}
         {view === "new-client"   && (
           <NewClientWizard token={token} onDone={handleWizardDone} onCancel={() => setView("clients")} />
