@@ -1,6 +1,7 @@
 supabase
 fastapi
 uvicorn
+python-multipart
 anthropic
 twilio
 icalendar
