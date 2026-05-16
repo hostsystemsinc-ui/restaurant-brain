@@ -1090,7 +1090,24 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
       if (!res.ok) {
         setImportError(data.error ?? "Import failed")
       } else {
-        setPreview(data.sections as MenuSection[])
+        // Normalize to ensure items/tags are always arrays (guards against malformed AI output)
+        const raw = Array.isArray(data.sections) ? data.sections : []
+        const normalized: MenuSection[] = raw.map((s: Record<string, unknown>) => ({
+          id:    (s.id as string) || nanoid(),
+          title: String(s.title || "Section"),
+          items: (Array.isArray(s.items) ? s.items : []).map((i: Record<string, unknown>) => ({
+            id:          (i.id as string) || nanoid(),
+            name:        String(i.name || "Item"),
+            description: String(i.description ?? ""),
+            price:       String(i.price ?? ""),
+            tags:        Array.isArray(i.tags) ? i.tags.map(String) : [],
+          })),
+        }))
+        if (normalized.length === 0) {
+          setImportError("AI could not find any menu sections in the uploaded files.")
+        } else {
+          setPreview(normalized)
+        }
       }
     } catch {
       setImportError("Network error — could not reach server")
@@ -1223,7 +1240,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
                 <div style={{ fontSize: 13, color: D.text, background: D.greenBg,
                   border: `1px solid ${D.greenBorder}`, borderRadius: 6, padding: "8px 12px" }}>
                   Found <strong>{preview.length}</strong> section{preview.length !== 1 ? "s" : ""} with{" "}
-                  <strong>{preview.reduce((n, s) => n + s.items.length, 0)}</strong> items.
+                  <strong>{preview.reduce((n, s) => n + (s.items?.length ?? 0), 0)}</strong> items.
                   Apply to replace current menu?
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -1293,7 +1310,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
           </div>
 
           {/* Items */}
-          {section.items.map(item => (
+          {(section.items ?? []).map(item => (
             <div key={item.id} style={{ padding: "12px 16px", borderBottom: `1px solid ${D.border}` }}>
               {editing?.sectionId === section.id && editing?.itemId === item.id ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1302,7 +1319,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
                     <input placeholder="Price" value={item.price} onChange={e => updateItem(section.id, item.id, { price: e.target.value })} style={{ ...inputSm, flex: 1 }} />
                   </div>
                   <input placeholder="Description" value={item.description} onChange={e => updateItem(section.id, item.id, { description: e.target.value })} style={inputSm} />
-                  <input placeholder="Tags (comma-separated: GF, Vegan, Spicy)" value={item.tags.join(", ")}
+                  <input placeholder="Tags (comma-separated: GF, Vegan, Spicy)" value={(item.tags ?? []).join(", ")}
                     onChange={e => updateItem(section.id, item.id, { tags: e.target.value.split(",").map(t => t.trim()).filter(Boolean) })}
                     style={inputSm} />
                   <div style={{ display: "flex", gap: 8 }}>
@@ -1324,7 +1341,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
                   <div>
                     <span style={{ fontSize: 13, fontWeight: 600, color: D.text }}>{item.name}</span>
                     {item.description && <span style={{ fontSize: 12, color: D.text2, marginLeft: 8 }}>{item.description}</span>}
-                    {item.tags.map(tag => (
+                    {(item.tags ?? []).map(tag => (
                       <span key={tag} style={{ marginLeft: 6, fontSize: 10, color: D.orange, background: D.orangeBg, borderRadius: 10, padding: "1px 7px" }}>{tag}</span>
                     ))}
                   </div>
@@ -1337,7 +1354,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
             </div>
           ))}
 
-          {section.items.length === 0 && (
+          {!(section.items?.length) && (
             <div style={{ padding: "12px 16px", color: D.muted, fontSize: 12 }}>No items — click &quot;+ Item&quot; to add</div>
           )}
         </div>
