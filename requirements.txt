@@ -7,3 +7,4 @@ twilio
 icalendar
 requests
 Pillow
+pillow-heif

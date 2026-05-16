@@ -2770,10 +2770,12 @@ function ClientStationInner() {
       refreshAll(); fetchInsights(); fetchReservations()
       fetch(`${API}/sections?restaurant_id=${rid}`).then(r => r.json()).then(d => setSectionsConfig(d)).catch(() => {})
     })()
+    const fetchSections = () => fetch(`${API}/sections?restaurant_id=${rid}`).then(r => r.json()).then(d => setSectionsConfig(d)).catch(() => {})
     const fast      = setInterval(refreshAll, 2000)
     const slow      = setInterval(fetchInsights, 30000)
     const resInt    = setInterval(fetchReservations, 30000)
-    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt) }
+    const sectInt   = setInterval(fetchSections, 30000)
+    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt); clearInterval(sectInt) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rid, refreshAll, fetchInsights, fetchReservations])
 

@@ -637,7 +637,7 @@ function ClientAdminInner() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* Tabs */}
           {(["overview", "logins", "settings"] as const).map(tab => (
-            <button key={tab} onClick={() => { setActiveTab(tab); if (tab !== "logins") setLoginsUnlocked(false) }}
+            <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${activeTab === tab ? C.green : C.border}`, background: activeTab === tab ? C.greenBg : "transparent", color: activeTab === tab ? C.green : C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
               {tab}
             </button>

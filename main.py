@@ -386,21 +386,33 @@ class AgreementAcceptRequest(BaseModel):
 @app.post("/menu/parse")
 async def menu_parse(file: List[UploadFile] = File(...)):
     """Parse one or more menu images/documents with Claude and return structured sections."""
-    import base64, urllib.request, urllib.parse, json as _json2
+    import base64, urllib.request, urllib.error, urllib.parse, json as _json2
 
     if not ANTHROPIC_KEY:
         raise HTTPException(status_code=500, detail="Missing Anthropic API key")
 
-    IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+    # Register HEIC support if pillow-heif is installed
+    try:
+        from pillow_heif import register_heif_opener as _reg_heif
+        _reg_heif()
+    except ImportError:
+        pass
+
+    IMAGE_TYPES = {
+        "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif",
+        "image/heic", "image/heif",  # Apple HEIC (iPhone photos)
+    }
+    IMAGE_EXTS = {"jpg", "jpeg", "png", "webp", "gif", "heic", "heif"}
     content: list = []
     has_pdf = False
 
     for f in file:
         data = await f.read()
         mime = (f.content_type or "application/octet-stream").split(";")[0].strip()
-        if mime in IMAGE_TYPES:
-            # Resize to max 1024px on the long edge — keeps text readable while
-            # staying well under Anthropic's per-minute token limits
+        fname_ext = (f.filename or "").rsplit(".", 1)[-1].lower() if "." in (f.filename or "") else ""
+        is_image = mime in IMAGE_TYPES or fname_ext in IMAGE_EXTS
+        if is_image:
+            # Normalize to JPEG via Pillow (handles HEIC, HEIF, etc.)
             try:
                 from PIL import Image as _PIL
                 import io as _io
@@ -410,15 +422,14 @@ async def menu_parse(file: List[UploadFile] = File(...)):
                 img = img.convert("RGB")
                 buf = _io.BytesIO()
                 img.save(buf, format="JPEG", quality=85)
-                data = buf.getvalue()
-                mime = "image/jpeg"
+                b64 = base64.b64encode(buf.getvalue()).decode()
+                content.append({
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
+                })
             except Exception:
-                pass  # If Pillow fails, send original
-            b64 = base64.b64encode(data).decode()
-            content.append({
-                "type": "image",
-                "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
-            })
+                # Pillow couldn't open this file — skip rather than sending binary garbage
+                continue
         elif mime == "application/pdf":
             # Send PDFs as documents — Claude reads them natively
             has_pdf = True
@@ -469,6 +480,10 @@ async def menu_parse(file: List[UploadFile] = File(...)):
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             result = _json2.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            raise HTTPException(status_code=429, detail="Rate limit hit — wait 30 seconds and try again")
+        raise HTTPException(status_code=502, detail=f"AI request failed: HTTP {e.code}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI request failed: {e}")
 
