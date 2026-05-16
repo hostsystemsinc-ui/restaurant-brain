@@ -460,12 +460,17 @@ async def menu_parse(file: List[UploadFile] = File(...)):
         raise HTTPException(status_code=502, detail=f"AI request failed: {e}")
 
     raw = result.get("content", [{}])[0].get("text", "").strip()
-    cleaned = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
+    import re as _re
+    cleaned = _re.sub(r'^```[a-z]*\s*\n?', '', raw)
+    cleaned = _re.sub(r'\n?```\s*$', '', cleaned).strip()
     try:
         parsed = _json2.loads(cleaned)
     except Exception:
         raise HTTPException(status_code=502, detail="AI returned invalid JSON")
 
+    # Accept both bare array and {"sections": [...]} wrapper
+    if isinstance(parsed, dict) and isinstance(parsed.get("sections"), list):
+        parsed = parsed["sections"]
     if not isinstance(parsed, list):
         raise HTTPException(status_code=502, detail="AI returned unexpected format")
 
