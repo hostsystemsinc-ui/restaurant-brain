@@ -276,8 +276,13 @@ function QueueList({ queue }: { queue: QueueEntry[] }) {
                 display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
               }}>{i + 1}</span>
               <div>
-                <p style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{e.name || "Guest"}</p>
-                <p style={{ fontSize: 11, color: C.muted }}>Party of {e.party_size} · {minsAgo}m ago</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: C.text, margin: 0 }}>{e.name || "Guest"}</p>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#1d4ed8", background: "#dbeafe", border: "1px solid #bfdbfe", borderRadius: 6, padding: "1px 8px", flexShrink: 0 }}>
+                    {e.party_size}p
+                  </span>
+                </div>
+                <p style={{ fontSize: 11, color: C.muted, margin: 0 }}>{minsAgo}m ago</p>
               </div>
             </div>
             {isReady && <span style={{ fontSize: 10, fontWeight: 800, color: C.green, letterSpacing: ".06em", textTransform: "uppercase" }}>Ready</span>}
