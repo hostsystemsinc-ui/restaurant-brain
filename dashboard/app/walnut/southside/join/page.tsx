@@ -12,6 +12,13 @@ const API           = "https://restaurant-brain-production.up.railway.app"
 const RESTAURANT_ID = "0002cafe-0001-4000-8000-000000000002"
 const SESSION_KEY   = "host_wait_id_walnut_southside"
 
+const formatPhone = (val: string) => {
+  const d = val.replace(/\D/g, "").slice(0, 10)
+  if (d.length <= 3) return d
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+}
+
 // Defaults — overridden by guest_config from DB
 const DEFAULT_CFG = {
   bgColor:        "#EDE8DF",
@@ -29,6 +36,7 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 interface LiveInfo { available: number; waitMin: number | null; ahead: number }
+interface SectionsConfig { enabled: boolean; sections: string[] }
 
 export default function SouthsideJoinPage() {
   return (
@@ -50,8 +58,11 @@ function SouthsideJoinInner() {
   const [error,     setError]     = useState("")
   const [live,      setLive]      = useState<LiveInfo | null>(null)
   const [joined,    setJoined]    = useState(false)
-  const [menuOpen,      setMenuOpen]      = useState(false)
-  const [dynamicMenu,   setDynamicMenu]   = useState<DynamicSection[] | null>(null)
+  const [menuOpen,        setMenuOpen]        = useState(false)
+  const [dynamicMenu,     setDynamicMenu]     = useState<DynamicSection[] | null>(null)
+  const [sectionsConfig,  setSectionsConfig]  = useState<SectionsConfig | null>(null)
+  const [selectedSection, setSelectedSection] = useState<string>("anywhere")
+  const [sectionCounts,   setSectionCounts]   = useState<Record<string, number>>({})
 
   // Live config from DB — keeps join page in sync with owner console edits
   const [cfg, setCfg] = useState(DEFAULT_CFG)
@@ -85,15 +96,24 @@ function SouthsideJoinInner() {
 
   const fetchLive = useCallback(async () => {
     try {
-      const [tablesRes, insightsRes] = await Promise.all([
+      const [tablesRes, insightsRes, queueRes] = await Promise.all([
         fetch(`${API}/tables?restaurant_id=${RESTAURANT_ID}`),
         fetch(`${API}/insights?restaurant_id=${RESTAURANT_ID}`),
+        fetch(`${API}/queue?restaurant_id=${RESTAURANT_ID}`),
       ])
       const tables   = tablesRes.ok   ? await tablesRes.json()   : []
       const insights = insightsRes.ok ? await insightsRes.json() : null
+      const queueRaw = queueRes.ok    ? await queueRes.json()    : []
       const total       = Array.isArray(tables) ? tables.length : 0
       const apiOccupied = Array.isArray(tables)
         ? tables.filter((t: { status: string }) => t.status !== "available").length : 0
+      const waiting: { status: string; section_preference?: string | null }[] =
+        Array.isArray(queueRaw) ? queueRaw.filter((e: { status: string }) => e.status === "waiting") : []
+      const counts: Record<string, number> = { anywhere: waiting.length }
+      for (const e of waiting) {
+        if (e.section_preference) counts[e.section_preference] = (counts[e.section_preference] ?? 0) + 1
+      }
+      setSectionCounts(counts)
       setLive({
         available: Math.max(0, total - apiOccupied),
         ahead:     insights?.parties_waiting ?? 0,
@@ -102,6 +122,13 @@ function SouthsideJoinInner() {
     } catch {
       setLive(prev => prev ?? { available: 0, waitMin: null, ahead: 0 })
     }
+  }, [])
+
+  useEffect(() => {
+    fetch(`${API}/sections?restaurant_id=${RESTAURANT_ID}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setSectionsConfig(d) })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -139,12 +166,13 @@ function SouthsideJoinInner() {
         headers: { "Content-Type": "application/json" },
         signal:  controller.signal,
         body: JSON.stringify({
-          name:          name.trim(),
-          party_size:    partySize,
-          phone:         phone.trim() || null,
-          preference:    "asap",
-          source:        joinSource,
-          restaurant_id: RESTAURANT_ID,
+          name:               name.trim(),
+          party_size:         partySize,
+          phone:              phone.trim() || null,
+          preference:         "asap",
+          source:             joinSource,
+          restaurant_id:      RESTAURANT_ID,
+          section_preference: sectionsConfig?.enabled && selectedSection !== "anywhere" ? selectedSection : null,
         }),
       })
       clearTimeout(timeout)
@@ -200,13 +228,19 @@ function SouthsideJoinInner() {
         <div style={{ display: "inline-block", padding: "6px 20px", border: `1px solid ${DARK5}`, borderRadius: 12, background: DARK4 }}>
           <div style={{ fontSize: ".78rem", fontWeight: 800, letterSpacing: "0.14em", color: DARK }}>{cfg.restaurantName.toUpperCase()}</div>
         </div>
-        {live !== null && (live.ahead > 0 || live.waitMin) && (
-          <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: ".78rem" }}>
-            {live.ahead > 0 && <span style={{ fontWeight: 700, color: DARK2 }}>{live.ahead} {live.ahead === 1 ? "party" : "parties"} ahead</span>}
-            {live.ahead > 0 && live.waitMin && <span style={{ color: DARK3 }}>·</span>}
-            {live.waitMin && <span style={{ color: DARK3 }}>~{live.waitMin}m wait</span>}
-          </div>
-        )}
+        {live !== null && (() => {
+          const count = sectionsConfig?.enabled && sectionsConfig.sections.length > 0
+            ? (sectionCounts[selectedSection] ?? 0)
+            : live.ahead
+          if (count === 0 && !live.waitMin) return null
+          return (
+            <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontSize: ".78rem" }}>
+              <span style={{ fontWeight: 700, color: DARK2 }}>{count} {count === 1 ? "party" : "parties"} ahead</span>
+              {count > 0 && live.waitMin && <span style={{ color: DARK3 }}>·</span>}
+              {count > 0 && live.waitMin && <span style={{ color: DARK3 }}>~{live.waitMin}m wait</span>}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Form */}
@@ -221,6 +255,36 @@ function SouthsideJoinInner() {
               style={{ width: 42, height: 42, borderRadius: "50%", background: DARK4, border: `1.5px solid ${DARK5}`, color: partySize >= 20 ? DARK3 : DARK, fontSize: 20, cursor: partySize >= 20 ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "transform .12s" }}>+</button>
           </div>
         </div>
+        {/* Section Picker */}
+        {sectionsConfig?.enabled && sectionsConfig.sections.length > 0 && (
+          <div style={{ flexShrink: 0, paddingLeft: 2 }}>
+            <div style={{ fontSize: ".57rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: DARK3, marginBottom: 7 }}>Seating Preference</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["anywhere", ...sectionsConfig.sections].map(sec => {
+                const label    = sec === "anywhere" ? "Sit Anywhere" : sec
+                const count    = sectionCounts[sec] ?? 0
+                const isActive = selectedSection === sec
+                return (
+                  <button key={sec} onClick={() => setSelectedSection(sec)} style={{
+                    padding: "5px 13px", borderRadius: 20,
+                    background: isActive ? DARK : "transparent",
+                    border: `1.5px solid ${isActive ? DARK : DARK3}`,
+                    color: isActive ? BG : DARK2,
+                    fontSize: ".78rem", fontWeight: 700, cursor: "pointer",
+                    display: "inline-flex", alignItems: "center", gap: 5,
+                    transition: "all .12s",
+                  }}>
+                    {label}
+                    <span style={{ fontSize: ".65rem", fontWeight: 400, opacity: 0.7 }}>
+                      {count === 0 ? "no wait" : `${count} ahead`}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ flexShrink: 0 }}>
           <div style={{ fontSize: ".57rem", fontWeight: 800, letterSpacing: ".24em", textTransform: "uppercase", color: DARK3, marginBottom: 7 }}>Name</div>
           <input className="wj-input" type="text" placeholder="Your name" value={name}
@@ -232,7 +296,7 @@ function SouthsideJoinInner() {
             Phone <span style={{ fontWeight: 400, letterSpacing: ".02em", textTransform: "none", color: DARK3 }}>— optional</span>
           </div>
           <input className="wj-input" type="tel" placeholder="(720) 000-0000" value={phone}
-            onChange={e => setPhone(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} autoComplete="tel"
+            onChange={e => setPhone(formatPhone(e.target.value))} onKeyDown={e => e.key === "Enter" && submit()} autoComplete="tel"
             style={{ width: "100%", borderRadius: 13, padding: "13px 15px", color: DARK, fontSize: ".95rem", boxSizing: "border-box", caretColor: DARK }} />
           <p style={{ fontSize: 10, color: DARK3, marginTop: 6 }}>By providing your number you agree to receive SMS updates. Reply STOP to opt out.</p>
         </div>

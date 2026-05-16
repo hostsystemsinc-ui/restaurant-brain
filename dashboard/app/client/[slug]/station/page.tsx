@@ -240,7 +240,10 @@ interface QueueEntry {
   paused?: boolean
   phone: string | null
   notes: string | null
+  section_preference?: string | null
 }
+
+interface SectionsConfig { enabled: boolean; sections: string[] }
 
 interface LocalOccupant { name: string; party_size: number; entry_id?: string }
 
@@ -576,7 +579,7 @@ function NfcWaitPanel({
 // ── Guest Edit Modal ────────────────────────────────────────────────────────────
 
 function GuestEditModal({
-  entry, displayWait, sidebarW, onClose, onSaved, onRemoved,
+  entry, displayWait, sidebarW, onClose, onSaved, onRemoved, sections,
 }: {
   entry: QueueEntry
   displayWait: number
@@ -584,13 +587,15 @@ function GuestEditModal({
   onClose: () => void
   onSaved: () => void
   onRemoved: () => void
+  sections?: string[]
 }) {
-  const [minutes,   setMinutes]   = useState(displayWait || entry.quoted_wait || entry.wait_estimate || 15)
-  const [partySize, setPartySize] = useState(entry.party_size)
-  const [phone,     setPhone]     = useState(entry.phone ?? "")
-  const [notes,     setNotes]     = useState(entry.notes ?? "")
-  const [saving,    setSaving]    = useState(false)
-  const [removing,  setRemoving]  = useState(false)
+  const [minutes,    setMinutes]    = useState(15)
+  const [partySize,  setPartySize]  = useState(entry.party_size)
+  const [phone,      setPhone]      = useState(entry.phone ?? "")
+  const [notes,      setNotes]      = useState(entry.notes ?? "")
+  const [sectionPref, setSectionPref] = useState<string>(entry.section_preference ?? "anywhere")
+  const [saving,     setSaving]     = useState(false)
+  const [removing,   setRemoving]   = useState(false)
   const PRESETS = [5, 10, 15, 20, 30, 45]
 
   const save = async () => {
@@ -599,7 +604,13 @@ function GuestEditModal({
       const r = await fetchT(`${API}/queue/${entry.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ quoted_wait: minutes, party_size: partySize, phone: phone.trim() || null, notes: notes.trim() || null }),
+        body: JSON.stringify({
+          quoted_wait:        minutes,
+          party_size:         partySize,
+          phone:              phone.trim() || null,
+          notes:              notes.trim() || null,
+          section_preference: sections ? (sectionPref === "anywhere" ? "" : sectionPref) : undefined,
+        }),
       })
       if (!r.ok) throw new Error("server")
     } catch (e: unknown) {
@@ -698,6 +709,26 @@ function GuestEditModal({
             className="w-full rounded-xl outline-none mb-5"
             style={{ background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "15px 14px", height: 56 }}
           />
+
+          {/* ── Section Preference ── */}
+          {sections && sections.length > 0 && (
+            <div className="mb-5">
+              <p className="text-[10px] font-bold tracking-[0.16em] uppercase mb-2" style={{ color: "rgba(var(--warm),0.45)" }}>Section Preference</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {["anywhere", ...sections].map(s => (
+                  <button key={s} onClick={() => setSectionPref(s)} style={{
+                    padding: "7px 14px", borderRadius: 9, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    background: sectionPref === s ? "rgba(var(--accent),0.18)" : "rgba(var(--accent),0.06)",
+                    border: `1px solid ${sectionPref === s ? "rgba(var(--accent),0.45)" : "rgba(var(--accent),0.14)"}`,
+                    color: sectionPref === s ? "rgba(var(--cream),0.97)" : "rgba(var(--warm),0.55)",
+                    transition: "all 0.1s",
+                  }}>
+                    {s === "anywhere" ? "Sit Anywhere" : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Save ── */}
           <button onClick={save} disabled={saving} className="w-full rounded-xl font-black tracking-[0.15em] uppercase transition-all active:scale-[0.98] disabled:opacity-40" style={{ background: "#22c55e", color: "white", fontSize: 15, padding: "18px 0" }}>
@@ -1489,18 +1520,20 @@ function SeatTablePicker({
 // Renders as a panel covering only the sidebar — floor map stays fully interactive.
 
 function AddGuestDrawer({
-  onClose, onAdded, sidebarW, rid,
+  onClose, onAdded, sidebarW, rid, sections,
 }: {
   onClose: () => void
   onAdded: (entryId: string) => void
   sidebarW: number
   rid: string
+  sections?: string[]
 }) {
-  const [name,      setName]      = useState("")
-  const [partySize, setPartySize] = useState(2)
-  const [phone,     setPhone]     = useState("")
-  const [notes,     setNotes]     = useState("")
-  const [waitMins,  setWaitMins]  = useState<number | null>(15)
+  const [name,        setName]        = useState("")
+  const [partySize,   setPartySize]   = useState(2)
+  const [phone,       setPhone]       = useState("")
+  const [notes,       setNotes]       = useState("")
+  const [waitMins,    setWaitMins]    = useState<number | null>(15)
+  const [sectionPref, setSectionPref] = useState<string>("anywhere")
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState("")
   const PRESETS = [5, 10, 15, 20, 30, 45]
@@ -1534,13 +1567,14 @@ function AddGuestDrawer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name:          name.trim() || null,
-          party_size:    partySize,
-          phone:         phone.trim() || null,
-          notes:         notes.trim() || null,
-          preference:    "asap",
-          source:        "host",
-          restaurant_id: rid,
+          name:               name.trim() || null,
+          party_size:         partySize,
+          phone:              phone.trim() || null,
+          notes:              notes.trim() || null,
+          preference:         "asap",
+          source:             "host",
+          restaurant_id:      rid,
+          section_preference: sections ? (sectionPref === "anywhere" ? null : sectionPref) : undefined,
         }),
       })
       if (!r.ok) throw new Error()
@@ -1630,6 +1664,26 @@ function AddGuestDrawer({
           placeholder="Allergies, preferences, occasion…"
           style={{ width: "100%", background: "rgba(var(--accent),0.06)", border: "1.5px solid rgba(var(--accent),0.14)", borderRadius: 12, color: "rgba(var(--cream),0.92)", fontSize: 15, padding: "11px 13px", marginBottom: 14, outline: "none", boxSizing: "border-box" }}
         />
+
+        {/* ── Section Preference ── */}
+        {sections && sections.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(var(--warm),0.45)", marginBottom: 8 }}>Seating Preference</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["anywhere", ...sections].map(s => (
+                <button key={s} onClick={() => setSectionPref(s)} style={{
+                  padding: "6px 13px", borderRadius: 9, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  background: sectionPref === s ? "rgba(var(--accent),0.18)" : "rgba(var(--accent),0.06)",
+                  border: `1px solid ${sectionPref === s ? "rgba(var(--accent),0.45)" : "rgba(var(--accent),0.14)"}`,
+                  color: sectionPref === s ? "rgba(var(--cream),0.97)" : "rgba(var(--warm),0.55)",
+                  transition: "all 0.1s",
+                }}>
+                  {s === "anywhere" ? "Sit Anywhere" : s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Quote Wait Time ── */}
         <div style={{ borderTop: "1px solid rgba(var(--accent),0.12)", paddingTop: 12, marginBottom: 4 }}>
@@ -1843,7 +1897,7 @@ function TableClickModal({
             <input
               placeholder="Phone (optional)"
               value={phone}
-              onChange={e => setPhone(e.target.value)}
+              onChange={e => setPhone(formatPhone(e.target.value))}
               type="tel"
               className="w-full rounded-2xl outline-none"
               style={{ padding: "16px 18px", fontSize: 15, background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.16)", color: "rgba(var(--cream),0.92)" }}
@@ -2471,6 +2525,7 @@ function ClientStationInner() {
   const [nfcWaitPanel, setNfcWaitPanel]   = useState<{ id: string; name: string; party_size: number; suggested: number | null } | null>(null)
   const [editModal, setEditModal]         = useState<{ entry: QueueEntry; displayWait: number } | null>(null)
   const [avgWait, setAvgWait]             = useState(0)
+  const [sectionsConfig, setSectionsConfig] = useState<SectionsConfig | null>(null)
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [activeDragRes, setActiveDragRes] = useState<Reservation | null>(null)
@@ -2713,6 +2768,7 @@ function ClientStationInner() {
         }
       } catch {}
       refreshAll(); fetchInsights(); fetchReservations()
+      fetch(`${API}/sections?restaurant_id=${rid}`).then(r => r.json()).then(d => setSectionsConfig(d)).catch(() => {})
     })()
     const fast      = setInterval(refreshAll, 2000)
     const slow      = setInterval(fetchInsights, 30000)
@@ -3443,13 +3499,22 @@ function ClientStationInner() {
                 </div>
                 <div className="flex flex-col gap-1.5 pr-1">
                   {needsQuoteList.map(e => (
-                    <DraggableQueueCard key={e.id} entry={e}
-                      isNeedsQuote
-                      isSelected={selectedEntry?.id === e.id}
-                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                      onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
+                    <div key={e.id} style={{ borderRadius: 12, padding: "10px 12px", background: "rgba(99,179,237,0.07)", border: "1px solid rgba(99,179,237,0.30)", display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: "rgba(255,255,255,0.92)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name || "Guest"}</div>
+                        <div style={{ fontSize: 11, color: "rgba(147,207,255,0.65)", display: "flex", gap: 6, marginTop: 2 }}>
+                          <span>{e.party_size}p</span>
+                          <span style={{ opacity: 0.5 }}>·</span>
+                          <span>{(() => { const s = Math.floor((Date.now() - (new Date(e.arrival_time).getTime())) / 1000); return s < 60 ? `${s}s` : `${Math.floor(s/60)}m` })()}) waiting</span>
+                        </div>
+                      </div>
+                      {e.section_preference && (
+                        <span style={{ flexShrink: 0, fontSize: 11, fontWeight: 600, color: "rgba(147,207,255,0.75)" }}>{e.section_preference}</span>
+                      )}
+                      <button onClick={() => setEditModal({ entry: e, displayWait: 0 })} style={{ flexShrink: 0, height: 30, padding: "0 12px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "rgba(99,179,237,0.16)", color: "rgba(147,207,255,0.95)", border: "1px solid rgba(99,179,237,0.40)", cursor: "pointer", letterSpacing: "0.04em" }}>
+                        Quote
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -3460,14 +3525,6 @@ function ClientStationInner() {
 
             {/* Waiting section — only shows guests that have been quoted */}
             <div className="px-3 pt-2 flex-1 overflow-y-auto">
-              {quotedWaiting.length > 0 && (
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f97316", opacity: 0.90 }} />
-                  <span className="text-[10px] font-black tracking-[0.16em] uppercase" style={{ color: "rgba(var(--warm),0.65)" }}>
-                    Waiting · {quotedWaiting.length}
-                  </span>
-                </div>
-              )}
               {isInitialLoad ? (
                 <div className="flex items-center justify-center py-16">
                   <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(var(--accent),0.18)", borderTopColor: "rgba(var(--accent),0.65)" }} />
@@ -3478,17 +3535,68 @@ function ClientStationInner() {
                   <p className="text-[11px] font-medium" style={{ color: "rgba(var(--warm),0.50)" }}>Queue is clear</p>
                 </div>
               ) : quotedWaiting.length > 0 ? (
-                <div className="flex flex-col gap-1.5 pb-24 pr-1">
-                  {quotedWaiting.map(e => (
-                    <DraggableQueueCard key={e.id} entry={e}
-                      isSelected={selectedEntry?.id === e.id}
-                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                      onAddTime={() => addTime(e)}
-                      onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
-                  ))}
-                </div>
+                (() => {
+                  const sectionsEnabled = sectionsConfig?.enabled && (sectionsConfig.sections?.length ?? 0) > 0
+                  if (!sectionsEnabled) {
+                    return (
+                      <div className="flex flex-col gap-1.5 pb-24 pr-1">
+                        {quotedWaiting.map(e => (
+                          <DraggableQueueCard key={e.id} entry={e}
+                            isSelected={selectedEntry?.id === e.id}
+                            onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                            onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                            onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                            onAddTime={() => addTime(e)}
+                            onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
+                        ))}
+                      </div>
+                    )
+                  }
+                  const SECTION_COLORS = ["#60a5fa","#f472b6","#fb923c","#a78bfa","#34d399","#facc15","#f87171","#38bdf8"]
+                  const configuredSections = sectionsConfig!.sections
+                  const sectionColor = (sec: string) => sec === "__anywhere__" ? "#4ade80" : SECTION_COLORS[configuredSections.indexOf(sec) % SECTION_COLORS.length]
+                  const groups = new Map<string, QueueEntry[]>()
+                  groups.set("__anywhere__", [])
+                  for (const s of configuredSections) groups.set(s, [])
+                  for (const e of quotedWaiting) {
+                    const sec = e.section_preference && configuredSections.includes(e.section_preference) ? e.section_preference : "__anywhere__"
+                    groups.get(sec)!.push(e)
+                  }
+                  const orderedKeys = ["__anywhere__", ...configuredSections].filter(k => (groups.get(k)?.length ?? 0) > 0)
+                  return (
+                    <div className="flex flex-col gap-3 pb-24">
+                      {orderedKeys.map(sec => {
+                        const entries = groups.get(sec)!
+                        const label   = sec === "__anywhere__" ? "Sit Anywhere" : sec
+                        const color   = sectionColor(sec)
+                        return (
+                          <div key={sec}>
+                            <div className="flex items-center gap-2 mb-1.5 px-1">
+                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                              <span className="text-[9px] font-black tracking-[0.16em] uppercase" style={{ color }}>{label} · {entries.length}</span>
+                            </div>
+                            <div className="flex flex-col gap-1.5">
+                              {entries.map((e, idx) => (
+                                <div key={e.id} style={{ position: "relative" }}>
+                                  <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)", zIndex: 1, fontSize: 9, fontWeight: 900, color: "var(--text-muted3)", lineHeight: 1, minWidth: 12, textAlign: "center" }}>{idx + 1}</div>
+                                  <div style={{ paddingLeft: 22 }}>
+                                    <DraggableQueueCard entry={e}
+                                      isSelected={selectedEntry?.id === e.id}
+                                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                                      onAddTime={() => addTime(e)}
+                                      onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()
               ) : null}
             </div>
 
@@ -3599,6 +3707,7 @@ function ClientStationInner() {
               setShowAdd(false)
               refreshAll()
             }}
+            sections={sectionsConfig?.enabled ? sectionsConfig.sections : undefined}
           />
         )}
 
@@ -3632,6 +3741,7 @@ function ClientStationInner() {
             onClose={() => setEditModal(null)}
             onSaved={() => { setEditModal(null); refreshAll() }}
             onRemoved={() => { setEditModal(null); refreshAll() }}
+            sections={sectionsConfig?.enabled ? sectionsConfig.sections : undefined}
           />
         )}
 

@@ -1025,6 +1025,10 @@ export default function WalnutDashboard() {
             style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
             ← Station
           </Link>
+          <Link href="/walnut/sections"
+            style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
+            Sections
+          </Link>
           <Link href="/walnut/logins"
             style={{ fontSize: 12, fontWeight: 600, color: C.text2, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, textDecoration: "none" }}>
             Logins
