@@ -2,8 +2,13 @@ import { NextResponse } from "next/server"
 
 const BACKEND = "https://restaurant-brain-production.up.railway.app"
 
-// Thin proxy — the Python backend holds the Anthropic key and handles
-// multi-file uploads + Claude vision parsing.
+// Allow up to 60 s for Claude to process large menus
+export const maxDuration = 60
+
+// Thin proxy — pipe the raw multipart bytes straight to Railway.
+// We do NOT call req.formData() here; instead we stream req.body verbatim so
+// the multipart boundary is preserved and large files (4+ images) don't hit
+// Next.js's default 4 MB body-parser limit.
 export async function POST(req: Request) {
   try {
     const contentType = req.headers.get("content-type") ?? ""
@@ -11,17 +16,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Expected multipart/form-data" }, { status: 400 })
     }
 
-    const formData = await req.formData()
-    const files = formData.getAll("file")
-
-    if (!files.length) {
-      return NextResponse.json({ error: "No files provided" }, { status: 400 })
-    }
-
-    // Forward the entire form to the Railway backend unchanged
     const upstream = await fetch(`${BACKEND}/menu/parse`, {
       method: "POST",
-      body: formData,
+      // Forward the content-type header so the boundary is preserved
+      headers: { "content-type": contentType },
+      // Stream the raw body — avoids buffering / re-serialisation
+      body: req.body,
+      // Required for body streaming in some Node runtimes
+      // @ts-ignore
+      duplex: "half",
     })
 
     const data = await upstream.json()

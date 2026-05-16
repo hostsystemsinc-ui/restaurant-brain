@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { CURRENT_VERSION, EFFECTIVE_DATE, ENTITY_NAME, TERMS_SECTIONS, type TermsSection } from "@/lib/terms"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 
@@ -1062,6 +1062,34 @@ const inputSm: React.CSSProperties = {
   outline: "none",
 }
 
+// ── Menu Builder Error Boundary ────────────────────────────────────────────────
+class MenuBuilderErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: string | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(e: unknown) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 16, background: D.redBg, border: `1px solid ${D.red}40`, borderRadius: 8, color: D.red, fontSize: 13 }}>
+          ⚠ Menu editor encountered an error: {this.state.error}
+          <button onClick={() => this.setState({ error: null })}
+            style={{ marginLeft: 12, padding: "3px 10px", borderRadius: 6, border: `1px solid ${D.red}40`, background: "transparent", color: D.red, cursor: "pointer", fontSize: 12 }}>
+            Retry
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ── Menu Builder ───────────────────────────────────────────────────────────────
 function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange: (s: MenuSection[]) => void }) {
   const [editing, setEditing] = useState<{sectionId: string; itemId?: string} | null>(null)
@@ -1148,20 +1176,20 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
 
   function addItem(sectionId: string) {
     onChange(sections.map(s => s.id === sectionId
-      ? { ...s, items: [...s.items, { id: nanoid(), name: "New Item", description: "", price: "", tags: [] }] }
+      ? { ...s, items: [...(s.items ?? []), { id: nanoid(), name: "New Item", description: "", price: "", tags: [] }] }
       : s
     ))
   }
 
   function updateItem(sectionId: string, itemId: string, patch: Partial<MenuItem>) {
     onChange(sections.map(s => s.id === sectionId
-      ? { ...s, items: s.items.map(i => i.id === itemId ? { ...i, ...patch } : i) }
+      ? { ...s, items: (s.items ?? []).map(i => i.id === itemId ? { ...i, ...patch } : i) }
       : s
     ))
   }
 
   function deleteItem(sectionId: string, itemId: string) {
-    onChange(sections.map(s => s.id === sectionId ? { ...s, items: s.items.filter(i => i.id !== itemId) } : s))
+    onChange(sections.map(s => s.id === sectionId ? { ...s, items: (s.items ?? []).filter(i => i.id !== itemId) } : s))
   }
 
   function deleteSection(sectionId: string) {
@@ -1737,7 +1765,9 @@ function NewClientWizard({ token, onDone, onCancel }: {
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: D.text, margin: "0 0 6px" }}>Menu</h2>
             <p style={{ fontSize: 13, color: D.text2, margin: "0 0 20px" }}>Optional — add menu sections and items for the guest join page. You can set this up later.</p>
-            <MenuBuilder sections={menuSections} onChange={setMenuSections} />
+            <MenuBuilderErrorBoundary>
+              <MenuBuilder sections={menuSections} onChange={setMenuSections} />
+            </MenuBuilderErrorBoundary>
           </div>
         )}
 
@@ -2494,7 +2524,9 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
         <div>
           {!configLoaded ? <div style={{ color: D.muted, fontSize: 14 }}>Loading…</div> : (
             <>
-              <MenuBuilder sections={menuSections} onChange={setMenuSections} />
+              <MenuBuilderErrorBoundary>
+                <MenuBuilder sections={menuSections} onChange={setMenuSections} />
+              </MenuBuilderErrorBoundary>
               <div style={{ marginTop: 16 }}>
                 <button onClick={() => saveConfig({ menu_config: { sections: menuSections } })} disabled={savingConfig}
                   style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
