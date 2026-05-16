@@ -393,6 +393,7 @@ async def menu_parse(file: List[UploadFile] = File(...)):
 
     IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
     content: list = []
+    has_pdf = False
 
     for f in file:
         data = await f.read()
@@ -418,6 +419,14 @@ async def menu_parse(file: List[UploadFile] = File(...)):
                 "type": "image",
                 "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
             })
+        elif mime == "application/pdf":
+            # Send PDFs as documents — Claude reads them natively
+            has_pdf = True
+            b64 = base64.b64encode(data).decode()
+            content.append({
+                "type": "document",
+                "source": {"type": "base64", "media_type": "application/pdf", "data": b64},
+            })
         else:
             text = data.decode("utf-8", errors="replace").strip()
             if text:
@@ -437,9 +446,17 @@ async def menu_parse(file: List[UploadFile] = File(...)):
         ),
     })
 
+    headers: dict = {
+        "x-api-key":         ANTHROPIC_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type":      "application/json",
+    }
+    if has_pdf:
+        headers["anthropic-beta"] = "pdfs-2024-09-25"
+
     payload = _json2.dumps({
         "model": "claude-haiku-4-5-20251001",
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "messages": [{"role": "user", "content": content}],
     }).encode()
 
@@ -447,11 +464,7 @@ async def menu_parse(file: List[UploadFile] = File(...)):
         "https://api.anthropic.com/v1/messages",
         data=payload,
         method="POST",
-        headers={
-            "x-api-key":         ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type":      "application/json",
-        },
+        headers=headers,
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
