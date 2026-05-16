@@ -467,6 +467,23 @@ function ClientAdminInner() {
     setHistory([])
   }
 
+  const [clearConfirm, setClearConfirm] = useState(false)
+  const [clearing, setClearing]         = useState(false)
+
+  async function clearDayData() {
+    if (!rid) return
+    setClearing(true)
+    try {
+      await fetch(`${API}/admin/clear-day?restaurant_id=${encodeURIComponent(rid)}`, { method: "POST" })
+      clearHistory()
+      setQueue([])
+      setTables([])
+      await fetchAll()
+    } catch {}
+    setClearing(false)
+    setClearConfirm(false)
+  }
+
   // ── Derived stats ──────────────────────────────────────────────────────────
 
   // Deduplicated tables for stats
@@ -648,6 +665,33 @@ function ClientAdminInner() {
           <div style={{ marginBottom: 20 }}><QueueSection queue={queue} /></div>
           <div style={{ marginBottom: 20 }}><TablesSection tables={tables} /></div>
           <div style={{ marginBottom: 20 }}><HistorySection history={history} onClear={clearHistory} /></div>
+
+          {/* Clear Today's Data */}
+          <div style={{ background: C.surface, border: `1px solid ${C.redBdr}`, borderRadius: 14, padding: "18px 22px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4 }}>Clear Today&apos;s Data</div>
+                <div style={{ fontSize: 12, color: C.muted }}>Removes queue entries, resets tables, and clears history for today. Cannot be undone.</div>
+              </div>
+              {!clearConfirm ? (
+                <button onClick={() => setClearConfirm(true)}
+                  style={{ marginLeft: 24, padding: "8px 18px", borderRadius: 10, background: C.redBg, color: C.red, border: `1px solid ${C.redBdr}`, fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  Clear Day
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: 8, marginLeft: 24 }}>
+                  <button onClick={() => setClearConfirm(false)} disabled={clearing}
+                    style={{ padding: "8px 16px", borderRadius: 10, background: C.surface2, color: C.text2, border: `1px solid ${C.border}`, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    Cancel
+                  </button>
+                  <button onClick={clearDayData} disabled={clearing}
+                    style={{ padding: "8px 18px", borderRadius: 10, background: C.red, color: "#fff", border: "none", fontSize: 13, fontWeight: 700, cursor: clearing ? "wait" : "pointer", whiteSpace: "nowrap" }}>
+                    {clearing ? "Clearing…" : "Yes, clear it"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

@@ -1067,6 +1067,63 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
   const [editing, setEditing] = useState<{sectionId: string; itemId?: string} | null>(null)
   const [newSection, setNewSection] = useState("")
 
+  // Import wizard state
+  const [wizardOpen,   setWizardOpen]   = useState(false)
+  const [importing,    setImporting]    = useState(false)
+  const [importError,  setImportError]  = useState<string | null>(null)
+  const [preview,      setPreview]      = useState<MenuSection[] | null>(null)
+  const [undoSnapshot, setUndoSnapshot] = useState<MenuSection[] | null>(null)
+  const [applied,      setApplied]      = useState(false)
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    setImportError(null)
+    setPreview(null)
+    setApplied(false)
+    try {
+      const fd = new FormData()
+      fd.append("file", file)
+      const res = await fetch("/api/owner/menu-parse", { method: "POST", body: fd })
+      const data = await res.json()
+      if (!res.ok) {
+        setImportError(data.error ?? "Import failed")
+      } else {
+        setPreview(data.sections as MenuSection[])
+      }
+    } catch {
+      setImportError("Network error — could not reach server")
+    } finally {
+      setImporting(false)
+      // Reset file input so user can re-select same file
+      e.target.value = ""
+    }
+  }
+
+  function applyImport() {
+    if (!preview) return
+    setUndoSnapshot(sections)
+    onChange(preview)
+    setApplied(true)
+    setPreview(null)
+  }
+
+  function undoImport() {
+    if (!undoSnapshot) return
+    onChange(undoSnapshot)
+    setUndoSnapshot(null)
+    setApplied(false)
+  }
+
+  function cancelWizard() {
+    setWizardOpen(false)
+    setPreview(null)
+    setImportError(null)
+    setImporting(false)
+    setApplied(false)
+  }
+
   function addSection() {
     if (!newSection.trim()) return
     onChange([...sections, { id: nanoid(), title: newSection.trim(), items: [] }])
@@ -1101,6 +1158,95 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* Import wizard */}
+      <div>
+        {!wizardOpen ? (
+          <button onClick={() => { setWizardOpen(true); setApplied(false) }}
+            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${D.blueBorder}`,
+              background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+            ↑ Import from Image/Menu
+          </button>
+        ) : (
+          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px",
+            display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: D.text }}>Import menu from file</span>
+              <button onClick={cancelWizard}
+                style={{ padding: "3px 9px", borderRadius: 6, border: `1px solid ${D.border}`,
+                  background: "transparent", color: D.muted, fontSize: 12, cursor: "pointer" }}>
+                ✕ Close
+              </button>
+            </div>
+
+            {!importing && !preview && !applied && (
+              <div>
+                <label style={{ display: "block", fontSize: 12, color: D.text2, marginBottom: 6 }}>
+                  Choose an image (JPG, PNG, WEBP) or document (PDF, TXT, CSV):
+                </label>
+                <input type="file" accept="image/*,.pdf,.txt,.csv"
+                  onChange={handleImportFile}
+                  style={{ fontSize: 12, color: D.text2, cursor: "pointer" }} />
+              </div>
+            )}
+
+            {importing && (
+              <div style={{ fontSize: 13, color: D.blue, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⟳</span>
+                Parsing menu with AI…
+              </div>
+            )}
+
+            {importError && (
+              <div style={{ fontSize: 12, color: D.red, background: D.redBg, borderRadius: 6,
+                padding: "8px 12px", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>⚠</span> {importError}
+                <button onClick={() => setImportError(null)}
+                  style={{ marginLeft: "auto", background: "transparent", border: "none",
+                    color: D.muted, cursor: "pointer", fontSize: 12 }}>
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {preview && !applied && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 13, color: D.text, background: D.greenBg,
+                  border: `1px solid ${D.greenBorder}`, borderRadius: 6, padding: "8px 12px" }}>
+                  Import found <strong>{preview.length}</strong> section{preview.length !== 1 ? "s" : ""},{" "}
+                  <strong>{preview.reduce((n, s) => n + s.items.length, 0)}</strong> items.
+                  Apply to replace current menu?
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={applyImport}
+                    style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${D.green}40`,
+                      background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    Apply
+                  </button>
+                  <button onClick={() => { setPreview(null); setImportError(null) }}
+                    style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${D.border}`,
+                      background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {applied && undoSnapshot && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                <span style={{ color: D.green }}>✓ Menu imported successfully.</span>
+                <button onClick={undoImport}
+                  style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.border}`,
+                    background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
+                  Undo
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Add section */}
       <div style={{ display: "flex", gap: 8 }}>
         <input placeholder="New section (e.g. Breakfast, Lunch, Drinks)"
@@ -3419,10 +3565,13 @@ function AnalyticsView({ token, clients }: { token: string; clients: Client[] })
 
   useEffect(() => { load() }, [load])
 
-  // Build restaurant list: all known clients + any IDs seen in analytics data
+  // Build restaurant list: active/trial clients + any IDs seen in analytics data
+  const activeClientIds = new Set(
+    clients.filter(c => c.status !== "archived").map(c => c.id).filter((x): x is string => !!x)
+  )
   const restaurants = Array.from(new Set([
-    ...clients.map(c => c.id).filter((x): x is string => !!x),
-    ...data.map(e => e.restaurant_id).filter((x): x is string => x !== null),
+    ...activeClientIds,
+    ...data.map(e => e.restaurant_id).filter((x): x is string => x !== null && activeClientIds.has(x)),
   ]))
   const filtered = data.filter(e => restFilter === "all" || e.restaurant_id === restFilter)
 

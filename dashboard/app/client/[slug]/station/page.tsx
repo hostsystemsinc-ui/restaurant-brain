@@ -859,8 +859,8 @@ function DraggableQueueCard({
             <button
               onPointerDown={e => e.stopPropagation()}
               onClick={e => { e.stopPropagation(); onAddTime?.() }}
-              className="shrink-0 rounded-lg text-xs font-bold transition-all active:scale-95"
-              style={{ height: 28, paddingInline: 8, background: "rgba(251,191,36,0.10)", color: "rgba(251,191,36,0.85)", border: "1px solid rgba(251,191,36,0.22)", whiteSpace: "nowrap" }}
+              className="shrink-0 rounded-xl font-bold transition-all active:scale-95"
+              style={{ height: 38, paddingInline: 20, background: "rgba(99,179,237,0.12)", color: "#60a5fa", border: "1px solid rgba(99,179,237,0.35)", whiteSpace: "nowrap", fontSize: 14, letterSpacing: "0.02em" }}
             >
               +5 min
             </button>
@@ -2228,7 +2228,7 @@ function minsToResTime(totalMins: number): string {
 
 function DraggableResCard({
   res, now, assignedTableNum,
-  isSelected, onSelect, onSeat, onNoShow, onTimeUpdated,
+  isSelected, onSelect, onSeat, onNoShow, onEdited,
 }: {
   res: Reservation
   now: Date
@@ -2237,42 +2237,51 @@ function DraggableResCard({
   onSelect?: () => void
   onSeat: () => void
   onNoShow: () => void
-  onTimeUpdated?: (newTime: string) => void
+  onEdited?: (updates: Partial<Reservation>) => void
 }) {
   const urgency    = getResUrgency(res.date, res.time, now)
   const isLate     = urgency === "late"
   const isNow      = urgency === "now"
   const isArriving = urgency === "arriving"
 
-  const [editing,   setEditing]   = useState(false)
-  const [editMins,  setEditMins]  = useState(() => resTimeToMins(res.time))
-  const [saving,    setSaving]    = useState(false)
+  const [editing,       setEditing]       = useState(false)
+  const [editMins,      setEditMins]      = useState(() => resTimeToMins(res.time))
+  const [editName,      setEditName]      = useState(res.guest_name)
+  const [editParty,     setEditParty]     = useState(res.party_size)
+  const [editPhone,     setEditPhone]     = useState(res.phone ?? "")
+  const [editNotes,     setEditNotes]     = useState(res.notes ?? "")
+  const [saving,        setSaving]        = useState(false)
 
-  const nowMins = now.getHours() * 60 + now.getMinutes()
-
+  const nowMins     = now.getHours() * 60 + now.getMinutes()
   const canDecrease = editMins - 10 > nowMins
-  const handleAdjust = (delta: number) => {
-    setEditMins(prev => {
-      const next = prev + delta
-      if (next <= nowMins) return prev
-      return next
-    })
+
+  const openEdit = () => {
+    setEditMins(resTimeToMins(res.time))
+    setEditName(res.guest_name)
+    setEditParty(res.party_size)
+    setEditPhone(res.phone ?? "")
+    setEditNotes(res.notes ?? "")
+    setEditing(true)
   }
 
-  const handleSaveTime = async () => {
+  const handleSave = async () => {
     setSaving(true)
     const newTime = minsToResTime(editMins)
     try {
       await fetchT(`${API}/reservations/${res.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ time: newTime }),
+        body: JSON.stringify({
+          time:       newTime,
+          notes:      editNotes.trim() || null,
+          party_size: editParty,
+          phone:      editPhone.trim() || null,
+          guest_name: editName.trim() || res.guest_name,
+        }),
       })
-      onTimeUpdated?.(newTime)
+      onEdited?.({ guest_name: editName.trim() || res.guest_name, party_size: editParty, time: newTime, notes: editNotes.trim() || null, phone: editPhone.trim() || null })
       setEditing(false)
-    } catch {
-      // keep edit panel open on error
-    }
+    } catch { /* keep panel open */ }
     setSaving(false)
   }
 
@@ -2280,6 +2289,11 @@ function DraggableResCard({
     id: `res-${res.id}`,
     data: { type: "reservation", res },
   })
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.18)",
+    borderRadius: 6, color: "rgba(var(--cream),0.90)", fontSize: 12, padding: "5px 8px", outline: "none",
+  }
 
   return (
     <div
@@ -2335,34 +2349,49 @@ function DraggableResCard({
         )}
       </div>
 
-      {/* ── Edit time panel ── */}
+      {/* ── Full edit panel ── */}
       {editing && (
-        <div onPointerDown={e => e.stopPropagation()} style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 7, background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.14)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-            <button
-              onClick={e => { e.stopPropagation(); handleAdjust(-10) }}
-              disabled={!canDecrease}
-              className="rounded-lg font-bold transition-all active:scale-95 disabled:opacity-30"
-              style={{ width: 34, height: 34, fontSize: 16, background: "rgba(var(--accent),0.10)", color: "rgba(var(--cream),0.80)", border: "1px solid rgba(var(--accent),0.20)", cursor: canDecrease ? "pointer" : "not-allowed" }}
-            >−</button>
-            <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(var(--cream),0.95)", fontVariantNumeric: "tabular-nums" }}>
-              {fmt12Res(minsToResTime(editMins))}
-            </span>
-            <button
-              onClick={e => { e.stopPropagation(); handleAdjust(10) }}
-              className="rounded-lg font-bold transition-all active:scale-95"
-              style={{ width: 34, height: 34, fontSize: 16, background: "rgba(var(--accent),0.10)", color: "rgba(var(--cream),0.80)", border: "1px solid rgba(var(--accent),0.20)", cursor: "pointer" }}
-            >+</button>
+        <div onPointerDown={e => e.stopPropagation()} style={{ marginBottom: 6, padding: "8px", borderRadius: 7, background: "rgba(var(--accent),0.05)", border: "1px solid rgba(var(--accent),0.14)", display: "flex", flexDirection: "column", gap: 6 }}>
+          {/* Name */}
+          <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Guest name"
+            style={inputStyle} onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} />
+          {/* Party size + Phone row */}
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setEditParty(p => Math.max(1, p - 1)) }}
+                style={{ width: 26, height: 26, borderRadius: 5, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--cream),0.70)", cursor: "pointer", fontSize: 14 }}>−</button>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "rgba(var(--cream),0.90)", minWidth: 22, textAlign: "center" }}>{editParty}p</span>
+              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setEditParty(p => p + 1) }}
+                style={{ width: 26, height: 26, borderRadius: 5, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--cream),0.70)", cursor: "pointer", fontSize: 14 }}>+</button>
+            </div>
+            <input value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Phone (opt.)"
+              style={{ ...inputStyle, flex: 1 }} onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} />
           </div>
-          <div style={{ display: "flex", gap: 5, marginTop: 6 }}>
-            <button onClick={e => { e.stopPropagation(); setEditing(false); setEditMins(resTimeToMins(res.time)) }}
-              className="rounded-lg text-xs font-semibold transition-all active:scale-95"
-              style={{ flex: 1, height: 30, background: "rgba(var(--accent),0.06)", color: "rgba(var(--warm),0.55)", border: "1px solid rgba(var(--accent),0.14)", cursor: "pointer" }}>
+          {/* Notes */}
+          <input value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Notes (opt.)"
+            style={inputStyle} onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()} />
+          {/* Time adjuster */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "4px 0" }}>
+            <span style={{ fontSize: 10, color: "rgba(var(--warm),0.55)", letterSpacing: "0.06em" }}>TIME</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); if (canDecrease) setEditMins(m => m - 10) }}
+                disabled={!canDecrease}
+                style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--cream),0.70)", cursor: canDecrease ? "pointer" : "not-allowed", fontSize: 16, opacity: canDecrease ? 1 : 0.35 }}>−</button>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream),0.95)", fontVariantNumeric: "tabular-nums", minWidth: 60, textAlign: "center" }}>
+                {fmt12Res(minsToResTime(editMins))}
+              </span>
+              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setEditMins(m => m + 10) }}
+                style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--cream),0.70)", cursor: "pointer", fontSize: 16 }}>+</button>
+            </div>
+          </div>
+          {/* Cancel / Save */}
+          <div style={{ display: "flex", gap: 5 }}>
+            <button onClick={e => { e.stopPropagation(); setEditing(false) }}
+              style={{ flex: 1, height: 30, borderRadius: 6, background: "rgba(var(--accent),0.06)", color: "rgba(var(--warm),0.55)", border: "1px solid rgba(var(--accent),0.14)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
               Cancel
             </button>
-            <button onClick={e => { e.stopPropagation(); handleSaveTime() }} disabled={saving}
-              className="rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
-              style={{ flex: 1, height: 30, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.28)", cursor: "pointer" }}>
+            <button onClick={e => { e.stopPropagation(); handleSave() }} disabled={saving}
+              style={{ flex: 1, height: 30, borderRadius: 6, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.28)", cursor: "pointer", fontSize: 12, fontWeight: 700, opacity: saving ? 0.6 : 1 }}>
               {saving ? "…" : "Save"}
             </button>
           </div>
@@ -2378,7 +2407,7 @@ function DraggableResCard({
           {assignedTableNum !== undefined ? `Seat → T${assignedTableNum}` : "Seat Guest"}
         </button>
         <button
-          onClick={e => { e.stopPropagation(); if (!editing) setEditMins(resTimeToMins(res.time)); setEditing(v => !v) }}
+          onClick={e => { e.stopPropagation(); editing ? setEditing(false) : openEdit() }}
           style={{ flex: 1, height: 34, padding: "0 8px", borderRadius: 8, border: `1px solid ${editing ? "rgba(99,179,237,0.50)" : "rgba(var(--accent),0.22)"}`, cursor: "pointer", fontSize: 11, fontWeight: 700, background: editing ? "rgba(99,179,237,0.12)" : "rgba(var(--accent),0.08)", color: editing ? "#60a5fa" : "rgba(var(--warm),0.70)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
         >
           <Pencil style={{ width: 10, height: 10 }} />
@@ -2704,10 +2733,21 @@ function ClientStationInner() {
 
   const addTime = useCallback(async (entry: QueueEntry) => {
     const newMins = (entry.quoted_wait ?? 0) + 5
+    // Optimistic update first
     setQueue(prev => prev.map(e => e.id === entry.id ? { ...e, quoted_wait: newMins } : e))
-    try { await fetchT(`${API}/queue/${entry.id}/wait?minutes=${newMins}`, { method: "PATCH" }) } catch {}
-    refreshAll()
-  }, [refreshAll])
+    try {
+      const r = await fetchT(`${API}/queue/${entry.id}/wait?minutes=${newMins}`, { method: "PATCH" })
+      if (r.ok) {
+        const data = await r.json()
+        // Update with server-confirmed values — wait_set_at is the countdown anchor
+        setQueue(prev => prev.map(e => e.id === entry.id
+          ? { ...e, quoted_wait: data.quoted_wait ?? newMins, wait_set_at: data.wait_set_at ?? e.wait_set_at }
+          : e))
+      }
+    } catch {}
+    // Intentionally NO refreshAll() here — the 2s background poll will sync.
+    // Calling refreshAll() races with in-flight polls and causes the visible flash.
+  }, [])
 
   const remove = useCallback(async (id: string) => {
     const entry = queueRef.current.find(e => e.id === id)
@@ -3324,9 +3364,26 @@ function ClientStationInner() {
                           await fetchT(`${API}/reservations/${res.id}/status?status=no-show`, { method: "PATCH" }).catch(() => {})
                           showToast(`${res.guest_name} marked as no-show`, "warn")
                         }}
-                        onTimeUpdated={(newTime) => {
-                          setTodayRes(prev => prev.map(r => r.id === res.id ? { ...r, time: newTime } : r))
-                          showToast(`${res.guest_name}'s reservation moved to ${fmt12Res(newTime)}`)
+                        onEdited={(updates) => {
+                          setTodayRes(prev => prev.map(r => r.id === res.id ? { ...r, ...updates } : r))
+                          if (updates.time || updates.guest_name || updates.party_size) {
+                            setReservedTables(prev => {
+                              const next = new Map(prev)
+                              for (const [tNum, info] of next) {
+                                if (info.resId === res.id) {
+                                  next.set(tNum, {
+                                    ...info,
+                                    time:      updates.time      ?? info.time,
+                                    guestName: updates.guest_name ?? info.guestName,
+                                    partySize: updates.party_size ?? info.partySize,
+                                  })
+                                  break
+                                }
+                              }
+                              return next
+                            })
+                          }
+                          showToast(`${updates.guest_name ?? res.guest_name}'s reservation updated`)
                         }}
                       />
                     )
@@ -3352,7 +3409,7 @@ function ClientStationInner() {
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
                       onAddTime={() => addTime(e)}
-                      onRemoved={() => refreshAll()} />
+                      onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
                   ))}
                 </div>
               </div>
@@ -3380,7 +3437,7 @@ function ClientStationInner() {
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                      onRemoved={() => refreshAll()} />
+                      onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
                   ))}
                 </div>
               </div>
@@ -3417,7 +3474,7 @@ function ClientStationInner() {
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
                       onAddTime={() => addTime(e)}
-                      onRemoved={() => refreshAll()} />
+                      onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
                   ))}
                 </div>
               ) : null}

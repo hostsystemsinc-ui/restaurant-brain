@@ -1877,13 +1877,22 @@ def update_reservation(res_id: str, req: ReservationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class PatchReservationRequest(BaseModel):
+    time:       Optional[str] = None
+    notes:      Optional[str] = None
+    party_size: Optional[int] = None
+    phone:      Optional[str] = None
+    guest_name: Optional[str] = None
+
 @app.patch("/reservations/{res_id}")
-def patch_reservation(res_id: str, time: Optional[str] = None, notes: Optional[str] = None, party_size: Optional[int] = None):
+def patch_reservation(res_id: str, body: PatchReservationRequest):
     """Partial update — only the fields provided are written."""
     payload: dict = {}
-    if time       is not None: payload["time"]       = time
-    if notes      is not None: payload["notes"]      = notes
-    if party_size is not None: payload["party_size"] = party_size
+    if body.time       is not None: payload["time"]       = body.time
+    if body.notes      is not None: payload["notes"]      = body.notes
+    if body.party_size is not None: payload["party_size"] = body.party_size
+    if body.phone      is not None: payload["phone"]      = body.phone
+    if body.guest_name is not None: payload["guest_name"] = body.guest_name
     if not payload:
         return {"status": "no-op"}
     try:
