@@ -286,11 +286,23 @@ function RestaurantSectionsPanel({ rid, color, name }: { rid: string; color: str
   )
 }
 
+const SESSION_KEY = "walnut_sections_authed"
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function SectionsPage() {
   const [authed, setAuthed] = useState(false)
 
-  if (!authed) return <PinScreen onSuccess={() => setAuthed(true)} />
+  // Restore auth from sessionStorage so navigating away and back doesn't re-prompt
+  useEffect(() => {
+    if (sessionStorage.getItem(SESSION_KEY) === "1") setAuthed(true)
+  }, [])
+
+  function handlePinSuccess() {
+    sessionStorage.setItem(SESSION_KEY, "1")
+    setAuthed(true)
+  }
+
+  if (!authed) return <PinScreen onSuccess={handlePinSuccess} />
 
   return (
     <div style={{ minHeight: "100dvh", background: C.bg, fontFamily: "var(--font-geist), system-ui, -apple-system, sans-serif" }}>
