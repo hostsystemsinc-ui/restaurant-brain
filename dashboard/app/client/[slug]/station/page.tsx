@@ -723,7 +723,7 @@ function GuestEditModal({
 // ── Draggable Queue Card ───────────────────────────────────────────────────────
 
 function DraggableQueueCard({
-  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved, isNeedsQuote,
+  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved, isNeedsQuote, onAddTime,
 }: {
   entry: QueueEntry
   onSeat: () => void
@@ -733,10 +733,12 @@ function DraggableQueueCard({
   onEdit?: (displayWait: number) => void
   onRemoved?: () => void
   isNeedsQuote?: boolean
+  onAddTime?: () => void
 }) {
   const isReady = entry.status === "ready"
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [removing,      setRemoving]      = useState(false)
+  const [expanded,      setExpanded]      = useState(true)
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: entry.id,
     data: { entry },
@@ -744,19 +746,13 @@ function DraggableQueueCard({
 
   const handleRemove = async () => {
     setRemoving(true)
-    onRemoved?.()  // optimistic: remove from UI immediately
+    onRemoved?.()
     try { await fetch(`${API}/queue/${entry.id}/remove`, { method: "POST" }) } catch {}
     setRemoving(false)
   }
 
-  // Per-card live countdown — driven by wait_set_at + quoted_wait for sub-minute accuracy,
-  // falls back to remaining_wait / wait_estimate when those are absent.
-  // secsLeft: seconds remaining (negative = overdue). Matches analog's deadlineMs logic.
   const computeSecsLeft = useCallback(() => {
-    if (entry.paused) {
-      // paused: use remaining_wait as frozen minutes
-      return (entry.remaining_wait ?? 0) * 60
-    }
+    if (entry.paused) return (entry.remaining_wait ?? 0) * 60
     if (entry.wait_set_at && entry.quoted_wait != null) {
       const deadlineMs = (parseUTCMs(entry.wait_set_at) ?? 0) + entry.quoted_wait * 60_000
       return Math.round((deadlineMs - Date.now()) / 1000)
@@ -765,7 +761,6 @@ function DraggableQueueCard({
   }, [entry.paused, entry.wait_set_at, entry.quoted_wait, entry.remaining_wait, entry.wait_estimate])
 
   const [secsLeft, setSecsLeft] = useState(computeSecsLeft)
-  const [showBar,  setShowBar]  = useState(false)
 
   useEffect(() => { setSecsLeft(computeSecsLeft()) },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -778,18 +773,49 @@ function DraggableQueueCard({
   }, [computeSecsLeft, entry.paused])
 
   const displayWait = Math.ceil(secsLeft / 60)
-  const quotedTotal = entry.quoted_wait ?? entry.wait_estimate ?? 0
-  // Progress 0→1 from start to deadline; clamp 0–1
-  const progress = quotedTotal > 0 ? Math.max(0, Math.min(1, 1 - secsLeft / (quotedTotal * 60))) : 0
-  const isOverdue = secsLeft <= 0 && quotedTotal > 0
-  const barColor  = isOverdue ? "#ef4444" : secsLeft < 120 ? "#f97316" : "#22c55e"
+  const isOverdue   = secsLeft <= 0 && (entry.quoted_wait ?? entry.wait_estimate ?? 0) > 0
 
+  // ── Needs-quote: simple horizontal card (no drag, no collapse) ─────────────
+  if (isNeedsQuote) {
+    return (
+      <div style={{
+        background: "rgba(var(--accent),0.06)",
+        border: "1px solid rgba(var(--accent),0.16)",
+        borderRadius: 12,
+        padding: "10px 12px",
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: "rgba(var(--cream),0.97)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {entry.name || "Guest"}
+          </div>
+          <div style={{ fontSize: 11, color: "rgba(var(--warm),0.60)", marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>
+            <Users className="w-2.5 h-2.5" />
+            {entry.party_size}p
+            <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
+            <Clock className="w-2.5 h-2.5" />
+            {timeWaiting(entry.arrival_time)} waiting
+          </div>
+        </div>
+        <button
+          onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+          className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-bold shrink-0"
+          style={{ height: 40, paddingInline: 14, fontSize: 13, background: "rgba(99,179,237,0.15)", color: "#60a5fa", border: "1px solid rgba(99,179,237,0.40)" }}
+        >
+          <Pencil className="w-3.5 h-3.5 shrink-0" />
+          Quote
+        </button>
+      </div>
+    )
+  }
+
+  // ── Regular card: collapsible with +5 min always visible ──────────────────
   return (
     <div
       ref={setNodeRef}
       {...attributes}
-      {...listeners}
-      onClick={() => { if (!isDragging) onSelect?.() }}
       style={{
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
@@ -798,146 +824,126 @@ function DraggableQueueCard({
         border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "rgba(var(--accent),0.16)"}`,
         boxShadow: isSelected ? "0 0 0 2px rgba(255,220,100,0.18), inset 0 0 10px rgba(255,220,100,0.05)" : undefined,
         borderRadius: 12,
-        cursor: isDragging ? "grabbing" : "grab",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        padding: "10px 12px",
+        overflow: "hidden",
       }}
     >
-      {/* ── Row 1: grip + position + name ── */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(var(--warm),0.45)" }} />
-        <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "rgba(var(--accent),0.12)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
-          {entry.position ?? "—"}
-        </div>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
-          <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(var(--cream),0.97)", wordBreak: "break-word" }}>
-            {entry.name || "Guest"}
-          </span>
-          {isReady && (
-            <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
+      {/* ── Top section — always visible; drag handle + click to collapse ── */}
+      <div
+        {...listeners}
+        onClick={() => { if (!isDragging) setExpanded(e => !e) }}
+        style={{
+          cursor: isDragging ? "grabbing" : "grab",
+          padding: "10px 12px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
+      >
+        {/* Row 1: grip + position badge + name + +5 min */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <GripVertical className="w-3.5 h-3.5 shrink-0" style={{ color: "rgba(var(--warm),0.45)" }} />
+          <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums"
+            style={{ background: isReady ? "rgba(34,197,94,0.20)" : "rgba(var(--accent),0.12)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
+            {entry.position ?? "—"}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(var(--cream),0.97)", wordBreak: "break-word" }}>
+              {entry.name || "Guest"}
+            </span>
+            {isReady && (
+              <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse ml-1"
+                style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
+            )}
+          </div>
+          {entry.quoted_wait != null && (
+            <button
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => { e.stopPropagation(); onAddTime?.() }}
+              className="shrink-0 rounded-lg text-xs font-bold transition-all active:scale-95"
+              style={{ height: 28, paddingInline: 8, background: "rgba(251,191,36,0.10)", color: "rgba(251,191,36,0.85)", border: "1px solid rgba(251,191,36,0.22)", whiteSpace: "nowrap" }}
+            >
+              +5 min
+            </button>
           )}
         </div>
-      </div>
 
-      {/* ── Row 2: meta info ── */}
-      <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(var(--warm),0.65)" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-          <Users className="w-2.5 h-2.5" />{entry.party_size}p
-        </span>
-        <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
-        <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }} title="Time since arrival">
-          <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
-        </span>
-        {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
-          <>
-            <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
-            <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)", letterSpacing: "0.01em" }}>
-              {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
-            </span>
-            {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
-            {/* Progress bar toggle */}
-            <button
-              onPointerDown={e => { e.stopPropagation() }}
-              onClick={e => { e.stopPropagation(); setShowBar(b => !b) }}
-              style={{ marginLeft: 2, width: 14, height: 14, borderRadius: 3, background: showBar ? `${barColor}22` : "rgba(var(--accent),0.08)", border: `1px solid ${showBar ? barColor : "rgba(var(--accent),0.20)"}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}
-              title={showBar ? "Hide timer bar" : "Show timer bar"}
-            >
-              <div style={{ width: 7, height: 3, borderRadius: 1, background: showBar ? barColor : "rgba(var(--accent),0.35)" }} />
-            </button>
-          </>
+        {/* Row 2: meta */}
+        <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(var(--warm),0.65)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <Users className="w-2.5 h-2.5" />{entry.party_size}p
+          </span>
+          <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
+          <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <Clock className="w-2.5 h-2.5" />{timeWaiting(entry.arrival_time)}
+          </span>
+          {(entry.quoted_wait != null || entry.wait_estimate != null) && !isReady && (
+            <>
+              <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
+              <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)" }}>
+                {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
+              </span>
+              {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
+            </>
+          )}
+        </div>
+
+        {entry.notes && (
+          <div style={{ paddingLeft: 38, fontSize: 11, color: "rgba(var(--warm),0.50)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {entry.notes}
+          </div>
         )}
       </div>
-      {/* ── Progress bar (shown when toggled) ── */}
-      {showBar && quotedTotal > 0 && !isReady && (
-        <div onPointerDown={e => e.stopPropagation()} style={{ paddingLeft: 38, paddingRight: 4 }}>
-          <div style={{ height: 4, borderRadius: 2, background: "rgba(var(--accent),0.10)", overflow: "hidden", position: "relative" }}>
-            <div style={{
-              position: "absolute", left: 0, top: 0, bottom: 0,
-              width: `${(progress * 100).toFixed(1)}%`,
-              background: barColor,
-              borderRadius: 2,
-              transition: "width 1s linear, background 0.3s",
-            }} />
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2, fontSize: 9, color: "rgba(var(--accent),0.40)" }}>
-            <span>0</span>
-            <span style={{ color: isOverdue ? "#ef4444" : "rgba(var(--accent),0.40)" }}>
-              {isOverdue ? `${Math.abs(Math.ceil(secsLeft / 60))}m over` : `${displayWait}m left`}
-            </span>
-            <span>{quotedTotal}m</span>
-          </div>
-        </div>
-      )}
-      {/* ── Row 2b: notes preview ── */}
-      {entry.notes && (
-        <div style={{ paddingLeft: 38, fontSize: 11, color: "rgba(var(--warm),0.50)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {entry.notes}
-        </div>
-      )}
 
-
-      {/* ── Row 3: action buttons or delete confirm ── */}
-      {confirmDelete ? (
-        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
-          <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", textAlign: "center" }}>
-            Remove {entry.name || "guest"}?
-          </span>
-          <div style={{ display: "flex", gap: 5, width: "100%" }}>
-            <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
-              className="h-11 rounded-xl text-xs font-semibold transition-all active:scale-95"
-              style={{ flex: 1, minWidth: 0, background: "rgba(var(--accent),0.08)", color: "rgba(var(--warm),0.60)", border: "1px solid rgba(var(--accent),0.15)" }}>
-              Cancel
-            </button>
-            <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
-              className="h-11 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
-              style={{ flex: 1, minWidth: 0, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
-              {removing ? "…" : "Remove"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* Full-width action row — buttons stretch to fill the card */
-        <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5, marginTop: 4 }}>
-          {/* Seat — primary, gets most space */}
-          <button onClick={e => { e.stopPropagation(); onSeat() }}
-            className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-bold"
-            style={{ flex: 2, height: 44, fontSize: 13, letterSpacing: "0.04em", background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            Seat
-          </button>
-          {/* Notify (only when not yet ready and already quoted) */}
-          {!isReady && !isNeedsQuote ? (
-            <button onClick={e => { e.stopPropagation(); onNotify() }}
-              className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
-              style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.28)" }}>
-              <BellRing className="w-3.5 h-3.5 shrink-0" />
-              <span style={{ letterSpacing: "0.02em" }}>Notify</span>
-            </button>
-          ) : null}
-          {/* Edit or Quote */}
-          {isNeedsQuote ? (
-            <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
-              className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-bold"
-              style={{ flex: 2, height: 44, fontSize: 13, background: "rgba(99,179,237,0.15)", color: "#60a5fa", border: "1px solid rgba(99,179,237,0.40)" }}>
-              <Pencil className="w-4 h-4 shrink-0" />
-              <span style={{ letterSpacing: "0.04em" }}>Quote</span>
-            </button>
+      {/* ── Action buttons — only when expanded ── */}
+      {expanded && (
+        <div style={{ padding: "0 12px 10px" }}>
+          {confirmDelete ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              <span style={{ fontSize: 11, color: "rgba(239,68,68,0.80)", textAlign: "center" }}>
+                Remove {entry.name || "guest"}?
+              </span>
+              <div style={{ display: "flex", gap: 5 }}>
+                <button onClick={e => { e.stopPropagation(); setConfirmDelete(false) }}
+                  className="h-11 rounded-xl text-xs font-semibold transition-all active:scale-95"
+                  style={{ flex: 1, background: "rgba(var(--accent),0.08)", color: "rgba(var(--warm),0.60)", border: "1px solid rgba(var(--accent),0.15)" }}>
+                  Cancel
+                </button>
+                <button onClick={e => { e.stopPropagation(); handleRemove() }} disabled={removing}
+                  className="h-11 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+                  style={{ flex: 1, background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.30)" }}>
+                  {removing ? "…" : "Remove"}
+                </button>
+              </div>
+            </div>
           ) : (
-            <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
-              className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
-              style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(251,191,36,0.09)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.22)" }}>
-              <Pencil className="w-3.5 h-3.5 shrink-0" />
-              <span style={{ letterSpacing: "0.02em" }}>Edit</span>
-            </button>
+            <div style={{ display: "flex", gap: 5 }}>
+              <button onClick={e => { e.stopPropagation(); onSeat() }}
+                className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-bold"
+                style={{ flex: 2, height: 44, fontSize: 13, letterSpacing: "0.04em", background: "rgba(34,197,94,0.14)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.32)" }}>
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                Seat
+              </button>
+              {!isReady && (
+                <button onClick={e => { e.stopPropagation(); onNotify() }}
+                  className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
+                  style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(249,115,22,0.10)", color: "#f97316", border: "1px solid rgba(249,115,22,0.28)" }}>
+                  <BellRing className="w-3.5 h-3.5 shrink-0" />
+                  <span>Notify</span>
+                </button>
+              )}
+              <button onClick={e => { e.stopPropagation(); onEdit?.(displayWait) }}
+                className="flex items-center justify-center gap-1.5 rounded-xl transition-all active:scale-95 font-semibold"
+                style={{ flex: 1, height: 44, fontSize: 12, background: "rgba(251,191,36,0.09)", color: "rgba(251,191,36,0.80)", border: "1px solid rgba(251,191,36,0.22)" }}>
+                <Pencil className="w-3.5 h-3.5 shrink-0" />
+                <span>Edit</span>
+              </button>
+              <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
+                className="flex items-center justify-center rounded-xl transition-all active:scale-95"
+                style={{ width: 44, height: 44, flexShrink: 0, background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
-          {/* Remove */}
-          <button onClick={e => { e.stopPropagation(); setConfirmDelete(true) }}
-            className="flex items-center justify-center rounded-xl transition-all active:scale-95"
-            style={{ width: 44, height: 44, flexShrink: 0, background: "rgba(239,68,68,0.07)", color: "rgba(239,68,68,0.55)", border: "1px solid rgba(239,68,68,0.18)" }}>
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
         </div>
       )}
     </div>
@@ -1482,7 +1488,7 @@ function AddGuestDrawer({
   const [partySize, setPartySize] = useState(2)
   const [phone,     setPhone]     = useState("")
   const [notes,     setNotes]     = useState("")
-  const [waitMins,  setWaitMins]  = useState<number | null>(null)
+  const [waitMins,  setWaitMins]  = useState<number | null>(15)
   const [loading,   setLoading]   = useState(false)
   const [error,     setError]     = useState("")
   const PRESETS = [5, 10, 15, 20, 30, 45]
@@ -1505,10 +1511,11 @@ function AddGuestDrawer({
   const needed     = samplesNeeded()
   useEffect(() => {
     if (suggestion !== null) setWaitMins(suggestion)
-    else setWaitMins(null)
+    else setWaitMins(w => w ?? 15)  // keep existing or fall back to 15
   }, [partySize, suggestion])
 
   const submit = async () => {
+    if (!waitMins) { setError("Set a wait time before adding the guest."); return }
     setLoading(true); setError("")
     try {
       const r = await fetch(`${API}/queue/join`, {
@@ -2209,25 +2216,65 @@ function HistoryDrawer({ onClose, onRestored, rid: histRid }: { onClose: () => v
 
 // ── Draggable reservation sidebar card ────────────────────────────────────────
 
+function resTimeToMins(t: string): number {
+  const [h, m] = t.split(":").map(Number)
+  return h * 60 + (m || 0)
+}
+function minsToResTime(totalMins: number): string {
+  const h = Math.floor(totalMins / 60) % 24
+  const m = totalMins % 60
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+}
+
 function DraggableResCard({
-  res, now, assignedTableNum, assignedApiTable,
-  isSelected, onSelect, onSeat, onAssign, onClearAssignment, onNoShow,
+  res, now, assignedTableNum,
+  isSelected, onSelect, onSeat, onNoShow, onTimeUpdated,
 }: {
   res: Reservation
   now: Date
   assignedTableNum: number | undefined
-  assignedApiTable?: Table
   isSelected?: boolean
   onSelect?: () => void
   onSeat: () => void
-  onAssign: () => void
-  onClearAssignment: () => void
   onNoShow: () => void
+  onTimeUpdated?: (newTime: string) => void
 }) {
   const urgency    = getResUrgency(res.date, res.time, now)
   const isLate     = urgency === "late"
   const isNow      = urgency === "now"
   const isArriving = urgency === "arriving"
+
+  const [editing,   setEditing]   = useState(false)
+  const [editMins,  setEditMins]  = useState(() => resTimeToMins(res.time))
+  const [saving,    setSaving]    = useState(false)
+
+  const nowMins = now.getHours() * 60 + now.getMinutes()
+
+  const canDecrease = editMins - 10 > nowMins
+  const handleAdjust = (delta: number) => {
+    setEditMins(prev => {
+      const next = prev + delta
+      if (next <= nowMins) return prev
+      return next
+    })
+  }
+
+  const handleSaveTime = async () => {
+    setSaving(true)
+    const newTime = minsToResTime(editMins)
+    try {
+      await fetchT(`${API}/reservations/${res.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ time: newTime }),
+      })
+      onTimeUpdated?.(newTime)
+      setEditing(false)
+    } catch {
+      // keep edit panel open on error
+    }
+    setSaving(false)
+  }
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `res-${res.id}`,
@@ -2251,84 +2298,95 @@ function DraggableResCard({
         borderRadius: 9,
         background: isSelected
           ? "rgba(99,179,237,0.14)"
-          : isLate
-          ? "rgba(239,68,68,0.12)"
-          : isNow
-          ? "rgba(249,115,22,0.10)"
-          : isArriving
-          ? "rgba(251,191,36,0.08)"
+          : isLate   ? "rgba(239,68,68,0.12)"
+          : isNow    ? "rgba(249,115,22,0.10)"
+          : isArriving ? "rgba(251,191,36,0.08)"
           : "rgba(99,179,237,0.06)",
         border: `1px solid ${isSelected
           ? "rgba(99,179,237,0.55)"
-          : isLate
-          ? "rgba(239,68,68,0.45)"
-          : isNow
-          ? "rgba(249,115,22,0.40)"
-          : isArriving
-          ? "rgba(251,191,36,0.35)"
+          : isLate   ? "rgba(239,68,68,0.45)"
+          : isNow    ? "rgba(249,115,22,0.40)"
+          : isArriving ? "rgba(251,191,36,0.35)"
           : "rgba(99,179,237,0.22)"}`,
         boxShadow: isSelected ? "0 0 0 2px rgba(99,179,237,0.18), inset 0 0 10px rgba(99,179,237,0.05)" : undefined,
         cursor: isDragging ? "grabbing" : "grab",
       }}
     >
       {/* Guest info */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream),0.97)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
-            {res.guest_name}
-          </div>
-          <div style={{ fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", color: "rgba(var(--warm),0.70)" }}>
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
-            <span>·</span>
-            <span>{res.party_size}p</span>
-            {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
-            {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
-            {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
-            {assignedTableNum !== undefined && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(251,191,36,0.95)", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 4, padding: "1px 5px" }}>
-                  T{assignedTableNum}
-                </span>
-                <button
-                  onPointerDown={e => e.stopPropagation()}
-                  onClick={e => { e.stopPropagation(); onClearAssignment() }}
-                  style={{ color: "rgba(251,191,36,0.45)", cursor: "pointer", background: "none", border: "none", padding: 0, lineHeight: 1, display: "flex", alignItems: "center" }}
-                  title="Clear table assignment"
-                ><X style={{ width: 9, height: 9 }} /></button>
-              </span>
-            )}
-            {isSelected && (
-              <span className="animate-pulse" style={{ color: "rgba(99,179,237,0.90)", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>TAP TABLE TO SEAT</span>
-            )}
-          </div>
-          {res.notes && (
-            <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {res.notes}
-            </div>
+      <div style={{ flex: 1, minWidth: 0, marginBottom: 6 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream),0.97)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
+          {res.guest_name}
+        </div>
+        <div style={{ fontSize: 10, display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap", color: "rgba(var(--warm),0.70)" }}>
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>{fmt12Res(res.time)}</span>
+          <span>·</span>
+          <span>{res.party_size}p</span>
+          {isArriving && <span style={{ color: "#fbbf24", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>ARRIVING</span>}
+          {isNow      && <span className="animate-pulse" style={{ color: "#f97316", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>DUE NOW</span>}
+          {isLate     && <span className="animate-pulse" style={{ color: "#ef4444", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>LATE</span>}
+          {isSelected && (
+            <span className="animate-pulse" style={{ color: "rgba(99,179,237,0.90)", fontWeight: 800, fontSize: 9, letterSpacing: "0.08em" }}>TAP TABLE TO SEAT</span>
           )}
         </div>
+        {res.notes && (
+          <div style={{ fontSize: 10, color: "rgba(99,179,237,0.70)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {res.notes}
+          </div>
+        )}
       </div>
 
+      {/* ── Edit time panel ── */}
+      {editing && (
+        <div onPointerDown={e => e.stopPropagation()} style={{ marginBottom: 6, padding: "6px 8px", borderRadius: 7, background: "rgba(var(--accent),0.06)", border: "1px solid rgba(var(--accent),0.14)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+            <button
+              onClick={e => { e.stopPropagation(); handleAdjust(-10) }}
+              disabled={!canDecrease}
+              className="rounded-lg font-bold transition-all active:scale-95 disabled:opacity-30"
+              style={{ width: 34, height: 34, fontSize: 16, background: "rgba(var(--accent),0.10)", color: "rgba(var(--cream),0.80)", border: "1px solid rgba(var(--accent),0.20)", cursor: canDecrease ? "pointer" : "not-allowed" }}
+            >−</button>
+            <span style={{ fontSize: 14, fontWeight: 700, color: "rgba(var(--cream),0.95)", fontVariantNumeric: "tabular-nums" }}>
+              {fmt12Res(minsToResTime(editMins))}
+            </span>
+            <button
+              onClick={e => { e.stopPropagation(); handleAdjust(10) }}
+              className="rounded-lg font-bold transition-all active:scale-95"
+              style={{ width: 34, height: 34, fontSize: 16, background: "rgba(var(--accent),0.10)", color: "rgba(var(--cream),0.80)", border: "1px solid rgba(var(--accent),0.20)", cursor: "pointer" }}
+            >+</button>
+          </div>
+          <div style={{ display: "flex", gap: 5, marginTop: 6 }}>
+            <button onClick={e => { e.stopPropagation(); setEditing(false); setEditMins(resTimeToMins(res.time)) }}
+              className="rounded-lg text-xs font-semibold transition-all active:scale-95"
+              style={{ flex: 1, height: 30, background: "rgba(var(--accent),0.06)", color: "rgba(var(--warm),0.55)", border: "1px solid rgba(var(--accent),0.14)", cursor: "pointer" }}>
+              Cancel
+            </button>
+            <button onClick={e => { e.stopPropagation(); handleSaveTime() }} disabled={saving}
+              className="rounded-lg text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
+              style={{ flex: 1, height: 30, background: "rgba(34,197,94,0.12)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.28)", cursor: "pointer" }}>
+              {saving ? "…" : "Save"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Action buttons */}
-      <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 6, marginTop: 8 }}>
+      <div onPointerDown={e => e.stopPropagation()} style={{ display: "flex", gap: 5 }}>
         <button
           onClick={e => { e.stopPropagation(); onSeat() }}
-          style={{ flex: 1, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, background: "rgba(34,197,94,0.15)", color: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center" }}
+          style={{ flex: 2, height: 34, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase" as const, background: "rgba(34,197,94,0.15)", color: "#22c55e", display: "flex", alignItems: "center", justifyContent: "center" }}
         >
           {assignedTableNum !== undefined ? `Seat → T${assignedTableNum}` : "Seat Guest"}
         </button>
-        {assignedTableNum === undefined && (
-          <button
-            onClick={e => { e.stopPropagation(); onAssign() }}
-            style={{ height: 34, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(251,191,36,0.35)", cursor: "pointer", fontSize: 11, fontWeight: 700, background: "rgba(251,191,36,0.08)", color: "rgba(251,191,36,0.85)", display: "flex", alignItems: "center", justifyContent: "center" }}
-          >
-            Assign Table
-          </button>
-        )}
         <button
-          onPointerDown={e => e.stopPropagation()}
+          onClick={e => { e.stopPropagation(); if (!editing) setEditMins(resTimeToMins(res.time)); setEditing(v => !v) }}
+          style={{ flex: 1, height: 34, padding: "0 8px", borderRadius: 8, border: `1px solid ${editing ? "rgba(99,179,237,0.50)" : "rgba(var(--accent),0.22)"}`, cursor: "pointer", fontSize: 11, fontWeight: 700, background: editing ? "rgba(99,179,237,0.12)" : "rgba(var(--accent),0.08)", color: editing ? "#60a5fa" : "rgba(var(--warm),0.70)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
+        >
+          <Pencil style={{ width: 10, height: 10 }} />
+          Edit
+        </button>
+        <button
           onClick={e => { e.stopPropagation(); onNoShow() }}
-          style={{ height: 34, padding: "0 10px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.30)", cursor: "pointer", fontSize: 11, fontWeight: 700, background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.80)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          style={{ flex: 1, height: 34, padding: "0 8px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.30)", cursor: "pointer", fontSize: 11, fontWeight: 700, background: "rgba(239,68,68,0.08)", color: "rgba(239,68,68,0.80)", display: "flex", alignItems: "center", justifyContent: "center" }}
         >
           No Show
         </button>
@@ -2642,6 +2700,13 @@ function ClientStationInner() {
       }
       refreshAll()
     } catch { showToast("Could not notify guest.", "err"); refreshAll() }
+  }, [refreshAll])
+
+  const addTime = useCallback(async (entry: QueueEntry) => {
+    const newMins = (entry.quoted_wait ?? 0) + 5
+    setQueue(prev => prev.map(e => e.id === entry.id ? { ...e, quoted_wait: newMins } : e))
+    try { await fetchT(`${API}/queue/${entry.id}/wait?minutes=${newMins}`, { method: "PATCH" }) } catch {}
+    refreshAll()
   }, [refreshAll])
 
   const remove = useCallback(async (id: string) => {
@@ -3069,8 +3134,11 @@ function ClientStationInner() {
           className="flex items-center justify-between px-4 h-12 shrink-0"
           style={{ background: "var(--header-bg)", borderBottom: "1px solid var(--header-border)", backdropFilter: "blur(20px)", zIndex: 20, position: "relative" }}
         >
-          {/* Left: restaurant identity + live stats */}
+          {/* Left: back arrow + restaurant identity + live stats */}
           <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
+            <Link href="/" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, borderRadius: 8, border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)", color: "rgba(var(--warm),0.65)", flexShrink: 0, textDecoration: "none" }}>
+              <ChevronLeft className="w-4 h-4" />
+            </Link>
             {restLogoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={restLogoUrl} alt={restName || slug} style={{ height: 26, maxWidth: 72, objectFit: "contain", flexShrink: 0 }} />
@@ -3113,13 +3181,6 @@ function ClientStationInner() {
             </span>
 
             <div className="w-px h-4" style={{ background: "rgba(var(--accent),0.18)", margin: "0 2px" }} />
-
-            {/* Analog */}
-            <Link href={`/client/${slug}/analog`}
-              className="hidden sm:flex items-center gap-1 h-7 px-2.5 rounded-lg text-[11px] font-semibold transition-colors hover:bg-white/8"
-              style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)", textDecoration: "none" }}>
-              <Activity className="w-3 h-3" /> Analog
-            </Link>
 
             {/* Zoom */}
             <div className="hidden sm:flex items-center rounded-lg overflow-hidden" style={{ border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
@@ -3244,7 +3305,6 @@ function ClientStationInner() {
                         res={res}
                         now={now}
                         assignedTableNum={assignedTableNum}
-                        assignedApiTable={assignedApiTable}
                         isSelected={selectedRes?.id === res.id}
                         onSelect={() => setSelectedRes(prev => prev?.id === res.id ? null : res)}
                         onSeat={() => {
@@ -3254,8 +3314,6 @@ function ClientStationInner() {
                             setResPicker(res)
                           }
                         }}
-                        onAssign={() => setResTblPicker(res)}
-                        onClearAssignment={() => setReservedTables(prev => { const n = new Map(prev); n.delete(assignedTableNum!); return n })}
                         onNoShow={async () => {
                           setReservedTables(prev => {
                             const n = new Map(prev)
@@ -3265,6 +3323,10 @@ function ClientStationInner() {
                           setTodayRes(prev => prev.filter(r => r.id !== res.id))
                           await fetchT(`${API}/reservations/${res.id}/status?status=no-show`, { method: "PATCH" }).catch(() => {})
                           showToast(`${res.guest_name} marked as no-show`, "warn")
+                        }}
+                        onTimeUpdated={(newTime) => {
+                          setTodayRes(prev => prev.map(r => r.id === res.id ? { ...r, time: newTime } : r))
+                          showToast(`${res.guest_name}'s reservation moved to ${fmt12Res(newTime)}`)
                         }}
                       />
                     )
@@ -3289,6 +3351,7 @@ function ClientStationInner() {
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onAddTime={() => addTime(e)}
                       onRemoved={() => refreshAll()} />
                   ))}
                 </div>
@@ -3353,6 +3416,7 @@ function ClientStationInner() {
                       onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onAddTime={() => addTime(e)}
                       onRemoved={() => refreshAll()} />
                   ))}
                 </div>

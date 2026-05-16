@@ -1616,12 +1616,13 @@ def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
 
 
 @app.post("/queue/{entry_id}/notify")
-def notify_ready(entry_id: str, background_tasks: BackgroundTasks):
+def notify_ready(entry_id: str):
     # 1. Mark as ready in DB
     supabase.table("queue_entries").update({"status": "ready"}).eq("id", entry_id).execute()
 
-    # 2. Queue SMS in background if the guest provided a phone number
-    sms_queued = False
+    # 2. Send SMS synchronously so we can report actual send status
+    sms_sent  = False
+    sms_error = ""
     try:
         entry_res = supabase.table("queue_entries").select("phone, name, restaurant_id").eq("id", entry_id).execute()
         phone = entry_res.data[0].get("phone") if entry_res.data else None
@@ -1630,14 +1631,18 @@ def notify_ready(entry_id: str, background_tasks: BackgroundTasks):
             rid_used  = entry_res.data[0].get("restaurant_id") or RESTAURANT_ID
             rest_res  = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
             rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
-            background_tasks.add_task(_send_notify_sms, phone, rest_name, entry_id)
-            sms_queued = True
+            sms_sent, sms_error = _send_sms(
+                to_phone=phone,
+                body=f"Your table at {rest_name} is ready! Please head to the host stand. Reply STOP to opt out.",
+            )
+            print(f"[notify] sms_sent={sms_sent} sms_error={sms_error!r}")
         else:
             print(f"[notify] no phone on entry {entry_id}")
     except Exception as e:
+        sms_error = str(e)
         print(f"[notify] exception: {e}")
 
-    return {"status": "notified", "sms_queued": sms_queued, "sms_sent": sms_queued}
+    return {"status": "notified", "sms_sent": sms_sent, "sms_error": sms_error or None}
 
 @app.post("/queue/{entry_id}/remove")
 def remove_entry(entry_id: str):
@@ -1868,6 +1873,21 @@ def update_reservation(res_id: str, req: ReservationRequest):
             "notes":      req.notes,
             "source":     req.source or "host",
         }).eq("id", res_id).execute()
+        return {"status": "updated", "reservation": data.data[0] if data.data else {}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.patch("/reservations/{res_id}")
+def patch_reservation(res_id: str, time: Optional[str] = None, notes: Optional[str] = None, party_size: Optional[int] = None):
+    """Partial update — only the fields provided are written."""
+    payload: dict = {}
+    if time       is not None: payload["time"]       = time
+    if notes      is not None: payload["notes"]      = notes
+    if party_size is not None: payload["party_size"] = party_size
+    if not payload:
+        return {"status": "no-op"}
+    try:
+        data = supabase.table("reservations").update(payload).eq("id", res_id).execute()
         return {"status": "updated", "reservation": data.data[0] if data.data else {}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
