@@ -1259,7 +1259,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
                 <button onClick={() => setImportError(null)}
                   style={{ marginLeft: "auto", background: "transparent", border: "none",
                     color: D.muted, cursor: "pointer", fontSize: 12 }}>
-                  Retry
+                  Dismiss
                 </button>
               </div>
             )}
