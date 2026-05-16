@@ -2457,7 +2457,7 @@ def owner_clients_list(secret: Optional[str] = None):
                 "join_url":       cfg.get("nfc_url") or f"https://hostplatform.net/client/{slug}/join",
                 "station_url":    f"https://hostplatform.net/client/{slug}/station",
                 "plan_type":      (agreement or {}).get("plan_type", "standard"),
-                "status":         settings.get("status") or (agreement or {}).get("status", "active"),
+                "status":         settings.get("status", "active"),
                 "monthly_fee_cents": (agreement or {}).get("monthly_fee_cents"),
                 "location_count":    settings.get("location_count", 1),
                 "signed_at":      (agreement or {}).get("signed_at"),
