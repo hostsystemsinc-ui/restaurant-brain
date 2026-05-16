@@ -1857,22 +1857,32 @@ def seat_next():
 def get_sections_config(restaurant_id: str):
     """Return sections config (enabled + list) for a restaurant."""
     try:
-        res = supabase.table("clients").select("config").eq("id", restaurant_id).execute()
+        res = supabase.table("restaurant_configs").select("settings").eq("restaurant_id", restaurant_id).limit(1).execute()
         if res.data:
-            cfg = res.data[0].get("config") or {}
-            return cfg.get("sections_config", {"enabled": False, "sections": []})
+            settings = res.data[0].get("settings") or {}
+            if isinstance(settings, str):
+                try: settings = _json.loads(settings)
+                except: settings = {}
+            return settings.get("sections_config", {"enabled": False, "sections": []})
     except Exception:
         pass
     return {"enabled": False, "sections": []}
 
 @app.post("/sections")
 def set_sections_config(restaurant_id: str, req: SectionsConfigRequest):
-    """Persist sections config for a restaurant (stored in clients.config JSON)."""
+    """Persist sections config for a restaurant (stored in restaurant_configs.settings JSON)."""
     try:
-        res = supabase.table("clients").select("config").eq("id", restaurant_id).execute()
-        existing_cfg = (res.data[0].get("config") or {}) if res.data else {}
-        existing_cfg["sections_config"] = {"enabled": req.enabled, "sections": req.sections}
-        supabase.table("clients").update({"config": existing_cfg}).eq("id", restaurant_id).execute()
+        res = supabase.table("restaurant_configs").select("id, settings").eq("restaurant_id", restaurant_id).limit(1).execute()
+        if res.data:
+            settings = res.data[0].get("settings") or {}
+            if isinstance(settings, str):
+                try: settings = _json.loads(settings)
+                except: settings = {}
+            settings["sections_config"] = {"enabled": req.enabled, "sections": req.sections}
+            supabase.table("restaurant_configs").update({"settings": _json.dumps(settings)}).eq("restaurant_id", restaurant_id).execute()
+        else:
+            settings = {"sections_config": {"enabled": req.enabled, "sections": req.sections}}
+            supabase.table("restaurant_configs").insert({"restaurant_id": restaurant_id, "settings": _json.dumps(settings)}).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True}
