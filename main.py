@@ -638,15 +638,10 @@ def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
     if TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM:
         try:
             from twilio.rest import Client
-            import time
             client = Client(TWILIO_SID, TWILIO_TOKEN)
             msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
-            print(f"[Twilio] queued sid={msg.sid} status={msg.status}")
-            # Wait for carrier feedback — A2P 10DLC errors (30034) surface within ~5s
-            time.sleep(5)
-            msg = client.messages(msg.sid).fetch()
-            print(f"[Twilio] status={msg.status} error_code={msg.error_code} msg={msg.error_message!r}")
-            if msg.status not in ("failed", "undelivered") and not msg.error_code:
+            print(f"[Twilio] queued sid={msg.sid} status={msg.status} error={msg.error_code!r}")
+            if msg.status not in ("failed", "undelivered"):
                 return True, ""
             tw_err = msg.error_message or f"status={msg.status} code={msg.error_code}"
             errors.append(f"Twilio: {tw_err}")

@@ -1351,7 +1351,7 @@ function FloorMap({
 
 function SeatTablePicker({
   guest, tables, localOccupants, onConfirm, onClose,
-  reservedTables, excludeResId, mode = "seat", now, floor, resAlertBySize,
+  reservedTables, excludeResId, mode = "seat", now, floor, resAlertBySize, warnOnly,
 }: {
   guest: { name: string | null; party_size: number }
   tables: Table[]
@@ -1364,6 +1364,7 @@ function SeatTablePicker({
   now?: Date
   floor?: FloorPos[]
   resAlertBySize?: AlertBySize
+  warnOnly?: boolean
 }) {
   const floorPlan = floor ?? []
   return (
@@ -1391,39 +1392,47 @@ function SeatTablePicker({
         <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto">
           {floorPlan.map(pos => {
             const t = tables.find(t => t.table_number === pos.number)
-            // Occupied: either in-memory occupant map or DB status
             const isOccupied = localOccupants.has(pos.number) || t?.status === "occupied"
 
-            // Reservation logic
+            // Reservation conflict logic
             const resInfo = reservedTables?.get(pos.number)
             const hasOtherRes = !!(resInfo && resInfo.resId !== excludeResId)
             let isResLocked = false
             let isResWarn   = false
             if (hasOtherRes) {
-              if (mode === "seat" && now) {
+              if (warnOnly) {
+                // In warnOnly mode (editing a reservation): always show info, never block
+                isResWarn = true
+              } else if (mode === "seat" && now) {
                 const mins = getResMinutesUntil(resInfo!.time, now)
                 if (mins <= 0) isResLocked = true
                 else if (mins <= lookupAlertMins(resInfo!.partySize ?? 2, resAlertBySize ?? DEFAULT_ALERT_BY_SIZE)) isResWarn = true
-                else isResLocked = true  // far future — block
+                else isResLocked = true
               } else {
                 isResLocked = true
               }
             }
 
-            const isBlocked  = isOccupied || isResLocked
+            // warnOnly: even an occupied table is just a warning (allow override)
+            const isBlocked = warnOnly ? false : (isOccupied || isResLocked)
 
             // Colour scheme
+            const hasConflict = isOccupied || isResWarn || isResLocked
             const bg     = isOccupied   ? "rgba(239,68,68,0.10)"
                          : isResWarn    ? "rgba(249,115,22,0.10)"
+                         : isResLocked  ? "rgba(249,115,22,0.07)"
                          : "rgba(34,197,94,0.07)"
             const border = isOccupied   ? "rgba(239,68,68,0.45)"
                          : isResWarn    ? "rgba(249,115,22,0.40)"
+                         : isResLocked  ? "rgba(249,115,22,0.30)"
                          : "rgba(34,197,94,0.25)"
-            const color  = isOccupied   ? "rgba(239,68,68,0.9)"
+            const color  = isOccupied   ? (warnOnly ? "rgba(249,115,22,0.9)" : "rgba(239,68,68,0.9)")
                          : isResWarn    ? "rgba(249,115,22,0.9)"
+                         : isResLocked  ? "rgba(249,115,22,0.7)"
                          : "rgba(34,197,94,0.9)"
-            const subColor = isOccupied ? "rgba(239,68,68,0.5)"
-                           : isResWarn  ? "rgba(249,115,22,0.35)"
+            const subColor = isOccupied ? (warnOnly ? "rgba(249,115,22,0.55)" : "rgba(239,68,68,0.5)")
+                           : isResWarn  ? "rgba(249,115,22,0.55)"
+                           : isResLocked ? "rgba(249,115,22,0.40)"
                            : "rgba(34,197,94,0.3)"
 
             return (
@@ -1435,27 +1444,31 @@ function SeatTablePicker({
                 style={{
                   background: bg,
                   border: `1px solid ${border}`,
-                  opacity: isResLocked && !isOccupied ? 0.45 : 1,
+                  opacity: (isResLocked && !isOccupied && !warnOnly) ? 0.45 : 1,
                   cursor: isBlocked ? "default" : "pointer",
                 }}
               >
                 <span className="text-xl font-bold" style={{ color }}>
                   {pos.number}
                 </span>
-                {isOccupied ? (
+                {isOccupied && warnOnly ? (
+                  <span className="text-[9px] font-bold text-center leading-tight" style={{ color: subColor }}>occupied</span>
+                ) : isOccupied ? (
                   <span className="text-[9px] font-bold" style={{ color: subColor }}>occupied</span>
-                ) : isResWarn ? (
-                  <span className="text-[9px] font-bold text-center leading-tight" style={{ color: subColor }}>
-                    ⚠ {fmt12Res(resInfo!.time)}
+                ) : isResWarn || (isResLocked && warnOnly) ? (
+                  <span className="text-[9px] font-bold text-center leading-tight" style={{ color: subColor, lineHeight: 1.2 }}>
+                    {fmt12Res(resInfo!.time)}{"\n"}{resInfo!.guestName ? `· ${resInfo!.guestName.split(" ")[0]}` : ""}
                   </span>
                 ) : isResLocked ? (
                   <span className="text-[9px] font-bold" style={{ color: subColor }}>reserved</span>
                 ) : t ? (
                   <span className="text-[10px]" style={{ color: subColor }}>{t.capacity}p</span>
                 ) : null}
-                <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: subColor }}>
-                  {pos.section}
-                </span>
+                {!hasConflict && (
+                  <span className="text-[9px] tracking-wider uppercase mt-0.5" style={{ color: subColor }}>
+                    {pos.section}
+                  </span>
+                )}
               </button>
             )
           })}
@@ -2253,7 +2266,7 @@ function DraggableResCard({
   const [saving,        setSaving]        = useState(false)
 
   const nowMins     = now.getHours() * 60 + now.getMinutes()
-  const canDecrease = editMins - 10 > nowMins
+  const canDecrease = editMins - 5 > nowMins
 
   const openEdit = () => {
     setEditMins(resTimeToMins(res.time))
@@ -2374,13 +2387,13 @@ function DraggableResCard({
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "4px 0" }}>
             <span style={{ fontSize: 10, color: "rgba(var(--warm),0.55)", letterSpacing: "0.06em" }}>TIME</span>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); if (canDecrease) setEditMins(m => m - 10) }}
+              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); if (canDecrease) setEditMins(m => m - 5) }}
                 disabled={!canDecrease}
                 style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--cream),0.70)", cursor: canDecrease ? "pointer" : "not-allowed", fontSize: 16, opacity: canDecrease ? 1 : 0.35 }}>−</button>
               <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(var(--cream),0.95)", fontVariantNumeric: "tabular-nums", minWidth: 60, textAlign: "center" }}>
                 {fmt12Res(minsToResTime(editMins))}
               </span>
-              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setEditMins(m => m + 10) }}
+              <button onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); setEditMins(m => m + 5) }}
                 style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(var(--accent),0.08)", border: "1px solid rgba(var(--accent),0.18)", color: "rgba(var(--cream),0.70)", cursor: "pointer", fontSize: 16 }}>+</button>
             </div>
           </div>
@@ -2717,7 +2730,7 @@ function ClientStationInner() {
   const notify = useCallback(async (id: string) => {
     setQueue(prev => prev.map(e => e.id === id ? { ...e, status: "ready" as const } : e))  // optimistic
     try {
-      const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" })
+      const r = await fetchT(`${API}/queue/${id}/notify`, { method: "POST" }, 20_000)
       if (!r.ok) throw new Error()
       const data = await r.json()
       if (data.sms_error) {
@@ -3776,6 +3789,7 @@ function ClientStationInner() {
             excludeResId={resPicker.id}
             floor={floor}
             resAlertBySize={resAlertBySize}
+            warnOnly
             onConfirm={(tableNumber, tableId) => checkInConfirm(resPicker, tableNumber, tableId)}
             onClose={() => setResPicker(null)}
           />

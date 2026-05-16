@@ -1159,30 +1159,39 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-      {/* Import wizard */}
-      <div>
-        {!wizardOpen ? (
-          <button onClick={() => { setWizardOpen(true); setApplied(false) }}
-            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${D.blueBorder}`,
-              background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 600,
-              cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-            ↑ Import from Image/Menu
-          </button>
-        ) : (
-          <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 10, padding: "14px 16px",
-            display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: D.text }}>Import menu from file</span>
-              <button onClick={cancelWizard}
-                style={{ padding: "3px 9px", borderRadius: 6, border: `1px solid ${D.border}`,
-                  background: "transparent", color: D.muted, fontSize: 12, cursor: "pointer" }}>
-                ✕ Close
-              </button>
+      {/* AI Import Wizard */}
+      <div style={{ background: D.surface, border: `1px solid ${D.blueBorder}`, borderRadius: 12, overflow: "hidden" }}>
+        {/* Header row */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: wizardOpen ? `1px solid ${D.border}` : "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 20 }}>✨</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: D.text }}>AI Menu Import</div>
+              <div style={{ fontSize: 11, color: D.muted }}>Upload a photo or document to auto-populate the menu</div>
             </div>
+          </div>
+          {!wizardOpen ? (
+            <button onClick={() => { setWizardOpen(true); setApplied(false) }}
+              style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${D.blueBorder}`,
+                background: D.blueBg, color: D.blue, fontSize: 12, fontWeight: 700,
+                cursor: "pointer", whiteSpace: "nowrap" }}>
+              Open Wizard
+            </button>
+          ) : (
+            <button onClick={cancelWizard}
+              style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${D.border}`,
+                background: "transparent", color: D.muted, fontSize: 12, cursor: "pointer" }}>
+              ✕ Close
+            </button>
+          )}
+        </div>
 
+        {/* Wizard body — only visible when open */}
+        {wizardOpen && (
+          <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
             {!importing && !preview && !applied && (
               <div>
-                <label style={{ display: "block", fontSize: 12, color: D.text2, marginBottom: 6 }}>
+                <label style={{ display: "block", fontSize: 12, color: D.text2, marginBottom: 8 }}>
                   Choose an image (JPG, PNG, WEBP) or document (PDF, TXT, CSV):
                 </label>
                 <input type="file" accept="image/*,.pdf,.txt,.csv"
@@ -1214,7 +1223,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ fontSize: 13, color: D.text, background: D.greenBg,
                   border: `1px solid ${D.greenBorder}`, borderRadius: 6, padding: "8px 12px" }}>
-                  Import found <strong>{preview.length}</strong> section{preview.length !== 1 ? "s" : ""},{" "}
+                  Found <strong>{preview.length}</strong> section{preview.length !== 1 ? "s" : ""} with{" "}
                   <strong>{preview.reduce((n, s) => n + s.items.length, 0)}</strong> items.
                   Apply to replace current menu?
                 </div>
@@ -1222,12 +1231,12 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
                   <button onClick={applyImport}
                     style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${D.green}40`,
                       background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                    Apply
+                    ✓ Apply
                   </button>
                   <button onClick={() => { setPreview(null); setImportError(null) }}
                     style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${D.border}`,
                       background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
-                    Cancel
+                    Discard
                   </button>
                 </div>
               </div>
@@ -1235,7 +1244,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
 
             {applied && undoSnapshot && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
-                <span style={{ color: D.green }}>✓ Menu imported successfully.</span>
+                <span style={{ color: D.green }}>✓ Menu imported — edit below, then Save Menu.</span>
                 <button onClick={undoImport}
                   style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${D.border}`,
                     background: "transparent", color: D.text2, fontSize: 12, cursor: "pointer" }}>
