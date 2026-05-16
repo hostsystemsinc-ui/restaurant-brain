@@ -966,6 +966,8 @@ interface EditorTable {
 const EDITOR_W = 560
 const EDITOR_H = 347  // 560 / 1.615 ≈ golden ratio
 
+interface SectionsConfig { enabled: boolean; sections: string[] }
+
 function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?: () => void }) {
   const [loading,      setLoading]      = useState(true)
   const [saving,       setSaving]       = useState(false)
@@ -975,6 +977,12 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
   const [tables,       setTables]       = useState<EditorTable[]>([])
   const [canvasAspect, setCanvasAspect] = useState(1.615)
   const [selectedIdx,  setSelectedIdx]  = useState<number | null>(null)
+
+  // Sections config
+  const [sections,       setSections]       = useState<SectionsConfig>({ enabled: false, sections: [] })
+  const [newSectionName, setNewSectionName] = useState("")
+  const [sectionsSaving, setSectionsSaving] = useState(false)
+  const [sectionsMsg,    setSectionsMsg]    = useState<{ ok: boolean; text: string } | null>(null)
 
   // Full guest_config from Railway (to merge, not overwrite)
   const fullGuestConfigRef = useRef<Record<string, unknown>>({})
@@ -1019,7 +1027,53 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [slug])
+
+    // Fetch sections config separately
+    if (rid) {
+      fetch(`${API}/sections?restaurant_id=${rid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setSections(d) })
+        .catch(() => {})
+    }
+  }, [slug, rid])
+
+  async function saveSections(cfg: SectionsConfig) {
+    setSectionsSaving(true); setSectionsMsg(null)
+    try {
+      const r = await fetch(`${API}/sections?restaurant_id=${rid}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      })
+      if (!r.ok) throw new Error()
+      setSectionsMsg({ ok: true, text: "Saved" })
+    } catch {
+      setSectionsMsg({ ok: false, text: "Could not save" })
+    }
+    setSectionsSaving(false)
+    setTimeout(() => setSectionsMsg(null), 2500)
+  }
+
+  function toggleSections() {
+    const next = { ...sections, enabled: !sections.enabled }
+    setSections(next)
+    saveSections(next)
+  }
+
+  function addSectionItem() {
+    const name = newSectionName.trim()
+    if (!name || sections.sections.includes(name)) return
+    const next = { ...sections, sections: [...sections.sections, name] }
+    setSections(next)
+    setNewSectionName("")
+    saveSections(next)
+  }
+
+  function removeSectionItem(s: string) {
+    const next = { ...sections, sections: sections.sections.filter(x => x !== s) }
+    setSections(next)
+    saveSections(next)
+  }
 
   // Mouse/touch drag handlers
   useEffect(() => {
@@ -1285,6 +1339,55 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         <div style={{ marginTop: 10, fontSize: 11, color: C.muted }}>
           {tables.length} table{tables.length !== 1 ? "s" : ""} · Drag to reposition · Select to edit shape and capacity
         </div>
+      </div>
+
+      {/* ── Sections ── */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 4 }}>Sections</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Let guests choose a seating preference when joining the waitlist</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {sectionsMsg && (
+              <span style={{ fontSize: 12, fontWeight: 600, color: sectionsMsg.ok ? C.green : C.red }}>{sectionsMsg.text}</span>
+            )}
+            <button onClick={toggleSections} disabled={sectionsSaving}
+              style={{ width: 44, height: 24, borderRadius: 12, background: sections.enabled ? C.green : C.surface2, border: `1px solid ${sections.enabled ? C.greenBdr : C.border}`, position: "relative", cursor: "pointer", transition: "background 0.2s", flexShrink: 0 }}>
+              <div style={{ position: "absolute", top: 2, left: sections.enabled ? 22 : 2, width: 18, height: 18, borderRadius: "50%", background: sections.enabled ? "#fff" : C.muted, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+            </button>
+          </div>
+        </div>
+
+        {sections.enabled && (
+          <>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              {sections.sections.map(s => (
+                <div key={s} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 20, background: C.surface2, border: `1px solid ${C.border}`, fontSize: 13, fontWeight: 600, color: C.text2 }}>
+                  {s}
+                  <button onClick={() => removeSectionItem(s)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 14, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" }}>×</button>
+                </div>
+              ))}
+              {sections.sections.length === 0 && (
+                <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>No sections yet — add one below</div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                placeholder="Section name (e.g. Bar, Patio, Booth)"
+                value={newSectionName}
+                onChange={e => setNewSectionName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addSectionItem()}
+                style={{ flex: 1, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface2, color: C.text, fontSize: 13, outline: "none" }}
+              />
+              <button onClick={addSectionItem} disabled={!newSectionName.trim()}
+                style={{ padding: "8px 16px", borderRadius: 8, background: newSectionName.trim() ? C.greenBg : C.surface2, border: `1px solid ${newSectionName.trim() ? C.greenBdr : C.border}`, color: newSectionName.trim() ? C.green : C.muted, fontSize: 13, fontWeight: 700, cursor: newSectionName.trim() ? "pointer" : "default" }}>
+                + Add
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Save ── */}
