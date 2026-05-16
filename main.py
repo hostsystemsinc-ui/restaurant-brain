@@ -384,7 +384,7 @@ class AgreementAcceptRequest(BaseModel):
     user_agent:         Optional[str] = None
 
 @app.post("/menu/parse")
-async def menu_parse(files: List[UploadFile] = File(...)):
+async def menu_parse(file: List[UploadFile] = File(...)):
     """Parse one or more menu images/documents with Claude and return structured sections."""
     import base64, urllib.request, urllib.parse, json as _json2
 
@@ -394,7 +394,7 @@ async def menu_parse(files: List[UploadFile] = File(...)):
     IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
     content: list = []
 
-    for f in files:
+    for f in file:
         data = await f.read()
         mime = (f.content_type or "application/octet-stream").split(";")[0].strip()
         if mime in IMAGE_TYPES:
