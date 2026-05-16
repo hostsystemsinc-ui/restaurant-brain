@@ -590,9 +590,12 @@ function DraggableQueueCard({
             <div className="w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold shrink-0 tabular-nums" style={{ background: isReady ? "rgba(34,197,94,0.20)" : "var(--surf-4)", color: isReady ? "#22c55e" : "rgba(255,220,180,0.75)" }}>
               {entry.position ?? "—"}
             </div>
-            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 7 }}>
               <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "var(--text-hi2)", wordBreak: "break-word" }}>
                 {entry.name || "Guest"}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15, fontWeight: 800, color: "#fff", background: "rgba(99,179,237,0.18)", border: "1px solid rgba(99,179,237,0.30)", borderRadius: 6, padding: "1px 8px", flexShrink: 0 }}>
+                <Users className="w-3.5 h-3.5" />{entry.party_size}p
               </span>
               {isReady && (
                 <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
@@ -601,15 +604,7 @@ function DraggableQueueCard({
           </div>
 
           {/* ── Row 2: meta info ── */}
-          {/* whiteSpace:nowrap on each span + overflow:hidden + minWidth:0 lets items
-              shrink away rather than wrap under the +5 min button at narrow sidebar widths.
-              Without this, `~14m left` wrapped to a second line and overlapped the button. */}
           <div style={{ paddingLeft: 38, paddingRight: 4, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-warm2)", minWidth: 0, overflow: "hidden" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap", flexShrink: 0 }}>
-              <Users className="w-2.5 h-2.5" />{entry.party_size}p
-            </span>
-            {/* grey elapsed + its leading divider collapse together when space is tight,
-                so the yellow "time left" stays visible (user-requested priority). */}
             <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap", overflow: "hidden", minWidth: 0, flexShrink: 1 }}>
               <span style={{ color: "var(--bdr-15)" }}>·</span>
               <Clock className="w-2.5 h-2.5 shrink-0" />
