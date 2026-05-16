@@ -869,8 +869,8 @@ function DraggableQueueCard({
 
         {/* Row 2: meta */}
         <div style={{ paddingLeft: 38, display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "rgba(var(--warm),0.65)" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            <Users className="w-2.5 h-2.5" />{entry.party_size}p
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 14, fontWeight: 700, color: "rgba(var(--warm),0.95)" }}>
+            <Users className="w-4 h-4" />{entry.party_size}p
           </span>
           <span style={{ color: "rgba(var(--accent),0.35)" }}>·</span>
           <span className="animate-pulse" style={{ display: "flex", alignItems: "center", gap: 3 }}>
