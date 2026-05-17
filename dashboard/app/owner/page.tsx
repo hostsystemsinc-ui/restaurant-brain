@@ -1103,6 +1103,33 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
   const [undoSnapshot, setUndoSnapshot] = useState<MenuSection[] | null>(null)
   const [applied,      setApplied]      = useState(false)
 
+  // Convert a HEIC/HEIF file to a JPEG blob in-browser (avoids large server uploads)
+  function normalizeImageFile(file: File): Promise<File> {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? ""
+    const isHeic = ext === "heic" || ext === "heif" || file.type === "image/heic" || file.type === "image/heif"
+    const isImage = file.type.startsWith("image/") || isHeic
+    if (!isImage) return Promise.resolve(file)
+    return new Promise(resolve => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        const MAX = 1024
+        const scale = Math.min(1, MAX / Math.max(img.naturalWidth || 1, img.naturalHeight || 1))
+        const canvas = document.createElement("canvas")
+        canvas.width  = Math.round((img.naturalWidth  || MAX) * scale)
+        canvas.height = Math.round((img.naturalHeight || MAX) * scale)
+        canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height)
+        URL.revokeObjectURL(url)
+        canvas.toBlob(blob => {
+          const name = file.name.replace(/\.(heic|heif)$/i, ".jpg")
+          resolve(blob ? new File([blob], name, { type: "image/jpeg" }) : file)
+        }, "image/jpeg", 0.85)
+      }
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+      img.src = url
+    })
+  }
+
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     if (!files.length) return
@@ -1111,17 +1138,22 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
     setPreview(null)
     setApplied(false)
     try {
+      // Convert HEIC/HEIF and large images to JPEG in-browser before uploading.
+      // This shrinks ~5MB HEIC photos to ~200KB JPEGs, avoiding server-side timeouts.
+      const normalized = await Promise.all(files.map(normalizeImageFile))
       const fd = new FormData()
-      files.forEach(f => fd.append("file", f))
+      normalized.forEach(f => fd.append("file", f))
       const res = await fetch("/api/owner/menu-parse", { method: "POST", body: fd })
-      const data = await res.json()
+      let data: Record<string, unknown>
+      try { data = await res.json() }
+      catch { throw new Error("Server returned an unexpected response — try again") }
       if (!res.ok) {
         const raw = data.error ?? data.detail ?? "Import failed"
         setImportError(typeof raw === "string" ? raw : JSON.stringify(raw))
       } else {
         // Normalize to ensure items/tags are always arrays (guards against malformed AI output)
         const raw = Array.isArray(data.sections) ? data.sections : []
-        const normalized: MenuSection[] = raw.map((s: Record<string, unknown>) => ({
+        const sections: MenuSection[] = raw.map((s: Record<string, unknown>) => ({
           id:    (s.id as string) || nanoid(),
           title: String(s.title || "Section"),
           items: (Array.isArray(s.items) ? s.items : []).map((i: Record<string, unknown>) => ({
@@ -1132,14 +1164,14 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
             tags:        Array.isArray(i.tags) ? i.tags.map(String) : [],
           })),
         }))
-        if (normalized.length === 0) {
+        if (sections.length === 0) {
           setImportError("AI could not find any menu sections in the uploaded files.")
         } else {
-          setPreview(normalized)
+          setPreview(sections)
         }
       }
-    } catch {
-      setImportError("Network error — could not reach server")
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Network error — could not reach server")
     } finally {
       setImporting(false)
       e.target.value = ""
@@ -1237,9 +1269,9 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
             {!importing && !preview && !applied && (
               <div>
                 <label style={{ display: "block", fontSize: 12, color: D.text2, marginBottom: 8 }}>
-                  Select one or more files (JPG, PNG, WEBP, PDF, TXT) — select all pages at once:
+                  Select one or more files (JPG, PNG, HEIC, PDF, TXT) — select all pages at once:
                 </label>
-                <input type="file" accept="image/*,.pdf,.txt,.csv" multiple
+                <input type="file" accept="image/*,.pdf,.txt,.csv,.heic,.heif" multiple
                   onChange={handleImportFile}
                   style={{ fontSize: 12, color: D.text2, cursor: "pointer" }} />
               </div>
