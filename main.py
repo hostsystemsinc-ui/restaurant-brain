@@ -489,11 +489,39 @@ async def menu_parse(file: List[UploadFile] = File(...)):
 
     raw = result.get("content", [{}])[0].get("text", "").strip()
     import re as _re
-    cleaned = _re.sub(r'^```[a-z]*\s*\n?', '', raw)
+
+    # Strip markdown fences (handles ```json, ```JSON, plain ```, etc.)
+    cleaned = _re.sub(r'^```[a-zA-Z]*\s*\n?', '', raw)
     cleaned = _re.sub(r'\n?```\s*$', '', cleaned).strip()
+
+    # Attempt 1: parse the cleaned text directly
+    parsed = None
     try:
         parsed = _json2.loads(cleaned)
     except Exception:
+        pass
+
+    # Attempt 2: extract the first JSON array from anywhere in the response
+    if parsed is None:
+        m = _re.search(r'(\[[\s\S]*\])', cleaned)
+        if m:
+            try:
+                parsed = _json2.loads(m.group(1))
+            except Exception:
+                pass
+
+    # Attempt 3: extract the first JSON object (may be {"sections": [...]})
+    if parsed is None:
+        m = _re.search(r'(\{[\s\S]*\})', cleaned)
+        if m:
+            try:
+                parsed = _json2.loads(m.group(1))
+            except Exception:
+                pass
+
+    if parsed is None:
+        import sys as _sys
+        print(f"[menu_parse] AI raw response (first 500 chars): {raw[:500]}", file=_sys.stderr)
         raise HTTPException(status_code=502, detail="AI returned invalid JSON")
 
     # Accept both bare array and {"sections": [...]} wrapper
