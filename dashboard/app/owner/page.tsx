@@ -1298,17 +1298,40 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
 
             {preview && !applied && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Summary line */}
                 <div style={{ fontSize: 13, color: D.text, background: D.greenBg,
                   border: `1px solid ${D.greenBorder}`, borderRadius: 6, padding: "8px 12px" }}>
                   Found <strong>{preview.length}</strong> section{preview.length !== 1 ? "s" : ""} with{" "}
-                  <strong>{preview.reduce((n, s) => n + (s.items?.length ?? 0), 0)}</strong> items.
-                  Apply to replace current menu?
+                  <strong>{preview.reduce((n, s) => n + (s.items?.length ?? 0), 0)}</strong> items — review below, then apply.
                 </div>
+                {/* Scrollable preview of all parsed sections + items */}
+                <div style={{ maxHeight: 280, overflowY: "auto", border: `1px solid ${D.border}`,
+                  borderRadius: 8, background: D.surface2, padding: "10px 12px",
+                  display: "flex", flexDirection: "column", gap: 12 }}>
+                  {preview.map(sec => (
+                    <div key={sec.id}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: D.text, textTransform: "uppercase",
+                        letterSpacing: "0.06em", marginBottom: 6 }}>{sec.title}</div>
+                      {sec.items.length === 0
+                        ? <div style={{ fontSize: 12, color: D.text2, fontStyle: "italic" }}>No items</div>
+                        : sec.items.map(item => (
+                            <div key={item.id} style={{ display: "flex", justifyContent: "space-between",
+                              alignItems: "baseline", gap: 8, padding: "3px 0",
+                              borderBottom: `1px solid ${D.border}` }}>
+                              <span style={{ fontSize: 12, color: D.text }}>{item.name}</span>
+                              <span style={{ fontSize: 12, color: D.text2, flexShrink: 0 }}>{item.price || "—"}</span>
+                            </div>
+                          ))
+                      }
+                    </div>
+                  ))}
+                </div>
+                {/* Action buttons */}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={applyImport}
                     style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${D.green}40`,
                       background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                    ✓ Apply
+                    ✓ Apply to Menu
                   </button>
                   <button onClick={() => { setPreview(null); setImportError(null) }}
                     style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${D.border}`,

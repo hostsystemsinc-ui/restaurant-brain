@@ -2774,8 +2774,11 @@ function ClientStationInner() {
     const fast      = setInterval(refreshAll, 2000)
     const slow      = setInterval(fetchInsights, 30000)
     const resInt    = setInterval(fetchReservations, 30000)
-    const sectInt   = setInterval(fetchSections, 30000)
-    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt); clearInterval(sectInt) }
+    const sectInt   = setInterval(fetchSections, 10000)  // refresh every 10s (admin may have just enabled sections)
+    // Also re-fetch sections immediately whenever the browser tab comes back into focus
+    const onVisible = () => { if (document.visibilityState === "visible") fetchSections() }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => { clearInterval(fast); clearInterval(slow); clearInterval(resInt); clearInterval(sectInt); document.removeEventListener("visibilitychange", onVisible) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rid, refreshAll, fetchInsights, fetchReservations])
 

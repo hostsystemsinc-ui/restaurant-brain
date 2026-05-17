@@ -3111,6 +3111,35 @@ def update_admin_pin(slug: str, req: PinChangeRequest):
             gc.pop("adminPin", None)
 
         supabase.table("restaurant_configs").update({"guest_config": _json.dumps(gc)}).eq("restaurant_id", rid).execute()
+
+        # Also sync to client_credentials so the owner console can see the updated PIN.
+        # Look for an existing admin_pin credential; update it if found, insert if not.
+        try:
+            existing = (
+                supabase.table("client_credentials")
+                .select("id")
+                .eq("restaurant_id", rid)
+                .eq("credential_type", "admin_pin")
+                .limit(1)
+                .execute()
+            )
+            pin_value = req.new_pin or ""
+            if existing.data:
+                supabase.table("client_credentials").update({
+                    "value":      pin_value,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", existing.data[0]["id"]).execute()
+            elif pin_value:
+                supabase.table("client_credentials").insert({
+                    "restaurant_id":   rid,
+                    "credential_type": "admin_pin",
+                    "label":           "Admin PIN (4-digit dashboard access)",
+                    "value":           pin_value,
+                    "updated_at":      datetime.now(timezone.utc).isoformat(),
+                }).execute()
+        except Exception:
+            pass  # Never fail the PIN update because of credential sync
+
         return {"ok": True}
     except HTTPException:
         raise
