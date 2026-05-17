@@ -487,48 +487,70 @@ async def menu_parse(file: List[UploadFile] = File(...)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI request failed: {e}")
 
+    import re as _re, sys as _sys
+
     raw = result.get("content", [{}])[0].get("text", "").strip()
-    import re as _re
+
+    def _extract_list(text: str):
+        """Return the first valid JSON list found in text, or None."""
+        # Try direct parse first
+        try:
+            v = _json2.loads(text)
+            if isinstance(v, list):
+                return v
+            # {"sections": [...]} or similar wrapper
+            if isinstance(v, dict):
+                for val in v.values():
+                    if isinstance(val, list):
+                        return val
+        except Exception:
+            pass
+        # Scan for the outermost [...] block
+        for m in _re.finditer(r'\[', text):
+            start = m.start()
+            depth = 0
+            for i, ch in enumerate(text[start:], start):
+                if ch == '[':
+                    depth += 1
+                elif ch == ']':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return _json2.loads(text[start:i + 1])
+                        except Exception:
+                            break
+        # Scan for the outermost {...} block
+        for m in _re.finditer(r'\{', text):
+            start = m.start()
+            depth = 0
+            for i, ch in enumerate(text[start:], start):
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            v = _json2.loads(text[start:i + 1])
+                            if isinstance(v, dict):
+                                for val in v.values():
+                                    if isinstance(val, list):
+                                        return val
+                        except Exception:
+                            break
+        return None
 
     # Strip markdown fences (handles ```json, ```JSON, plain ```, etc.)
     cleaned = _re.sub(r'^```[a-zA-Z]*\s*\n?', '', raw)
     cleaned = _re.sub(r'\n?```\s*$', '', cleaned).strip()
 
-    # Attempt 1: parse the cleaned text directly
-    parsed = None
-    try:
-        parsed = _json2.loads(cleaned)
-    except Exception:
-        pass
-
-    # Attempt 2: extract the first JSON array from anywhere in the response
+    parsed = _extract_list(cleaned)
     if parsed is None:
-        m = _re.search(r'(\[[\s\S]*\])', cleaned)
-        if m:
-            try:
-                parsed = _json2.loads(m.group(1))
-            except Exception:
-                pass
+        # Last resort: try the raw (un-stripped) text
+        parsed = _extract_list(raw)
 
-    # Attempt 3: extract the first JSON object (may be {"sections": [...]})
-    if parsed is None:
-        m = _re.search(r'(\{[\s\S]*\})', cleaned)
-        if m:
-            try:
-                parsed = _json2.loads(m.group(1))
-            except Exception:
-                pass
-
-    if parsed is None:
-        import sys as _sys
-        print(f"[menu_parse] AI raw response (first 500 chars): {raw[:500]}", file=_sys.stderr)
-        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
-
-    # Accept both bare array and {"sections": [...]} wrapper
-    if isinstance(parsed, dict) and isinstance(parsed.get("sections"), list):
-        parsed = parsed["sections"]
     if not isinstance(parsed, list):
-        raise HTTPException(status_code=502, detail="AI returned unexpected format")
+        print(f"[menu_parse] extraction failed. Raw (first 600): {raw[:600]}", file=_sys.stderr)
+        raise HTTPException(status_code=502, detail="AI returned invalid JSON")
 
     sections = [
         {
