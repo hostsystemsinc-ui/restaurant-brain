@@ -236,6 +236,84 @@ def _ensure_walnut_restaurants():
 
 threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
 
+_WALNUT_ORIGINAL_ID  = "0001cafe-0001-4000-8000-000000000001"
+_WALNUT_SOUTHSIDE_ID = "0002cafe-0001-4000-8000-000000000002"
+_WALNUT_LOGO_URL = "https://images.getbento.com/accounts/d2ce1ba3bfb5b87e1f0ba2897a682acb/media/images/28198New_Walnut_Logo.png"
+
+_WALNUT_GUEST_CONFIG_DEFAULTS = {
+    _WALNUT_ORIGINAL_ID: {
+        "restaurantName": "The Original Walnut Cafe",
+        "logoUrl":        _WALNUT_LOGO_URL,
+        "bgColor":        "#FAF5EC",
+        "darkColor":      "#2C2005",
+        "accentColor":    "#4A3000",
+        "buttonTextColor":"#FAF5EC",
+        "tagline":        "Made with love since 1984",
+    },
+    _WALNUT_SOUTHSIDE_ID: {
+        "restaurantName": "The Southside Walnut Cafe",
+        "logoUrl":        _WALNUT_LOGO_URL,
+        "bgColor":        "#FAF5EC",
+        "darkColor":      "#2C2005",
+        "accentColor":    "#4A3000",
+        "buttonTextColor":"#FAF5EC",
+        "tagline":        "Made with love since 1984",
+    },
+}
+
+_WALNUT_NFC_URLS = {
+    _WALNUT_ORIGINAL_ID:  "https://hostplatform.net/walnut/original/join",
+    _WALNUT_SOUTHSIDE_ID: "https://hostplatform.net/walnut/southside/join",
+}
+
+def _seed_walnut_guest_configs():
+    """Ensure both Walnut restaurants have their logoUrl + branding in guest_config.
+    Only fills in missing / empty logoUrl — never overwrites custom owner edits."""
+    for rid, defaults in _WALNUT_GUEST_CONFIG_DEFAULTS.items():
+        try:
+            res = supabase.table("restaurant_configs").select("id, guest_config, nfc_url").eq("restaurant_id", rid).limit(1).execute()
+            if res.data:
+                row = res.data[0]
+                # Parse existing guest_config
+                gc = row.get("guest_config")
+                if isinstance(gc, str):
+                    try: gc = _json.loads(gc)
+                    except: gc = {}
+                gc = gc if isinstance(gc, dict) else {}
+                # Merge: only write keys that are missing or have empty logoUrl
+                updated = False
+                if not gc.get("logoUrl"):
+                    gc["logoUrl"] = defaults["logoUrl"]
+                    updated = True
+                for k, v in defaults.items():
+                    if k not in gc:
+                        gc[k] = v
+                        updated = True
+                nfc_needed = not row.get("nfc_url") and rid in _WALNUT_NFC_URLS
+                patch: dict = {}
+                if updated:
+                    patch["guest_config"] = _json.dumps(gc)
+                if nfc_needed:
+                    patch["nfc_url"] = _WALNUT_NFC_URLS[rid]
+                if patch:
+                    supabase.table("restaurant_configs").update(patch).eq("restaurant_id", rid).execute()
+                    print(f"[walnut-seed] Patched guest_config/nfc_url for rid={rid}")
+                else:
+                    print(f"[walnut-seed] guest_config already complete for rid={rid}")
+            else:
+                # No config row yet — insert with defaults
+                supabase.table("restaurant_configs").insert({
+                    "restaurant_id": rid,
+                    "guest_config":  _json.dumps(defaults),
+                    "nfc_url":       _WALNUT_NFC_URLS.get(rid),
+                }).execute()
+                print(f"[walnut-seed] Inserted guest_config for rid={rid}")
+        except Exception as e:
+            print(f"[walnut-seed] WARNING: could not seed rid={rid}: {e}")
+
+threading.Thread(target=_seed_walnut_guest_configs, daemon=True).start()
+
+
 def _sync_walnut_southside_menu():
     """One-time startup: copy menu_config from Walnut Original → Southside if Southside has no items yet."""
     ORIGINAL_ID  = "0001cafe-0001-4000-8000-000000000001"
@@ -2997,9 +3075,6 @@ def get_client_config(restaurant_id: str, secret: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-_WALNUT_ORIGINAL_ID  = "0001cafe-0001-4000-8000-000000000001"
-_WALNUT_SOUTHSIDE_ID = "0002cafe-0001-4000-8000-000000000002"
 
 @app.post("/owner/clients/{restaurant_id}/config")
 def save_client_config(restaurant_id: str, req: ClientConfigRequest, secret: Optional[str] = None):
