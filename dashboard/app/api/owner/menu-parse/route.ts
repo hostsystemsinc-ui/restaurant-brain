@@ -24,7 +24,22 @@ export async function POST(req: Request) {
       body: body,
     })
 
-    const data = await upstream.json()
+    // Try to parse the upstream response as JSON; if it's not JSON (e.g. Railway
+    // gateway error page), capture the raw text so we can surface it.
+    let data: Record<string, unknown>
+    let rawText = ""
+    try {
+      rawText = await upstream.text()
+      data = JSON.parse(rawText)
+    } catch {
+      // Non-JSON response from upstream (Railway gateway error, HTML page, etc.)
+      console.error("menu-parse upstream non-JSON response:", rawText.slice(0, 500))
+      return NextResponse.json(
+        { error: `Server error (${upstream.status}): ${rawText.slice(0, 200) || "no response body"}` },
+        { status: upstream.status || 502 }
+      )
+    }
+
     if (!upstream.ok) {
       // FastAPI validation errors arrive as detail: [{type, loc, msg, input}]
       // Convert to a readable string before passing to the client
@@ -34,7 +49,8 @@ export async function POST(req: Request) {
           ? detail
           : Array.isArray(detail)
           ? detail.map((e: { msg?: string }) => e.msg ?? JSON.stringify(e)).join("; ")
-          : "Parsing failed"
+          : `Backend error (${upstream.status}): ${JSON.stringify(data).slice(0, 200)}`
+      console.error("menu-parse upstream error:", upstream.status, data)
       return NextResponse.json({ error: errorMsg }, { status: upstream.status })
     }
 
