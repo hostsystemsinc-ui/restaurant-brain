@@ -236,6 +236,45 @@ def _ensure_walnut_restaurants():
 
 threading.Thread(target=_ensure_walnut_restaurants, daemon=True).start()
 
+def _sync_walnut_southside_menu():
+    """One-time startup: copy menu_config from Walnut Original → Southside if Southside has no items yet."""
+    ORIGINAL_ID  = "0001cafe-0001-4000-8000-000000000001"
+    SOUTHSIDE_ID = "0002cafe-0001-4000-8000-000000000002"
+    try:
+        # Check Southside's current menu
+        ss = supabase.table("restaurant_configs").select("menu_config").eq("restaurant_id", SOUTHSIDE_ID).limit(1).execute()
+        if ss.data:
+            mc = ss.data[0].get("menu_config")
+            if isinstance(mc, str):
+                try: mc = _json.loads(mc)
+                except: mc = None
+            # Only copy if Southside has no menu items at all
+            if mc and isinstance(mc.get("sections"), list) and any(s.get("items") for s in mc["sections"]):
+                print("[sync_walnut_menus] Southside already has menu items — skipping copy")
+                return
+        # Fetch Original's menu
+        orig = supabase.table("restaurant_configs").select("menu_config").eq("restaurant_id", ORIGINAL_ID).limit(1).execute()
+        if not orig.data:
+            print("[sync_walnut_menus] Original has no config — skipping")
+            return
+        mc = orig.data[0].get("menu_config")
+        if isinstance(mc, str):
+            try: mc = _json.loads(mc)
+            except: mc = None
+        if not mc or not isinstance(mc.get("sections"), list) or not any(s.get("items") for s in mc["sections"]):
+            print("[sync_walnut_menus] Original has no menu items — skipping")
+            return
+        # Copy to Southside
+        menu_json = _json.dumps(mc) if isinstance(mc, dict) else mc
+        supabase.table("restaurant_configs").update({"menu_config": menu_json}).eq("restaurant_id", SOUTHSIDE_ID).execute()
+        nsec = len(mc["sections"])
+        nitem = sum(len(s.get("items", [])) for s in mc["sections"])
+        print(f"[sync_walnut_menus] Copied {nsec} sections / {nitem} items from Original → Southside")
+    except Exception as e:
+        print(f"[sync_walnut_menus] Error: {e}")
+
+threading.Thread(target=_sync_walnut_southside_menu, daemon=True).start()
+
 
 def _rebuild_occupants_for_restaurant(rid: str) -> int:
     """Reconstruct in-memory occupants for a single restaurant from DB + seating_events.
@@ -552,6 +591,12 @@ async def menu_parse(file: List[UploadFile] = File(...)):
         print(f"[menu_parse] extraction failed. Raw (first 600): {raw[:600]}", file=_sys.stderr)
         raise HTTPException(status_code=502, detail="AI returned invalid JSON")
 
+    _PLACEHOLDER_DESCS = {"none", "n/a", "na", "-", "—", "null", "undefined", "no description", "not available", ""}
+
+    def _clean_desc(v) -> str:
+        s = str(v).strip() if v is not None else ""
+        return "" if s.lower() in _PLACEHOLDER_DESCS else s
+
     sections = [
         {
             "id": str(_uuid.uuid4()),
@@ -560,7 +605,7 @@ async def menu_parse(file: List[UploadFile] = File(...)):
                 {
                     "id": str(_uuid.uuid4()),
                     "name": str(i.get("name", "Item")),
-                    "description": str(i.get("description", "")),
+                    "description": _clean_desc(i.get("description")),
                     "price": str(i.get("price", "")),
                     "tags": [str(t) for t in i.get("tags", [])] if isinstance(i.get("tags"), list) else [],
                 }
@@ -1942,33 +1987,42 @@ def get_sections_config(restaurant_id: str):
     try:
         res = supabase.table("restaurant_configs").select("settings").eq("restaurant_id", restaurant_id).limit(1).execute()
         if res.data:
-            settings = res.data[0].get("settings") or {}
-            if isinstance(settings, str):
-                try: settings = _json.loads(settings)
-                except: settings = {}
+            raw = res.data[0].get("settings")
+            if isinstance(raw, str):
+                try: raw = _json.loads(raw)
+                except: raw = {}
+            settings = raw if isinstance(raw, dict) else {}
             return settings.get("sections_config", {"enabled": False, "sections": []})
-    except Exception:
-        pass
+        print(f"[sections GET] no restaurant_configs row for rid={restaurant_id!r}")
+    except Exception as e:
+        print(f"[sections GET] error rid={restaurant_id!r}: {e}")
     return {"enabled": False, "sections": []}
 
 @app.post("/sections")
 def set_sections_config(restaurant_id: str, req: SectionsConfigRequest):
     """Persist sections config for a restaurant (stored in restaurant_configs.settings JSON)."""
+    import sys as _sys2
     try:
         res = supabase.table("restaurant_configs").select("id, settings").eq("restaurant_id", restaurant_id).limit(1).execute()
         if res.data:
-            settings = res.data[0].get("settings") or {}
-            if isinstance(settings, str):
-                try: settings = _json.loads(settings)
-                except: settings = {}
+            raw = res.data[0].get("settings")
+            if isinstance(raw, str):
+                try: raw = _json.loads(raw)
+                except: raw = {}
+            settings = raw if isinstance(raw, dict) else {}
             settings["sections_config"] = {"enabled": req.enabled, "sections": req.sections}
-            supabase.table("restaurant_configs").update({"settings": _json.dumps(settings)}).eq("restaurant_id", restaurant_id).execute()
+            new_settings_str = _json.dumps(settings)
+            update_res = supabase.table("restaurant_configs").update({"settings": new_settings_str}).eq("restaurant_id", restaurant_id).execute()
+            print(f"[sections POST] UPDATE rid={restaurant_id!r} enabled={req.enabled} sections={req.sections} rows_affected={len(update_res.data or [])}", file=_sys2.stderr)
         else:
             settings = {"sections_config": {"enabled": req.enabled, "sections": req.sections}}
-            supabase.table("restaurant_configs").insert({"restaurant_id": restaurant_id, "settings": _json.dumps(settings)}).execute()
+            insert_res = supabase.table("restaurant_configs").insert({"restaurant_id": restaurant_id, "settings": _json.dumps(settings)}).execute()
+            print(f"[sections POST] INSERT rid={restaurant_id!r} enabled={req.enabled} sections={req.sections} rows={len(insert_res.data or [])}", file=_sys2.stderr)
+        # Return the just-saved config so the client can verify it round-tripped correctly
+        return {"ok": True, "saved": {"enabled": req.enabled, "sections": req.sections}}
     except Exception as e:
+        print(f"[sections POST] EXCEPTION rid={restaurant_id!r}: {e}", file=_sys2.stderr)
         raise HTTPException(status_code=500, detail=str(e))
-    return {"ok": True}
 
 # ── Insights ─────────────────────────────────────────────────────────────────
 

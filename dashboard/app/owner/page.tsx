@@ -1159,7 +1159,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
           items: (Array.isArray(s.items) ? s.items : []).map((i: Record<string, unknown>) => ({
             id:          (i.id as string) || nanoid(),
             name:        String(i.name || "Item"),
-            description: String(i.description ?? ""),
+            description: /^(none|n\/a|na|-|—|null|undefined)$/i.test(String(i.description ?? "").trim()) ? "" : String(i.description ?? "").trim(),
             price:       String(i.price ?? ""),
             tags:        Array.isArray(i.tags) ? i.tags.map(String) : [],
           })),
@@ -1424,7 +1424,7 @@ function MenuBuilder({ sections, onChange }: { sections: MenuSection[]; onChange
                   onClick={() => setEditing({ sectionId: section.id, itemId: item.id })}>
                   <div>
                     <span style={{ fontSize: 13, fontWeight: 600, color: D.text }}>{item.name}</span>
-                    {item.description && <span style={{ fontSize: 12, color: D.text2, marginLeft: 8 }}>{item.description}</span>}
+                    {item.description && !/^(none|n\/a|na|-|—)$/i.test(item.description.trim()) && <span style={{ fontSize: 12, color: D.text2, marginLeft: 8 }}>{item.description}</span>}
                     {(item.tags ?? []).map(tag => (
                       <span key={tag} style={{ marginLeft: 6, fontSize: 10, color: D.orange, background: D.orangeBg, borderRadius: 10, padding: "1px 7px" }}>{tag}</span>
                     ))}

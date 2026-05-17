@@ -1050,18 +1050,19 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         const detail = await r.json().then(d => d?.detail ?? "Unknown error").catch(() => `HTTP ${r.status}`)
         throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail))
       }
-      // Verify the save actually persisted by re-reading from the server
-      const verify = await fetch(`${API}/sections?restaurant_id=${rid}`).then(v => v.ok ? v.json() : null).catch(() => null)
-      if (verify) setSections(verify)
+      const resp = await r.json().catch(() => null)
+      // The backend echoes back what it saved — verify it matches what we sent
+      const saved = resp?.saved as SectionsConfig | null
+      if (saved && (saved.enabled !== cfg.enabled || JSON.stringify(saved.sections) !== JSON.stringify(cfg.sections))) {
+        throw new Error(`Server saved wrong data (rid=${rid}) — expected ${JSON.stringify(cfg)} but got ${JSON.stringify(saved)}`)
+      }
       setSectionsMsg({ ok: true, text: "Saved" })
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Could not save"
       setSectionsMsg({ ok: false, text: `Save failed: ${msg}` })
-      // Re-fetch to restore UI to actual server state
-      fetch(`${API}/sections?restaurant_id=${rid}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setSections(d) }).catch(() => {})
     }
     setSectionsSaving(false)
-    setTimeout(() => setSectionsMsg(null), 6000)
+    setTimeout(() => setSectionsMsg(null), 8000)
   }
 
   function toggleSections() {
