@@ -434,8 +434,8 @@ function MenuDrawer({ sections, restaurantName, onClose }: {
                 <div key={item.id ?? item.name}>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, paddingBottom: 14 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: item.description ? 3 : 0 }}>{item.name}</p>
-                      {item.description && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.description}</p>}
+                      <p style={{ fontSize: 15, fontWeight: 600, color: "rgba(255,255,255,0.9)", marginBottom: item.description && !/^(none|n\/a|na|-|—|null|undefined)$/i.test(item.description.trim()) ? 3 : 0 }}>{item.name}</p>
+                      {item.description && !/^(none|n\/a|na|-|—|null|undefined)$/i.test(item.description.trim()) && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5 }}>{item.description}</p>}
                       {item.tags && item.tags.length > 0 && (
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
                           {item.tags.map(tag => (

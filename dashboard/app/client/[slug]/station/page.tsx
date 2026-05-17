@@ -858,9 +858,10 @@ function DraggableQueueCard({
         overflow: "hidden",
       }}
     >
-      {/* ── Top section — drag handle only; buttons are always visible ── */}
+      {/* ── Top section — drag handle + tap-to-select ── */}
       <div
         {...listeners}
+        onClick={() => { if (!isDragging) onSelect?.() }}
         style={{
           cursor: isDragging ? "grabbing" : "grab",
           padding: "10px 12px",
@@ -877,7 +878,7 @@ function DraggableQueueCard({
             {entry.position ?? "—"}
           </div>
           <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(var(--cream),0.97)", wordBreak: "break-word" }}>
+            <span style={{ fontWeight: 600, fontSize: 14, lineHeight: 1.3, color: isReady ? "#86efac" : "rgba(var(--cream),0.97)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, flex: "1 1 60px" }}>
               {entry.name || "Guest"}
             </span>
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15, fontWeight: 800, color: "#fff", background: "rgba(99,179,237,0.18)", border: "1px solid rgba(99,179,237,0.30)", borderRadius: 6, padding: "1px 8px", letterSpacing: "0.01em", flexShrink: 0 }}>

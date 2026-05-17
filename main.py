@@ -2998,6 +2998,9 @@ def get_client_config(restaurant_id: str, secret: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_WALNUT_ORIGINAL_ID  = "0001cafe-0001-4000-8000-000000000001"
+_WALNUT_SOUTHSIDE_ID = "0002cafe-0001-4000-8000-000000000002"
+
 @app.post("/owner/clients/{restaurant_id}/config")
 def save_client_config(restaurant_id: str, req: ClientConfigRequest, secret: Optional[str] = None):
     _check_owner_secret(secret)
@@ -3015,6 +3018,21 @@ def save_client_config(restaurant_id: str, req: ClientConfigRequest, secret: Opt
         else:
             data["restaurant_id"] = restaurant_id
             supabase.table("restaurant_configs").insert(data).execute()
+
+        # ── Walnut menu mirror: whenever Original's menu is saved, copy it to Southside ──
+        if restaurant_id == _WALNUT_ORIGINAL_ID and req.menu_config is not None:
+            try:
+                menu_json = _json.dumps(req.menu_config)
+                ss_existing = supabase.table("restaurant_configs").select("id").eq("restaurant_id", _WALNUT_SOUTHSIDE_ID).limit(1).execute()
+                if ss_existing.data:
+                    supabase.table("restaurant_configs").update({"menu_config": menu_json, "updated_at": datetime.now(timezone.utc).isoformat()}).eq("restaurant_id", _WALNUT_SOUTHSIDE_ID).execute()
+                else:
+                    supabase.table("restaurant_configs").insert({"restaurant_id": _WALNUT_SOUTHSIDE_ID, "menu_config": menu_json, "updated_at": datetime.now(timezone.utc).isoformat()}).execute()
+                print(f"[walnut-mirror] Copied menu from Original → Southside ({len(req.menu_config.get('sections', []))} sections)")
+            except Exception as mirror_err:
+                print(f"[walnut-mirror] WARNING: failed to copy menu to Southside: {mirror_err}")
+                # Don't raise — the primary save succeeded
+
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
