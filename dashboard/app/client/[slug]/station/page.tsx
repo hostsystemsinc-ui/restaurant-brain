@@ -245,7 +245,7 @@ interface QueueEntry {
 
 interface SectionsConfig { enabled: boolean; sections: string[] }
 
-interface LocalOccupant { name: string; party_size: number; entry_id?: string }
+interface LocalOccupant { name: string; party_size: number; entry_id?: string; phone?: string | null; notes?: string | null; sat_at?: number }
 
 interface Reservation {
   id:         string
@@ -858,10 +858,9 @@ function DraggableQueueCard({
         overflow: "hidden",
       }}
     >
-      {/* ── Top section — always visible; drag handle + click to collapse ── */}
+      {/* ── Top section — drag handle only; buttons are always visible ── */}
       <div
         {...listeners}
-        onClick={() => { if (!isDragging) setExpanded(e => !e) }}
         style={{
           cursor: isDragging ? "grabbing" : "grab",
           padding: "10px 12px",
@@ -2723,7 +2722,15 @@ function ClientStationInner() {
           const clearedExpiry = recentlyClearedRef.current.get(tNum)
           if (clearedExpiry && clearedExpiry > now2) continue // don't restore a just-cleared table
           if (clearedExpiry && clearedExpiry <= now2) recentlyClearedRef.current.delete(tNum)
-          next.set(tNum, { name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id })
+          // Preserve phone/notes/sat_at from local state when same guest is still on this table
+          const prev_occ = prev.get(tNum)
+          const sameGuest = prev_occ && (occ.entry_id ? prev_occ.entry_id === occ.entry_id : prev_occ.name === occ.name)
+          next.set(tNum, {
+            name: occ.name, party_size: occ.party_size, entry_id: occ.entry_id,
+            phone:   sameGuest ? prev_occ!.phone   : undefined,
+            notes:   sameGuest ? prev_occ!.notes   : undefined,
+            sat_at:  sameGuest ? prev_occ!.sat_at  : undefined,
+          })
         }
         // Keep any recently-seated local entry that backend hasn't picked up yet
         for (const [tNum, expiry] of recentlySeateddRef.current) {
@@ -2893,7 +2900,7 @@ function ClientStationInner() {
       return
     }
     recentlySeateddRef.current.set(tableNumber, Date.now() + 5000) // protect for 5s
-    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id, phone: entry.phone, notes: entry.notes, sat_at: Date.now() }))
     setReservedTables(prev => { const n = new Map(prev); n.delete(tableNumber); return n })
     // Record seating history for suggestions + guest log
     {
@@ -2935,11 +2942,15 @@ function ClientStationInner() {
       return next
     })
     if (tableId) {
-      try { await fetchT(`${API}/tables/${tableId}/occupy`, { method: "POST" }) } catch {}
+      try { await fetchT(`${API}/tables/${tableId}/occupy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: res.guest_name, party_size: res.party_size }),
+      }) } catch {}
       fetchTables()
     }
     recentlySeateddRef.current.set(tableNumber, Date.now() + 5000)
-    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size }))
+    setLocalOccupants(prev => new Map(prev).set(tableNumber, { name: res.guest_name, party_size: res.party_size, phone: res.phone, notes: res.notes ?? null, sat_at: Date.now() }))
     // Record in guest history so reservation check-ins appear on the History page
     addToGuestLog({
       id:              res.id,
@@ -3148,7 +3159,7 @@ function ClientStationInner() {
 
     // Optimistic update — show table as occupied immediately
     recentlySeateddRef.current.set(targetTable, Date.now() + 5000)
-    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id }))
+    setLocalOccupants(prev => new Map(prev).set(targetTable, { name: entry.name || "Guest", party_size: entry.party_size, entry_id: entry.id, phone: entry.phone, notes: entry.notes, sat_at: Date.now() }))
     setReservedTables(prev => { const n = new Map(prev); n.delete(targetTable); return n })
 
     // Reservation warning
@@ -3794,11 +3805,26 @@ function ClientStationInner() {
             <div className="relative w-full sm:max-w-sm mx-0 sm:mx-4 rounded-t-3xl sm:rounded-2xl p-8" style={{ background: "var(--card-bg)", border: "1px solid rgba(239,68,68,0.28)", zIndex: 1 }}>
               <div className="sm:hidden w-10 h-1 rounded-full mx-auto mb-6" style={{ background: "rgba(var(--accent),0.18)" }} />
               <p className="text-base font-bold mb-1" style={{ color: "rgba(var(--cream),0.92)" }}>Table {clearConfirm.tableNumber}</p>
-              <p className="text-sm mb-8" style={{ color: "rgba(var(--warm),0.55)" }}>
-                What would you like to do with{" "}
-                <strong style={{ color: "rgba(var(--cream),0.88)" }}>{clearConfirm.occupant.name}</strong>{" "}
-                ({clearConfirm.occupant.party_size}p)?
-              </p>
+              {/* Guest info card */}
+              <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "12px 14px", marginBottom: 24, display: "flex", flexDirection: "column", gap: 5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontWeight: 700, fontSize: 16, color: "rgba(var(--cream),0.95)" }}>{clearConfirm.occupant.name}</span>
+                  <span style={{ fontSize: 13, color: "rgba(var(--warm),0.55)" }}>{clearConfirm.occupant.party_size}p</span>
+                </div>
+                {clearConfirm.occupant.sat_at && (
+                  <div style={{ fontSize: 12, color: "rgba(var(--warm),0.50)" }}>
+                    Sat {new Date(clearConfirm.occupant.sat_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    {" · "}
+                    {Math.round((Date.now() - clearConfirm.occupant.sat_at) / 60000)}m ago
+                  </div>
+                )}
+                {clearConfirm.occupant.phone && (
+                  <div style={{ fontSize: 12, color: "rgba(var(--warm),0.55)" }}>{clearConfirm.occupant.phone}</div>
+                )}
+                {clearConfirm.occupant.notes && (
+                  <div style={{ fontSize: 12, color: "rgba(var(--warm),0.45)", fontStyle: "italic" }}>{clearConfirm.occupant.notes}</div>
+                )}
+              </div>
               <div className="flex flex-col gap-3">
                 {clearConfirm.occupant.entry_id && (
                   <button
