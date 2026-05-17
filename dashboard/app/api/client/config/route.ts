@@ -7,12 +7,13 @@ const OWNER_SECRET = process.env.OWNER_SECRET || process.env.OWNER_PASS || ""
 export async function PATCH(req: Request) {
   if (!OWNER_SECRET) return NextResponse.json({ error: "Not configured" }, { status: 500 })
   try {
-    const { rid, guest_config, floor_plan } = await req.json()
+    const { rid, guest_config, floor_plan, menu_config } = await req.json()
     if (!rid) return NextResponse.json({ error: "Missing rid" }, { status: 400 })
 
     const body: Record<string, unknown> = {}
     if (guest_config !== undefined) body.guest_config = guest_config
     if (floor_plan   !== undefined) body.floor_plan   = floor_plan
+    if (menu_config  !== undefined) body.menu_config  = menu_config
 
     const r = await fetch(
       `${RAILWAY_API}/owner/clients/${encodeURIComponent(rid)}/config?secret=${encodeURIComponent(OWNER_SECRET)}`,

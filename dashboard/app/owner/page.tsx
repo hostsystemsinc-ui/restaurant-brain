@@ -1787,6 +1787,9 @@ function NewClientWizard({ token, onDone, onCancel }: {
               <div style={{ gridColumn: "1/-1" }}>
                 <FieldLabel>Logo URL</FieldLabel>
                 <Input value={logoUrl} onChange={setLogoUrl} placeholder="https://restaurant.com/logo.png (auto-filled from website scan)" />
+                <div style={{ marginTop: 8 }}>
+                  <LogoDropZone currentUrl={logoUrl} onUrl={url => setLogoUrl(url)} />
+                </div>
               </div>
               <div style={{ gridColumn: "1/-1" }}>
                 <FieldLabel>Tagline</FieldLabel>

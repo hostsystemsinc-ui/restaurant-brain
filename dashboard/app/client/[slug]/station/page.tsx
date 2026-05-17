@@ -81,9 +81,15 @@ const CANVAS_H = 500  // default fallback; overridden by canvasH state
 interface FloorPos {
   number: number
   label?: string
-  shape: "round" | "square" | "rect"
+  shape: "round" | "square" | "rect" | "diamond"
   x: number; y: number; w: number; h: number
   section: "main" | "bar"
+}
+
+interface WizardFloorPage {
+  id?: string
+  name?: string
+  tables?: WizardTable[]
 }
 
 // Wizard floor plan converter
@@ -92,17 +98,13 @@ interface WizardTable {
   id?: string; number: number; label?: string; capacity?: number
   shape: string; x: number; y: number; w: number; h: number
 }
-interface WizardFloorPlan { tables?: WizardTable[]; objects?: unknown[]; canvasAspect?: number }
+interface WizardFloorPlan { tables?: WizardTable[]; pages?: WizardFloorPage[]; objects?: unknown[]; canvasAspect?: number }
 
-function convertWizardFloor(fp: WizardFloorPlan | null | undefined): { tables: FloorPos[]; canvasW: number; canvasH: number } | null {
-  if (!fp || !Array.isArray(fp.tables) || fp.tables.length === 0) return null
-  const asp = fp.canvasAspect ?? 1.62
-  const cW  = Math.round(asp * 100)
-  const cH  = 100
-  const shapeMap: Record<string, "round" | "square" | "rect"> = {
-    circle: "round", round: "round", square: "square", rect: "rect", booth: "rect", diamond: "rect",
+function convertWizardTables(rawTables: WizardTable[], asp: number): FloorPos[] {
+  const shapeMap: Record<string, FloorPos["shape"]> = {
+    circle: "round", round: "round", square: "square", rect: "rect", booth: "rect", diamond: "diamond",
   }
-  const tables: FloorPos[] = fp.tables.map(t => ({
+  return rawTables.map(t => ({
     number:  t.number,
     label:   t.label,
     shape:   shapeMap[t.shape] ?? "rect",
@@ -112,7 +114,34 @@ function convertWizardFloor(fp: WizardFloorPlan | null | undefined): { tables: F
     h:       t.h,
     section: "main" as const,
   }))
-  return { tables, canvasW: cW, canvasH: cH }
+}
+
+interface ConvertedFloor {
+  pages: { id: string; name: string; tables: FloorPos[] }[]
+  canvasW: number
+  canvasH: number
+}
+
+function convertWizardFloor(fp: WizardFloorPlan | null | undefined): ConvertedFloor | null {
+  if (!fp) return null
+  const asp = fp.canvasAspect ?? 1.62
+  const cW  = Math.round(asp * 100)
+  const cH  = 100
+  if (Array.isArray(fp.pages) && fp.pages.length > 0) {
+    const pages = fp.pages.map((pg, pi) => ({
+      id:     pg.id   ?? `p${pi}`,
+      name:   pg.name ?? (pi === 0 ? "Main Floor" : `Page ${pi + 1}`),
+      tables: Array.isArray(pg.tables) ? convertWizardTables(pg.tables, asp) : [],
+    })).filter(pg => pg.tables.length > 0)
+    if (pages.length === 0) return null
+    return { pages, canvasW: cW, canvasH: cH }
+  }
+  if (!Array.isArray(fp.tables) || fp.tables.length === 0) return null
+  return {
+    pages: [{ id: "p0", name: "Main Floor", tables: convertWizardTables(fp.tables, asp) }],
+    canvasW: cW,
+    canvasH: cH,
+  }
 }
 
 // ── Seating History + Suggestions ──────────────────────────────────────────────
@@ -1092,6 +1121,7 @@ function DroppableFloorTable({
     : isOccupied ? "rgba(239,68,68,0.90)"
     : "rgba(34,197,94,0.82)"
 
+  const isDiamond = pos.shape === "diamond"
   const borderRadius = pos.shape === "round" ? "50%" : pos.shape === "square" ? 11 : 10
 
   return (
@@ -1105,8 +1135,8 @@ function DroppableFloorTable({
         top: `${(pos.y / cH * 100).toFixed(3)}%`,
         width: `${(pos.w / cW * 100).toFixed(3)}%`,
         height: `${(pos.h / cH * 100).toFixed(3)}%`,
-        borderRadius,
-        clipPath: pos.shape === "round" ? "circle(50%)" : undefined,
+        borderRadius: isDiamond ? undefined : borderRadius,
+        clipPath: pos.shape === "round" ? "circle(50%)" : isDiamond ? "polygon(50% 0%,100% 50%,50% 100%,0% 50%)" : undefined,
         background: bg,
         border: `1.5px solid ${borderColor}`,
         boxShadow: isOver && canReceiveDrop
@@ -1241,6 +1271,7 @@ function DroppableFloorTable({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            display: "block",
           }}>
             {(occupant.name || "Guest").split(" ")[0]}
           </span>
@@ -1279,6 +1310,7 @@ function DroppableFloorTable({
 
 function FloorMap({
   tables, localOccupants, onClear, isDraggingOccupant, selectedEntry, onSeatFromSelect, onTableClick, reservedTables, now, floor, canvasW: cW = CANVAS_W, canvasH: cH = CANVAS_H, showCapacity, resAlertBySize, resSelectMode,
+  floorPages, floorPage, onFloorPage,
 }: {
   tables: Table[]
   localOccupants: Map<number, LocalOccupant>
@@ -1295,6 +1327,9 @@ function FloorMap({
   resSelectMode?: boolean
   showCapacity?: boolean
   resAlertBySize?: AlertBySize
+  floorPages?: { id: string; name: string; tables: FloorPos[] }[]
+  floorPage?: number
+  onFloorPage?: (idx: number) => void
 }) {
   const floorPlan = floor ?? []
   const tableByNumber = new Map(tables.map(t => [t.table_number, t]))
@@ -1360,6 +1395,40 @@ function FloorMap({
       </div>
 
       {/* Hint text */}
+      {/* Page tabs — only shown when multiple pages */}
+      {floorPages && floorPages.length > 1 && onFloorPage && (
+        <div style={{
+          position: "absolute",
+          bottom: 36,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          gap: 6,
+          zIndex: 2,
+        }}>
+          {floorPages.map((pg, pi) => (
+            <button
+              key={pg.id}
+              onClick={() => onFloorPage(pi)}
+              style={{
+                padding: "4px 14px",
+                borderRadius: 20,
+                border: `1px solid ${pi === (floorPage ?? 0) ? "rgba(34,197,94,0.70)" : "rgba(var(--warm),0.20)"}`,
+                background: pi === (floorPage ?? 0) ? "rgba(34,197,94,0.18)" : "rgba(0,0,0,0.35)",
+                color: pi === (floorPage ?? 0) ? "#4ade80" : "rgba(var(--warm),0.55)",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                backdropFilter: "blur(8px)",
+                transition: "all 0.12s",
+              }}
+            >
+              {pg.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div style={{
         position: "absolute",
         bottom: 14,
@@ -2501,9 +2570,12 @@ function ClientStationInner() {
   const [joinUrl,      setJoinUrl]      = useState("")
   const [restName,     setRestName]     = useState("")
   const [restLogoUrl,  setRestLogoUrl]  = useState("")
-  const [floor,        setFloor]        = useState<FloorPos[]>([])
+  const [floorPages,   setFloorPages]   = useState<{ id: string; name: string; tables: FloorPos[] }[]>([])
+  const [floorPage,    setFloorPage]    = useState(0)
   const [canvasW,      setCanvasW]      = useState(CANVAS_W)
   const [canvasH,      setCanvasH]      = useState(CANVAS_H)
+  // Derived: tables on the current floor page
+  const floor = floorPages[floorPage]?.tables ?? []
   const [adminPin,        setAdminPin]        = useState("")
   const [showCapacity,  setShowCapacity]  = useState(false)
   const [resAlertBySize, setResAlertBySize] = useState<AlertBySize>(DEFAULT_ALERT_BY_SIZE)
@@ -2584,7 +2656,8 @@ function ClientStationInner() {
         }
         const converted = convertWizardFloor(d.floor_plan)
         if (converted) {
-          setFloor(converted.tables)
+          setFloorPages(converted.pages)
+          setFloorPage(0)
           setCanvasW(converted.canvasW)
           setCanvasH(converted.canvasH)
         }
@@ -3695,6 +3768,9 @@ function ClientStationInner() {
               showCapacity={showCapacity}
               resAlertBySize={resAlertBySize}
               resSelectMode={!!selectedRes}
+              floorPages={floorPages}
+              floorPage={floorPage}
+              onFloorPage={setFloorPage}
             />
           </div>
 

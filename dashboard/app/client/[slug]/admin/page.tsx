@@ -963,10 +963,19 @@ interface EditorTable {
   capacity: number
 }
 
+interface FloorPage {
+  id: string
+  name: string
+  tables: EditorTable[]
+}
+
 const EDITOR_W = 560
 const EDITOR_H = 347  // 560 / 1.615 ≈ golden ratio
 
 interface SectionsConfig { enabled: boolean; sections: string[] }
+
+interface MenuItemAdmin { id: string; name: string; description: string; price: string }
+interface MenuSectionAdmin { id: string; title: string; items: MenuItemAdmin[] }
 
 function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?: () => void }) {
   const [loading,      setLoading]      = useState(true)
@@ -974,15 +983,26 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
   const [msg,          setMsg]          = useState<{ ok: boolean; text: string } | null>(null)
   const [showCapacity, setShowCapacity] = useState(false)
   const [alertBySize,  setAlertBySize]  = useState({ small: 30, medium: 45, large: 60, xlarge: 90 })
-  const [tables,       setTables]       = useState<EditorTable[]>([])
+  const [pages,        setPages]        = useState<FloorPage[]>([{ id: "p0", name: "Main Floor", tables: [] }])
+  const [pageIdx,      setPageIdx]      = useState(0)
+  const [renamingPage, setRenamingPage] = useState(false)
+  const [pageNameEdit, setPageNameEdit] = useState("")
   const [canvasAspect, setCanvasAspect] = useState(1.615)
   const [selectedIdx,  setSelectedIdx]  = useState<number | null>(null)
+
+  // Derived: tables on the current page
+  const tables    = pages[pageIdx]?.tables ?? []
+  const setTables = (fn: (t: EditorTable[]) => EditorTable[]) =>
+    setPages(p => p.map((pg, i) => i === pageIdx ? { ...pg, tables: fn(pg.tables) } : pg))
 
   // Sections config
   const [sections,       setSections]       = useState<SectionsConfig>({ enabled: false, sections: [] })
   const [newSectionName, setNewSectionName] = useState("")
   const [sectionsSaving, setSectionsSaving] = useState(false)
   const [sectionsMsg,    setSectionsMsg]    = useState<{ ok: boolean; text: string } | null>(null)
+
+  // Menu editor state
+  const [menuSections, setMenuSections] = useState<MenuSectionAdmin[]>([])
 
   // Full guest_config from Railway (to merge, not overwrite)
   const fullGuestConfigRef = useRef<Record<string, unknown>>({})
@@ -993,7 +1013,9 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
     origX: number; origY: number
   } | null>(null)
 
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const canvasRef   = useRef<HTMLDivElement>(null)
+  const pageIdxRef  = useRef(pageIdx)
+  useEffect(() => { pageIdxRef.current = pageIdx }, [pageIdx])
 
   useEffect(() => {
     if (!slug) return
@@ -1011,10 +1033,10 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
           setAlertBySize({ small: m, medium: m, large: m, xlarge: m })
         }
         const fp = d.floor_plan
-        if (fp?.tables?.length) {
+        if (fp) {
           const asp = fp.canvasAspect ?? 1.615
           setCanvasAspect(asp)
-          setTables(fp.tables.map((t: { number?: number; shape?: string; x?: number; y?: number; w?: number; h?: number; capacity?: number }, i: number) => ({
+          const mapTable = (t: { number?: number; shape?: string; x?: number; y?: number; w?: number; h?: number; capacity?: number }, i: number): EditorTable => ({
             number:   t.number   ?? (i + 1),
             shape:    t.shape    ?? "square",
             x:        t.x        ?? 50,
@@ -1022,7 +1044,24 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
             w:        t.w        ?? 8,
             h:        t.h        ?? 8,
             capacity: t.capacity ?? 4,
-          })))
+          })
+          if (Array.isArray(fp.pages) && fp.pages.length > 0) {
+            // New multi-page format
+            setPages(fp.pages.map((pg: { id?: string; name?: string; tables?: { number?: number; shape?: string; x?: number; y?: number; w?: number; h?: number; capacity?: number }[] }, pi: number) => ({
+              id:     pg.id   ?? `p${pi}`,
+              name:   pg.name ?? (pi === 0 ? "Main Floor" : `Page ${pi + 1}`),
+              tables: Array.isArray(pg.tables) ? pg.tables.map(mapTable) : [],
+            })))
+            setPageIdx(0)
+          } else if (Array.isArray(fp.tables) && fp.tables.length > 0) {
+            // Legacy single-page format
+            setPages([{ id: "p0", name: "Main Floor", tables: fp.tables.map(mapTable) }])
+            setPageIdx(0)
+          }
+        }
+        // Load menu config
+        if (d.menu_config?.sections) {
+          setMenuSections(d.menu_config.sections)
         }
       })
       .catch(() => {})
@@ -1095,11 +1134,15 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
       const clientY = "touches" in e ? e.touches[0].clientY : e.clientY
       const dx = (clientX - dr.startClientX) / EDITOR_W * 100
       const dy = (clientY - dr.startClientY) / EDITOR_H * 100
-      setTables(prev => prev.map((t, i) => {
-        if (i !== dr.idx) return t
-        const newX = Math.max(t.w / 2, Math.min(100 - t.w / 2, dr.origX + dx))
-        const newY = Math.max(t.h / 2, Math.min(100 - t.h / 2, dr.origY + dy))
-        return { ...t, x: newX, y: newY }
+      const pi = pageIdxRef.current
+      setPages(prev => prev.map((pg, pgI) => {
+        if (pgI !== pi) return pg
+        return { ...pg, tables: pg.tables.map((t, i) => {
+          if (i !== dr.idx) return t
+          const newX = Math.max(t.w / 2, Math.min(100 - t.w / 2, dr.origX + dx))
+          const newY = Math.max(t.h / 2, Math.min(100 - t.h / 2, dr.origY + dy))
+          return { ...t, x: newX, y: newY }
+        }) }
       }))
     }
     function onUp() { dragRef.current = null }
@@ -1148,18 +1191,19 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         showCapacity,
         reservationAlertBySize: alertBySize,
       }
-      const floorPlan = { tables, canvasAspect }
+      const floorPlan = { canvasAspect, pages }
 
       // Save config (guest_config + floor_plan)
       const r1 = await fetch("/api/client/config", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rid, guest_config: mergedGc, floor_plan: floorPlan }),
+        body: JSON.stringify({ rid, guest_config: mergedGc, floor_plan: floorPlan, menu_config: { sections: menuSections } }),
       })
       if (!r1.ok) throw new Error("config save failed")
 
-      // Sync capacity to tables DB (table_number + capacity)
-      const dbTables = tables.map(t => ({ table_number: t.number, capacity: t.capacity }))
+      // Sync capacity to tables DB (table_number + capacity) — all pages combined
+      const allTables = pages.flatMap(pg => pg.tables)
+      const dbTables = allTables.map(t => ({ table_number: t.number, capacity: t.capacity }))
       await fetch("/api/client/tables", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1247,6 +1291,63 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
           </button>
         </div>
 
+        {/* Page tabs */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+          {pages.map((pg, pi) => (
+            <div key={pg.id} style={{ display: "flex", alignItems: "center", gap: 2 }}>
+              {renamingPage && pi === pageIdx ? (
+                <input
+                  autoFocus
+                  value={pageNameEdit}
+                  onChange={e => setPageNameEdit(e.target.value)}
+                  onBlur={() => {
+                    const trimmed = pageNameEdit.trim()
+                    if (trimmed) setPages(p => p.map((x, i) => i === pi ? { ...x, name: trimmed } : x))
+                    setRenamingPage(false)
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      const trimmed = pageNameEdit.trim()
+                      if (e.key === "Enter" && trimmed) setPages(p => p.map((x, i) => i === pi ? { ...x, name: trimmed } : x))
+                      setRenamingPage(false)
+                    }
+                  }}
+                  style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${C.green}`, background: C.greenBg, color: C.green, fontSize: 12, fontWeight: 600, outline: "none", minWidth: 80 }}
+                />
+              ) : (
+                <button
+                  onClick={() => { setPageIdx(pi); setSelectedIdx(null) }}
+                  onDoubleClick={() => { setPageIdx(pi); setPageNameEdit(pg.name); setRenamingPage(true) }}
+                  style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${pi === pageIdx ? C.green : C.border}`, background: pi === pageIdx ? C.greenBg : "transparent", color: pi === pageIdx ? C.green : C.text2, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  {pg.name}
+                </button>
+              )}
+              {pages.length > 1 && pi > 0 && pi === pageIdx && (
+                <button
+                  onClick={() => {
+                    setPages(p => p.filter((_, i) => i !== pi))
+                    setPageIdx(Math.max(0, pi - 1))
+                    setSelectedIdx(null)
+                  }}
+                  style={{ padding: "2px 6px", borderRadius: 5, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              const newPage: FloorPage = { id: Math.random().toString(36).slice(2, 9), name: pages.length === 1 ? "Patio" : `Page ${pages.length + 1}`, tables: [] }
+              setPages(p => [...p, newPage])
+              setPageIdx(pages.length)
+              setSelectedIdx(null)
+            }}
+            style={{ padding: "3px 10px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+            + Page
+          </button>
+          <span style={{ fontSize: 10, color: C.muted, marginLeft: 4 }}>(double-click tab to rename)</span>
+        </div>
+
         <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
           {/* Canvas */}
           <div
@@ -1280,6 +1381,11 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
               const height = t.h / 100 * EDITOR_H
               const isSel  = idx === selectedIdx
               const borderRadius = t.shape === "round" ? "50%" : t.shape === "square" ? 8 : 6
+              const clipPath = t.shape === "round"
+                ? "circle(50%)"
+                : t.shape === "diamond"
+                ? "polygon(50% 0%,100% 50%,50% 100%,0% 50%)"
+                : undefined
               return (
                 <div
                   key={idx}
@@ -1288,10 +1394,10 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
                   onClick={e => { e.stopPropagation(); setSelectedIdx(idx) }}
                   style={{
                     position: "absolute", left, top, width, height,
-                    borderRadius,
-                    clipPath: t.shape === "round" ? "circle(50%)" : undefined,
+                    borderRadius: clipPath ? undefined : borderRadius,
+                    clipPath,
                     background: isSel ? C.green : "#374151",
-                    border: `2px solid ${isSel ? C.green : "rgba(0,0,0,0.25)"}`,
+                    border: clipPath ? undefined : `2px solid ${isSel ? C.green : "rgba(0,0,0,0.25)"}`,
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     cursor: "grab", userSelect: "none", boxShadow: isSel ? `0 0 0 3px ${C.greenBg}` : "0 1px 4px rgba(0,0,0,0.15)",
                     transition: "background 0.1s, border-color 0.1s",
@@ -1322,13 +1428,44 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
 
               <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 4 }}>Shape</label>
               <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                {(["round", "square", "rect"] as const).map(s => (
-                  <button key={s} onClick={() => updateTable(selectedIdx, { shape: s, w: s === "round" ? 8 : s === "square" ? 9 : 15, h: s === "round" ? 8 : s === "square" ? 9 : 9 })}
+                {(["round", "square", "rect", "diamond"] as const).map(s => (
+                  <button key={s}
+                    onClick={() => {
+                      const isSymmetric = s === "round" || s === "diamond"
+                      const defaultW = s === "round" ? 8 : s === "square" ? 9 : s === "rect" ? 15 : 10
+                      const defaultH = isSymmetric ? defaultW : 9
+                      updateTable(selectedIdx, { shape: s, w: defaultW, h: defaultH })
+                    }}
                     style={{ flex: 1, padding: "5px 4px", borderRadius: 6, border: `1px solid ${sel.shape === s ? C.green : C.border}`, background: sel.shape === s ? C.greenBg : "transparent", color: sel.shape === s ? C.green : C.text2, fontSize: 10, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
                     {s}
                   </button>
                 ))}
               </div>
+
+              {/* Size inputs */}
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 4 }}>
+                {sel.shape === "round" || sel.shape === "diamond" ? "Size" : "Width / Height"}
+              </label>
+              {sel.shape === "round" || sel.shape === "diamond" ? (
+                <input type="number" min={3} max={40} value={sel.w}
+                  onChange={e => { const v = Math.max(3, Math.min(40, Number(e.target.value))); updateTable(selectedIdx, { w: v, h: v }) }}
+                  style={{ width: "100%", padding: "6px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, marginBottom: 10, boxSizing: "border-box", outline: "none" }} />
+              ) : (
+                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 10, color: C.muted, display: "block", marginBottom: 2 }}>W</label>
+                    <input type="number" min={3} max={60} value={sel.w}
+                      onChange={e => updateTable(selectedIdx, { w: Math.max(3, Math.min(60, Number(e.target.value))) })}
+                      style={{ width: "100%", padding: "6px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, boxSizing: "border-box", outline: "none" }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: 10, color: C.muted, display: "block", marginBottom: 2 }}>H</label>
+                    <input type="number" min={3} max={60} value={sel.h}
+                      onChange={e => updateTable(selectedIdx, { h: Math.max(3, Math.min(60, Number(e.target.value))) })}
+                      style={{ width: "100%", padding: "6px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, boxSizing: "border-box", outline: "none" }} />
+                  </div>
+                </div>
+              )}
 
               <label style={{ fontSize: 11, fontWeight: 600, color: C.text2, display: "block", marginBottom: 4 }}>Capacity</label>
               <input type="number" min={1} max={50} value={sel.capacity}
@@ -1348,7 +1485,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         </div>
 
         <div style={{ marginTop: 10, fontSize: 11, color: C.muted }}>
-          {tables.length} table{tables.length !== 1 ? "s" : ""} · Drag to reposition · Select to edit shape and capacity
+          {tables.length} table{tables.length !== 1 ? "s" : ""} on this page · {pages.flatMap(p => p.tables).length} total · Drag to reposition · Select to edit
         </div>
       </div>
 
@@ -1399,6 +1536,76 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
             </div>
           </>
         )}
+      </div>
+
+      {/* ── Menu ── */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 4 }}>Menu</div>
+          <div style={{ fontSize: 12, color: C.muted }}>Edit the menu guests see on the join page</div>
+        </div>
+
+        {menuSections.length === 0 && (
+          <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic", marginBottom: 12 }}>No menu sections yet — add one below</div>
+        )}
+
+        {menuSections.map((sec, si) => (
+          <div key={sec.id} style={{ background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <input
+                value={sec.title}
+                onChange={e => setMenuSections(p => p.map((s, i) => i === si ? { ...s, title: e.target.value } : s))}
+                placeholder="Section title (e.g. Starters)"
+                style={{ flex: 1, padding: "6px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, fontWeight: 700, outline: "none", boxSizing: "border-box" as const }}
+              />
+              <button
+                onClick={() => setMenuSections(p => p.filter((_, i) => i !== si))}
+                style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>
+                ✕
+              </button>
+            </div>
+
+            {sec.items.map((item, ii) => (
+              <div key={item.id} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+                <input
+                  value={item.name}
+                  onChange={e => setMenuSections(p => p.map((s, i) => i === si ? { ...s, items: s.items.map((it, j) => j === ii ? { ...it, name: e.target.value } : it) } : s))}
+                  placeholder="Item name"
+                  style={{ flex: 2, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, outline: "none", boxSizing: "border-box" as const }}
+                />
+                <input
+                  value={item.description}
+                  onChange={e => setMenuSections(p => p.map((s, i) => i === si ? { ...s, items: s.items.map((it, j) => j === ii ? { ...it, description: e.target.value } : it) } : s))}
+                  placeholder="Description (opt.)"
+                  style={{ flex: 3, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, outline: "none", boxSizing: "border-box" as const }}
+                />
+                <input
+                  value={item.price}
+                  onChange={e => setMenuSections(p => p.map((s, i) => i === si ? { ...s, items: s.items.map((it, j) => j === ii ? { ...it, price: e.target.value } : it) } : s))}
+                  placeholder="Price (opt.)"
+                  style={{ flex: 1, padding: "5px 8px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, outline: "none", boxSizing: "border-box" as const }}
+                />
+                <button
+                  onClick={() => setMenuSections(p => p.map((s, i) => i === si ? { ...s, items: s.items.filter((_, j) => j !== ii) } : s))}
+                  style={{ padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 11, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>
+                  ✕
+                </button>
+              </div>
+            ))}
+
+            <button
+              onClick={() => setMenuSections(p => p.map((s, i) => i === si ? { ...s, items: [...s.items, { id: Math.random().toString(36).slice(2, 9), name: "", description: "", price: "" }] } : s))}
+              style={{ marginTop: 4, padding: "5px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontSize: 12, cursor: "pointer" }}>
+              + Add item
+            </button>
+          </div>
+        ))}
+
+        <button
+          onClick={() => setMenuSections(p => [...p, { id: Math.random().toString(36).slice(2, 9), title: "", items: [] }])}
+          style={{ marginTop: 4, padding: "7px 16px", borderRadius: 8, border: `1px solid ${C.greenBdr}`, background: C.greenBg, color: C.green, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+          + Add Section
+        </button>
       </div>
 
       {/* ── Save ── */}
