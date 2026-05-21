@@ -920,9 +920,10 @@ def _e164(phone: str) -> Optional[str]:
     return None
 
 def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
-    """Send an SMS via Twilio toll-free (primary) then Textbelt (fallback).
-    Toll-free number +18886167285 — TFN verification pending (1-2 days).
-    Once TFN verified, switch fully to Twilio. A2P 10DLC brand registered in parallel.
+    """Send an SMS via Textbelt (primary) then Twilio (fallback).
+    Textbelt is the reliable primary. Twilio toll-free (+18886167285) will take
+    over once TFN verification is approved (pending). A2P 10DLC brand registration
+    also in progress for long-term use with the (814) number.
     """
     normalized = _e164(to_phone)
     if not normalized:
@@ -930,25 +931,7 @@ def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
 
     errors: list[str] = []
 
-    # ── Twilio toll-free (primary) ────────────────────────────────────────────
-    if TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM:
-        try:
-            from twilio.rest import Client
-            client = Client(TWILIO_SID, TWILIO_TOKEN)
-            msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
-            print(f"[Twilio] queued sid={msg.sid} status={msg.status} error={msg.error_code!r}")
-            if msg.status not in ("failed", "undelivered"):
-                return True, ""
-            tw_err = msg.error_message or f"status={msg.status} code={msg.error_code}"
-            errors.append(f"Twilio: {tw_err}")
-            print(f"[Twilio] delivery failed: {tw_err}")
-        except Exception as e:
-            errors.append(f"Twilio: {e}")
-            print(f"[Twilio] exception: {e}")
-    else:
-        errors.append("Twilio: not configured")
-
-    # ── Textbelt (fallback) ───────────────────────────────────────────────────
+    # ── Textbelt (primary — reliable delivery) ────────────────────────────────
     if TEXTBELT_KEY:
         try:
             import urllib.request, urllib.parse, json as _json
