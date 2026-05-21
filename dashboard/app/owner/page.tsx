@@ -1480,9 +1480,10 @@ function NewClientWizard({ token, onDone, onCancel }: {
   const [scrapeBanner, setScrapeBanner] = useState("")   // shown in step 2 after auto-build
 
   // Step 3 — Guest page
-  const [bgColor,      setBgColor]      = useState("#000000")
-  const [accentColor,  setAccentColor]  = useState("#ffffff")
-  const [logoUrl,      setLogoUrl]      = useState("")
+  const [bgColor,         setBgColor]         = useState("#000000")
+  const [accentColor,     setAccentColor]     = useState("#ffffff")
+  const [buttonTextColor, setButtonTextColor] = useState("#000000")
+  const [logoUrl,         setLogoUrl]         = useState("")
   const [tagline,      setTagline]      = useState("Powered by HOST")
   const [seatedMsg,    setSeatedMsg]    = useState("Thanks for dining with us!")
   const [waitMessages, setWaitMessages] = useState("Your spot is saved — feel free to step out.\nWe'll let you know the moment your table is ready.\nSit tight, we're moving quickly.")
@@ -1557,6 +1558,10 @@ function NewClientWizard({ token, onDone, onCancel }: {
   }
 
   async function create() {
+    if (!/^\d{4}$/.test(adminPin)) {
+      setError("Admin PIN is required — enter a 4-digit PIN in the Credentials step above")
+      return
+    }
     setSaving(true); setError("")
     try {
       const r = await fetch(`${API}/owner/clients?secret=${encodeURIComponent(token)}`, {
@@ -1582,7 +1587,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
 
       // Save config (guest page + menu + floor plan)
       const guestConfig = {
-        bgColor, accentColor, buttonTextColor: "#000000",
+        bgColor, accentColor, buttonTextColor,
         restaurantName: name, tagline,
         logoUrl: logoUrl.trim() || undefined,
         waitMessages: waitMessages.split("\n").map(s => s.trim()).filter(Boolean),
@@ -1784,6 +1789,15 @@ function NewClientWizard({ token, onDone, onCancel }: {
                   <Input value={accentColor} onChange={setAccentColor} placeholder="#ffffff" />
                 </div>
               </div>
+              <div>
+                <FieldLabel>Button Text Color</FieldLabel>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="color" value={buttonTextColor} onChange={e => setButtonTextColor(e.target.value)}
+                    style={{ width: 40, height: 34, borderRadius: 6, border: `1px solid ${D.border}`, cursor: "pointer", padding: 2, background: "none" }} />
+                  <Input value={buttonTextColor} onChange={setButtonTextColor} placeholder="#000000" />
+                </div>
+                <div style={{ fontSize: 11, color: D.muted, marginTop: 4 }}>Text inside the Join Waitlist button</div>
+              </div>
               <div style={{ gridColumn: "1/-1" }}>
                 <FieldLabel>Logo URL</FieldLabel>
                 <Input value={logoUrl} onChange={setLogoUrl} placeholder="https://restaurant.com/logo.png (auto-filled from website scan)" />
@@ -1814,7 +1828,7 @@ function NewClientWizard({ token, onDone, onCancel }: {
               )}
               <div style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>{name || "Restaurant"}</div>
               <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 13, marginTop: 4 }}>{tagline}</div>
-              <div style={{ marginTop: 12, padding: "8px 20px", background: accentColor, borderRadius: 20, display: "inline-block", color: "#000", fontSize: 13, fontWeight: 700 }}>Join Waitlist</div>
+              <div style={{ marginTop: 12, padding: "8px 20px", background: accentColor, borderRadius: 20, display: "inline-block", color: buttonTextColor, fontSize: 13, fontWeight: 700 }}>Join Waitlist</div>
             </div>
           </div>
         )}
@@ -1855,11 +1869,14 @@ function NewClientWizard({ token, onDone, onCancel }: {
                 </div>
               </div>
               {/* Admin PIN */}
-              <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: D.text, marginBottom: 12 }}>🔐 Admin PIN <span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>— 4-digit PIN to access this restaurant&apos;s admin dashboard</span></div>
+              <div style={{ background: D.surface2, border: `1px solid ${adminPin && !/^\d{4}$/.test(adminPin) ? D.red : D.border}`, borderRadius: 10, padding: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: D.text, marginBottom: 12 }}>🔐 Admin PIN <span style={{ fontSize: 11, color: D.red, fontWeight: 600 }}>required</span> <span style={{ fontSize: 11, color: D.muted, fontWeight: 400 }}>— 4-digit PIN to access this restaurant&apos;s admin dashboard</span></div>
                 <div style={{ maxWidth: 200 }}>
-                  <Input value={adminPin} onChange={setAdminPin} placeholder="4 digits" type="text" />
+                  <Input value={adminPin} onChange={setAdminPin} placeholder="e.g. 1234" type="text" />
                 </div>
+                {adminPin && !/^\d{4}$/.test(adminPin) && (
+                  <div style={{ fontSize: 11, color: D.red, marginTop: 6 }}>Must be exactly 4 digits</div>
+                )}
               </div>
               {/* WiFi */}
               <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: 16 }}>
@@ -2326,6 +2343,254 @@ function OverviewTab({ client, token, floorTables, floorWalls, floorObjects, can
   )
 }
 
+// ── Owner Billing Management Tab ───────────────────────────────────────────────
+function OwnerBillingTab({ restaurantId, clientName, token }: { restaurantId: string; clientName: string; token: string }) {
+  const [data,        setData]        = useState<Record<string, unknown> | null>(null)
+  const [loading,     setLoading]     = useState(true)
+  const [acting,      setActing]      = useState("")   // current action in-flight
+  const [error,       setError]       = useState("")
+  const [success,     setSuccess]     = useState("")
+  const [showAddCharge, setShowAddCharge] = useState(false)
+  const [chargeDesc,  setChargeDesc]  = useState("")
+  const [chargeAmt,   setChargeAmt]   = useState("")
+  const [setupLink,   setSetupLink]   = useState("")
+
+  async function load() {
+    setLoading(true); setError("")
+    try {
+      const res = await fetch(`/api/billing?restaurantId=${encodeURIComponent(restaurantId)}`, { cache: "no-store" })
+      setData(await res.json())
+    } catch { setError("Failed to load billing status") }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { if (restaurantId) load() }, [restaurantId]) // eslint-disable-line
+
+  async function act(action: string, extra: Record<string, unknown> = {}) {
+    setActing(action); setError(""); setSuccess("")
+    try {
+      const res = await fetch("/api/billing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ restaurantId, action, ...extra }),
+      })
+      const d = await res.json()
+      if (!res.ok || d.error) { setError(d.error || "Request failed"); return }
+      if (action === "send-setup-link" && d.setup_url) {
+        setSetupLink(d.setup_url)
+        setSuccess("Setup link generated — copy and send to the restaurant.")
+      } else {
+        setSuccess(action === "enable" ? "Billing enabled with 30-day trial." :
+                   action === "disable" ? "Subscription will cancel at period end." :
+                   action === "reactivate" ? "Cancellation removed." :
+                   action === "add-charge" ? "Charge added to next invoice." :
+                   action === "refund" ? "Refund issued." : "Done.")
+        setShowAddCharge(false)
+        setChargeDesc(""); setChargeAmt("")
+        await load()
+      }
+    } catch (e) { setError(String(e)) }
+    finally { setActing("") }
+  }
+
+  const billingEnabled = data?.billing_enabled === true
+  const status         = String(data?.status || "")
+  const cancelSoon     = data?.cancel_at_period_end === true
+  const trialEnd       = data?.trial_end    ? new Date(Number(data.trial_end)    * 1000) : null
+  const periodEnd      = data?.current_period_end ? new Date(Number(data.current_period_end) * 1000) : null
+  const textsUsed      = Number(data?.texts_used || 0)
+  const included       = Number(data?.included_texts || 2500)
+  const invoices       = Array.isArray(data?.invoices) ? data!.invoices as {id:string;number:string;amount_paid:number;amount_due:number;status:string;created:number;invoice_pdf:string;hosted_invoice_url:string;charge:string}[] : []
+  const customCharges  = Array.isArray(data?.custom_charges) ? data!.custom_charges as {description:string;amount_cents:number;created_at:string}[] : []
+
+  function statusPill(s: string) {
+    const map: Record<string, {c:string;bg:string;bdr:string}> = {
+      trialing:  { c: D.blue,   bg: D.surface,  bdr: D.blueBorder  },
+      active:    { c: D.green,  bg: D.greenBg,  bdr: D.greenBorder },
+      past_due:  { c: "#EF4444", bg: "rgba(239,68,68,0.1)", bdr: "rgba(239,68,68,0.3)" },
+      canceled:  { c: D.muted,  bg: D.surface2, bdr: D.border      },
+      incomplete:{ c: D.orange, bg: D.surface,  bdr: D.border      },
+    }
+    const m = map[s] || { c: D.muted, bg: D.surface2, bdr: D.border }
+    return <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "3px 10px", border: `1px solid ${m.bdr}`, background: m.bg, color: m.c, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>{s || "not set up"}</span>
+  }
+
+  if (loading) return <div style={{ padding: 32, color: D.muted, fontSize: 14 }}>Loading…</div>
+
+  return (
+    <div style={{ maxWidth: 720 }}>
+      {error   && <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#EF4444", fontSize: 13 }}>{error}</div>}
+      {success && <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 8, background: D.greenBg, border: `1px solid ${D.greenBorder}`, color: D.green, fontSize: 13 }}>{success}</div>}
+
+      {/* Status card */}
+      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: D.text }}>{clientName}</div>
+            <div style={{ fontSize: 12, color: D.muted, marginTop: 2 }}>HOST Platform Base Plan · $149/mo</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {billingEnabled && statusPill(status)}
+            {cancelSoon && <span style={{ fontSize: 11, color: D.orange, fontWeight: 600 }}>Cancels {periodEnd?.toLocaleDateString()}</span>}
+          </div>
+        </div>
+
+        {billingEnabled && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+            {[
+              { label: "Trial Ends",    value: trialEnd  ? trialEnd.toLocaleDateString()  : status === "active" ? "—" : "—" },
+              { label: "Period End",    value: periodEnd ? periodEnd.toLocaleDateString() : "—" },
+              { label: "SMS This Month", value: `${textsUsed.toLocaleString()} / ${included.toLocaleString()}` },
+            ].map(c => (
+              <div key={c.label} style={{ background: D.surface2, borderRadius: 10, padding: "10px 14px" }}>
+                <div style={{ fontSize: 10, color: D.muted, textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 4 }}>{c.label}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: D.text }}>{c.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!!data?.customer_email && (
+          <div style={{ fontSize: 12, color: D.muted }}>Billing email: <strong style={{ color: D.text2 }}>{String(data.customer_email)}</strong></div>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 10, marginBottom: 16 }}>
+        {!billingEnabled && (
+          <button onClick={() => act("enable")} disabled={!!acting}
+            style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.greenBorder}`, background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            {acting === "enable" ? "Enabling…" : "✓ Enable Billing (30-day trial)"}
+          </button>
+        )}
+        {billingEnabled && (
+          <>
+            <button onClick={() => act("send-setup-link")} disabled={!!acting}
+              style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.blueBorder}`, background: D.surface, color: D.blue, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              {acting === "send-setup-link" ? "Generating…" : "🔗 Generate Setup Link"}
+            </button>
+            <button onClick={() => setShowAddCharge(x => !x)}
+              style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.border}`, background: D.surface, color: D.text2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              + Add Custom Charge
+            </button>
+            {!cancelSoon && status !== "canceled" && (
+              <button onClick={() => { if (confirm(`Cancel ${clientName}'s subscription at end of period?`)) act("disable") }} disabled={!!acting}
+                style={{ padding: "9px 20px", borderRadius: 8, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", color: "#EF4444", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Cancel Subscription
+              </button>
+            )}
+            {cancelSoon && (
+              <button onClick={() => act("reactivate")} disabled={!!acting}
+                style={{ padding: "9px 20px", borderRadius: 8, border: `1px solid ${D.greenBorder}`, background: D.greenBg, color: D.green, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Reactivate
+              </button>
+            )}
+          </>
+        )}
+        <button onClick={load} disabled={loading}
+          style={{ padding: "9px 16px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+          ↺ Refresh
+        </button>
+      </div>
+
+      {/* Setup link display */}
+      {setupLink && (
+        <div style={{ background: D.surface, border: `1px solid ${D.blueBorder}`, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: D.blue, marginBottom: 8 }}>Payment Setup Link (send to restaurant):</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input readOnly value={setupLink} style={{ flex: 1, background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 11, color: D.text2, fontFamily: "monospace" }} />
+            <button onClick={() => { navigator.clipboard.writeText(setupLink); setSuccess("Link copied!") }}
+              style={{ padding: "8px 14px", borderRadius: 6, border: `1px solid ${D.blueBorder}`, background: D.surface, color: D.blue, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" as const }}>
+              Copy
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: D.muted, marginTop: 8 }}>This link expires. Generate a new one if it doesn&apos;t work.</div>
+        </div>
+      )}
+
+      {/* Add custom charge form */}
+      {showAddCharge && (
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "18px 20px", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: D.text, marginBottom: 12 }}>Add Custom Charge to Next Invoice</div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            <input placeholder="Description (e.g. Sign replacement)" value={chargeDesc} onChange={e => setChargeDesc(e.target.value)}
+              style={{ flex: 1, background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 13, color: D.text }} />
+            <input placeholder="Amount ($)" type="number" min="0" step="0.01" value={chargeAmt} onChange={e => setChargeAmt(e.target.value)}
+              style={{ width: 110, background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 6, padding: "8px 10px", fontSize: 13, color: D.text }} />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => {
+              if (!chargeDesc.trim() || !chargeAmt) { setError("Enter both description and amount"); return }
+              act("add-charge", { description: chargeDesc.trim(), amount_cents: Math.round(parseFloat(chargeAmt) * 100) })
+            }} disabled={!!acting}
+              style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: D.accent, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              {acting === "add-charge" ? "Adding…" : "Add Charge"}
+            </button>
+            <button onClick={() => { setShowAddCharge(false); setChargeDesc(""); setChargeAmt("") }}
+              style={{ padding: "8px 14px", borderRadius: 8, border: `1px solid ${D.border}`, background: "transparent", color: D.text2, fontSize: 13, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pending custom charges */}
+      {customCharges.length > 0 && (
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "16px 20px", marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: D.text, textTransform: "uppercase" as const, letterSpacing: "0.07em", marginBottom: 10 }}>Pending Custom Charges</div>
+          {customCharges.map((ch, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: i < customCharges.length-1 ? `1px solid ${D.border}` : "none" }}>
+              <div style={{ fontSize: 13, color: D.text2 }}>{ch.description}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: D.orange }}>${(ch.amount_cents/100).toFixed(2)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Invoices */}
+      {invoices.length > 0 && (
+        <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ padding: "12px 20px", borderBottom: `1px solid ${D.border}`, fontSize: 11, fontWeight: 700, color: D.muted, textTransform: "uppercase" as const, letterSpacing: "0.07em", display: "grid", gridTemplateColumns: "1fr auto auto auto" }}>
+            <span>Invoice</span><span>Amount</span><span>Status</span><span>Actions</span>
+          </div>
+          {invoices.map((inv, i) => (
+            <div key={inv.id} style={{ padding: "12px 20px", borderBottom: i < invoices.length-1 ? `1px solid ${D.border}` : "none", display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: 12, alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: D.text }}>{inv.number || inv.id.slice(-8)}</div>
+                <div style={{ fontSize: 11, color: D.muted }}>{new Date(inv.created * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: D.text }}>${((inv.amount_paid || inv.amount_due) / 100).toFixed(2)}</div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: inv.status === "paid" ? D.green : inv.status === "open" ? D.orange : D.muted }}>
+                {inv.status?.toUpperCase()}
+              </span>
+              <div style={{ display: "flex", gap: 6 }}>
+                {inv.hosted_invoice_url && (
+                  <a href={inv.hosted_invoice_url} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 11, color: D.blue, textDecoration: "none", padding: "4px 8px", borderRadius: 5, border: `1px solid ${D.blueBorder}`, background: D.surface }}>
+                    View
+                  </a>
+                )}
+                {inv.charge && inv.status === "paid" && (
+                  <button
+                    onClick={() => { if (confirm(`Refund $${((inv.amount_paid||0)/100).toFixed(2)} for invoice ${inv.number}?`)) act("refund", { charge_id: inv.charge }) }}
+                    disabled={!!acting}
+                    style={{ fontSize: 11, color: "#EF4444", padding: "4px 8px", borderRadius: 5, border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.08)", cursor: "pointer" }}>
+                    Refund
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {billingEnabled && invoices.length === 0 && (
+        <div style={{ color: D.muted, fontSize: 13, textAlign: "center", padding: "24px 0" }}>No invoices yet — first invoice generated after trial ends.</div>
+      )}
+    </div>
+  )
+}
+
 // ── Client Detail View ─────────────────────────────────────────────────────────
 function ClientDetailView({ client, token, onBack, onUpdated }: {
   client: Client
@@ -2333,7 +2598,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
   onBack: () => void
   onUpdated: () => void
 }) {
-  const [tab, setTab] = useState<"overview"|"credentials"|"floor-map"|"guest-page"|"menu"|"reservations"|"documents">("overview")
+  const [tab, setTab] = useState<"overview"|"credentials"|"floor-map"|"guest-page"|"menu"|"reservations"|"documents"|"billing">("overview")
   const [config, setConfig] = useState<{ guest_config?: Record<string,unknown>; menu_config?: { sections: MenuSection[] }; floor_plan?: FloorTable[]; settings?: Record<string,unknown> } | null>(null)
   const [configLoaded, setConfigLoaded] = useState(false)
   const [savingConfig, setSavingConfig] = useState(false)
@@ -2457,6 +2722,7 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
     { id: "guest-page",   label: "Guest Page",    icon: "📱" },
     { id: "menu",         label: "Menu",          icon: "🍽" },
     { id: "reservations", label: "Reservations",  icon: "📅" },
+    { id: "billing",      label: "Billing",       icon: "💳" },
     { id: "documents",    label: "Documents",     icon: "📄" },
   ]
 
@@ -2659,6 +2925,11 @@ function ClientDetailView({ client, token, onBack, onUpdated }: {
             </div>
           )}
         </div>
+      )}
+
+      {/* Billing tab */}
+      {tab === "billing" && (
+        <OwnerBillingTab restaurantId={client.id || ""} clientName={client.display_name} token={token} />
       )}
 
       {/* Documents tab */}
@@ -3450,8 +3721,9 @@ function BillingView({ token }: { token: string }) {
       .finally(() => setLoading(false))
   }, [token])
 
-  const paying   = clients.filter(c => (c.monthly_fee_cents || 0) > 0)
-  const free     = clients.filter(c => !c.monthly_fee_cents || c.monthly_fee_cents === 0)
+  const activeClients = clients.filter(c => c.status !== "archived")
+  const paying   = activeClients.filter(c => (c.monthly_fee_cents || 0) > 0)
+  const free     = activeClients.filter(c => !c.monthly_fee_cents || c.monthly_fee_cents === 0)
   const totalMRR = paying.reduce((s, c) => s + (c.monthly_fee_cents || 0), 0)
 
   return (
@@ -3481,8 +3753,8 @@ function BillingView({ token }: { token: string }) {
           <div style={{ padding: "14px 20px", borderBottom: `1px solid ${D.border}`, display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: 12, fontSize: 11, color: D.muted, textTransform: "uppercase", letterSpacing: "0.07em" }}>
             <span>Client</span><span>Plan</span><span>Status</span><span>Locations</span><span>Monthly</span>
           </div>
-          {clients.map((c, i) => (
-            <div key={c.id} style={{ padding: "14px 20px", borderBottom: i < clients.length - 1 ? `1px solid ${D.border}` : "none",
+          {activeClients.map((c, i) => (
+            <div key={c.id} style={{ padding: "14px 20px", borderBottom: i < activeClients.length - 1 ? `1px solid ${D.border}` : "none",
               display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: 12, alignItems: "center" }}>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: D.text }}>{c.display_name}</div>
@@ -3496,7 +3768,7 @@ function BillingView({ token }: { token: string }) {
               </span>
             </div>
           ))}
-          {clients.length === 0 && (
+          {activeClients.length === 0 && (
             <div style={{ padding: "32px 20px", textAlign: "center", color: D.muted, fontSize: 14 }}>No clients yet</div>
           )}
         </div>
@@ -3820,6 +4092,48 @@ function AnalyticsView({ token, clients }: { token: string; clients: Client[] })
                 </div>
               </div>
             )}
+
+            {/* Join method breakdown */}
+            {sorted.length > 0 && (() => {
+              const sourceCounts: Record<string, number> = {}
+              sorted.forEach(e => { const s = e.source || "unknown"; sourceCounts[s] = (sourceCounts[s] || 0) + 1 })
+              const sources = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1])
+              const total = sorted.length
+              // color palette per source (mirrors sourceStyle but returns just color string)
+              function srcColor(s: string): string {
+                if (s === "nfc")    return "#60A5FA"
+                if (s === "host")   return "#22C55E"
+                if (s === "qr")     return "#A78BFA"
+                if (s === "analog") return "#F59E0B"
+                if (s === "walk-in") return "#FB923C"
+                return "#6B7280"
+              }
+              return (
+                <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 12, padding: "16px 18px", marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: D.text2, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>How Guests Joined</div>
+                  {/* Stacked progress bar */}
+                  <div style={{ display: "flex", height: 10, borderRadius: 6, overflow: "hidden", marginBottom: 16, gap: 2 }}>
+                    {sources.map(([src, count]) => (
+                      <div key={src} style={{ flex: count, background: srcColor(src), borderRadius: 3 }} title={`${src}: ${count}`} />
+                    ))}
+                  </div>
+                  {/* Source pills with counts */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                    {sources.map(([src, count]) => {
+                      const pct = Math.round((count / total) * 100)
+                      return (
+                        <div key={src} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: 2, background: srcColor(src), flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, fontWeight: 700, color: D.text, textTransform: "uppercase", letterSpacing: "0.05em" }}>{src}</span>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: D.text }}>{count}</span>
+                          <span style={{ fontSize: 12, color: D.muted }}>({pct}%)</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
           </>
         )
       })()}

@@ -584,7 +584,7 @@ function ClientAdminInner() {
             setAdminPin(String(d.guest_config.adminPin))
             // always require PIN on every visit
           } else {
-            setPinOk(true) // no PIN configured → open
+            setPinOk(true) // no PIN configured — open, but banner will prompt them to set one
           }
         } else {
           setRidError(true)
@@ -835,6 +835,12 @@ function ClientAdminInner() {
       {/* ── Content ─────────────────────────────────────────────────────────── */}
       {activeTab === "overview" && (
         <div style={{ padding: "24px 24px 48px", maxWidth: 1100, margin: "0 auto" }}>
+          {!adminPin && (
+            <div style={{ marginBottom: 20, padding: "12px 16px", borderRadius: 10, background: "#fff8ed", border: "1px solid #f59e0b", color: "#92400e", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span>⚠️ No Admin PIN is set — anyone can access this dashboard. Set a PIN in the <strong>Logins</strong> tab.</span>
+              <button onClick={() => setActiveTab("logins")} style={{ marginLeft: 16, padding: "5px 12px", borderRadius: 7, background: "#f59e0b", color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Set PIN</button>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
             <StatCard icon={CheckCircle2} label="Tables Open" value={availableTables} sub={`of ${deduped.length} total`} color={C.green} bg={C.greenBg} bdr={C.greenBdr} />
             <StatCard icon={Users} label="Tables Seated" value={occupiedTables} sub={deduped.length > 0 ? `${Math.round(occupiedTables/deduped.length*100)}% occupancy` : "—"} color={occupiedTables > 0 ? C.red : C.muted} bg={occupiedTables > 0 ? C.redBg : C.surface2} bdr={occupiedTables > 0 ? C.redBdr : C.border} />
@@ -1187,6 +1193,9 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
   // Menu editor state
   const [menuSections, setMenuSections] = useState<MenuSectionAdmin[]>([])
 
+  // Guest page colors
+  const [buttonTextColor, setButtonTextColor] = useState("#000000")
+
   // Station display settings
   const [flatQueue,        setFlatQueue]        = useState(false)
   const [showSectionBadge, setShowSectionBadge] = useState(false)
@@ -1195,6 +1204,47 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
 
   // Full guest_config from Railway (to merge, not overwrite)
   const fullGuestConfigRef = useRef<Record<string, unknown>>({})
+
+  // Auto-save station settings on toggle/slider change
+  const settingsLoadedRef  = useRef(false)
+  const queueWidthDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  async function saveStationSettingsOnly(
+    opts: { fq?: boolean; ssb?: boolean; wt?: boolean; qw?: number; btc?: string }
+  ) {
+    const mergedGc = {
+      ...fullGuestConfigRef.current,
+      buttonTextColor: opts.btc ?? (fullGuestConfigRef.current.buttonTextColor as string ?? "#000000"),
+      stationSettings: {
+        flatQueue:        opts.fq  ?? !!(fullGuestConfigRef.current.stationSettings as Record<string,unknown> | undefined)?.flatQueue,
+        showSectionBadge: opts.ssb ?? !!(fullGuestConfigRef.current.stationSettings as Record<string,unknown> | undefined)?.showSectionBadge,
+        waitlistTab:      opts.wt  ?? !!(fullGuestConfigRef.current.stationSettings as Record<string,unknown> | undefined)?.waitlistTab,
+        queueWidth:       opts.qw  ??  ((fullGuestConfigRef.current.stationSettings as Record<string,unknown> | undefined)?.queueWidth as number ?? 300),
+      },
+    }
+    fullGuestConfigRef.current = mergedGc
+    await fetch("/api/client/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rid, guest_config: mergedGc }),
+    }).catch(() => {})
+  }
+
+  // Auto-save toggles immediately; debounce slider 600ms
+  useEffect(() => {
+    if (!settingsLoadedRef.current) return
+    saveStationSettingsOnly({ fq: flatQueue, ssb: showSectionBadge, wt: waitlistTab, btc: buttonTextColor })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatQueue, showSectionBadge, waitlistTab, buttonTextColor])
+
+  useEffect(() => {
+    if (!settingsLoadedRef.current) return
+    if (queueWidthDebounce.current) clearTimeout(queueWidthDebounce.current)
+    queueWidthDebounce.current = setTimeout(() => {
+      saveStationSettingsOnly({ qw: queueWidth })
+    }, 600)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueWidth])
 
   const dragRef = useRef<{
     idx: number
@@ -1215,6 +1265,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         const gc = d.guest_config ?? {}
         fullGuestConfigRef.current = gc
         setShowCapacity(!!gc.showCapacity)
+        if (typeof gc.buttonTextColor === "string" && gc.buttonTextColor) setButtonTextColor(gc.buttonTextColor)
         if (gc.stationSettings && typeof gc.stationSettings === "object") {
           const ss = gc.stationSettings as Record<string, unknown>
           setFlatQueue(!!ss.flatQueue)
@@ -1259,6 +1310,8 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         if (d.menu_config?.sections) {
           setMenuSections(d.menu_config.sections)
         }
+        // Mark settings as loaded so auto-save effects don't fire during init
+        setTimeout(() => { settingsLoadedRef.current = true }, 0)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -1385,6 +1438,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
       const mergedGc = {
         ...fullGuestConfigRef.current,
         showCapacity,
+        buttonTextColor,
         reservationAlertBySize: alertBySize,
         stationSettings: { flatQueue, showSectionBadge, waitlistTab, queueWidth },
       }
@@ -1737,8 +1791,26 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
 
       {/* ── Station Display ── */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 16 }}>
-          Station Display
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted }}>Guest Page</div>
+          <div style={{ fontSize: 11, color: C.muted }}>auto-saves instantly</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Join Waitlist button text color</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Text color shown inside the Join Waitlist button on the guest page</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
+            <input type="color" value={buttonTextColor} onChange={e => setButtonTextColor(e.target.value)}
+              style={{ width: 36, height: 32, borderRadius: 6, border: `1px solid ${C.border}`, cursor: "pointer", padding: 2, background: "none" }} />
+            <input value={buttonTextColor} onChange={e => setButtonTextColor(e.target.value)}
+              style={{ width: 88, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, outline: "none", fontFamily: "monospace" }} />
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted }}>Station Display</div>
+          <div style={{ fontSize: 11, color: C.muted }}>auto-saves instantly</div>
         </div>
 
         {/* Flat queue */}
@@ -1878,7 +1950,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
       )}
       <button onClick={saveSettings} disabled={saving}
         style={{ padding: "12px 28px", borderRadius: 12, background: saving ? C.surface2 : C.green, color: saving ? C.muted : "#fff", border: `1px solid ${saving ? C.border : C.green}`, fontWeight: 700, fontSize: 14, cursor: saving ? "default" : "pointer", transition: "all 0.15s", opacity: saving ? 0.7 : 1 }}>
-        {saving ? "Saving…" : "Save Settings"}
+        {saving ? "Saving…" : "Save Floor Map & Menu"}
       </button>
     </div>
   )

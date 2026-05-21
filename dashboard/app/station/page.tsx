@@ -2191,7 +2191,8 @@ export default function HostDashboard() {
       .then(r => r.json())
       .then(async t => {
         const required = typeof t.version === "string" ? t.version : ""
-        if (!required) return
+        // Only show the modal when the owner explicitly pushed terms (version has -push suffix).
+        if (!required || !required.includes("-push")) return
         const requiredBase = required.replace(/-push\d+$/, "")
 
         // Fast path: localStorage already has acceptance for this canonical version.

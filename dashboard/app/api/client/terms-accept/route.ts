@@ -103,22 +103,32 @@ export async function POST(req: NextRequest) {
       // Non-fatal — localStorage on the device is still the primary acceptance record
     }
 
-    // ── 2. Best-effort PATCH guest_config ────────────────────────────────────
-    // Railway may drop unknown fields; this is a best-effort server-side log.
-    await fetch(
-      `${API}/owner/clients/${restaurantId}/config?secret=${encodeURIComponent(OWNER_SECRET)}`,
-      {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
-          guest_config: {
-            termsAcceptedVersion: version,
-            termsAcceptedAt:      new Date().toISOString(),
-            termsAcceptedIp:      ip,
-          },
-        }),
+    // ── 2. Merge acceptance fields into existing guest_config ─────────────────
+    // Fetch first so we don't wipe all other guest_config fields (colors, name, etc.)
+    try {
+      const existingRes = await fetch(
+        `${API}/owner/clients/${restaurantId}/config?secret=${encodeURIComponent(OWNER_SECRET)}`,
+        { cache: "no-store" }
+      )
+      if (existingRes.ok) {
+        const existing   = await existingRes.json()
+        const existingGc = (existing.guest_config || {}) as Record<string, unknown>
+        const mergedGc   = {
+          ...existingGc,
+          termsAcceptedVersion: version,
+          termsAcceptedAt:      new Date().toISOString(),
+          termsAcceptedIp:      ip,
+        }
+        await fetch(
+          `${API}/owner/clients/${restaurantId}/config?secret=${encodeURIComponent(OWNER_SECRET)}`,
+          {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ guest_config: mergedGc }),
+          }
+        )
       }
-    ).catch(() => {/* non-critical */})
+    } catch {/* non-critical — localStorage on the device is the primary acceptance record */}
 
     return NextResponse.json({
       ok:         true,

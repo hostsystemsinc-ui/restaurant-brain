@@ -3358,7 +3358,9 @@ function ClientStationInner() {
       .then(r => r.json())
       .then(async t => {
         const required = typeof t.version === "string" ? t.version : ""
-        if (!required) return
+        // Only show the modal when the owner explicitly pushed terms (version has -push suffix).
+        // The canonical hardcoded version never requires acceptance on its own.
+        if (!required || !required.includes("-push")) return
         const requiredBase = required.replace(/-push\d+$/, "")
 
         // Fast path: localStorage already accepted this canonical version
