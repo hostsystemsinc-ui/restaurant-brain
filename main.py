@@ -920,9 +920,8 @@ def _e164(phone: str) -> Optional[str]:
     return None
 
 def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
-    """Send an SMS via Textbelt (primary) then Twilio (fallback).
-    Textbelt avoids the US A2P 10DLC carrier block that affects unregistered long-code numbers.
-    Set TEXTBELT_KEY in Railway env vars with a paid key from textbelt.com for reliable delivery.
+    """Send an SMS via Twilio (primary) then Textbelt (fallback).
+    Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER in Railway env vars.
     """
     normalized = _e164(to_phone)
     if not normalized:
@@ -930,7 +929,25 @@ def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
 
     errors: list[str] = []
 
-    # ── Textbelt (primary — avoids A2P 10DLC carrier blocks) ─────────────────
+    # ── Twilio (primary) ──────────────────────────────────────────────────────
+    if TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM:
+        try:
+            from twilio.rest import Client
+            client = Client(TWILIO_SID, TWILIO_TOKEN)
+            msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
+            print(f"[Twilio] queued sid={msg.sid} status={msg.status} error={msg.error_code!r}")
+            if msg.status not in ("failed", "undelivered"):
+                return True, ""
+            tw_err = msg.error_message or f"status={msg.status} code={msg.error_code}"
+            errors.append(f"Twilio: {tw_err}")
+            print(f"[Twilio] delivery failed: {tw_err}")
+        except Exception as e:
+            errors.append(f"Twilio: {e}")
+            print(f"[Twilio] exception: {e}")
+    else:
+        errors.append("Twilio: not configured")
+
+    # ── Textbelt (fallback) ───────────────────────────────────────────────────
     if TEXTBELT_KEY:
         try:
             import urllib.request, urllib.parse, json as _json
@@ -951,24 +968,6 @@ def _send_sms(to_phone: str, body: str) -> tuple[bool, str]:
         except Exception as e:
             errors.append(f"Textbelt: {e}")
             print(f"[Textbelt] exception: {e}")
-
-    # ── Twilio (fallback — blocked by US carriers without A2P 10DLC) ──────────
-    if TWILIO_SID and TWILIO_TOKEN and TWILIO_FROM:
-        try:
-            from twilio.rest import Client
-            client = Client(TWILIO_SID, TWILIO_TOKEN)
-            msg = client.messages.create(body=body, from_=TWILIO_FROM, to=normalized)
-            print(f"[Twilio] queued sid={msg.sid} status={msg.status} error={msg.error_code!r}")
-            if msg.status not in ("failed", "undelivered"):
-                return True, ""
-            tw_err = msg.error_message or f"status={msg.status} code={msg.error_code}"
-            errors.append(f"Twilio: {tw_err}")
-            print(f"[Twilio] delivery failed: {tw_err}")
-        except Exception as e:
-            errors.append(f"Twilio: {e}")
-            print(f"[Twilio] exception: {e}")
-    else:
-        errors.append("Twilio: not configured")
 
     return False, " | ".join(errors) if errors else "No SMS provider configured"
 
@@ -1923,12 +1922,21 @@ def walkin_at_table(table_id: str, body: WalkinAtTableRequest):
     return {"status": "seated", "entry": entry, "table_id": table_id, "table_number": tnum}
 
 def _send_notify_sms(phone: str, rest_name: str, entry_id: str) -> None:
-    # wait_url included once Textbelt URL sending is approved; currently omitted to ensure delivery
     ok, err = _send_sms(
         to_phone=phone,
         body=f"Your table at {rest_name} is ready! Please head to the host stand. Reply STOP to opt out.",
     )
     print(f"[notify] sms_sent={ok} sms_error={err!r}")
+
+
+def _send_quote_sms(phone: str, name: str, rest_name: str, entry_id: str, minutes: int) -> None:
+    """Sent once when a host first quotes a wait time — gives the guest their tracking link."""
+    track_url = f"https://hostplatform.net/wait/{entry_id}"
+    ok, err = _send_sms(
+        to_phone=phone,
+        body=f"Hi {name}! You're on the waitlist at {rest_name} — about {minutes} min wait. Track your spot: {track_url}\nReply STOP to opt out.",
+    )
+    print(f"[quote-sms] sms_sent={ok} sms_error={err!r}")
 
 
 @app.post("/queue/{entry_id}/notify")
@@ -1989,7 +1997,7 @@ def update_wait(entry_id: str, minutes: int):
     """Update the quoted wait time. Fires link SMS for host-added guests on first quote."""
     if minutes < 1 or minutes > 180:
         raise HTTPException(status_code=400, detail="Wait time must be between 1 and 180 minutes")
-    res = supabase.table("queue_entries").select("id, quoted_wait, quoted_wait_set_at, phone, source, restaurant_id").eq("id", entry_id).execute()
+    res = supabase.table("queue_entries").select("id, name, quoted_wait, quoted_wait_set_at, phone, source, restaurant_id").eq("id", entry_id).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Entry not found")
     entry = res.data[0]
@@ -2005,10 +2013,22 @@ def update_wait(entry_id: str, minutes: int):
         existing_set_at = _wait_set_at.get(entry_id) or entry.get("quoted_wait_set_at") or now
         _set_quoted_wait(entry_id, minutes, existing_set_at)
         # Do NOT update _wait_set_at — the original start time is the anchor
-    # No welcome SMS on quote — host-added guests are at the stand, not receiving texts.
-    # The notify_ready SMS fires separately when they're called to be seated.
+    # Send tracking link SMS on first quote only
     sms_sent = False
     sms_error = ""
+    if was_unquoted:
+        phone = entry.get("phone")
+        if phone:
+            try:
+                rid_used  = entry.get("restaurant_id") or RESTAURANT_ID
+                rest_res  = supabase.table("restaurants").select("name").eq("id", rid_used).execute()
+                rest_name = rest_res.data[0]["name"] if rest_res.data else "the restaurant"
+                guest_name = (entry.get("name") or "there").split()[0]
+                _send_quote_sms(phone, guest_name, rest_name, entry_id, minutes)
+                sms_sent = True
+            except Exception as e:
+                sms_error = str(e)
+                print(f"[quote-sms] exception: {e}")
     actual_set_at = now if was_unquoted else existing_set_at
     return {"status": "updated", "quoted_wait": minutes, "wait_set_at": actual_set_at, "sms_sent": sms_sent, "sms_error": sms_error}
 
@@ -3292,3 +3312,575 @@ def update_admin_pin(slug: str, req: PinChangeRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Stripe billing ─────────────────────────────────────────────────────────────
+#
+#   Env vars needed on Railway:
+#     STRIPE_SECRET_KEY, STRIPE_PRICE_ID, STRIPE_OVERAGE_PRICE_ID,
+#     STRIPE_WEBHOOK_SECRET, STRIPE_METER_ID, INCLUDED_TEXTS
+#
+#   Billing state is stored in restaurant_configs.settings["billing"] as JSON:
+#     {
+#       stripe_customer_id: str,
+#       stripe_subscription_id: str,
+#       stripe_subscription_status: str,
+#       billing_enabled: bool,
+#       enabled_at: str (ISO),
+#       cancel_at_period_end: bool,
+#       texts_used_this_period: int,
+#       custom_charges: [{ id, description, amount_cents, created_at }],
+#     }
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+try:
+    import stripe as _stripe
+    _STRIPE_AVAILABLE = True
+except ImportError:
+    _stripe = None  # type: ignore
+    _STRIPE_AVAILABLE = False
+
+_STRIPE_SECRET_KEY       = os.getenv("STRIPE_SECRET_KEY", "")
+_STRIPE_PRICE_ID         = os.getenv("STRIPE_PRICE_ID", "")
+_STRIPE_OVERAGE_PRICE_ID = os.getenv("STRIPE_OVERAGE_PRICE_ID", "")
+_STRIPE_WEBHOOK_SECRET   = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+_STRIPE_METER_ID         = os.getenv("STRIPE_METER_ID", "")
+_INCLUDED_TEXTS          = int(os.getenv("INCLUDED_TEXTS", "2500"))
+
+if _STRIPE_AVAILABLE and _STRIPE_SECRET_KEY:
+    _stripe.api_key = _STRIPE_SECRET_KEY  # type: ignore
+
+
+def _stripe_ready() -> bool:
+    return bool(_STRIPE_AVAILABLE and _STRIPE_SECRET_KEY and _stripe)
+
+
+def _get_billing(restaurant_id: str) -> dict:
+    """Load the billing sub-dict from restaurant_configs.settings."""
+    try:
+        res = supabase.table("restaurant_configs").select("settings").eq("restaurant_id", restaurant_id).limit(1).execute()
+        if not res.data:
+            return {}
+        raw = res.data[0].get("settings") or {}
+        if isinstance(raw, str):
+            try:
+                raw = _json.loads(raw)
+            except Exception:
+                raw = {}
+        return raw.get("billing", {}) if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_billing(restaurant_id: str, patch: dict):
+    """Merge patch into restaurant_configs.settings["billing"]."""
+    try:
+        res = supabase.table("restaurant_configs").select("settings").eq("restaurant_id", restaurant_id).limit(1).execute()
+        if res.data:
+            raw = res.data[0].get("settings") or {}
+            if isinstance(raw, str):
+                try:
+                    raw = _json.loads(raw)
+                except Exception:
+                    raw = {}
+            if not isinstance(raw, dict):
+                raw = {}
+            billing = raw.get("billing", {})
+            if not isinstance(billing, dict):
+                billing = {}
+            billing.update(patch)
+            raw["billing"] = billing
+            supabase.table("restaurant_configs").update({"settings": _json.dumps(raw)}).eq("restaurant_id", restaurant_id).execute()
+        else:
+            supabase.table("restaurant_configs").insert({
+                "restaurant_id": restaurant_id,
+                "settings": _json.dumps({"billing": patch}),
+            }).execute()
+    except Exception as e:
+        print(f"[billing _save] {e}")
+
+
+def _get_restaurant_info(restaurant_id: str) -> dict:
+    """Return display_name, contact_email, contact_name from config."""
+    try:
+        res = supabase.table("restaurant_configs").select("display_name, settings").eq("restaurant_id", restaurant_id).limit(1).execute()
+        if not res.data:
+            return {}
+        row = res.data[0]
+        settings = row.get("settings") or {}
+        if isinstance(settings, str):
+            try:
+                settings = _json.loads(settings)
+            except Exception:
+                settings = {}
+        return {
+            "display_name":  row.get("display_name") or "",
+            "contact_email": settings.get("contact_email") or "",
+            "contact_name":  settings.get("contact_name") or "",
+        }
+    except Exception:
+        return {}
+
+
+# ── Request bodies ─────────────────────────────────────────────────────────────
+
+class BillingRefundRequest(BaseModel):
+    charge_id:    str
+    amount_cents: Optional[int] = None   # None = full refund
+    reason:       Optional[str] = None   # e.g. "duplicate", "fraudulent", "requested_by_customer"
+
+class BillingAddChargeRequest(BaseModel):
+    description:  str
+    amount_cents: int            # e.g. 5000 = $50.00
+
+class BillingSetupLinkRequest(BaseModel):
+    return_url: Optional[str] = None
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@app.post("/owner/billing/{restaurant_id}/enable")
+def billing_enable(restaurant_id: str, secret: Optional[str] = None):
+    """
+    Create a Stripe customer + subscription (30-day trial) for this restaurant.
+    Idempotent: if a customer/subscription already exists, reuses them.
+    """
+    _check_owner_secret(secret)
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured on this server")
+
+    billing = _get_billing(restaurant_id)
+    info    = _get_restaurant_info(restaurant_id)
+
+    # Reuse or create Stripe customer
+    stripe_customer_id: str = billing.get("stripe_customer_id", "")
+    if not stripe_customer_id:
+        customer = _stripe.Customer.create(  # type: ignore
+            name=info.get("display_name") or restaurant_id,
+            email=info.get("contact_email") or None,
+            metadata={"restaurant_id": restaurant_id},
+        )
+        stripe_customer_id = customer.id
+
+    # Reuse or create subscription
+    stripe_subscription_id: str = billing.get("stripe_subscription_id", "")
+    sub_status = billing.get("stripe_subscription_status", "")
+
+    if not stripe_subscription_id or sub_status in ("canceled", ""):
+        subscription = _stripe.Subscription.create(  # type: ignore
+            customer=stripe_customer_id,
+            items=[
+                {"price": _STRIPE_PRICE_ID},
+                {"price": _STRIPE_OVERAGE_PRICE_ID},
+            ],
+            trial_period_days=30,
+            payment_behavior="default_incomplete",
+            payment_settings={"save_default_payment_method": "on_subscription"},
+        )
+        stripe_subscription_id = subscription.id
+        sub_status             = subscription.status  # "trialing"
+
+    _save_billing(restaurant_id, {
+        "stripe_customer_id":         stripe_customer_id,
+        "stripe_subscription_id":     stripe_subscription_id,
+        "stripe_subscription_status": sub_status,
+        "billing_enabled":            True,
+        "enabled_at":                 datetime.now(timezone.utc).isoformat(),
+        "cancel_at_period_end":       False,
+    })
+
+    return {
+        "ok":                     True,
+        "stripe_customer_id":     stripe_customer_id,
+        "stripe_subscription_id": stripe_subscription_id,
+        "status":                 sub_status,
+    }
+
+
+@app.post("/owner/billing/{restaurant_id}/send-setup-link")
+def billing_send_setup_link(restaurant_id: str, req: BillingSetupLinkRequest = BillingSetupLinkRequest(), secret: Optional[str] = None):
+    """
+    Generate a Stripe Checkout session (setup mode) so the restaurant can add/update
+    their payment method.  Returns the hosted URL; caller is responsible for delivery.
+    """
+    _check_owner_secret(secret)
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    billing = _get_billing(restaurant_id)
+    stripe_customer_id     = billing.get("stripe_customer_id")
+    stripe_subscription_id = billing.get("stripe_subscription_id")
+    if not stripe_customer_id:
+        raise HTTPException(status_code=400, detail="Enable billing first before sending a setup link")
+
+    base_url   = "https://hostplatform.net"
+    return_url = req.return_url or base_url
+
+    session = _stripe.checkout.Session.create(  # type: ignore
+        customer=stripe_customer_id,
+        mode="setup",
+        payment_method_types=["card"],
+        success_url=f"{base_url}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=return_url,
+        metadata={
+            "restaurant_id":     restaurant_id,
+            "subscription_id":   stripe_subscription_id or "",
+        },
+    )
+    return {"ok": True, "setup_url": session.url}
+
+
+@app.get("/owner/billing/{restaurant_id}/status")
+def billing_owner_status(restaurant_id: str, secret: Optional[str] = None):
+    """Full billing status for owner console (includes invoices, custom charges)."""
+    _check_owner_secret(secret)
+    billing = _get_billing(restaurant_id)
+
+    if not billing.get("billing_enabled"):
+        return {
+            "billing_enabled":  False,
+            "stripe_configured": _stripe_ready(),
+        }
+
+    if not _stripe_ready():
+        return {"billing_enabled": True, "stripe_configured": False, **billing}
+
+    try:
+        sub_id  = billing.get("stripe_subscription_id", "")
+        cust_id = billing.get("stripe_customer_id", "")
+
+        sub      = _stripe.Subscription.retrieve(sub_id) if sub_id else None  # type: ignore
+        customer = _stripe.Customer.retrieve(cust_id)    if cust_id else None  # type: ignore
+        invoices = _stripe.Invoice.list(customer=cust_id, limit=12).data if cust_id else []  # type: ignore
+
+        return {
+            "billing_enabled":            True,
+            "stripe_configured":          True,
+            "stripe_customer_id":         cust_id,
+            "stripe_subscription_id":     sub_id,
+            "status":                     sub.status             if sub else "unknown",
+            "trial_end":                  sub.trial_end          if sub else None,
+            "current_period_start":       sub.current_period_start if sub else None,
+            "current_period_end":         sub.current_period_end if sub else None,
+            "cancel_at_period_end":       sub.cancel_at_period_end if sub else False,
+            "amount_cents":               14900,
+            "texts_used":                 billing.get("texts_used_this_period", 0),
+            "included_texts":             _INCLUDED_TEXTS,
+            "customer_email":             customer.email         if customer else None,
+            "custom_charges":             billing.get("custom_charges", []),
+            "invoices": [
+                {
+                    "id":                  inv.id,
+                    "number":              inv.number,
+                    "amount_paid":         inv.amount_paid,
+                    "amount_due":          inv.amount_due,
+                    "status":              inv.status,
+                    "created":             inv.created,
+                    "invoice_pdf":         inv.invoice_pdf,
+                    "hosted_invoice_url":  inv.hosted_invoice_url,
+                    "charge":              inv.charge,
+                    "description":         inv.description,
+                }
+                for inv in invoices
+            ],
+        }
+    except Exception as e:
+        print(f"[billing owner status] {e}")
+        return {"billing_enabled": True, "stripe_configured": True, "error": str(e), **billing}
+
+
+@app.post("/owner/billing/{restaurant_id}/disable")
+def billing_disable(restaurant_id: str, secret: Optional[str] = None):
+    """Cancel subscription at end of current billing period."""
+    _check_owner_secret(secret)
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    billing = _get_billing(restaurant_id)
+    sub_id  = billing.get("stripe_subscription_id")
+    if not sub_id:
+        raise HTTPException(status_code=400, detail="No active subscription found")
+
+    sub = _stripe.Subscription.modify(sub_id, cancel_at_period_end=True)  # type: ignore
+    _save_billing(restaurant_id, {
+        "stripe_subscription_status": sub.status,
+        "cancel_at_period_end":       True,
+    })
+    return {"ok": True, "cancel_at": sub.current_period_end}
+
+
+@app.post("/owner/billing/{restaurant_id}/reactivate")
+def billing_reactivate(restaurant_id: str, secret: Optional[str] = None):
+    """Remove a pending cancellation (restaurant wants to stay)."""
+    _check_owner_secret(secret)
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    billing = _get_billing(restaurant_id)
+    sub_id  = billing.get("stripe_subscription_id")
+    if not sub_id:
+        raise HTTPException(status_code=400, detail="No subscription found")
+
+    sub = _stripe.Subscription.modify(sub_id, cancel_at_period_end=False)  # type: ignore
+    _save_billing(restaurant_id, {
+        "stripe_subscription_status": sub.status,
+        "cancel_at_period_end":       False,
+    })
+    return {"ok": True}
+
+
+@app.post("/owner/billing/{restaurant_id}/refund")
+def billing_refund(restaurant_id: str, req: BillingRefundRequest, secret: Optional[str] = None):
+    """Issue a full or partial refund on a specific Stripe charge."""
+    _check_owner_secret(secret)
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    refund_kwargs: dict = {"charge": req.charge_id}
+    if req.amount_cents:
+        refund_kwargs["amount"] = req.amount_cents
+    if req.reason:
+        refund_kwargs["reason"] = req.reason
+
+    refund = _stripe.Refund.create(**refund_kwargs)  # type: ignore
+    return {
+        "ok":            True,
+        "refund_id":     refund.id,
+        "amount":        refund.amount,
+        "status":        refund.status,
+    }
+
+
+@app.post("/owner/billing/{restaurant_id}/add-charge")
+def billing_add_charge(restaurant_id: str, req: BillingAddChargeRequest, secret: Optional[str] = None):
+    """
+    Add a one-time charge to the restaurant's next Stripe invoice.
+    Also logs it locally so the client can see it in their billing section.
+    """
+    _check_owner_secret(secret)
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    billing  = _get_billing(restaurant_id)
+    cust_id  = billing.get("stripe_customer_id")
+    if not cust_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer — enable billing first")
+
+    item = _stripe.InvoiceItem.create(  # type: ignore
+        customer=cust_id,
+        amount=req.amount_cents,
+        currency="usd",
+        description=req.description,
+    )
+
+    # Store locally so client billing view can show it with a label
+    charges = billing.get("custom_charges", [])
+    if not isinstance(charges, list):
+        charges = []
+    charges.append({
+        "id":          item.id,
+        "description": req.description,
+        "amount_cents": req.amount_cents,
+        "created_at":  datetime.now(timezone.utc).isoformat(),
+    })
+    _save_billing(restaurant_id, {"custom_charges": charges})
+
+    return {"ok": True, "invoice_item_id": item.id}
+
+
+@app.post("/owner/billing/{restaurant_id}/report-usage")
+def billing_report_usage(restaurant_id: str, texts_sent: int = 0, secret: Optional[str] = None):
+    """
+    Report overage SMS usage to Stripe metered billing.
+    Only reports the amount ABOVE the included 2500 texts.
+    Called by Twilio webhook integration (future).
+    """
+    _check_owner_secret(secret)
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    billing  = _get_billing(restaurant_id)
+    cust_id  = billing.get("stripe_customer_id")
+    if not cust_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer")
+
+    overage = max(0, texts_sent - _INCLUDED_TEXTS)
+
+    if overage > 0:
+        _stripe.billing.MeterEvent.create(  # type: ignore
+            event_name="sms_text_sent",
+            payload={
+                "value":              str(overage),
+                "stripe_customer_id": cust_id,
+            },
+        )
+
+    _save_billing(restaurant_id, {"texts_used_this_period": texts_sent})
+    return {"ok": True, "texts_sent": texts_sent, "overage_reported": overage}
+
+
+# ── Client-facing billing endpoints (no owner secret needed) ──────────────────
+
+@app.get("/client/{slug}/billing/status")
+def client_billing_status(slug: str):
+    """
+    Client-facing billing summary — enough for the settings billing tab.
+    Excludes sensitive data (no charge IDs, no raw Stripe objects).
+    """
+    try:
+        config = supabase.table("restaurant_configs").select("settings").eq("restaurant_id", slug).limit(1).execute()
+        # Also try looking up by slug via restaurants table
+        if not config.data:
+            r = supabase.table("restaurants").select("id").eq("slug", slug).limit(1).execute()
+            if r.data:
+                rid = r.data[0]["id"]
+                config = supabase.table("restaurant_configs").select("settings").eq("restaurant_id", rid).limit(1).execute()
+        if not config.data:
+            return {"billing_enabled": False}
+
+        raw = config.data[0].get("settings") or {}
+        if isinstance(raw, str):
+            try:
+                raw = _json.loads(raw)
+            except Exception:
+                raw = {}
+        billing = raw.get("billing", {}) if isinstance(raw, dict) else {}
+
+        if not billing.get("billing_enabled"):
+            return {"billing_enabled": False}
+
+        if not _stripe_ready():
+            return {
+                "billing_enabled": True,
+                "plan_name":       "HOST Platform Base Plan",
+                "amount_cents":    14900,
+                "included_texts":  _INCLUDED_TEXTS,
+                "texts_used":      billing.get("texts_used_this_period", 0),
+                "status":          billing.get("stripe_subscription_status", "unknown"),
+                "custom_charges":  billing.get("custom_charges", []),
+            }
+
+        sub_id  = billing.get("stripe_subscription_id", "")
+        cust_id = billing.get("stripe_customer_id", "")
+
+        try:
+            sub = _stripe.Subscription.retrieve(sub_id) if sub_id else None  # type: ignore
+        except Exception:
+            sub = None
+
+        return {
+            "billing_enabled":      True,
+            "plan_name":            "HOST Platform Base Plan",
+            "amount_cents":         14900,
+            "included_texts":       _INCLUDED_TEXTS,
+            "overage_rate_cents":   20,
+            "texts_used":           billing.get("texts_used_this_period", 0),
+            "status":               sub.status             if sub else billing.get("stripe_subscription_status", "unknown"),
+            "trial_end":            sub.trial_end          if sub else None,
+            "current_period_end":   sub.current_period_end if sub else None,
+            "cancel_at_period_end": sub.cancel_at_period_end if sub else False,
+            "has_payment_method":   True,   # Stripe manages this; portal shows true state
+            "custom_charges":       billing.get("custom_charges", []),
+        }
+    except Exception as e:
+        print(f"[client billing status] {e}")
+        return {"billing_enabled": False, "error": str(e)}
+
+
+@app.post("/client/{slug}/billing/portal")
+def client_billing_portal(slug: str, return_url: str = "https://hostplatform.net"):
+    """
+    Generate a Stripe Customer Portal session URL for the restaurant to manage
+    their payment method, see invoices, etc.
+    """
+    if not _stripe_ready():
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    # Resolve slug → restaurant_id → billing
+    rid = slug
+    r   = supabase.table("restaurants").select("id").eq("slug", slug).limit(1).execute()
+    if r.data:
+        rid = r.data[0]["id"]
+
+    billing = _get_billing(rid)
+    cust_id = billing.get("stripe_customer_id")
+    if not cust_id:
+        raise HTTPException(status_code=400, detail="No billing account found. Contact HOST support.")
+
+    session = _stripe.billing_portal.Session.create(  # type: ignore
+        customer=cust_id,
+        return_url=return_url,
+    )
+    return {"ok": True, "portal_url": session.url}
+
+
+# ── Stripe webhook ─────────────────────────────────────────────────────────────
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request):
+    """
+    Handle Stripe webhook events to keep local billing state in sync.
+    Verifies the Stripe-Signature header before processing.
+    """
+    payload   = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    if not _stripe_ready() or not _STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    try:
+        event = _stripe.Webhook.construct_event(payload, sig_header, _STRIPE_WEBHOOK_SECRET)  # type: ignore
+    except _stripe.error.SignatureVerificationError:  # type: ignore
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Malformed webhook payload")
+
+    event_type = event["type"]
+    data_obj   = event["data"]["object"]
+
+    print(f"[stripe webhook] {event_type}")
+
+    # Find restaurant_id from Stripe customer metadata
+    def _rid_from_customer(customer_id: str) -> Optional[str]:
+        try:
+            cust = _stripe.Customer.retrieve(customer_id)  # type: ignore
+            return cust.get("metadata", {}).get("restaurant_id")
+        except Exception:
+            return None
+
+    if event_type == "customer.subscription.updated":
+        cust_id = data_obj.get("customer")
+        rid     = _rid_from_customer(cust_id)
+        if rid:
+            _save_billing(rid, {
+                "stripe_subscription_status": data_obj.get("status"),
+                "cancel_at_period_end":       data_obj.get("cancel_at_period_end", False),
+            })
+
+    elif event_type == "customer.subscription.deleted":
+        cust_id = data_obj.get("customer")
+        rid     = _rid_from_customer(cust_id)
+        if rid:
+            _save_billing(rid, {
+                "stripe_subscription_status": "canceled",
+                "billing_enabled":            False,
+            })
+
+    elif event_type == "invoice.payment_failed":
+        cust_id = data_obj.get("customer")
+        rid     = _rid_from_customer(cust_id)
+        if rid:
+            _save_billing(rid, {"stripe_subscription_status": "past_due"})
+
+    elif event_type == "invoice.payment_succeeded":
+        cust_id = data_obj.get("customer")
+        rid     = _rid_from_customer(cust_id)
+        if rid:
+            _save_billing(rid, {
+                "stripe_subscription_status": "active",
+                "texts_used_this_period":     0,   # reset counter each billing period
+                "custom_charges":             [],  # clear pending items (invoiced)
+            })
+
+    return {"received": True}
