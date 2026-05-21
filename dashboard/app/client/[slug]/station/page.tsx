@@ -957,7 +957,7 @@ function DraggableQueueCard({
               <span style={{ fontWeight: 700, color: isOverdue ? "#ef4444" : displayWait <= 2 ? "#f97316" : "rgba(251,191,36,0.90)" }}>
                 {isOverdue ? "overdue" : displayWait <= 0 ? "ready" : `~${displayWait}m left`}
               </span>
-              {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>⏸ PAUSED</span>}
+              {entry.paused && <span style={{ fontSize: 9, fontWeight: 700, color: "rgba(96,165,250,0.80)", letterSpacing: "0.08em" }}>PAUSED</span>}
             </>
           )}
         </div>
@@ -1228,7 +1228,7 @@ function DroppableFloorTable({
       ) : isResWarning ? (
         <>
           <span style={{ fontSize: 7, fontWeight: 800, letterSpacing: "0.08em", color: "rgba(249,115,22,0.75)", textTransform: "uppercase" }}>
-            ⚠ Soon
+            Soon
           </span>
           <span style={{
             fontSize: pos.shape === "rect" ? 10 : 8,
@@ -3579,7 +3579,7 @@ function ClientStationInner() {
             <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
               className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold hover:bg-white/8"
               style={{ color: "rgba(var(--warm),0.65)", border: "1px solid rgba(var(--accent),0.14)", background: "rgba(var(--accent),0.04)" }}>
-              {theme === "dark" ? "☀︎" : "◗"} {theme === "dark" ? "Light" : "Dark"}
+              {theme === "dark" ? "Light" : "Dark"}
             </button>
 
             {/* History — opens side panel */}
@@ -3669,7 +3669,7 @@ function ClientStationInner() {
                       fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
                     }}
                   >
-                    {v === "floor" ? "🗺 Floor" : "📋 Waitlist"}
+                    {v === "floor" ? "Floor" : "Waitlist"}
                   </button>
                 ))}
               </div>

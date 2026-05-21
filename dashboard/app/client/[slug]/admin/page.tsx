@@ -410,7 +410,7 @@ function ClientBillingTab({ slug }: { slug: string }) {
     return (
       <div style={{ padding: "32px 24px", maxWidth: 540 }}>
         <div style={{ background: CB.surface, border: `1px solid ${CB.border}`, borderRadius: 14, padding: "28px 24px", textAlign: "center" }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>💳</div>
+          <div style={{ fontSize: 32, marginBottom: 12, color: CB.muted }}>$</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: CB.text, marginBottom: 8 }}>Billing Not Active</div>
           <div style={{ fontSize: 13, color: CB.muted, lineHeight: 1.6 }}>
             Your billing account hasn&apos;t been set up yet. You&apos;ll receive an email with a link to add your payment method when your account is activated by the HOST team.
@@ -461,7 +461,7 @@ function ClientBillingTab({ slug }: { slug: string }) {
         {status === "trialing" && trialEnd && (
           <div style={{ background: CB.blueBg, border: `1px solid ${CB.blueBdr}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: CB.blue }}>
-              🎁 Free trial ends {trialEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              Free trial ends {trialEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             </div>
             <div style={{ fontSize: 12, color: CB.text2, marginTop: 3 }}>You won&apos;t be charged until after your trial ends. Add a payment method to continue service.</div>
           </div>
@@ -471,7 +471,7 @@ function ClientBillingTab({ slug }: { slug: string }) {
         {cancelSoon && periodEnd && (
           <div style={{ background: CB.orangeBg, border: `1px solid ${CB.orangeBdr}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: CB.orange }}>
-              ⚠ Subscription cancels {periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              Subscription cancels {periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
             </div>
             <div style={{ fontSize: 12, color: CB.text2, marginTop: 3 }}>Contact HOST support to reactivate.</div>
           </div>
@@ -535,7 +535,6 @@ function ClientBillingTab({ slug }: { slug: string }) {
         disabled={opening}
         style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: `1px solid ${CB.border}`, background: CB.surface, color: CB.text, fontSize: 14, fontWeight: 700, cursor: opening ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
       >
-        <span>💳</span>
         {opening ? "Opening…" : "Manage Payment Method & Invoices"}
       </button>
       <div style={{ fontSize: 11, color: CB.muted, textAlign: "center", marginTop: 8 }}>
@@ -694,7 +693,7 @@ function ClientAdminInner() {
     return (
       <div style={{ ...containerStyle, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ textAlign: "center", maxWidth: 360, padding: 32 }}>
-          <p style={{ fontSize: 32, marginBottom: 12 }}>🔍</p>
+          <p style={{ fontSize: 32, marginBottom: 12, color: C.muted }}>?</p>
           <p style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 8 }}>
             Restaurant not found
           </p>
@@ -837,7 +836,7 @@ function ClientAdminInner() {
         <div style={{ padding: "24px 24px 48px", maxWidth: 1100, margin: "0 auto" }}>
           {!adminPin && (
             <div style={{ marginBottom: 20, padding: "12px 16px", borderRadius: 10, background: "#fff8ed", border: "1px solid #f59e0b", color: "#92400e", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span>⚠️ No Admin PIN is set — anyone can access this dashboard. Set a PIN in the <strong>Logins</strong> tab.</span>
+              <span>No Admin PIN is set — anyone can access this dashboard. Set a PIN in the <strong>Logins</strong> tab.</span>
               <button onClick={() => setActiveTab("logins")} style={{ marginLeft: 16, padding: "5px 12px", borderRadius: 7, background: "#f59e0b", color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Set PIN</button>
             </div>
           )}
@@ -1581,7 +1580,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
                     setSelectedIdx(null)
                   }}
                   style={{ padding: "2px 6px", borderRadius: 5, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 11, cursor: "pointer", fontWeight: 700 }}>
-                  ✕
+                  ×
                 </button>
               )}
             </div>
@@ -1895,7 +1894,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
               <button
                 onClick={() => setMenuSections(p => p.filter((_, i) => i !== si))}
                 style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 12, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>
-                ✕
+                ×
               </button>
             </div>
 
@@ -1922,7 +1921,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
                 <button
                   onClick={() => setMenuSections(p => p.map((s, i) => i === si ? { ...s, items: s.items.filter((_, j) => j !== ii) } : s))}
                   style={{ padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.redBdr}`, background: C.redBg, color: C.red, fontSize: 11, cursor: "pointer", fontWeight: 700, flexShrink: 0 }}>
-                  ✕
+                  ×
                 </button>
               </div>
             ))}
