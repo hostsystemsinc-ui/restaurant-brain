@@ -125,6 +125,8 @@ export async function GET() {
       slug,
       joinUrl: String(d.join_url || `https://hostplatform.net/client/${slug}/join`),
       logoUrl: typeof gc.logoUrl === "string" ? gc.logoUrl : "",
+      // Station display settings for /station/page.tsx
+      stationSettings: gc.stationSettings ?? null,
       // Pre-converted floor plan so /station/page.tsx can use it directly
       floorPlan: convertFloorPlan(d.floor_plan as WizardFloorInput | null),
     })

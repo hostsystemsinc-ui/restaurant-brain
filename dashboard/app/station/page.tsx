@@ -636,6 +636,22 @@ function DraggableQueueCard({
               <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15, fontWeight: 800, color: "#fff", background: "rgba(99,179,237,0.18)", border: "1px solid rgba(99,179,237,0.30)", borderRadius: 6, padding: "1px 8px", flexShrink: 0 }}>
                 <Users className="w-3.5 h-3.5" />{entry.party_size}p
               </span>
+              {/* Section preference badge */}
+              {(() => {
+                const pref = entry.section_preference
+                const isFirst = !pref || pref === "anywhere"
+                return (
+                  <span style={{
+                    fontSize: 11, fontWeight: 900, letterSpacing: "0.07em",
+                    color: isFirst ? "#4ade80" : "#fb923c",
+                    background: isFirst ? "rgba(34,197,94,0.12)" : "rgba(251,146,60,0.14)",
+                    border: `1px solid ${isFirst ? "rgba(34,197,94,0.30)" : "rgba(251,146,60,0.30)"}`,
+                    borderRadius: 6, padding: "1px 7px", flexShrink: 0,
+                  }}>
+                    {isFirst ? "FIRST" : pref!.toUpperCase()}
+                  </span>
+                )
+              })()}
               {isReady && (
                 <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse shrink-0" style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
               )}
@@ -1982,6 +1998,8 @@ export default function HostDashboard() {
   useEffect(() => { try { localStorage.setItem("host_walnut_zoom", String(zoom)) } catch {} }, [zoom])
   const [theme, setTheme] = useState<"dark" | "light">(() => { try { return (localStorage.getItem("host_walnut_theme") as "dark" | "light") || "dark" } catch { return "dark" } })
   useEffect(() => { try { localStorage.setItem("host_walnut_theme", theme) } catch {} }, [theme])
+  const [stationView, setStationView] = useState<"floor" | "waitlist">(() => { try { return (localStorage.getItem("host_walnut_view") as "floor" | "waitlist") || "floor" } catch { return "floor" } })
+  useEffect(() => { try { localStorage.setItem("host_walnut_view", stationView) } catch {} }, [stationView])
   const [tables, setTables]               = useState<Table[]>([])
   const [queue, setQueue]                 = useState<QueueEntry[]>([])
   const [online, setOnline]               = useState(true)
@@ -2001,7 +2019,7 @@ export default function HostDashboard() {
   const [showHistory, setShowHistory]     = useState(false)
   const [showHelp,    setShowHelp]        = useState(false)
   const [history,     setHistory]         = useState<HistoryEntry[]>([])
-  const [sidebarW, setSidebarW]           = useState(300)
+  const [sidebarW, setSidebarW]           = useState(400)
   const isResizing = useRef(false)
   const resizeStartX = useRef(0)
   const resizeStartW = useRef(0)
@@ -2874,6 +2892,12 @@ export default function HostDashboard() {
     --bdr-8:rgba(255, 185, 100, 0.22); --bdr-9:rgba(255, 185, 100, 0.55); --bdr-10:rgba(255, 185, 100, 0.11); --bdr-11:rgba(255, 185, 100, 0.30); --bdr-12:rgba(255, 185, 100, 0.50); --bdr-13:rgba(255, 185, 100, 0.15); --bdr-14:rgba(255, 185, 100, 0.09); --bdr-15:rgba(255, 185, 100, 0.35);
     --modal-bg:#100C09; --modal-bg2:#0C0907;
   }
+  .host-queue-scroll::-webkit-scrollbar { width: 8px; }
+  .host-queue-scroll::-webkit-scrollbar-track { background: transparent; }
+  .host-queue-scroll::-webkit-scrollbar-thumb { background: rgba(255,185,100,0.28); border-radius: 4px; }
+  .host-queue-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,185,100,0.45); }
+  [data-host-theme="light"] .host-queue-scroll::-webkit-scrollbar-thumb { background: rgba(160,90,0,0.25); }
+  [data-host-theme="light"] .host-queue-scroll::-webkit-scrollbar-thumb:hover { background: rgba(160,90,0,0.42); }
   [data-host-theme="light"] {
     --accent:160,90,0; --warm:110,60,5; --cream:18,10,3;
     --page-bg:#F5F2EE; --card-bg:#FFFFFF; --page-deep:#EDE9E3;
@@ -3036,9 +3060,10 @@ export default function HostDashboard() {
           <div
             className="flex flex-col shrink-0 overflow-hidden"
             style={{
-              width: sidebarW,
+              width: stationView === "waitlist" ? "100%" : sidebarW,
               position: "relative",
               background: "var(--page-bg)",
+              transition: "width 0.2s",
             }}
           >
             {/* Drag-to-resize handle — wide touch target, thin visual border */}
@@ -3065,6 +3090,24 @@ export default function HostDashboard() {
                   <div key={i} style={{ width: 2, height: 2, borderRadius: "50%", background: "var(--text-dim3)" }} />
                 ))}
               </div>
+            </div>
+
+            {/* Floor | Waitlist tab bar */}
+            <div className="flex shrink-0 gap-1 px-2 pt-2 pb-1">
+              {(["floor", "waitlist"] as const).map(v => (
+                <button key={v} onClick={() => setStationView(v)}
+                  className="flex-1 h-8 rounded-lg transition-all"
+                  style={{
+                    background: stationView === v ? "var(--surf-4)" : "transparent",
+                    color: stationView === v ? "var(--text-hi)" : "var(--text-muted3)",
+                    border: `1px solid ${stationView === v ? "var(--bdr-4)" : "transparent"}`,
+                    cursor: "pointer",
+                    fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
+                  }}
+                >
+                  {v === "floor" ? "🗺 Floor" : "📋 Waitlist"}
+                </button>
+              ))}
             </div>
 
             {/* Ready section */}
@@ -3153,7 +3196,7 @@ export default function HostDashboard() {
             )}
 
             {/* Waiting section — only guests that have been quoted */}
-            <div className="px-3 pt-2 flex-1 overflow-y-auto">
+            <div className="px-3 pt-2 flex-1 overflow-y-auto host-queue-scroll">
 
               {queue.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 gap-3" style={{ border: "1px solid var(--bdr-1)", borderRadius: 12 }}>
@@ -3165,79 +3208,17 @@ export default function HostDashboard() {
                   <p className="text-xs" style={{ color: "var(--text-muted2)" }}>No one else waiting</p>
                 </div>
               ) : quotedWaiting.length > 0 ? (
-                (() => {
-                  const sectionsEnabled = sectionsConfig?.enabled && (sectionsConfig.sections?.length ?? 0) > 0
-                  if (!sectionsEnabled) {
-                    return (
-                      <div className="flex flex-col gap-1.5 pb-24">
-                        {quotedWaiting.map(e => (
-                          <DraggableQueueCard key={e.id} entry={e}
-                            isSelected={selectedEntry?.id === e.id}
-                            onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                            onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                            onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                            onRemoved={() => refreshAll()}
-                            onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
-                        ))}
-                      </div>
-                    )
-                  }
-                  const configuredSections = sectionsConfig!.sections
-                  const SECTION_COLORS = ["#60a5fa","#f472b6","#fb923c","#a78bfa","#34d399","#facc15","#f87171","#38bdf8"]
-                  const sectionColor = (sec: string) => {
-                    if (sec === "__anywhere__") return "#4ade80"
-                    const idx = configuredSections.indexOf(sec)
-                    return SECTION_COLORS[idx % SECTION_COLORS.length]
-                  }
-                  const groups = new Map<string, QueueEntry[]>()
-                  for (const s of configuredSections) groups.set(s, [])
-                  groups.set("__anywhere__", [])
-                  for (const e of quotedWaiting) {
-                    const sec = e.section_preference && configuredSections.includes(e.section_preference)
-                      ? e.section_preference : "__anywhere__"
-                    groups.get(sec)!.push(e)
-                  }
-                  const orderedKeys = ["__anywhere__", ...configuredSections].filter(k => (groups.get(k)?.length ?? 0) > 0)
-                  return (
-                    <div className="flex flex-col gap-3 pb-24">
-                      {orderedKeys.map(sec => {
-                        const entries = groups.get(sec)!
-                        const label   = sec === "__anywhere__" ? "Sit Anywhere" : sec
-                        const color   = sectionColor(sec)
-                        return (
-                          <div key={sec}>
-                            <div className="flex items-center gap-2 mb-1.5 px-1">
-                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
-                              <span className="text-[9px] font-black tracking-[0.16em] uppercase" style={{ color }}>
-                                {label} · {entries.length}
-                              </span>
-                            </div>
-                            <div className="flex flex-col gap-1.5">
-                              {entries.map((e, idx) => (
-                                <div key={e.id} style={{ position: "relative" }}>
-                                  <div style={{
-                                    position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)",
-                                    zIndex: 1, fontSize: 9, fontWeight: 900, color: "var(--text-muted3)",
-                                    lineHeight: 1, minWidth: 12, textAlign: "center",
-                                  }}>{idx + 1}</div>
-                                  <div style={{ paddingLeft: 22 }}>
-                                    <DraggableQueueCard entry={e}
-                                      isSelected={selectedEntry?.id === e.id}
-                                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
-                                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
-                                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
-                                      onRemoved={() => refreshAll()}
-                                      onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )
-                })()
+                <div className="flex flex-col gap-1.5 pb-24">
+                  {quotedWaiting.map(e => (
+                    <DraggableQueueCard key={e.id} entry={e}
+                      isSelected={selectedEntry?.id === e.id}
+                      onSelect={() => setSelectedEntry(prev => prev?.id === e.id ? null : e)}
+                      onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
+                      onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
+                      onRemoved={() => refreshAll()}
+                      onAddTime={() => addTime(e.id, Math.ceil((e.remaining_wait ?? e.wait_estimate ?? 0)))} />
+                  ))}
+                </div>
               ) : null}
             </div>
 
@@ -3260,7 +3241,8 @@ export default function HostDashboard() {
 
           {/* ── Floor map ──────────────────────────────────────────── */}
           {/* Guard: don't render until restaurantId is resolved so the generic plan
-              never flashes before the restaurant-specific plan loads. */}
+              never flashes before the restaurant-specific plan loads. Hidden in waitlist view. */}
+          {stationView === "floor" && (
           <div className="flex-1 overflow-hidden flex">
             {restaurantId ? <FloorMap
               tables={tables}
@@ -3308,6 +3290,7 @@ export default function HostDashboard() {
               onSouthsideTabChange={isSouthside ? setSouthsideTab : undefined}
             /> : null}
           </div>
+          )}
 
         </div>
 

@@ -366,6 +366,185 @@ function HistorySection({ history, onClear }: { history: HistoryEntry[]; onClear
   )
 }
 
+// ── Client Billing Tab ─────────────────────────────────────────────────────────
+function ClientBillingTab({ slug }: { slug: string }) {
+  const [data,    setData]    = useState<Record<string, unknown> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [opening, setOpening] = useState(false)
+  const [error,   setError]   = useState("")
+
+  const CB = {
+    bg: "#0C0907", surface: "#161310", surface2: "#1E1A16", border: "rgba(255,200,150,0.12)",
+    text: "#F5F0EB", text2: "rgba(245,240,235,0.7)", muted: "rgba(245,240,235,0.4)",
+    green: "#22C55E", greenBg: "rgba(34,197,94,0.08)", greenBdr: "rgba(34,197,94,0.25)",
+    orange: "#F59E0B", orangeBg: "rgba(245,158,11,0.08)", orangeBdr: "rgba(245,158,11,0.25)",
+    red: "#EF4444", redBg: "rgba(239,68,68,0.08)", redBdr: "rgba(239,68,68,0.25)",
+    blue: "#60A5FA", blueBg: "rgba(96,165,250,0.08)", blueBdr: "rgba(96,165,250,0.25)",
+    accent: "rgb(255,185,100)",
+  }
+
+  useEffect(() => {
+    fetch(`/api/billing/client?slug=${encodeURIComponent(slug)}`, { cache: "no-store" })
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(() => { setError("Failed to load billing info"); setLoading(false) })
+  }, [slug])
+
+  async function openPortal() {
+    setOpening(true)
+    try {
+      const res = await fetch("/api/billing/client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, action: "portal", returnUrl: window.location.href }),
+      })
+      const d = await res.json()
+      if (d.portal_url) window.open(d.portal_url, "_blank")
+      else setError("Could not open billing portal. Contact support.")
+    } catch { setError("Could not open billing portal.") }
+    finally { setOpening(false) }
+  }
+
+  if (loading) return <div style={{ padding: 32, color: CB.muted, fontSize: 14 }}>Loading billing info…</div>
+  if (!data?.billing_enabled) {
+    return (
+      <div style={{ padding: "32px 24px", maxWidth: 540 }}>
+        <div style={{ background: CB.surface, border: `1px solid ${CB.border}`, borderRadius: 14, padding: "28px 24px", textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>💳</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: CB.text, marginBottom: 8 }}>Billing Not Active</div>
+          <div style={{ fontSize: 13, color: CB.muted, lineHeight: 1.6 }}>
+            Your billing account hasn&apos;t been set up yet. You&apos;ll receive an email with a link to add your payment method when your account is activated by the HOST team.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const status      = String(data.status || "unknown")
+  const trialEnd    = data.trial_end   ? new Date(Number(data.trial_end)   * 1000) : null
+  const periodEnd   = data.current_period_end ? new Date(Number(data.current_period_end) * 1000) : null
+  const textsUsed   = Number(data.texts_used   || 0)
+  const included    = Number(data.included_texts || 2500)
+  const overageCents = Number(data.overage_rate_cents || 20)
+  const textPct     = Math.min(100, Math.round((textsUsed / included) * 100))
+  const cancelSoon  = data.cancel_at_period_end === true
+  const customCharges = Array.isArray(data.custom_charges) ? data.custom_charges as {description:string;amount_cents:number;created_at:string}[] : []
+
+  function statusBadge() {
+    const badges: Record<string, {label:string;color:string;bg:string;bdr:string}> = {
+      trialing:  { label: "Free Trial",  color: CB.blue,   bg: CB.blueBg,   bdr: CB.blueBdr   },
+      active:    { label: "Active",      color: CB.green,  bg: CB.greenBg,  bdr: CB.greenBdr  },
+      past_due:  { label: "Past Due",    color: CB.red,    bg: CB.redBg,    bdr: CB.redBdr    },
+      canceled:  { label: "Cancelled",   color: CB.muted,  bg: CB.surface2, bdr: CB.border    },
+      paused:    { label: "Paused",      color: CB.orange, bg: CB.orangeBg, bdr: CB.orangeBdr },
+      incomplete:{ label: "Setup Needed",color: CB.orange, bg: CB.orangeBg, bdr: CB.orangeBdr },
+    }
+    const b = badges[status] || { label: status, color: CB.muted, bg: CB.surface2, bdr: CB.border }
+    return <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "3px 10px", border: `1px solid ${b.bdr}`, background: b.bg, color: b.color, letterSpacing: "0.04em", textTransform: "uppercase" as const }}>{b.label}</span>
+  }
+
+  return (
+    <div style={{ padding: "24px 24px 48px", maxWidth: 640 }}>
+      {error && <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: CB.redBg, border: `1px solid ${CB.redBdr}`, color: CB.red, fontSize: 13 }}>{error}</div>}
+
+      {/* Plan card */}
+      <div style={{ background: CB.surface, border: `1px solid ${CB.border}`, borderRadius: 16, padding: "24px 22px", marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: CB.text, marginBottom: 4 }}>HOST Platform Base Plan</div>
+            <div style={{ fontSize: 13, color: CB.muted }}>$149 / month · 2,500 texts included</div>
+          </div>
+          {statusBadge()}
+        </div>
+
+        {/* Trial banner */}
+        {status === "trialing" && trialEnd && (
+          <div style={{ background: CB.blueBg, border: `1px solid ${CB.blueBdr}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: CB.blue }}>
+              🎁 Free trial ends {trialEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            </div>
+            <div style={{ fontSize: 12, color: CB.text2, marginTop: 3 }}>You won&apos;t be charged until after your trial ends. Add a payment method to continue service.</div>
+          </div>
+        )}
+
+        {/* Cancellation warning */}
+        {cancelSoon && periodEnd && (
+          <div style={{ background: CB.orangeBg, border: `1px solid ${CB.orangeBdr}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: CB.orange }}>
+              ⚠ Subscription cancels {periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            </div>
+            <div style={{ fontSize: 12, color: CB.text2, marginTop: 3 }}>Contact HOST support to reactivate.</div>
+          </div>
+        )}
+
+        {/* Past due warning */}
+        {status === "past_due" && (
+          <div style={{ background: CB.redBg, border: `1px solid ${CB.redBdr}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: CB.red }}>Payment failed — please update your payment method to avoid service interruption.</div>
+          </div>
+        )}
+
+        {/* Next billing */}
+        {periodEnd && !cancelSoon && status !== "trialing" && (
+          <div style={{ fontSize: 13, color: CB.text2 }}>
+            Next charge: <strong style={{ color: CB.text }}>{periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</strong> · $149.00
+          </div>
+        )}
+      </div>
+
+      {/* SMS usage card */}
+      <div style={{ background: CB.surface, border: `1px solid ${CB.border}`, borderRadius: 16, padding: "20px 22px", marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: CB.text }}>SMS Usage This Month</div>
+          <div style={{ fontSize: 13, color: textsUsed > included ? CB.red : CB.text2 }}>
+            {textsUsed.toLocaleString()} / {included.toLocaleString()} texts
+          </div>
+        </div>
+        <div style={{ height: 8, borderRadius: 4, background: CB.surface2, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${textPct}%`, borderRadius: 4, background: textPct >= 100 ? CB.red : textPct >= 80 ? CB.orange : CB.green, transition: "width 0.4s" }} />
+        </div>
+        {textsUsed > included && (
+          <div style={{ fontSize: 12, color: CB.red, marginTop: 8 }}>
+            {(textsUsed - included).toLocaleString()} overage texts · ${((textsUsed - included) * overageCents / 100).toFixed(2)} added to next invoice
+          </div>
+        )}
+        {textsUsed <= included && (
+          <div style={{ fontSize: 12, color: CB.muted, marginTop: 8 }}>
+            {(included - textsUsed).toLocaleString()} texts remaining · $0.{overageCents.toString().padStart(2,"0")}/text after limit
+          </div>
+        )}
+      </div>
+
+      {/* Custom charges (from owner) */}
+      {customCharges.length > 0 && (
+        <div style={{ background: CB.surface, border: `1px solid ${CB.orangeBdr}`, borderRadius: 16, padding: "20px 22px", marginBottom: 16 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: CB.text, marginBottom: 12 }}>Pending Charges</div>
+          {customCharges.map((ch, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: i < customCharges.length - 1 ? `1px solid ${CB.border}` : "none" }}>
+              <div style={{ fontSize: 13, color: CB.text2 }}>{ch.description}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: CB.orange }}>${(ch.amount_cents / 100).toFixed(2)}</div>
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: CB.muted, marginTop: 10 }}>These will appear on your next invoice.</div>
+        </div>
+      )}
+
+      {/* Manage button */}
+      <button
+        onClick={openPortal}
+        disabled={opening}
+        style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: `1px solid ${CB.border}`, background: CB.surface, color: CB.text, fontSize: 14, fontWeight: 700, cursor: opening ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+      >
+        <span>💳</span>
+        {opening ? "Opening…" : "Manage Payment Method & Invoices"}
+      </button>
+      <div style={{ fontSize: 11, color: CB.muted, textAlign: "center", marginTop: 8 }}>
+        Powered by Stripe · Secure payment management
+      </div>
+    </div>
+  )
+}
+
 // ── Main inner component ──────────────────────────────────────────────────────
 
 function ClientAdminInner() {
@@ -379,7 +558,7 @@ function ClientAdminInner() {
   const [pinOk,    setPinOk]        = useState(false)
   const [pinInput, setPinInput]     = useState("")
   const [pinErr,   setPinErr]       = useState(false)
-  const [activeTab, setActiveTab]   = useState<"overview" | "logins" | "settings">("overview")
+  const [activeTab, setActiveTab]   = useState<"overview" | "logins" | "settings" | "billing">("overview")
   const [loginsUnlocked, setLoginsUnlocked] = useState(false)
   const [loginsPinInput, setLoginsPinInput] = useState("")
   const [loginsPinErr,   setLoginsPinErr]   = useState(false)
@@ -636,7 +815,7 @@ function ClientAdminInner() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* Tabs */}
-          {(["overview", "logins", "settings"] as const).map(tab => (
+          {(["overview", "logins", "settings", "billing"] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${activeTab === tab ? C.green : C.border}`, background: activeTab === tab ? C.greenBg : "transparent", color: activeTab === tab ? C.green : C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
               {tab}
@@ -739,6 +918,10 @@ function ClientAdminInner() {
 
       {activeTab === "settings" && (
         <SettingsTab slug={slug} rid={rid} onBack={() => setActiveTab("overview")} />
+      )}
+
+      {activeTab === "billing" && rid && (
+        <ClientBillingTab slug={slug} />
       )}
     </div>
   )
@@ -1004,6 +1187,12 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
   // Menu editor state
   const [menuSections, setMenuSections] = useState<MenuSectionAdmin[]>([])
 
+  // Station display settings
+  const [flatQueue,        setFlatQueue]        = useState(false)
+  const [showSectionBadge, setShowSectionBadge] = useState(false)
+  const [waitlistTab,      setWaitlistTab]      = useState(false)
+  const [queueWidth,       setQueueWidth]       = useState(300)
+
   // Full guest_config from Railway (to merge, not overwrite)
   const fullGuestConfigRef = useRef<Record<string, unknown>>({})
 
@@ -1026,6 +1215,13 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         const gc = d.guest_config ?? {}
         fullGuestConfigRef.current = gc
         setShowCapacity(!!gc.showCapacity)
+        if (gc.stationSettings && typeof gc.stationSettings === "object") {
+          const ss = gc.stationSettings as Record<string, unknown>
+          setFlatQueue(!!ss.flatQueue)
+          setShowSectionBadge(!!ss.showSectionBadge)
+          setWaitlistTab(!!ss.waitlistTab)
+          if (typeof ss.queueWidth === "number" && ss.queueWidth > 0) setQueueWidth(ss.queueWidth)
+        }
         if (gc.reservationAlertBySize) {
           setAlertBySize(prev => ({ ...prev, ...gc.reservationAlertBySize }))
         } else if (gc.reservationAlertMinutes) {
@@ -1190,6 +1386,7 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         ...fullGuestConfigRef.current,
         showCapacity,
         reservationAlertBySize: alertBySize,
+        stationSettings: { flatQueue, showSectionBadge, waitlistTab, queueWidth },
       }
       const floorPlan = { canvasAspect, pages }
 
@@ -1536,6 +1733,71 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
             </div>
           </>
         )}
+      </div>
+
+      {/* ── Station Display ── */}
+      <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, marginBottom: 16 }}>
+          Station Display
+        </div>
+
+        {/* Flat queue */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Flat queue (no section groups)</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Show all waiting guests in one list sorted by arrival time, instead of grouped by section preference</div>
+          </div>
+          <button onClick={() => setFlatQueue(p => !p)}
+            style={{ width: 44, height: 24, borderRadius: 12, background: flatQueue ? C.green : C.surface2, border: `1px solid ${flatQueue ? C.greenBdr : C.border}`, position: "relative", cursor: "pointer", transition: "background 0.2s, border-color 0.2s", flexShrink: 0 }}>
+            <div style={{ position: "absolute", top: 2, left: flatQueue ? 22 : 2, width: 18, height: 18, borderRadius: "50%", background: flatQueue ? "#fff" : C.muted, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+
+        {/* Section badge */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Seating preference badge</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Show each guest's seating preference prominently on their card — "FIRST" for sit-anywhere, section name otherwise</div>
+          </div>
+          <button onClick={() => setShowSectionBadge(p => !p)}
+            style={{ width: 44, height: 24, borderRadius: 12, background: showSectionBadge ? C.green : C.surface2, border: `1px solid ${showSectionBadge ? C.greenBdr : C.border}`, position: "relative", cursor: "pointer", transition: "background 0.2s, border-color 0.2s", flexShrink: 0 }}>
+            <div style={{ position: "absolute", top: 2, left: showSectionBadge ? 22 : 2, width: 18, height: 18, borderRadius: "50%", background: showSectionBadge ? "#fff" : C.muted, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+
+        {/* Waitlist tab */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingBottom: 16, borderBottom: `1px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Separate waitlist view</div>
+            <div style={{ fontSize: 12, color: C.muted }}>Add a Floor / Waitlist tab to the station so staff can view the full waitlist on its own page</div>
+          </div>
+          <button onClick={() => setWaitlistTab(p => !p)}
+            style={{ width: 44, height: 24, borderRadius: 12, background: waitlistTab ? C.green : C.surface2, border: `1px solid ${waitlistTab ? C.greenBdr : C.border}`, position: "relative", cursor: "pointer", transition: "background 0.2s, border-color 0.2s", flexShrink: 0 }}>
+            <div style={{ position: "absolute", top: 2, left: waitlistTab ? 22 : 2, width: 18, height: 18, borderRadius: "50%", background: waitlistTab ? "#fff" : C.muted, transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }} />
+          </button>
+        </div>
+
+        {/* Queue width */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Queue panel width</div>
+              <div style={{ fontSize: 12, color: C.muted }}>Default width of the waitlist sidebar — wider means larger cards, smaller floor map</div>
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.text, minWidth: 40, textAlign: "right" }}>{queueWidth}px</span>
+          </div>
+          <input
+            type="range"
+            min={260} max={520} step={10}
+            value={queueWidth}
+            onChange={e => setQueueWidth(Number(e.target.value))}
+            style={{ width: "100%", accentColor: C.green, cursor: "pointer" }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.muted, marginTop: 2 }}>
+            <span>Compact (260px)</span>
+            <span>Large (520px)</span>
+          </div>
+        </div>
       </div>
 
       {/* ── Menu ── */}

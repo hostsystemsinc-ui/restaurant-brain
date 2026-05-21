@@ -783,7 +783,7 @@ function GuestEditModal({
 // ── Draggable Queue Card ───────────────────────────────────────────────────────
 
 function DraggableQueueCard({
-  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved, isNeedsQuote, onAddTime,
+  entry, onSeat, onNotify, isSelected, onSelect, onEdit, onRemoved, isNeedsQuote, onAddTime, showSectionBadge,
 }: {
   entry: QueueEntry
   onSeat: () => void
@@ -794,6 +794,7 @@ function DraggableQueueCard({
   onRemoved?: () => void
   isNeedsQuote?: boolean
   onAddTime?: () => void
+  showSectionBadge?: boolean
 }) {
   const isReady = entry.status === "ready"
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -913,6 +914,21 @@ function DraggableQueueCard({
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 15, fontWeight: 800, color: "#fff", background: "rgba(99,179,237,0.18)", border: "1px solid rgba(99,179,237,0.30)", borderRadius: 6, padding: "1px 8px", letterSpacing: "0.01em", flexShrink: 0 }}>
               <Users className="w-3.5 h-3.5" />{entry.party_size}p
             </span>
+            {showSectionBadge && (() => {
+              const pref = entry.section_preference
+              const isFirst = !pref || pref === "anywhere"
+              return (
+                <span style={{
+                  fontSize: 11, fontWeight: 900, letterSpacing: "0.07em",
+                  color: isFirst ? "#4ade80" : "#fb923c",
+                  background: isFirst ? "rgba(34,197,94,0.12)" : "rgba(251,146,60,0.14)",
+                  border: `1px solid ${isFirst ? "rgba(34,197,94,0.30)" : "rgba(251,146,60,0.30)"}`,
+                  borderRadius: 6, padding: "1px 7px", flexShrink: 0,
+                }}>
+                  {isFirst ? "FIRST" : pref!.toUpperCase()}
+                </span>
+              )
+            })()}
             {isReady && (
               <span className="text-[8px] font-black tracking-[0.14em] px-1 py-0.5 rounded animate-pulse"
                 style={{ background: "rgba(34,197,94,0.12)", color: "#4ade80" }}>READY</span>
@@ -2598,6 +2614,8 @@ function ClientStationInner() {
   const [editModal, setEditModal]         = useState<{ entry: QueueEntry; displayWait: number } | null>(null)
   const [avgWait, setAvgWait]             = useState(0)
   const [sectionsConfig, setSectionsConfig] = useState<SectionsConfig | null>(null)
+  const [stationSettings, setStationSettings] = useState<{ flatQueue: boolean; showSectionBadge: boolean; waitlistTab: boolean; queueWidth: number }>({ flatQueue: false, showSectionBadge: false, waitlistTab: false, queueWidth: 0 })
+  const [stationView, setStationView] = useState<"floor" | "waitlist">("floor")
   const [activeDragEntry, setActiveDrag]  = useState<QueueEntry | null>(null)
   const [activeDragOccupant, setActiveDragOccupant] = useState<{ tableNumber: number; occupant: LocalOccupant } | null>(null)
   const [activeDragRes, setActiveDragRes] = useState<Reservation | null>(null)
@@ -2631,8 +2649,30 @@ function ClientStationInner() {
   const resizeStartX    = useRef(0)
   const resizeStartW    = useRef(0)
 
+  // ── Terms acceptance state ───────────────────────────────────────────────────
+  const [termsPending,   setTermsPending]   = useState(false)
+  const [termsVersion,   setTermsVersion]   = useState("")
+  const [termsDate,      setTermsDate]      = useState("")
+  const [termsSections,  setTermsSections]  = useState<{ heading: string; body: string }[]>([])
+  const [termsExpanded,  setTermsExpanded]  = useState(false)
+  const [termsRead,      setTermsRead]      = useState(false)
+  const [termsAccepting, setTermsAccepting] = useState(false)
+  // Refs so interval callbacks don't capture stale closures
+  const termsPendingRef = useRef(termsPending)
+  termsPendingRef.current = termsPending
+  const ridRef = useRef(rid)
+  ridRef.current = rid
+
   // Set history slug for scoped localStorage
   useEffect(() => { _historySlug = slug || "demo" }, [slug])
+
+  // ── Terms polling — check every 10s so a push shows up quickly ──────────────
+  useEffect(() => {
+    if (!slug) return
+    const termsInt = setInterval(() => checkTermsWithRid(), 10000)
+    return () => clearInterval(termsInt)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug])
 
   // Load restaurant config from Railway by slug
   useEffect(() => {
@@ -2654,6 +2694,17 @@ function ClientStationInner() {
           const m = Number(gc.reservationAlertMinutes) || 60
           setResAlertBySize({ small: m, medium: m, large: m, xlarge: m })
         }
+        if (gc.stationSettings && typeof gc.stationSettings === "object") {
+          const ss = gc.stationSettings as Record<string, unknown>
+          const qw = typeof ss.queueWidth === "number" && ss.queueWidth > 0 ? ss.queueWidth : 0
+          setStationSettings({
+            flatQueue:        !!ss.flatQueue,
+            showSectionBadge: !!ss.showSectionBadge,
+            waitlistTab:      !!ss.waitlistTab,
+            queueWidth:       qw,
+          })
+          if (qw > 0) setSidebarW(qw)
+        }
         const converted = convertWizardFloor(d.floor_plan)
         if (converted) {
           setFloorPages(converted.pages)
@@ -2662,11 +2713,13 @@ function ClientStationInner() {
           setCanvasH(converted.canvasH)
         }
         setLoading(false)
+        // Kick off terms check immediately after config loads so we know the rid
+        checkTermsWithRid(d.restaurant_id ?? "")
       } catch (e) {
         setLoadErr("Could not load restaurant data"); setLoading(false)
       }
     })()
-  }, [slug])
+  }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Wire module-level toast dispatcher to component state
   useEffect(() => {
@@ -3296,7 +3349,128 @@ function ClientStationInner() {
     })
   }
 
+  // ── Terms check ─────────────────────────────────────────────────────────────
+  // knownRid: pass when calling right after config load so we don't hit the
+  // stale-state race (setRid is async but ridRef.current lags one render).
+  function checkTermsWithRid(knownRid?: string) {
+    if (termsPendingRef.current) return
+    fetch("/api/admin/terms")
+      .then(r => r.json())
+      .then(async t => {
+        const required = typeof t.version === "string" ? t.version : ""
+        if (!required) return
+        const requiredBase = required.replace(/-push\d+$/, "")
+
+        // Fast path: localStorage already accepted this canonical version
+        try {
+          const localAccepted     = localStorage.getItem(`${slug}:terms_accepted`) || ""
+          const localAcceptedBase = localAccepted.replace(/-push\d+$/, "")
+          if (localAcceptedBase === requiredBase) return
+        } catch {}
+
+        const resolvedRid = knownRid || ridRef.current
+        if (!resolvedRid) return   // don't know who we are yet — interval will retry
+
+        // Slow path: check server so a cleared-localStorage device doesn't re-prompt
+        try {
+          const sr = await fetch(`/api/client/terms-status?restaurantId=${encodeURIComponent(resolvedRid)}`, { cache: "no-store" })
+          if (sr.ok) {
+            const sd             = await sr.json() as { acceptedVersion: string | null }
+            const serverAccepted = typeof sd.acceptedVersion === "string" ? sd.acceptedVersion : ""
+            const serverBase     = serverAccepted.replace(/-push\d+$/, "")
+            if (serverBase === requiredBase) {
+              try { localStorage.setItem(`${slug}:terms_accepted`, requiredBase) } catch {}
+              return
+            }
+          }
+        } catch {/* non-critical */}
+
+        // Restaurant is known, not accepted — show the modal
+        setTermsVersion(required)
+        setTermsDate(t.effectiveDate || "")
+        setTermsSections(Array.isArray(t.sections) ? t.sections : [])
+        setTermsPending(true)
+      })
+      .catch(() => {})
+  }
+
+  async function acceptTerms() {
+    if (!termsRead) return
+    setTermsAccepting(true)
+    try {
+      try { localStorage.setItem(`${slug}:terms_accepted`, termsVersion.replace(/-push\d+$/, "")) } catch {}
+      // Use slug (path A) so the API route resolves restaurant name & ID from config
+      fetch("/api/client/terms-accept", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, version: termsVersion }),
+      }).catch(() => {})
+    } finally {
+      setTermsPending(false)
+      setTermsAccepting(false)
+    }
+  }
+
   if (!authed) return null
+
+  // ── Terms acceptance modal — blocks station until agreement is recorded ──────
+  if (termsPending) {
+    return (
+      <div style={{ minHeight: "100dvh", background: "#0C0907", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
+        <div style={{ maxWidth: 600, width: "100%", background: "#1A1410", border: "1px solid rgba(255,185,100,0.18)", borderRadius: 16, padding: "32px 28px", color: "#E8EAED" }}>
+          <div style={{ textAlign: "center", marginBottom: 24 }}>
+            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em", color: "rgb(255,185,100)" }}>HOST</div>
+            <div style={{ fontSize: 13, color: "rgba(232,234,237,0.45)", marginTop: 4 }}>Platform Agreement Update</div>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#E8EAED" }}>Updated Terms of Service</div>
+            <div style={{ fontSize: 12, color: "rgba(232,234,237,0.45)", marginTop: 2 }}>
+              Version {termsVersion}{termsDate ? ` · Effective ${termsDate}` : ""}
+            </div>
+          </div>
+          <p style={{ fontSize: 14, color: "rgba(232,234,237,0.7)", lineHeight: 1.6, margin: "12px 0 16px" }}>
+            We&apos;ve updated the agreement between your business and Host Platform LLC.
+            Please review the terms below and confirm your acceptance to continue using HOST.
+          </p>
+          {/* Expandable full agreement */}
+          <button onClick={() => setTermsExpanded(x => !x)} style={{ width: "100%", textAlign: "left", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(232,234,237,0.12)", background: "rgba(232,234,237,0.04)", color: "rgba(232,234,237,0.7)", fontSize: 13, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", marginBottom: 8 }}>
+            <span>Read Full Agreement</span>
+            <span style={{ fontSize: 16, color: "rgba(232,234,237,0.45)" }}>{termsExpanded ? "▲" : "▼"}</span>
+          </button>
+          {termsExpanded && (
+            <div style={{ maxHeight: 300, overflowY: "auto", borderRadius: 8, border: "1px solid rgba(232,234,237,0.12)", padding: "14px 16px", marginBottom: 12 }}>
+              {termsSections.map((s, i) => (
+                <div key={i} style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(232,234,237,0.9)", marginBottom: 6 }}>{s.heading}</div>
+                  <div style={{ fontSize: 12, color: "rgba(232,234,237,0.55)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{s.body}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", margin: "16px 0" }}>
+            <input type="checkbox" checked={termsRead} onChange={e => setTermsRead(e.target.checked)}
+              style={{ marginTop: 2, accentColor: "rgb(255,185,100)", width: 16, height: 16, flexShrink: 0 }} />
+            <span style={{ fontSize: 13, color: "rgba(232,234,237,0.7)", lineHeight: 1.5 }}>
+              I confirm that I am authorized to accept agreements on behalf of <strong style={{ color: "#E8EAED" }}>{restName || "your restaurant"}</strong>, and I have read and agree to the Host Platform LLC Master Subscription Agreement version <strong style={{ color: "#E8EAED" }}>{termsVersion}</strong>.
+            </span>
+          </label>
+          <button
+            onClick={acceptTerms}
+            disabled={!termsRead || termsAccepting}
+            style={{
+              width: "100%", padding: "13px 0", borderRadius: 10, border: "none",
+              cursor: termsRead ? "pointer" : "not-allowed",
+              background: termsRead ? "rgb(255,185,100)" : "rgba(255,185,100,0.1)",
+              color: termsRead ? "#0C0907" : "rgba(232,234,237,0.3)",
+              fontSize: 15, fontWeight: 700,
+            }}
+          >
+            {termsAccepting ? "Recording agreement…" : "I've Read and Agree — Continue to HOST"}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (loading) return (
     <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050709", color: "rgba(255,255,255,0.5)", fontSize: 14 }}>
@@ -3322,6 +3496,12 @@ function ClientStationInner() {
       <style>{`
         [data-host-theme="dark"]  { --accent:255,185,100; --warm:255,200,150; --cream:255,248,240; --page-bg:#0C0907; --card-bg:#100C09; --page-deep:#0a0704; --header-bg:rgba(7,4,2,0.98); --header-border:rgba(var(--accent),0.18); --divider:rgba(var(--accent),0.16); }
         [data-host-theme="light"] { --accent:160,90,0;   --warm:110,60,5;    --cream:18,10,3;     --page-bg:#F5F2EE; --card-bg:#FFFFFF;   --page-deep:#EDE9E3; --header-bg:rgba(252,249,245,0.98); --header-border:rgba(160,90,0,0.18); --divider:rgba(160,90,0,0.14); }
+        .host-queue-scroll::-webkit-scrollbar { width: 8px; }
+        .host-queue-scroll::-webkit-scrollbar-track { background: transparent; }
+        .host-queue-scroll::-webkit-scrollbar-thumb { background: rgba(255,185,100,0.28); border-radius: 4px; }
+        .host-queue-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,185,100,0.45); }
+        [data-host-theme="light"] .host-queue-scroll::-webkit-scrollbar-thumb { background: rgba(160,90,0,0.25); }
+        [data-host-theme="light"] .host-queue-scroll::-webkit-scrollbar-thumb:hover { background: rgba(160,90,0,0.42); }
       `}</style>
 
       {/* Outer clip wrapper — always exactly viewport size */}
@@ -3445,9 +3625,10 @@ function ClientStationInner() {
           <div
             className="flex flex-col shrink-0 overflow-hidden"
             style={{
-              width: sidebarW,
+              width: stationSettings.waitlistTab && stationView === "waitlist" ? "100%" : sidebarW,
               position: "relative",
               background: "var(--page-bg)",
+              transition: "width 0.2s",
             }}
           >
             {/* Drag-to-resize handle */}
@@ -3471,6 +3652,26 @@ function ClientStationInner() {
                 ))}
               </div>
             </div>
+
+            {/* Floor | Waitlist tab bar — shown when waitlistTab is enabled */}
+            {stationSettings.waitlistTab && (
+              <div className="flex shrink-0 gap-1 px-2 pt-2 pb-1">
+                {(["floor", "waitlist"] as const).map(v => (
+                  <button key={v} onClick={() => setStationView(v)}
+                    className="flex-1 h-8 rounded-lg transition-all"
+                    style={{
+                      background: stationView === v ? "rgba(var(--accent),0.14)" : "transparent",
+                      color: stationView === v ? "rgba(var(--cream),0.95)" : "rgba(var(--warm),0.45)",
+                      border: `1px solid ${stationView === v ? "rgba(var(--accent),0.30)" : "transparent"}`,
+                      cursor: "pointer",
+                      fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase",
+                    }}
+                  >
+                    {v === "floor" ? "🗺 Floor" : "📋 Waitlist"}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* ── Today's reservations ──────────────────────────── */}
             {activeRes.length > 0 && (
@@ -3567,6 +3768,7 @@ function ClientStationInner() {
                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
                       onAddTime={() => addTime(e)}
+                      showSectionBadge={stationSettings.showSectionBadge}
                       onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
                   ))}
                 </div>
@@ -3614,7 +3816,7 @@ function ClientStationInner() {
             )}
 
             {/* Waiting section — only shows guests that have been quoted */}
-            <div className="px-3 pt-2 flex-1 overflow-y-auto">
+            <div className="px-3 pt-2 flex-1 overflow-y-auto host-queue-scroll">
               {isInitialLoad ? (
                 <div className="flex items-center justify-center py-16">
                   <div className="w-5 h-5 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(var(--accent),0.18)", borderTopColor: "rgba(var(--accent),0.65)" }} />
@@ -3626,7 +3828,7 @@ function ClientStationInner() {
                 </div>
               ) : quotedWaiting.length > 0 ? (
                 (() => {
-                  const sectionsEnabled = sectionsConfig?.enabled && (sectionsConfig.sections?.length ?? 0) > 0
+                  const sectionsEnabled = !stationSettings.flatQueue && sectionsConfig?.enabled && (sectionsConfig.sections?.length ?? 0) > 0
                   if (!sectionsEnabled) {
                     return (
                       <div className="flex flex-col gap-1.5 pb-24 pr-1">
@@ -3637,6 +3839,7 @@ function ClientStationInner() {
                             onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                             onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
                             onAddTime={() => addTime(e)}
+                            showSectionBadge={stationSettings.showSectionBadge}
                             onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
                         ))}
                       </div>
@@ -3676,6 +3879,7 @@ function ClientStationInner() {
                                       onSeat={() => openSeatPicker(e)} onNotify={() => notify(e.id)}
                                       onEdit={(dw) => setEditModal({ entry: e, displayWait: dw })}
                                       onAddTime={() => addTime(e)}
+                                      showSectionBadge={stationSettings.showSectionBadge}
                                       onRemoved={() => { addToGuestLog({ id: e.id, name: e.name || "Guest", party_size: e.party_size, source: e.source || "walk-in", phone: e.phone, notes: e.notes, quoted_wait: e.quoted_wait, actual_wait_min: null, joined_ms: (parseUTCMs(e.arrival_time) ?? Date.now()), resolved_ms: Date.now(), status: "removed" }); refreshAll() }} />
                                   </div>
                                 </div>
@@ -3693,6 +3897,7 @@ function ClientStationInner() {
           </div>
 
           {/* ── Floor map (desktop only) ───────────────────────────── */}
+          {(!stationSettings.waitlistTab || stationView === "floor") && (
           <div className="flex-1 overflow-hidden hidden lg:flex">
             <FloorMap
               tables={tables}
@@ -3773,6 +3978,7 @@ function ClientStationInner() {
               onFloorPage={setFloorPage}
             />
           </div>
+          )}
 
           {/* ── Mobile: no floor map ─────────────────── */}
           <div className="flex-1 lg:hidden overflow-y-auto p-4 flex flex-col gap-4">
