@@ -650,7 +650,11 @@ function ClientAdminInner() {
     if (!rid) return
     setClearing(true)
     try {
-      await fetch(`${API}/admin/clear-day?restaurant_id=${encodeURIComponent(rid)}`, { method: "POST" })
+      await fetch(`${API}/admin/clear-day?restaurant_id=${encodeURIComponent(rid)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_pin: adminPin }),
+      })
       clearHistory()
       setQueue([])
       setTables([])
@@ -976,13 +980,12 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged, onBack }: {
   const [pinSaving,  setPinSaving]  = useState(false)
 
   // Login credential state
-  const [credId,       setCredId]       = useState<string | null>(null)
-  const [credPassword, setCredPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
-  const [newPassword,  setNewPassword]  = useState("")
-  const [credSaving,   setCredSaving]   = useState(false)
-  const [credMsg,      setCredMsg]      = useState<{ ok: boolean; text: string } | null>(null)
-  const [credLoading,  setCredLoading]  = useState(true)
+  const [credId,      setCredId]      = useState<string | null>(null)
+  const [hasPassword, setHasPassword] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
+  const [credSaving,  setCredSaving]  = useState(false)
+  const [credMsg,     setCredMsg]     = useState<{ ok: boolean; text: string } | null>(null)
+  const [credLoading, setCredLoading] = useState(true)
 
   useEffect(() => {
     if (!rid) return
@@ -993,9 +996,9 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged, onBack }: {
         const login = creds.find(c => c.credential_type === "login")
         if (login) {
           setCredId(login.id)
-          const idx = login.value.indexOf(":")
-          // Password is always the portion after the first colon
-          setCredPassword(idx >= 0 ? login.value.slice(idx + 1) : login.value)
+          // We only need to know a password exists — we never display the stored value
+          // (it is now a hash, not the plaintext password)
+          setHasPassword(true)
         }
       })
       .catch(() => {})
@@ -1007,7 +1010,8 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged, onBack }: {
     if (!p) { setCredMsg({ ok: false, text: "Password cannot be empty" }); return }
     setCredSaving(true); setCredMsg(null)
     try {
-      // Always store as "slug:password" — slug is the permanent login username
+      // Always store as "slug:password" — the credentials API route hashes the password
+      // before forwarding to Railway so plaintext never reaches the database
       const r = await fetch("/api/client/credentials", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1016,7 +1020,7 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged, onBack }: {
       if (!r.ok) throw new Error()
       const d = await r.json()
       if (d.id && !credId) setCredId(d.id)
-      setCredPassword(p); setNewPassword("")
+      setHasPassword(true); setNewPassword("")
       setCredMsg({ ok: true, text: "Password updated — sign in with the username above" })
     } catch { setCredMsg({ ok: false, text: "Could not save password" }) }
     setCredSaving(false)
@@ -1129,24 +1133,18 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged, onBack }: {
               <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: "monospace" }}>{slug}</div>
             </div>
 
+            {hasPassword && (
+              <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 8, background: C.greenBg, border: `1px solid ${C.greenBdr}`, fontSize: 12, color: C.green, fontWeight: 600 }}>
+                Password is set — enter a new one below to change it
+              </div>
+            )}
             <div style={{ marginBottom: 8 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.text2, display: "block", marginBottom: 6 }}>
-                {credPassword ? "Change Password" : "Set Password"}
-                {credPassword && (
-                  <button onClick={() => setShowPassword(p => !p)}
-                    style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: C.muted, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                    {showPassword ? "Hide" : "Show current"}
-                  </button>
-                )}
+                {hasPassword ? "Change Password" : "Set Password"}
               </label>
-              {credPassword && showPassword && (
-                <div style={{ marginBottom: 8, padding: "8px 12px", borderRadius: 8, background: C.surface2, border: `1px solid ${C.border}`, fontSize: 14, fontFamily: "monospace", color: C.text, letterSpacing: "0.08em" }}>
-                  {credPassword}
-                </div>
-              )}
               <input
-                type={showPassword ? "text" : "password"}
-                placeholder={credPassword ? "Enter new password" : "Set a password"}
+                type="password"
+                placeholder={hasPassword ? "Enter new password" : "Set a password"}
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && saveLoginCredential()}
@@ -1157,7 +1155,7 @@ function LoginsTab({ slug, rid, adminPin, onPinChanged, onBack }: {
             {credMsg && <div style={{ fontSize: 13, fontWeight: 600, color: credMsg.ok ? C.green : C.red, marginBottom: 8 }}>{credMsg.text}</div>}
             <button onClick={saveLoginCredential} disabled={credSaving || !newPassword.trim()}
               style={{ marginTop: 4, padding: "10px 20px", borderRadius: 10, background: newPassword.trim() ? C.green : C.surface2, color: newPassword.trim() ? "#fff" : C.muted, border: `1px solid ${newPassword.trim() ? C.green : C.border}`, fontWeight: 600, fontSize: 13, cursor: !newPassword.trim() || credSaving ? "default" : "pointer", transition: "all 0.15s", opacity: credSaving ? 0.6 : 1 }}>
-              {credSaving ? "Saving…" : credPassword ? "Update Password" : "Set Password"}
+              {credSaving ? "Saving…" : hasPassword ? "Update Password" : "Set Password"}
             </button>
           </>
         )}

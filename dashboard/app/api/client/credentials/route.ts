@@ -1,7 +1,21 @@
 import { NextResponse } from "next/server"
+import { hashPassword } from "@/lib/password"
 
 const RAILWAY_API  = "https://restaurant-brain-production.up.railway.app"
 const OWNER_SECRET = process.env.OWNER_SECRET || process.env.OWNER_PASS || ""
+
+/**
+ * Credential values are stored as "slug:password".
+ * Hash the password portion before it reaches the database.
+ * If the value has no colon (unusual), hash the whole thing.
+ */
+function hashCredentialValue(value: string): string {
+  const colonIdx = value.indexOf(":")
+  if (colonIdx < 0) return hashPassword(value)
+  const slug     = value.slice(0, colonIdx)
+  const password = value.slice(colonIdx + 1)
+  return `${slug}:${hashPassword(password)}`
+}
 
 // GET /api/client/credentials?rid=xxx  — fetch credentials for a restaurant (server-side owner secret)
 export async function GET(req: Request) {
@@ -30,6 +44,10 @@ export async function PATCH(req: Request) {
     const { rid, cred_id, value, label } = await req.json()
     if (!rid) return NextResponse.json({ error: "Missing rid" }, { status: 400 })
 
+    // value is stored as "slug:password". Hash the password portion before saving
+    // so the plaintext password never reaches the database.
+    const hashedValue = hashCredentialValue(value)
+
     if (cred_id) {
       // Update existing credential
       const r = await fetch(
@@ -37,7 +55,7 @@ export async function PATCH(req: Request) {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value, label }),
+          body: JSON.stringify({ value: hashedValue, label }),
         }
       )
       if (!r.ok) return NextResponse.json({ error: "Backend error" }, { status: r.status })
@@ -49,7 +67,7 @@ export async function PATCH(req: Request) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credential_type: "login", value, label: label || "Login" }),
+          body: JSON.stringify({ credential_type: "login", value: hashedValue, label: label || "Login" }),
         }
       )
       if (!r.ok) return NextResponse.json({ error: "Backend error" }, { status: r.status })

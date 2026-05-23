@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { getCredentialOverride } from "@/lib/walnut-settings"
+import { verifyPassword } from "@/lib/password"
 
 const RAILWAY_API   = "https://restaurant-brain-production.up.railway.app"
 const OWNER_SECRET  = process.env.OWNER_SECRET || process.env.OWNER_PASS || ""
@@ -60,7 +61,7 @@ async function tryRailwayAuth(slug: string, password: string): Promise<string | 
       ? loginCred.value.slice(colonIdx + 1)
       : loginCred.value
 
-    if (!storedPassword || password !== storedPassword) return null
+    if (!storedPassword || !verifyPassword(password, storedPassword)) return null
     return slug // auth OK — cookie value = slug
   } catch {
     return null
