@@ -1378,8 +1378,11 @@ def get_table_occupants(restaurant_id: Optional[str] = None):
     return result
 
 
+class ClearDayRequest(BaseModel):
+    admin_pin: str = ""
+
 @app.post("/admin/clear-day")
-def admin_clear_day(restaurant_id: Optional[str] = None):
+def admin_clear_day(restaurant_id: Optional[str] = None, req: ClearDayRequest = None):
     """Soft-reset a single restaurant to "empty floor + empty queue" without waiting for
     the 3am business-day rollover. Managers tap this from the Walnut admin dashboard.
 
@@ -1398,6 +1401,27 @@ def admin_clear_day(restaurant_id: Optional[str] = None):
     """
     from datetime import timedelta
     rid = _rid(restaurant_id)
+
+    # ── PIN verification ──────────────────────────────────────────────────────
+    # If the restaurant has an adminPin set in guest_config, the caller must
+    # supply it. Restaurants with no PIN (e.g. legacy Walnut) skip this check.
+    try:
+        pin_cfg = supabase.table("restaurant_configs").select("guest_config") \
+                          .eq("restaurant_id", rid).limit(1).execute()
+        gc_raw = (pin_cfg.data[0] if pin_cfg.data else {}).get("guest_config") or {}
+        if isinstance(gc_raw, str):
+            try: gc_raw = _json.loads(gc_raw)
+            except: gc_raw = {}
+        stored_pin = str(gc_raw.get("adminPin", ""))
+        supplied   = (req.admin_pin if req else "")
+        if stored_pin and supplied != stored_pin:
+            raise HTTPException(status_code=403, detail="Incorrect admin PIN")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[admin/clear-day] PIN check error: {e}")
+        raise HTTPException(status_code=500, detail="PIN check failed")
+
     counts = {"queue_entries_updated": 0, "tables_reset": 0, "occupants_dropped": 0, "history_deleted": 0}
 
     # Business-day window (3am cutoff) — we hard-delete today's guest log rows so the
