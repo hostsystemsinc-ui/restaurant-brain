@@ -581,10 +581,8 @@ function ClientAdminInner() {
           if (d.guest_config?.restaurantName) setRestName(d.guest_config.restaurantName)
           if (d.guest_config?.adminPin) {
             setAdminPin(String(d.guest_config.adminPin))
-            // always require PIN on every visit
-          } else {
-            setPinOk(true) // no PIN configured — open, but banner will prompt them to set one
           }
+          // If no PIN is configured, pinOk stays false → access is blocked
         } else {
           setRidError(true)
         }
@@ -752,28 +750,43 @@ function ClientAdminInner() {
     }
   }
 
-  if (adminPin && !pinOk) return (
+  if (!pinOk) return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, gap: 32 }}>
       <style>{`@keyframes pinShake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}`}</style>
 
-      <p style={{ fontSize: 15, fontWeight: 700, color: C.text2, letterSpacing: "0.04em" }}>Admin PIN</p>
+      {adminPin ? (
+        <>
+          <p style={{ fontSize: 15, fontWeight: 700, color: C.text2, letterSpacing: "0.04em" }}>Admin PIN</p>
 
-      {/* Dots */}
-      <div style={{ display: "flex", gap: 18, animation: pinErr ? "pinShake 0.5s ease" : "none" }}>
-        {[0,1,2,3].map(i => (
-          <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", background: pinInput.length > i ? (pinErr ? C.red : C.text) : "transparent", border: `2.5px solid ${pinInput.length > i ? (pinErr ? C.red : C.text) : C.border}`, transition: "all 0.12s" }} />
-        ))}
-      </div>
+          {/* Dots */}
+          <div style={{ display: "flex", gap: 18, animation: pinErr ? "pinShake 0.5s ease" : "none" }}>
+            {[0,1,2,3].map(i => (
+              <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", background: pinInput.length > i ? (pinErr ? C.red : C.text) : "transparent", border: `2.5px solid ${pinInput.length > i ? (pinErr ? C.red : C.text) : C.border}`, transition: "all 0.12s" }} />
+            ))}
+          </div>
 
-      {/* Numpad */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 88px)", gridTemplateRows: "repeat(4, 88px)", gap: 12 }}>
-        {PIN_PAD.flat().map((d, i) => (
-          <button key={i} onClick={() => d && onPinDigit(d)} disabled={!d}
-            style={{ borderRadius: 20, fontSize: d === "⌫" ? 20 : 28, fontWeight: 600, background: d === "⌫" ? C.redBg : d ? C.surface : "transparent", border: d === "⌫" ? `1.5px solid ${C.redBdr}` : d ? `1.5px solid ${C.border}` : "none", color: d === "⌫" ? C.red : d ? C.text : "transparent", cursor: d ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.1s", boxShadow: d && d !== "⌫" ? "0 1px 3px rgba(0,0,0,0.06)" : "none" }}>
-            {d === "⌫" ? "⌫" : d}
-          </button>
-        ))}
-      </div>
+          {/* Numpad */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 88px)", gridTemplateRows: "repeat(4, 88px)", gap: 12 }}>
+            {PIN_PAD.flat().map((d, i) => (
+              <button key={i} onClick={() => d && onPinDigit(d)} disabled={!d}
+                style={{ borderRadius: 20, fontSize: d === "⌫" ? 20 : 28, fontWeight: 600, background: d === "⌫" ? C.redBg : d ? C.surface : "transparent", border: d === "⌫" ? `1.5px solid ${C.redBdr}` : d ? `1.5px solid ${C.border}` : "none", color: d === "⌫" ? C.red : d ? C.text : "transparent", cursor: d ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background 0.1s", boxShadow: d && d !== "⌫" ? "0 1px 3px rgba(0,0,0,0.06)" : "none" }}>
+                {d === "⌫" ? "⌫" : d}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        /* No PIN configured — block access entirely */
+        <div style={{ textAlign: "center", maxWidth: 340, padding: "0 24px" }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: C.surface2, border: `1.5px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", fontSize: 22, color: C.muted }}>
+            ?
+          </div>
+          <p style={{ fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 10 }}>Admin PIN Required</p>
+          <p style={{ fontSize: 13, color: C.muted, lineHeight: 1.6, marginBottom: 0 }}>
+            No Admin PIN is configured for this restaurant. Contact your HOST account manager to set one up before accessing this dashboard.
+          </p>
+        </div>
+      )}
 
       <Link href={`/client/${slug}/station`} style={{ fontSize: 13, color: C.muted, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
         ← Back to restaurant
@@ -789,16 +802,17 @@ function ClientAdminInner() {
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div style={{
         background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: "0 24px", height: 56,
+        padding: "0 20px", height: 52,
         display: "flex", alignItems: "center", justifyContent: "space-between",
         position: "sticky", top: 0, zIndex: 40,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Link href={`/client/${slug}/station`} style={{
             display: "flex", alignItems: "center", gap: 4,
             fontSize: 12, fontWeight: 600, color: C.muted,
             textDecoration: "none", padding: "5px 10px",
             borderRadius: 8, border: `1px solid ${C.border}`,
+            flexShrink: 0,
           }}>
             <ChevronLeft size={13} /> Station
           </Link>
@@ -812,34 +826,45 @@ function ClientAdminInner() {
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* Tabs */}
-          {(["overview", "logins", "settings", "billing"] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              style={{ padding: "5px 14px", borderRadius: 8, border: `1px solid ${activeTab === tab ? C.green : C.border}`, background: activeTab === tab ? C.greenBg : "transparent", color: activeTab === tab ? C.green : C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
-              {tab}
-            </button>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             {online ? <Wifi size={13} style={{ color: C.green }} /> : <WifiOff size={13} style={{ color: C.red }} />}
             <span style={{ fontSize: 11, fontWeight: 600, color: online ? C.green : C.red }}>{online ? "Live" : "Offline"}</span>
           </div>
           {lastSync && <span style={{ fontSize: 10, color: C.muted }}>{lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
-          <button onClick={fetchAll} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>
+          <button onClick={fetchAll} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.muted }}>
             <RefreshCw size={13} />
           </button>
         </div>
       </div>
 
+      {/* ── Tab nav bar ────────────────────────────────────────────────────────── */}
+      <div style={{
+        background: C.surface, borderBottom: `1px solid ${C.border}`,
+        padding: "0 20px",
+        display: "flex", alignItems: "center", gap: 4,
+        position: "sticky", top: 52, zIndex: 39,
+        overflowX: "auto",
+      }}>
+        {(["overview", "logins", "settings", "billing"] as const).map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            style={{
+              padding: "10px 18px", borderRadius: 0, border: "none",
+              borderBottom: `2px solid ${activeTab === tab ? C.green : "transparent"}`,
+              background: "transparent",
+              color: activeTab === tab ? C.green : C.muted,
+              fontSize: 12, fontWeight: 600, cursor: "pointer",
+              textTransform: "capitalize", flexShrink: 0,
+              transition: "color 0.15s, border-color 0.15s",
+            }}>
+            {tab}
+          </button>
+        ))}
+      </div>
+
       {/* ── Content ─────────────────────────────────────────────────────────── */}
       {activeTab === "overview" && (
         <div style={{ padding: "24px 24px 48px", maxWidth: 1100, margin: "0 auto" }}>
-          {!adminPin && (
-            <div style={{ marginBottom: 20, padding: "12px 16px", borderRadius: 10, background: "#fff8ed", border: "1px solid #f59e0b", color: "#92400e", fontSize: 13, fontWeight: 500, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span>No Admin PIN is set — anyone can access this dashboard. Set a PIN in the <strong>Logins</strong> tab.</span>
-              <button onClick={() => setActiveTab("logins")} style={{ marginLeft: 16, padding: "5px 12px", borderRadius: 7, background: "#f59e0b", color: "#fff", border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Set PIN</button>
-            </div>
-          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
             <StatCard icon={CheckCircle2} label="Tables Open" value={availableTables} sub={`of ${deduped.length} total`} color={C.green} bg={C.greenBg} bdr={C.greenBdr} />
             <StatCard icon={Users} label="Tables Seated" value={occupiedTables} sub={deduped.length > 0 ? `${Math.round(occupiedTables/deduped.length*100)}% occupancy` : "—"} color={occupiedTables > 0 ? C.red : C.muted} bg={occupiedTables > 0 ? C.redBg : C.surface2} bdr={occupiedTables > 0 ? C.redBdr : C.border} />
@@ -1192,9 +1217,6 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
   // Menu editor state
   const [menuSections, setMenuSections] = useState<MenuSectionAdmin[]>([])
 
-  // Guest page colors
-  const [buttonTextColor, setButtonTextColor] = useState("#000000")
-
   // Station display settings
   const [flatQueue,        setFlatQueue]        = useState(false)
   const [showSectionBadge, setShowSectionBadge] = useState(false)
@@ -1209,11 +1231,10 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
   const queueWidthDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   async function saveStationSettingsOnly(
-    opts: { fq?: boolean; ssb?: boolean; wt?: boolean; qw?: number; btc?: string }
+    opts: { fq?: boolean; ssb?: boolean; wt?: boolean; qw?: number }
   ) {
     const mergedGc = {
       ...fullGuestConfigRef.current,
-      buttonTextColor: opts.btc ?? (fullGuestConfigRef.current.buttonTextColor as string ?? "#000000"),
       stationSettings: {
         flatQueue:        opts.fq  ?? !!(fullGuestConfigRef.current.stationSettings as Record<string,unknown> | undefined)?.flatQueue,
         showSectionBadge: opts.ssb ?? !!(fullGuestConfigRef.current.stationSettings as Record<string,unknown> | undefined)?.showSectionBadge,
@@ -1232,9 +1253,9 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
   // Auto-save toggles immediately; debounce slider 600ms
   useEffect(() => {
     if (!settingsLoadedRef.current) return
-    saveStationSettingsOnly({ fq: flatQueue, ssb: showSectionBadge, wt: waitlistTab, btc: buttonTextColor })
+    saveStationSettingsOnly({ fq: flatQueue, ssb: showSectionBadge, wt: waitlistTab })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatQueue, showSectionBadge, waitlistTab, buttonTextColor])
+  }, [flatQueue, showSectionBadge, waitlistTab])
 
   useEffect(() => {
     if (!settingsLoadedRef.current) return
@@ -1264,7 +1285,6 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
         const gc = d.guest_config ?? {}
         fullGuestConfigRef.current = gc
         setShowCapacity(!!gc.showCapacity)
-        if (typeof gc.buttonTextColor === "string" && gc.buttonTextColor) setButtonTextColor(gc.buttonTextColor)
         if (gc.stationSettings && typeof gc.stationSettings === "object") {
           const ss = gc.stationSettings as Record<string, unknown>
           setFlatQueue(!!ss.flatQueue)
@@ -1437,7 +1457,6 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
       const mergedGc = {
         ...fullGuestConfigRef.current,
         showCapacity,
-        buttonTextColor,
         reservationAlertBySize: alertBySize,
         stationSettings: { flatQueue, showSectionBadge, waitlistTab, queueWidth },
       }
@@ -1790,23 +1809,6 @@ function SettingsTab({ slug, rid, onBack }: { slug: string; rid: string; onBack?
 
       {/* ── Station Display ── */}
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 22px", marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted }}>Guest Page</div>
-          <div style={{ fontSize: 11, color: C.muted }}>auto-saves instantly</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${C.border}` }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 2 }}>Join Waitlist button text color</div>
-            <div style={{ fontSize: 12, color: C.muted }}>Text color shown inside the Join Waitlist button on the guest page</div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
-            <input type="color" value={buttonTextColor} onChange={e => setButtonTextColor(e.target.value)}
-              style={{ width: 36, height: 32, borderRadius: 6, border: `1px solid ${C.border}`, cursor: "pointer", padding: 2, background: "none" }} />
-            <input value={buttonTextColor} onChange={e => setButtonTextColor(e.target.value)}
-              style={{ width: 88, padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 13, outline: "none", fontFamily: "monospace" }} />
-          </div>
-        </div>
-
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted }}>Station Display</div>
           <div style={{ fontSize: 11, color: C.muted }}>auto-saves instantly</div>
