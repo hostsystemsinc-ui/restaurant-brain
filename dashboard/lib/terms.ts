@@ -2,8 +2,8 @@
 // Update CURRENT_VERSION and TERMS_TEXT here to publish a new version.
 // Then use the owner console "Terms" tab to push re-sign requests to clients.
 
-export const CURRENT_VERSION  = "MSA-v2.1-2026-05"
-export const EFFECTIVE_DATE   = "May 13, 2026"
+export const CURRENT_VERSION  = "MSA-v2.2-2026-05"
+export const EFFECTIVE_DATE   = "May 26, 2026"
 export const GOVERNING_STATE  = "Colorado"
 export const ARBITRATION_CITY = "Denver, Colorado"
 export const ENTITY_NAME      = "Host Platform LLC"
@@ -22,7 +22,7 @@ export const TERMS_SECTIONS: TermsSection[] = [
     heading: "PARTIES AND ACCEPTANCE",
     body: `This Host Platform Subscription Agreement ("Agreement") is between Host Platform LLC, a Colorado limited liability company ("HOST," "we," "us," or "our"), and the business entity or individual identified at the time of acceptance ("Client," "you," or "your").
 
-By clicking "I Agree," signing electronically, or using the Services, you represent that (a) you have authority to bind Client to this Agreement on behalf of the entire business entity — including all current and future restaurant locations under common ownership, management, or operation — and (b) you agree to all terms herein on behalf of that entire entity and all its locations. This constitutes a legally binding contract under the Electronic Signatures in Global and National Commerce Act (ESIGN, 15 U.S.C. § 7001) and the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101).
+By clicking "I Agree," signing electronically, or using the Services, you represent that (a) you have authority to bind Client to this Agreement on behalf of the entire business entity — including all current and future restaurant locations under common ownership, management, or operation — and (b) you agree to all terms herein on behalf of that entire entity and all its locations. This constitutes a legally binding contract under the Electronic Signatures in Global and National Commerce Act (ESIGN, 15 U.S.C. § 7001), the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101), and, where applicable, the California Uniform Electronic Transactions Act (Cal. Civ. Code § 1633.1 et seq.).
 
 Multi-Location Notice: If Client operates HOST at more than one restaurant location, a single acceptance of this Agreement — whether at any HOST station, through the signup flow, or via any other electronic acceptance method — covers and governs Client's use of the Platform at all such locations, both current and future. Client is not required to sign a separate agreement for each location.`,
   },
@@ -54,7 +54,19 @@ Multi-Location Notice: If Client operates HOST at more than one restaurant locat
 
 2.2 Free Plan. Under the HOST Free Plan, HOST provides: (a) Platform access at no charge; (b) two (2) HOST-branded NFC signs per restaurant location ("Signs"), which remain HOST's exclusive property; and (c) queue, waitlist, table management, and host station functionality. HOST may add new features or functionality to the Free Plan at any time without notice. HOST may remove or materially reduce existing Free Plan functionality with thirty (30) days' prior notice to Client. Routine maintenance, bug fixes, security patches, UI improvements, and all feature additions are excluded from this notice requirement and may be deployed at any time at HOST's sole discretion.
 
-2.3 Paid Plans — Free Trial. Each paid Plan includes a thirty (30) day free trial beginning on the Effective Date. No charge applies during the trial period. On day thirty-one (31), the subscription converts automatically to the paid Plan selected. CLIENT WILL RECEIVE REMINDER NOTICES AT SEVEN (7) AND THREE (3) DAYS BEFORE BILLING BEGINS. Client may cancel at any time before day thirty-one at no charge. One trial per business entity.
+2.3 Paid Plans — Free Trial and Automatic Renewal.
+
+AUTOMATIC RENEWAL DISCLOSURE — PLEASE READ CAREFULLY: PAID PLANS AUTOMATICALLY RENEW AND YOUR PAYMENT METHOD WILL BE CHARGED AUTOMATICALLY AT THE END OF EACH BILLING PERIOD UNLESS YOU CANCEL. BY ACCEPTING A PAID PLAN, YOU AUTHORIZE HOST TO CHARGE YOUR PAYMENT METHOD ON A RECURRING BASIS AS DESCRIBED BELOW.
+
+Free Trial: Each paid Plan includes a thirty (30) day free trial beginning on the Effective Date. No charge applies during the trial period.
+
+Automatic Conversion: ON DAY THIRTY-ONE (31), YOUR SUBSCRIPTION AUTOMATICALLY CONVERTS TO THE PAID PLAN YOU SELECTED AND YOUR PAYMENT METHOD WILL BE CHARGED THE APPLICABLE MONTHLY FEE (CURRENTLY $149.00/MONTH FOR THE BASE PLAN, OR AS SPECIFIED IN YOUR ORDER FORM). THIS CHARGE WILL REPEAT AUTOMATICALLY EVERY THIRTY (30) DAYS UNTIL YOU CANCEL.
+
+Reminder Notices: HOST will send reminder notices at seven (7) and three (3) days before your trial ends and billing begins.
+
+How to Cancel: Client may cancel at any time before day thirty-one (31) at no charge, and at any time thereafter with thirty (30) days' written notice per Section 9.3. To cancel, contact HOST in writing at the address or email on file. Cancellation stops future charges but does not entitle Client to a refund of the current billing period.
+
+One trial per business entity. California residents: see also Section 15.1 for additional disclosures required under California's Automatic Renewal Law (Bus. & Prof. Code §§ 17600–17606).
 
 2.4 Hardware Not Provided by HOST. HOST does not provide tablets, computers, point-of-sale hardware, monitors, or any device for running the Platform. Client is solely responsible for providing and maintaining any device used to access the Platform. HOST's hardware provision is limited to the Signs described in this Agreement and any HOST Hardware specified in an Order Form.
 
@@ -88,13 +100,15 @@ Multi-Location Notice: If Client operates HOST at more than one restaurant locat
 
 4.3 HOST Network Data — Ownership and Use. HOST EXCLUSIVELY OWNS ALL HOST NETWORK DATA. HOST may collect, use, analyze, license, commercialize, share, and otherwise exploit HOST Network Data for any lawful purpose without restriction, limitation, or obligation to Client, including without limitation: (a) improving, developing, and marketing the Platform and new products or services; (b) generating industry benchmarks, anonymized analytics, and research reports; (c) sharing insights with third parties including investors, partners, acquirers, and other HOST clients; (d) training, testing, and improving artificial intelligence and machine learning models; and (e) entering into data-sharing or commercialization arrangements with third-party platforms (such as reservation systems, analytics providers, or hospitality networks), on HOST's own behalf and without restaurant-by-restaurant consent. HOST's rights to HOST Network Data survive termination of this Agreement.
 
+Where Guest Data includes personal information of California residents, HOST's collection and use of such data as described in this Section constitutes HOST's own processing as a "business" under the California Consumer Privacy Act (CCPA). HOST maintains a CCPA-compliant Privacy Policy at hostplatform.net/privacy that describes HOST's data practices and provides California residents with their rights, including the right to know, delete, correct, and opt-out of the sale or sharing of their personal information. HOST will process verifiable consumer requests in accordance with CCPA requirements and will not discriminate against any individual for exercising their CCPA rights.
+
 4.4 Aggregated Data. HOST may at any time create Aggregated Data derived from Client Content and/or Guest Data. Upon creation, HOST exclusively owns all Aggregated Data with no restriction or obligation to Client.
 
 4.5 Third-Party Platform Integrations. Where Client uses the Platform alongside third-party systems (such as OpenTable, Resy, Toast, or other reservation or POS platforms), Client acknowledges that: (a) HOST may need to negotiate data-sharing or integration agreements directly with such third-party platforms on HOST's own behalf, in the same manner that third-party platforms negotiate with each other rather than with individual restaurants; (b) data processed in connection with third-party integrations may be subject to those third parties' terms, and HOST is not responsible for third-party data practices; and (c) HOST's rights to HOST Network Data and Aggregated Data under this Section 4 apply to all data processed through the Platform regardless of source.
 
 4.6 Permitted Uses by HOST. HOST may use Client Content and Guest Data to: (a) provide and improve the Services; (b) generate HOST Network Data and Aggregated Data; (c) send transactional communications (e.g., SMS wait notifications) on Client's behalf; (d) comply with legal obligations; and (e) as otherwise described in HOST's Privacy Policy.
 
-4.7 Privacy and Consent. Client is solely responsible for: (a) complying with all applicable privacy laws (including CCPA, and all applicable state laws) in its collection and use of guest information; (b) obtaining all required consents from guests and employees for HOST to process their data as described in this Agreement; and (c) TCPA compliance, including obtaining prior express written consent before sending any SMS message to any guest. HOST is not liable for Client's failure to obtain required consents.
+4.7 Privacy and Consent. Client is solely responsible for: (a) complying with all applicable privacy laws in its collection and use of guest information, including the Colorado Privacy Act (C.R.S. § 6-1-1301 et seq.) and, where applicable, the California Consumer Privacy Act (Cal. Civ. Code § 1798.100 et seq.) and California Privacy Rights Act; (b) obtaining all required consents from guests and employees for HOST to process their data as described in this Agreement; (c) TCPA compliance, including obtaining prior express written consent before sending any SMS message to any guest; and (d) where Client serves California residents, ensuring Client's own privacy notices accurately describe the data practices in this Agreement, including HOST's ownership and commercialization of HOST Network Data under Section 4.3. HOST is not liable for Client's failure to comply with applicable privacy law or obtain required consents.
 
 4.8 Security. HOST will maintain commercially reasonable security measures. In the event of a confirmed breach materially affecting Client Content or Guest Data, HOST will notify Client within 72 hours of awareness to the extent required by applicable law.
 
@@ -140,7 +154,7 @@ Multi-Location Notice: If Client operates HOST at more than one restaurant locat
 
 8.2 Client Representations. Client represents and warrants that: (a) Client Content does not infringe any third-party intellectual property rights or violate any law; (b) Client has obtained all required guest and employee consents for data processing described herein; (c) Client will use the Platform and HOST Hardware lawfully and in accordance with this Agreement; and (d) all information provided to HOST is accurate and complete.
 
-8.3 HOST Disclaimer. THE PLATFORM AND SERVICES ARE PROVIDED "AS IS" AND "AS AVAILABLE." TO THE MAXIMUM EXTENT PERMITTED BY LAW, HOST DISCLAIMS ALL WARRANTIES, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ACCURACY, AND SECURITY. HOST DOES NOT WARRANT THAT THE PLATFORM WILL BE ERROR-FREE OR UNINTERRUPTED. HOST MAKES NO WARRANTY REGARDING WAIT TIME ACCURACY, TABLE TURN IMPROVEMENTS, REVENUE OUTCOMES, OR GUEST SATISFACTION RESULTS.
+8.3 HOST Disclaimer. THE PLATFORM AND SERVICES ARE PROVIDED "AS IS" AND "AS AVAILABLE." TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW — INCLUDING, WITHOUT LIMITATION, CALIFORNIA CIVIL CODE § 1668 — HOST DISCLAIMS ALL WARRANTIES, EXPRESS, IMPLIED, OR STATUTORY, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, NON-INFRINGEMENT, ACCURACY, AND SECURITY. HOST DOES NOT WARRANT THAT THE PLATFORM WILL BE ERROR-FREE OR UNINTERRUPTED. HOST MAKES NO WARRANTY REGARDING WAIT TIME ACCURACY, TABLE TURN IMPROVEMENTS, REVENUE OUTCOMES, OR GUEST SATISFACTION RESULTS. NOTHING IN THIS SECTION DISCLAIMS LIABILITY FOR FRAUD, WILLFUL INJURY, OR VIOLATION OF LAW WHERE SUCH DISCLAIMER IS PROHIBITED BY APPLICABLE LAW.
 
 8.4 Hardware Disclaimer. HOST HARDWARE IS PROVIDED "AS IS." HOST IS NOT RESPONSIBLE FOR CONNECTIVITY FAILURES, SIGNAL ISSUES, OR NETWORK CONDITIONS AFFECTING HOST HARDWARE PERFORMANCE.`,
   },
@@ -148,7 +162,7 @@ Multi-Location Notice: If Client operates HOST at more than one restaurant locat
     heading: "SECTION 9 — TERM AND TERMINATION",
     body: `9.1 Initial Term. This Agreement begins on the Effective Date and continues for the period specified in the Order Form, or month-to-month if no period is specified.
 
-9.2 Auto-Renewal. This Agreement automatically renews for successive periods equal to the Initial Term unless either party provides written notice of non-renewal at least thirty (30) days before the end of the then-current Term.
+9.2 Auto-Renewal. This Agreement automatically renews for successive periods equal to the Initial Term unless either party provides written notice of non-renewal at least thirty (30) days before the end of the then-current Term. See Section 2.3 and Section 15.1 for automatic renewal disclosures.
 
 9.3 Termination for Convenience. Either party may terminate: (a) month-to-month Plans on thirty (30) days' written notice; and (b) annual Plans on sixty (60) days' written notice, subject to any early termination fee in the Order Form.
 
@@ -200,7 +214,7 @@ Client is responsible for all use of the Platform by its employees, contractors,
 
 13.4 Exceptions. Either party may seek emergency injunctive or other equitable relief in any court of competent jurisdiction to prevent irreparable harm, including claims arising from misuse of HOST IP, breach of the data or hardware provisions, or breach of confidentiality obligations.
 
-13.5 Governing Law. This Agreement is governed exclusively by the laws of the State of Colorado, without regard to conflict-of-law principles.
+13.5 Governing Law. This Agreement is governed exclusively by the laws of the State of Colorado, without regard to conflict-of-law principles. Notwithstanding the foregoing, nothing in this Agreement limits any rights Client may have under California law that cannot be waived by contract, including any rights under California's Automatic Renewal Law (Bus. & Prof. Code §§ 17600–17606), the California Consumer Privacy Act (Cal. Civ. Code § 1798.100 et seq.), or other California consumer protection statutes, to the extent such rights apply to Client and cannot lawfully be superseded by choice-of-law provisions.
 
 13.6 Venue. For matters not subject to arbitration, the parties consent to the exclusive jurisdiction of the state and federal courts located in Denver, Colorado.`,
   },
@@ -224,7 +238,33 @@ Client is responsible for all use of the Platform by its employees, contractors,
 
 14.9 No Third-Party Beneficiaries. This Agreement is for the exclusive benefit of the parties and does not create rights in any third party.
 
-14.10 Electronic Acceptance. Client's click of "I Agree," or any other affirmative electronic indication of acceptance, constitutes Client's electronic signature and legally binding acceptance of all terms of this Agreement under ESIGN and the Colorado UETA.`,
+14.10 Electronic Acceptance. Client's click of "I Agree," or any other affirmative electronic indication of acceptance, constitutes Client's electronic signature and legally binding acceptance of all terms of this Agreement under ESIGN, the Colorado Uniform Electronic Transactions Act (C.R.S. § 24-71.3-101), and, where applicable, the California Uniform Electronic Transactions Act (Cal. Civ. Code § 1633.1 et seq.).`,
+  },
+  {
+    heading: "SECTION 15 — CALIFORNIA-SPECIFIC PROVISIONS",
+    body: `This Section applies to Clients whose principal place of business is located in California, or who primarily serve guests who are California residents. In the event of a conflict between this Section and any other provision of this Agreement, this Section controls with respect to California Clients.
+
+15.1 California Automatic Renewal Law Disclosure (Bus. & Prof. Code §§ 17600–17606).
+
+AUTOMATIC RENEWAL TERMS — CALIFORNIA CLIENTS: Your subscription will automatically renew at the end of each billing period at the then-current rate unless you cancel. The charge for each renewal period is the rate specified in your Order Form (currently $149.00/month for the Base Plan). Your subscription renews monthly (30-day periods) until cancelled. To cancel, contact HOST in writing before the next renewal date. Cancellation stops future charges; no refund is issued for the current period. You will receive a reminder notice before your free trial ends. If HOST changes the renewal price or offer terms, HOST will provide clear advance notice and the opportunity to cancel before any new charge.
+
+Upon acceptance of a paid Plan, HOST will send you a written acknowledgment (by email) confirming these automatic renewal terms and your cancellation rights. This acknowledgment constitutes the written confirmation required under California Business and Professions Code § 17602.
+
+15.2 California Consumer Privacy Act (Cal. Civ. Code § 1798.100 et seq.).
+
+As described in Section 4.3, HOST operates as a "business" under CCPA with respect to Guest Data from California residents. The following applies to California Client locations:
+
+(a) Guest Rights. California residents whose personal information is processed through the Platform have the following rights under CCPA: the right to know what personal information is collected, used, shared, or sold; the right to delete personal information; the right to correct inaccurate personal information; the right to opt-out of the sale or sharing of personal information; and the right to non-discrimination for exercising these rights. Instructions for submitting requests are available at HOST's Privacy Policy at hostplatform.net/privacy.
+
+(b) HOST's Role. With respect to Guest Data from California residents, HOST is a "business" as defined by CCPA. HOST will maintain and make available a CCPA-compliant Privacy Policy, provide a "Do Not Sell or Share My Personal Information" mechanism as required, and respond to verifiable consumer requests within the timeframes required by CCPA.
+
+(c) Client Obligations. Client is independently responsible for providing guests with any privacy notices required by CCPA at the point of data collection, including notice that their information may be shared with HOST and used as described in Section 4.3. Client's failure to provide required notices does not affect HOST's rights under this Agreement.
+
+(d) Data Processing. Notwithstanding Section 4.3, to the extent that CCPA requires HOST to honor a verified California resident's request to delete or opt-out of the sale or sharing of their personal information, HOST will do so in accordance with CCPA requirements and timelines, even where such data constitutes HOST Network Data.
+
+15.3 California Arbitration. The arbitration provisions of Section 13.2 and 13.3 are governed by the Federal Arbitration Act (9 U.S.C. § 1 et seq.) to the fullest extent permitted by law. If for any reason the FAA does not apply, California arbitration law governs.
+
+15.4 No Unlawful Waiver. Nothing in this Agreement constitutes a waiver of any right under California law that cannot be waived by private agreement, including without limitation rights under the California Consumers Legal Remedies Act, California Unfair Competition Law, or any other applicable California statute.`,
   },
 ]
 
