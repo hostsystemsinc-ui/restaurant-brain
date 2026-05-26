@@ -103,7 +103,7 @@ export default function PrivacyPage() {
             "Right to Opt Out of Sale or Sharing — HOST does not sell or share personal information for cross-context behavioral advertising. No opt-out is necessary, but you may contact us to confirm.",
             "Right to Non-Discrimination — we will not discriminate against you for exercising any of these rights.",
           ]} />
-          <P>To submit a request, email <a href="mailto:privacy@hostplatform.net" style={{ color: "#22c55e", textDecoration: "none" }}>privacy@hostplatform.net</a> with the subject line "California Privacy Request." We will respond within 45 days. We may ask you to verify your identity before processing the request.</P>
+          <P>To submit a request, email <a href="mailto:demo@hostplatform.net" style={{ color: "#22c55e", textDecoration: "none" }}>demo@hostplatform.net</a> with the subject line "California Privacy Request." We will respond within 45 days. We may ask you to verify your identity before processing the request.</P>
           <P>For guest-side requests, please include the restaurant name, approximate date of visit, and the name used when joining the waitlist.</P>
         </Section>
 
@@ -126,8 +126,7 @@ export default function PrivacyPage() {
         <Section title="Contact Us" last>
           <P>For questions or privacy requests:</P>
           <UL items={[
-            "Privacy requests: privacy@hostplatform.net",
-            "General: hello@hostplatform.net",
+            "Email: demo@hostplatform.net",
           ]} />
           <P>HOST Platform, Inc.</P>
         </Section>
