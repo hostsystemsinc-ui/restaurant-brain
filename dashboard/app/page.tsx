@@ -2055,6 +2055,8 @@ export default function MarketingPage() {
         <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <span style={{ fontWeight: 900, letterSpacing: ".22em", fontSize: ".82rem", color: "rgba(255,255,255,0.5)" }}>HOST</span>
           <span style={{ fontSize: ".82rem", color: "rgba(255,255,255,0.22)" }}>· a smarter waitlist</span>
+          <span style={{ fontSize: ".82rem", color: "rgba(255,255,255,0.22)" }}>·</span>
+          <Link href="/privacy" style={{ fontSize: ".82rem", color: "rgba(255,255,255,0.35)", textDecoration: "none" }}>Privacy</Link>
         </div>
       </footer>
 
