@@ -27,6 +27,8 @@ import type { NextRequest } from "next/server"
 const RESERVED = new Set([
   "owner",
   "login",
+  "signup",
+  "privacy",
   "demo",
   "walnut",      // Walnut Cafe join pages + owner dashboard
   "walnut-cafe", // Walnut Cafe station URLs (original + southside)
