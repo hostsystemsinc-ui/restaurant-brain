@@ -1074,7 +1074,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How much does HOST cost?",
-    a: "$149 / month, flat. No setup fees, no per-cover charges, no surprises. Your first month is completely free — no credit card required to start. Cancel anytime.",
+    a: "Single location: $149/month. Multiple locations: $129/month per location. No setup fees, no per-cover charges, no surprises. Your first month is completely free — no credit card required to start. Cancel anytime.",
   },
 ]
 
@@ -1547,7 +1547,7 @@ export default function MarketingPage() {
 
       {/* Announcement */}
       <div style={{ background: "#22c55e", color: "#000", textAlign: "center", padding: "10px 20px", fontSize: ".78rem", fontWeight: 700, letterSpacing: ".04em" }}>
-        Now accepting restaurants in Denver &amp; Boulder —{" "}
+        First month free for new restaurants &mdash; live in under an hour &mdash;{" "}
         <a href="#" onClick={openDemo} style={{ color: "#000", textDecoration: "underline", fontWeight: 800 }}>schedule your free demo →</a>
       </div>
 
@@ -1599,7 +1599,7 @@ export default function MarketingPage() {
               First month free
             </span>
             <span style={{ color: "rgba(255,255,255,0.1)", fontSize: ".9rem" }}>·</span>
-            <span style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>$149 / month</span>
+            <span style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>from $149 / month</span>
             <span style={{ color: "rgba(255,255,255,0.1)", fontSize: ".9rem" }}>·</span>
             <span style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>Cancel anytime</span>
           </div>
@@ -1818,9 +1818,9 @@ export default function MarketingPage() {
           <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(34,197,94,0.08)", borderRadius: 20, overflow: "hidden", border: "1px solid rgba(34,197,94,0.12)" }}>
             {[
               { n: 2, s: " sec", l: "to join with a tap or scan" },
-              { n: 55, s: "%", l: "fewer no-shows with SMS" },
+              { n: 5, s: " sec", l: "for a host to notify, seat, or remove a party" },
               { n: 0, s: "", l: "app downloads required" },
-              { n: 15, s: " min", l: "average setup time" },
+              { n: 45, s: " min", l: "from onboarding call to live on your floor" },
             ].map(s => (
               <div key={s.l} style={{ background: "rgba(6,6,6,0.55)", padding: "36px 20px", textAlign: "center" }}>
                 <div style={{ fontSize: "2.2rem", fontWeight: 900, color: "#22c55e", letterSpacing: "-0.045em", lineHeight: 1, marginBottom: 8 }}><Counter to={s.n} suffix={s.s} /></div>
