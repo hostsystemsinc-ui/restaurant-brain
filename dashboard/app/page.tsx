@@ -1532,6 +1532,7 @@ export default function MarketingPage() {
           .steps-grid { grid-template-columns: 1fr !important; gap: 32px !important; }
           .steps-line { display: none !important; }
           .nfc-sec { grid-template-columns: 1fr !important; gap: 0 !important; padding-top: 60px !important; padding-bottom: 60px !important; }
+          .pricing-grid { grid-template-columns: 1fr !important; }
           .demo-card { padding: 28px 22px 32px !important; }
           .demo-2col { grid-template-columns: 1fr !important; gap: 12px !important; }
           .nav-demo-full { display: none !important; }
@@ -2028,6 +2029,79 @@ export default function MarketingPage() {
             </h2>
           </div>
           <FaqSection />
+        </div>
+      </section>
+
+      {/* ── Pricing ─────────────────────────────────────────────── */}
+      <section className="mob-px" style={{ padding: "110px 56px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ maxWidth: 860, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 64 }}>
+            <div style={{ fontSize: ".72rem", fontWeight: 800, letterSpacing: ".18em", textTransform: "uppercase", color: "#22c55e", marginBottom: 16 }}>Pricing</div>
+            <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.08, margin: "0 0 16px" }}>
+              Simple,{" "}
+              <em className="serif-italic" style={{ fontSize: "1.06em", color: "#22c55e" }}>honest</em>
+              {" "}pricing.
+            </h2>
+            <p style={{ fontSize: ".95rem", color: "rgba(255,255,255,0.35)", margin: 0, lineHeight: 1.65 }}>First month free. No setup fees. No per-cover charges. Cancel anytime.</p>
+          </div>
+          <div className="pricing-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+
+            {/* Single location */}
+            <div style={{ background: "#0d0f11", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 20, padding: "40px 36px" }}>
+              <div style={{ fontSize: ".7rem", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 20 }}>Single Location</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: "3.4rem", fontWeight: 900, letterSpacing: "-0.05em", color: "#fff", lineHeight: 1 }}>$149</span>
+                <span style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>/month</span>
+              </div>
+              <p style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.32)", marginBottom: 32, lineHeight: 1.65 }}>One restaurant. One host stand. Unlimited guests per night.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 36 }}>
+                {[
+                  "NFC puck + QR code included at launch",
+                  "Guest SMS when their table is ready",
+                  "Live queue + floor plan on your iPad",
+                  "Shift analytics after every service",
+                  "Unlimited parties per night",
+                ].map(f => (
+                  <div key={f} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: ".85rem", color: "rgba(255,255,255,0.48)" }}>
+                    <span style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e", flexShrink: 0 }}><Icon.Check /></span>
+                    {f}
+                  </div>
+                ))}
+              </div>
+              <a href="#" onClick={openDemo} className="cta-btn" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 24px", borderRadius: 10, textDecoration: "none", fontSize: ".9rem" }}>
+                Start Free <Icon.Arrow />
+              </a>
+            </div>
+
+            {/* Multi-location */}
+            <div style={{ background: "#0d0f11", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 20, padding: "40px 36px", position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #22c55e, #16a34a)" }} />
+              <div style={{ fontSize: ".7rem", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#22c55e", marginBottom: 20 }}>Multi-Location</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: "3.4rem", fontWeight: 900, letterSpacing: "-0.05em", color: "#fff", lineHeight: 1 }}>$129</span>
+                <span style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>/location/month</span>
+              </div>
+              <p style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.32)", marginBottom: 32, lineHeight: 1.65 }}>Two or more locations. Same system, lower rate per door.</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 36 }}>
+                {[
+                  "Everything in Single",
+                  "Separate host dashboard per location",
+                  "Owner-level view across all locations",
+                  "We onboard each new location for you",
+                  "Scales with you as you grow",
+                ].map(f => (
+                  <div key={f} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: ".85rem", color: "rgba(255,255,255,0.48)" }}>
+                    <span style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e", flexShrink: 0 }}><Icon.Check /></span>
+                    {f}
+                  </div>
+                ))}
+              </div>
+              <a href="#" onClick={openDemo} className="cta-btn" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 24px", borderRadius: 10, textDecoration: "none", fontSize: ".9rem" }}>
+                Start Free <Icon.Arrow />
+              </a>
+            </div>
+
+          </div>
         </div>
       </section>
 
