@@ -2461,7 +2461,10 @@ export default function DemoHostDashboard() {
       .then(r => r.json())
       .then(t => {
         const required = typeof t.version === "string" ? t.version : ""
-        if (!required) return
+        // Only show the modal when the owner EXPLICITLY pushed terms (version carries a
+        // -push<timestamp> suffix). The plain canonical version is the baseline and must
+        // never auto-prompt a station — matches the real client stations' behavior.
+        if (!required || !required.includes("-push")) return
         const accepted = localStorage.getItem("terms_accepted_demo") || ""
         // Compare canonical bases only (strip -push<timestamp> suffix from both sides).
         // A station that accepted "MSA-v2.1-2026-05" or "MSA-v2.1-2026-05-push..."
