@@ -127,9 +127,9 @@ const Icon = {
 // /public/hero/1.jpg, 2.jpg, 3.jpg and update the slides array below
 function HeroSlideshow() {
   const slides = [
-    "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1920&q=80",
-    "https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1920&q=80",
-    "https://images.unsplash.com/photo-1424847651672-bf20a4b0982b?w=1920&q=80",
+    "/hero/1.jpg",
+    "/hero/2.jpg",
+    "/hero/3.jpg",
   ]
   const [idx, setIdx] = useState(0)
   useEffect(() => {
@@ -203,7 +203,7 @@ function IPadMockup() {
           {/* Header bar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 28px", background: "#080a0c", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-              <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.01em", color: "#fff" }}>Demo Restaurant</span>
+              <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.01em", color: "#fff" }}>Rosewood Tavern</span>
               <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.16em", color: "rgba(255,255,255,0.18)", textTransform: "uppercase" }}>Powered by HOST</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -394,11 +394,11 @@ function IPhoneMockup() {
       <div style={{ position: "absolute", inset: 0, borderRadius: dR, boxShadow: "0 8px 32px rgba(0,0,0,0.7), 0 32px 80px rgba(0,0,0,0.5)", background: "transparent" }} />
 
       {/* Screen content — underneath the SVG frame */}
-      <div style={{ position: "absolute", left: sX, top: sY, width: sW, height: sH, borderRadius: sR, overflow: "hidden", background: "#060608" }}>
+      <div style={{ position: "absolute", left: sX, top: sY, width: sW, height: sH, borderRadius: sR, overflow: "hidden", background: "#EDE8DF" }}>
         {/* 2× inner render for crisp text */}
         <div style={{ width: sW * 2, height: sH * 2, transform: "scale(0.5)", transformOrigin: "top left", display: "flex", flexDirection: "column", flexShrink: 0 }}>
           {/* Dynamic Island */}
-          <div style={{ height: 96, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 14, background: "#060608" }}>
+          <div style={{ height: 96, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 14, background: "#EDE8DF" }}>
             <div style={{ width: 240, height: 68, background: "#000", borderRadius: 99, boxShadow: "inset 0 2px 5px rgba(0,0,0,1)", display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
               <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#0d0d14", border: "1.5px solid #1a1a22", boxShadow: "inset 0 1px 3px rgba(0,0,0,1)" }}>
                 <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#080818", margin: "6px 0 0 6px", boxShadow: "0 0 4px rgba(50,80,255,0.3)" }} />
@@ -409,44 +409,44 @@ function IPhoneMockup() {
 
           {/* App content */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", padding: "28px 32px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.35em", color: "rgba(255,255,255,0.4)", textTransform: "uppercase", marginBottom: 20, textAlign: "center" }}>HOST</div>
+            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: "0.35em", color: "rgba(44,36,22,0.45)", textTransform: "uppercase", marginBottom: 20, textAlign: "center" }}>HOST</div>
             <div style={{ marginBottom: 32, width: "100%" }}>
-              <div style={{ fontSize: 40, fontWeight: 800, color: "#fff", letterSpacing: "-0.03em", marginBottom: 12 }}>Hey, Sarah.</div>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "rgba(249,115,22,0.12)", border: "1px solid rgba(249,115,22,0.3)", borderRadius: 99, padding: "8px 24px" }}>
-                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#f97316", flexShrink: 0 }} />
-                <span style={{ fontSize: 18, fontWeight: 700, color: "#f97316" }}>3 parties ahead of you</span>
+              <div style={{ fontSize: 40, fontWeight: 800, color: "#2C2416", letterSpacing: "-0.03em", marginBottom: 12 }}>Hey, Sarah.</div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 10, background: "rgba(200,144,96,0.15)", border: "1px solid rgba(200,144,96,0.4)", borderRadius: 99, padding: "8px 24px" }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#C89060", flexShrink: 0 }} />
+                <span style={{ fontSize: 18, fontWeight: 700, color: "#9C6230" }}>3 parties ahead of you</span>
               </div>
             </div>
             <div style={{ width: "100%", marginBottom: 32 }}>
-              <div style={{ width: "100%", height: 12, borderRadius: 99, background: "rgba(255,255,255,0.06)", overflow: "hidden", marginBottom: 10 }}>
-                <div style={{ width: "22%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#f97316,#fb923c)" }} />
+              <div style={{ width: "100%", height: 12, borderRadius: 99, background: "rgba(44,36,22,0.1)", overflow: "hidden", marginBottom: 10 }}>
+                <div style={{ width: "22%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg,#C89060,#E0B583)" }} />
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, color: "rgba(255,255,255,0.22)" }}>
-                <span>Joined</span><span style={{ color: "#f97316", fontWeight: 700 }}>22%</span><span>Seated</span>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, color: "rgba(44,36,22,0.35)" }}>
+                <span>Joined</span><span style={{ color: "#9C6230", fontWeight: 700 }}>22%</span><span>Seated</span>
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, width: "100%", marginBottom: 24 }}>
-              <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: "20px 24px" }}>
-                <div style={{ fontSize: 16, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>Party</div>
-                <div style={{ fontSize: 36, fontWeight: 800, color: "#fff", lineHeight: 1 }}>2</div>
+              <div style={{ background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.1)", borderRadius: 24, padding: "20px 24px" }}>
+                <div style={{ fontSize: 16, color: "rgba(44,36,22,0.4)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>Party</div>
+                <div style={{ fontSize: 36, fontWeight: 800, color: "#2C2416", lineHeight: 1 }}>2</div>
               </div>
-              <div style={{ background: "rgba(249,115,22,0.06)", border: "1px solid rgba(249,115,22,0.18)", borderRadius: 24, padding: "20px 24px" }}>
-                <div style={{ fontSize: 16, color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>Est. Wait</div>
-                <div style={{ fontSize: 36, fontWeight: 800, color: "#f97316", lineHeight: 1 }}>~45m</div>
+              <div style={{ background: "rgba(200,144,96,0.12)", border: "1px solid rgba(200,144,96,0.3)", borderRadius: 24, padding: "20px 24px" }}>
+                <div style={{ fontSize: 16, color: "rgba(44,36,22,0.4)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 10 }}>Est. Wait</div>
+                <div style={{ fontSize: 36, fontWeight: 800, color: "#9C6230", lineHeight: 1 }}>~45m</div>
               </div>
             </div>
-            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 24, padding: "20px 26px", width: "100%", marginBottom: 20 }}>
-              <div style={{ fontSize: 19, color: "rgba(255,255,255,0.5)", lineHeight: 1.6, textAlign: "left" }}>Your spot is saved — feel free to step outside.</div>
+            <div style={{ background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.1)", borderRadius: 24, padding: "20px 26px", width: "100%", marginBottom: 20 }}>
+              <div style={{ fontSize: 19, color: "rgba(44,36,22,0.6)", lineHeight: 1.6, textAlign: "left" }}>Your spot is saved — feel free to step outside.</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: "auto" }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#22c55e" }} />
-              <span style={{ fontSize: 16, color: "rgba(255,255,255,0.22)", letterSpacing: ".03em" }}>Updates automatically</span>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: "#C89060" }} />
+              <span style={{ fontSize: 16, color: "rgba(44,36,22,0.4)", letterSpacing: ".03em" }}>Updates automatically</span>
             </div>
           </div>
 
           {/* Home indicator */}
-          <div style={{ height: 56, flexShrink: 0, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 16, background: "#060608" }}>
-            <div style={{ width: 256, height: 10, borderRadius: 99, background: "rgba(255,255,255,0.26)" }} />
+          <div style={{ height: 56, flexShrink: 0, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 16, background: "#EDE8DF" }}>
+            <div style={{ width: 256, height: 10, borderRadius: 99, background: "rgba(44,36,22,0.3)" }} />
           </div>
         </div>
       </div>
@@ -494,12 +494,12 @@ function MiniPhone({ confirmed }: { confirmed: boolean }) {
       ].join(", "),
       padding: 6,
     }}>
-      <div style={{ borderRadius: 32, overflow: "hidden", height: "100%", background: "#000", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.9)", position: "relative" }}>
+      <div style={{ borderRadius: 32, overflow: "hidden", height: "100%", background: confirmed ? "#EDE8DF" : "#000", display: "flex", flexDirection: "column", boxShadow: "inset 0 0 0 0.5px rgba(0,0,0,0.9)", position: "relative", transition: "background 0.35s ease" }}>
         {/* Dynamic island */}
-        <div style={{ height: 26, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 4, background: "#000", position: "relative", zIndex: 3 }}>
+        <div style={{ height: 26, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-end", paddingBottom: 4, background: "transparent", position: "relative", zIndex: 3 }}>
           <div style={{ width: 42, height: 11, background: "#000", borderRadius: 99, border: "1px solid rgba(255,255,255,0.05)" }} />
         </div>
-        {/* Screen: black when idle, JoinScreen when confirmed */}
+        {/* Screen: black when idle, join page when confirmed */}
         <div style={{
           flex: 1, overflow: "hidden", position: "relative",
           transition: "opacity 0.35s ease",
@@ -508,43 +508,43 @@ function MiniPhone({ confirmed }: { confirmed: boolean }) {
           <div style={{ width: 182, transformOrigin: "top left", transform: `scale(${SCALE})` }}>
             {/* HOST wordmark — small centered */}
             <div style={{ display: "flex", justifyContent: "center", padding: "4px 12px 0" }}>
-              <span style={{ fontSize: 6, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
+              <span style={{ fontSize: 6, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)" }}>HOST</span>
             </div>
             {/* Restaurant logo + name — BIG */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "7px 16px 5px" }}>
               {/* Logo mark */}
               <div style={{ position: "relative", width: 46, height: 46, marginBottom: 7 }}>
-                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
-                <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <span style={{ fontSize: 14, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif" }}>S</span>
-                  <span style={{ fontSize: 3.5, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+                <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(156,98,48,0.5)" }} />
+                <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#3a2a18,#241608)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ fontSize: 14, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif" }}>R</span>
+                  <span style={{ fontSize: 3, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.7)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>TAVERN</span>
                 </div>
               </div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", marginBottom: 2 }}>Sal&apos;s Bar &amp; Grill</div>
-              <div style={{ fontSize: 7, color: "rgba(255,255,255,0.38)" }}>3 parties ahead · ~20m</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#2C2416", marginBottom: 2 }}>Rosewood Tavern</div>
+              <div style={{ fontSize: 7, color: "rgba(44,36,22,0.5)" }}>3 parties ahead · ~20m</div>
             </div>
             {/* Party size */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "2px 16px 5px" }}>
-              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)" }}>Party Size</div>
+              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(44,36,22,0.45)" }}>Party Size</div>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>−</div>
-                <span style={{ fontSize: 24, fontWeight: 300, color: "#fff", minWidth: 20, textAlign: "center" }}>2</span>
-                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff" }}>+</div>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1px solid rgba(44,36,22,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "rgba(44,36,22,0.5)" }}>−</div>
+                <span style={{ fontSize: 24, fontWeight: 300, color: "#2C2416", minWidth: 20, textAlign: "center" }}>2</span>
+                <div style={{ width: 20, height: 20, borderRadius: "50%", border: "1px solid rgba(44,36,22,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#2C2416" }}>+</div>
               </div>
             </div>
             {/* Name field */}
             <div style={{ padding: "0 16px 5px" }}>
-              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Name</div>
-              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 3, fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Your name</div>
+              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)", marginBottom: 3 }}>Name</div>
+              <div style={{ borderBottom: "1px solid rgba(44,36,22,0.22)", paddingBottom: 3, fontSize: 11, color: "rgba(44,36,22,0.3)" }}>Your name</div>
             </div>
             {/* Phone field */}
             <div style={{ padding: "0 16px 7px" }}>
-              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)", marginBottom: 3 }}>Phone</div>
-              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 3, fontSize: 11, color: "rgba(255,255,255,0.28)" }}>+1 (555) 000-0000</div>
+              <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)", marginBottom: 3 }}>Phone</div>
+              <div style={{ borderBottom: "1px solid rgba(44,36,22,0.22)", paddingBottom: 3, fontSize: 11, color: "rgba(44,36,22,0.3)" }}>+1 (555) 000-0000</div>
             </div>
             {/* CTA */}
             <div style={{ padding: "2px 16px 8px" }}>
-              <div style={{ background: "white", borderRadius: 10, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#000", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+              <div style={{ background: "#2C2416", borderRadius: 10, height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: "#EDE8DF", letterSpacing: "0.12em", textTransform: "uppercase" }}>
                 Join the Waitlist
               </div>
             </div>
@@ -714,7 +714,7 @@ function GuestJourney() {
               </div>
             </div>
             <div style={{ fontSize: 8, color: "rgba(255,255,255,0.7)", lineHeight: 1.45 }}>
-              <span style={{ color: "#22c55e", fontWeight: 700 }}>Sal&apos;s Bar &amp; Grill:</span>{" "}
+              <span style={{ color: "#C89060", fontWeight: 700 }}>Rosewood Tavern:</span>{" "}
               Your table is ready! Head to the host stand.
             </div>
           </div>
@@ -727,7 +727,7 @@ function GuestJourney() {
           width: 248, height: 552,
           overflow: "hidden",
           borderRadius: 28,
-          background: "#000",
+          background: "#EDE8DF",
           opacity: visible ? 1 : 0,
           transition: "opacity 0.35s ease",
           zIndex: 1,
@@ -789,12 +789,12 @@ function GuestJourney() {
 /* ─── Join Screen (stage 0) ────────────────────────────────── */
 function JoinScreen() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#EDE8DF" }}>
       {/* Dynamic island spacer */}
       <div style={{ height: 26, flexShrink: 0 }} />
       {/* HOST wordmark — small centered */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "4px 12px 0", flexShrink: 0 }}>
-        <span style={{ fontSize: 6.5, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
+        <span style={{ fontSize: 6.5, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)" }}>HOST</span>
       </div>
 
       {/* Restaurant identity — BIG, center stage */}
@@ -802,47 +802,47 @@ function JoinScreen() {
         {/* Restaurant logo mark — proper inlaid design */}
         <div style={{ position: "relative", width: 56, height: 56, marginBottom: 9 }}>
           {/* Outer ring */}
-          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
+          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(156,98,48,0.5)" }} />
           {/* Inner background */}
-          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif", letterSpacing: "0.04em" }}>S</span>
-            <span style={{ fontSize: 4, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#3a2a18,#241608)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0 }}>
+            <span style={{ fontSize: 17, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif", letterSpacing: "0.04em" }}>R</span>
+            <span style={{ fontSize: 3.5, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.7)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>TAVERN</span>
           </div>
         </div>
-        <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em", marginBottom: 3 }}>Sal&apos;s Bar &amp; Grill</div>
-        <div style={{ fontSize: 7.5, color: "rgba(255,255,255,0.4)" }}>3 parties ahead · ~20m wait</div>
+        <div style={{ fontSize: 14, fontWeight: 800, color: "#2C2416", letterSpacing: "-0.01em", marginBottom: 3 }}>Rosewood Tavern</div>
+        <div style={{ fontSize: 7.5, color: "rgba(44,36,22,0.5)" }}>3 parties ahead · ~20m wait</div>
       </div>
 
       {/* Party size */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "4px 16px 6px" }}>
-        <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.4)" }}>Party Size</div>
+        <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(44,36,22,0.45)" }}>Party Size</div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>−</div>
-          <span style={{ fontSize: 28, fontWeight: 300, color: "#fff", minWidth: 24, textAlign: "center" }}>2</span>
-          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#fff" }}>+</div>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(44,36,22,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "rgba(44,36,22,0.5)" }}>−</div>
+          <span style={{ fontSize: 28, fontWeight: 300, color: "#2C2416", minWidth: 24, textAlign: "center" }}>2</span>
+          <div style={{ width: 22, height: 22, borderRadius: "50%", border: "1px solid rgba(44,36,22,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#2C2416" }}>+</div>
         </div>
       </div>
 
       {/* Name + Phone */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 10, padding: "0 16px" }}>
         <div>
-          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 4 }}>Name</div>
-          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 4, fontSize: 12, color: "rgba(255,255,255,0.28)" }}>Your name</div>
+          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)", marginBottom: 4 }}>Name</div>
+          <div style={{ borderBottom: "1px solid rgba(44,36,22,0.22)", paddingBottom: 4, fontSize: 12, color: "rgba(44,36,22,0.3)" }}>Your name</div>
         </div>
         <div>
-          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(255,255,255,0.45)", marginBottom: 4 }}>
-            Phone <span style={{ color: "rgba(255,255,255,0.25)", textTransform: "none", letterSpacing: 0 }}>— optional</span>
+          <div style={{ fontSize: 6.5, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)", marginBottom: 4 }}>
+            Phone <span style={{ color: "rgba(44,36,22,0.3)", textTransform: "none", letterSpacing: 0 }}>— optional</span>
           </div>
-          <div style={{ borderBottom: "1px solid rgba(255,255,255,0.18)", paddingBottom: 4, fontSize: 11, color: "rgba(255,255,255,0.28)" }}>Your phone</div>
+          <div style={{ borderBottom: "1px solid rgba(44,36,22,0.22)", paddingBottom: 4, fontSize: 11, color: "rgba(44,36,22,0.3)" }}>Your phone</div>
         </div>
       </div>
 
       {/* CTA */}
       <div style={{ padding: "6px 16px 10px" }}>
-        <div style={{ background: "white", borderRadius: 12, height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#000", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+        <div style={{ background: "#2C2416", borderRadius: 12, height: 32, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: "#EDE8DF", letterSpacing: "0.14em", textTransform: "uppercase" }}>
           Join the Waitlist
         </div>
-        <div style={{ textAlign: "center", fontSize: 6, color: "rgba(255,255,255,0.15)", marginTop: 5, letterSpacing: "0.05em" }}>No app download needed</div>
+        <div style={{ textAlign: "center", fontSize: 6, color: "rgba(44,36,22,0.3)", marginTop: 5, letterSpacing: "0.05em" }}>No app download needed</div>
       </div>
     </div>
   )
@@ -853,24 +853,24 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
   const isClose = position === 1
   const partiesLabel = position === 0 ? "You're next up!" : `${position} ${position === 1 ? "party" : "parties"} ahead of you`
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#EDE8DF", overflow: "hidden" }}>
       {/* Dynamic island spacer */}
       <div style={{ height: 26, flexShrink: 0 }} />
       {/* HOST wordmark — top center, small */}
       <div style={{ padding: "4px 16px 0", flexShrink: 0, textAlign: "center" }}>
-        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
+        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)" }}>HOST</span>
       </div>
       {/* Restaurant logo + name */}
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "6px 16px 0", flexShrink: 0 }}>
         <div style={{ position: "relative", width: 38, height: 38, marginBottom: 5 }}>
-          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
-          <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0 }}>
-            <span style={{ fontSize: 11, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif", letterSpacing: "0.04em" }}>S</span>
-            <span style={{ fontSize: 3, fontWeight: 700, letterSpacing: "0.22em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(156,98,48,0.5)" }} />
+          <div style={{ position: "absolute", inset: 2, borderRadius: "50%", background: "linear-gradient(160deg,#3a2a18,#241608)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif", letterSpacing: "0.04em" }}>R</span>
+            <span style={{ fontSize: 2.5, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.7)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>TAVERN</span>
           </div>
         </div>
-        <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.35)", letterSpacing: "0.06em" }}>
-          Sal&apos;s Bar &amp; Grill
+        <div style={{ textAlign: "center", fontSize: 7, color: "rgba(44,36,22,0.5)", letterSpacing: "0.06em" }}>
+          Rosewood Tavern
         </div>
       </div>
 
@@ -878,36 +878,36 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
       <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: "0 16px", justifyContent: "center", gap: 8 }}>
         {/* Position header */}
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 3, letterSpacing: "-0.02em" }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#2C2416", marginBottom: 3, letterSpacing: "-0.02em" }}>
             {isClose ? "You're next up!" : partiesLabel}
           </div>
         </div>
 
-        {/* Green progress bar — always green, matches real page */}
+        {/* Progress bar — bronze, matches real page */}
         <div>
-          <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 4 }}>
-            <div style={{ width: `${progress}%`, height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #22c55e, #86efac)", transition: "width 1.2s ease" }} />
+          <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(44,36,22,0.1)", overflow: "hidden", marginBottom: 4 }}>
+            <div style={{ width: `${progress}%`, height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #C89060, #E0B583)", transition: "width 1.2s ease" }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(255,255,255,0.25)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(44,36,22,0.3)" }}>
             <span>Arrived</span><span>Seated</span>
           </div>
         </div>
 
         {/* Stat cards — PARTY and EST. WAIT */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
-          <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 9px" }}>
-            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Party</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#fff" }}><Icon.Users /> 2</div>
+          <div style={{ background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.1)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(44,36,22,0.4)", marginBottom: 4 }}>Party</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#2C2416" }}><Icon.Users /> 2</div>
           </div>
-          <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 9px" }}>
-            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Est. Wait</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#22c55e" }}><Icon.Clock /> ~{wait}m</div>
+          <div style={{ background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.1)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(44,36,22,0.4)", marginBottom: 4 }}>Est. Wait</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#9C6230" }}><Icon.Clock /> ~{wait}m</div>
           </div>
         </div>
 
-        {/* Message card — dark, like real page */}
-        <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "7px 10px" }}>
-          <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", lineHeight: 1.55 }}>
+        {/* Message card */}
+        <div style={{ background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.08)", borderRadius: 8, padding: "7px 10px" }}>
+          <div style={{ fontSize: 8, color: "rgba(44,36,22,0.55)", lineHeight: 1.55 }}>
             {isClose ? "Sit tight — we're moving fast!" : "Your spot is saved — feel free to step out."}
           </div>
         </div>
@@ -915,13 +915,13 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
 
       {/* Footer — menu button + leave link + footer text */}
       <div style={{ padding: "0 16px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-        <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.65)" }}>
+        <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.15)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(44,36,22,0.7)" }}>
           View Menu
         </div>
-        <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.22)", letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 0" }}>
+        <div style={{ textAlign: "center", fontSize: 7, color: "rgba(44,36,22,0.35)", letterSpacing: "0.08em", textTransform: "uppercase", padding: "2px 0" }}>
           Leave &amp; Rejoin Later
         </div>
-        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(255,255,255,0.1)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
+        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(44,36,22,0.25)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
           Updates automatically · HOST
         </div>
       </div>
@@ -932,49 +932,49 @@ function WaitScreen({ position, wait, progress }: { position: number; wait: numb
 /* ─── Ready Screen (stage 3) ───────────────────────────────── */
 function ReadyScreen() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#EDE8DF", overflow: "hidden" }}>
       {/* Dynamic island spacer */}
       <div style={{ height: 26, flexShrink: 0 }} />
       {/* HOST wordmark — top center */}
       <div style={{ padding: "4px 16px 0", flexShrink: 0, textAlign: "center" }}>
-        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "#fff" }}>HOST</span>
+        <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(44,36,22,0.5)" }}>HOST</span>
       </div>
       {/* Restaurant name */}
-      <div style={{ textAlign: "center", fontSize: 7, color: "rgba(255,255,255,0.35)", letterSpacing: "0.06em", paddingTop: 1, flexShrink: 0 }}>
-        Sal&apos;s Bar &amp; Grill
+      <div style={{ textAlign: "center", fontSize: 7, color: "rgba(44,36,22,0.5)", letterSpacing: "0.06em", paddingTop: 1, flexShrink: 0 }}>
+        Rosewood Tavern
       </div>
 
       {/* Main content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "0 16px", justifyContent: "center", gap: 8 }}>
-        {/* Green pulsing circle */}
-        <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(34,197,94,0.12)", border: "2px solid rgba(34,197,94,0.45)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e" }}>
+        {/* Bronze pulsing circle */}
+        <div style={{ width: 60, height: 60, borderRadius: "50%", background: "rgba(200,144,96,0.18)", border: "2px solid rgba(200,144,96,0.55)", display: "flex", alignItems: "center", justifyContent: "center", color: "#9C6230" }}>
           <Icon.CheckCircle />
         </div>
 
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 3 }}>Your table is ready!</div>
-          <div style={{ fontSize: 10, color: "#22c55e", fontWeight: 600 }}>Head to the host stand</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#2C2416", marginBottom: 3 }}>Your table is ready!</div>
+          <div style={{ fontSize: 10, color: "#9C6230", fontWeight: 600 }}>Head to the host stand</div>
         </div>
 
-        {/* Full green progress bar */}
+        {/* Full bronze progress bar */}
         <div style={{ width: "100%" }}>
-          <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(255,255,255,0.07)", overflow: "hidden", marginBottom: 4 }}>
-            <div style={{ width: "100%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #22c55e, #86efac)" }} />
+          <div style={{ width: "100%", height: 5, borderRadius: 99, background: "rgba(44,36,22,0.1)", overflow: "hidden", marginBottom: 4 }}>
+            <div style={{ width: "100%", height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #C89060, #E0B583)" }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(255,255,255,0.25)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 6.5, color: "rgba(44,36,22,0.3)" }}>
             <span>Arrived</span><span>Seated</span>
           </div>
         </div>
 
         {/* PARTY | Now stat cards */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, width: "100%" }}>
-          <div style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "7px 9px" }}>
-            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Party</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#fff" }}><Icon.Users /> 2</div>
+          <div style={{ background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.1)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(44,36,22,0.4)", marginBottom: 4 }}>Party</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#2C2416" }}><Icon.Users /> 2</div>
           </div>
-          <div style={{ background: "#141414", border: "1px solid rgba(34,197,94,0.2)", borderRadius: 8, padding: "7px 9px" }}>
-            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 4 }}>Wait</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#22c55e" }}><Icon.Clock /> Now</div>
+          <div style={{ background: "rgba(200,144,96,0.12)", border: "1px solid rgba(200,144,96,0.3)", borderRadius: 8, padding: "7px 9px" }}>
+            <div style={{ fontSize: 6.5, letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(44,36,22,0.4)", marginBottom: 4 }}>Wait</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, fontWeight: 700, fontSize: 13, color: "#9C6230" }}><Icon.Clock /> Now</div>
           </div>
         </div>
 
@@ -982,10 +982,10 @@ function ReadyScreen() {
 
       {/* Footer — menu button + footer text */}
       <div style={{ padding: "0 16px 10px", flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-        <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(255,255,255,0.65)" }}>
+        <div style={{ height: 26, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.15)", borderRadius: 8, fontSize: 7.5, fontWeight: 600, color: "rgba(44,36,22,0.7)" }}>
           View Menu
         </div>
-        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(255,255,255,0.1)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
+        <div style={{ textAlign: "center", fontSize: 6.5, color: "rgba(44,36,22,0.25)", letterSpacing: "0.16em", textTransform: "uppercase" }}>
           Updates automatically · HOST
         </div>
       </div>
@@ -996,37 +996,37 @@ function ReadyScreen() {
 /* ─── Seated Screen (stage 4) ──────────────────────────────── */
 function SeatedScreen() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#000", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#EDE8DF", overflow: "hidden" }}>
       {/* Dynamic island spacer */}
       <div style={{ height: 26, flexShrink: 0 }} />
       {/* HOST wordmark top center */}
       <div style={{ padding: "3px 12px 0", flexShrink: 0, textAlign: "center" }}>
-        <span style={{ fontSize: 7, fontWeight: 900, letterSpacing: "0.3em", color: "#fff", textTransform: "uppercase" }}>HOST</span>
+        <span style={{ fontSize: 7, fontWeight: 900, letterSpacing: "0.3em", color: "rgba(44,36,22,0.5)", textTransform: "uppercase" }}>HOST</span>
       </div>
       {/* Center content */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "0 16px", gap: 8 }}>
         {/* Restaurant logo */}
         <div style={{ position: "relative", width: 52, height: 52 }}>
-          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(212,170,90,0.55)" }} />
-          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#1e1408,#0d0902)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <span style={{ fontSize: 18, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif" }}>S</span>
-            <span style={{ fontSize: 4, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.65)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>B&amp;G</span>
+          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(156,98,48,0.5)" }} />
+          <div style={{ position: "absolute", inset: 3, borderRadius: "50%", background: "linear-gradient(160deg,#3a2a18,#241608)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontSize: 18, fontWeight: 900, color: "#d4aa5a", lineHeight: 1, fontFamily: "Georgia, serif" }}>R</span>
+            <span style={{ fontSize: 3.5, fontWeight: 700, letterSpacing: "0.2em", color: "rgba(212,170,90,0.7)", textTransform: "uppercase", lineHeight: 1, marginTop: 1 }}>TAVERN</span>
           </div>
         </div>
-        <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: "0.06em" }}>Sal&apos;s Bar &amp; Grill</div>
-        <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing: "-0.02em", lineHeight: 1.15, marginTop: 6 }}>Enjoy your meal!</div>
+        <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(44,36,22,0.6)", letterSpacing: "0.06em" }}>Rosewood Tavern</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#2C2416", letterSpacing: "-0.02em", lineHeight: 1.15, marginTop: 6 }}>Enjoy your meal!</div>
       </div>
       {/* Review card */}
       <div style={{ padding: "0 14px 16px", flexShrink: 0 }}>
-        <div style={{ background: "#141414", border: "1px solid #2a2a2a", borderRadius: 12, padding: "10px 12px" }}>
-          <div style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", textAlign: "center", marginBottom: 7 }}>How was your wait?</div>
+        <div style={{ background: "rgba(44,36,22,0.05)", border: "1px solid rgba(44,36,22,0.12)", borderRadius: 12, padding: "10px 12px" }}>
+          <div style={{ fontSize: 6.5, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(44,36,22,0.4)", textAlign: "center", marginBottom: 7 }}>How was your wait?</div>
           <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 9 }}>
             {[1,2,3,4,5].map(i => (
-              <span key={i} style={{ fontSize: 16, color: "#f59e0b", lineHeight: 1 }}>★</span>
+              <span key={i} style={{ fontSize: 16, color: "#E0A93B", lineHeight: 1 }}>★</span>
             ))}
           </div>
-          <div style={{ background: "#22c55e", borderRadius: 8, padding: "7px 8px", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-            <span style={{ fontSize: 6.5, fontWeight: 800, color: "#000", letterSpacing: "0.02em", lineHeight: 1.3 }}>Leave Sal&apos;s Bar &amp; Grill a review!</span>
+          <div style={{ background: "#C89060", borderRadius: 8, padding: "7px 8px", display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
+            <span style={{ fontSize: 6.5, fontWeight: 800, color: "#2C2416", letterSpacing: "0.02em", lineHeight: 1.3 }}>Leave Rosewood Tavern a review!</span>
           </div>
         </div>
       </div>
@@ -1074,7 +1074,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "How much does HOST cost?",
-    a: "Single location: $149/month. Multiple locations: $129/month per location. No setup fees, no per-cover charges, no surprises. Your first month is completely free — no credit card required to start. Cancel anytime.",
+    a: "Single location: $149/month, which includes 2,500 guest texts — then it's just $0.20 per text after that. Multiple locations: $129/month per location, each with its own 2,500 texts included and the same $0.20 per text after. No setup fees, no per-cover charges, no surprises. Your first month is completely free — no credit card required to start. Cancel anytime.",
   },
 ]
 
@@ -1509,6 +1509,12 @@ export default function MarketingPage() {
         .ghost-btn:hover { background:rgba(255,255,255,.06)!important; color:#fff!important; transform:translateY(-1px); }
         .feat-card { transition:background .2s,transform .2s,box-shadow .2s; }
         .feat-card:hover { background:rgba(255,255,255,.03)!important; transform:translateY(-3px); box-shadow:0 16px 50px rgba(0,0,0,.5); }
+        .price-card { border:1px solid rgba(255,255,255,0.1); transition:border-color .2s,transform .2s,box-shadow .2s; }
+        .price-card:hover { border-color:rgba(34,197,94,0.4); transform:translateY(-3px); box-shadow:0 16px 50px rgba(0,0,0,.5); }
+        .price-top-bar { opacity:0; transition:opacity .2s; }
+        .price-card:hover .price-top-bar { opacity:1; }
+        .price-label { color:rgba(255,255,255,0.35); transition:color .2s; }
+        .price-card:hover .price-label { color:#22c55e; }
         html { scroll-behavior:smooth; }
         ::-webkit-scrollbar { width:4px; }
         ::-webkit-scrollbar-track { background:#060606; }
@@ -1583,7 +1589,8 @@ export default function MarketingPage() {
           </div>
           <div style={{ animation: "herofade 0.6s ease 0.22s both" }}>
             <p style={{ fontSize: "clamp(1rem,1.45vw,1.1rem)", color: "rgba(255,255,255,0.46)", lineHeight: 1.7, margin: "0 auto 32px", maxWidth: 480 }}>
-              Give walk-in guests a live queue they can track from their phone. Fewer no-shows, shorter perceived waits, more covers seated every night.
+              Guests tap or scan to get in line, they receive live status updates, and are texted when their table is ready!
+              <span style={{ display: "block", marginTop: 12 }}>No buzzers. No clipboard. No shouting names.</span>
             </p>
           </div>
           <div style={{ animation: "herofade 0.6s ease 0.34s both", display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
@@ -1599,8 +1606,6 @@ export default function MarketingPage() {
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0, boxShadow: "0 0 8px rgba(34,197,94,0.6)" }} />
               First month free
             </span>
-            <span style={{ color: "rgba(255,255,255,0.1)", fontSize: ".9rem" }}>·</span>
-            <span style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>from $149 / month</span>
             <span style={{ color: "rgba(255,255,255,0.1)", fontSize: ".9rem" }}>·</span>
             <span style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.38)", padding: "0 18px" }}>Cancel anytime</span>
           </div>
@@ -1626,8 +1631,7 @@ export default function MarketingPage() {
               how HOST works
             </div>
             <h2 style={{ fontSize: "clamp(2rem,4vw,3rem)", fontWeight: 900, letterSpacing: "-0.035em", lineHeight: 1.08, margin: 0 }}>
-              Simple by design.{" "}
-              <em className="serif-italic" style={{ fontWeight: 700, fontSize: "1.06em", color: "#22c55e" }}>Fast by default.</em>
+              Two seconds to join. One tap to seat.
             </h2>
           </div>
 
@@ -1727,28 +1731,28 @@ export default function MarketingPage() {
               {
                 stat: "1 in 3",
                 label: "diners have walked out because the wait felt uncertain or disorganized",
-                blurb: "A 2025 survey of 1,000 U.S. diners found that 33% have walked out before being seated — not because the food was bad, but because the wait felt chaotic. The guest was already there. Without a system to manage that gap, the cover simply disappeared.",
+                blurb: "You've watched it happen. A party lingers near the door, nobody gets to them, and a minute later they're gone. They were ready to spend — the wait just felt like a gamble. A line they can actually see is usually all it takes to keep them.",
                 source: "Lightspeed Commerce, 2025",
                 sourceUrl: "https://www.lightspeedhq.com/news/dinner-never-mind-a-third-of-diners-are-walking-out-before-the-meal-arrives-due-to-inconsistent-service/",
               },
               {
                 stat: "$135+",
                 label: "in revenue gone every time a party walks out before they're seated",
-                blurb: "The average full-service restaurant guest spends $54 per visit, according to a Harris Poll survey of 1,500 diners. Multiply that by a typical party of 2–3 guests and a single walkout quietly costs $135 or more — before you count drinks, dessert, or the tip. That's happening multiple times every busy night.",
+                blurb: "Every walkout is a check that never hits the table. Figure two or three guests at fifty-some dollars a head — before drinks, dessert, or the tip — and a single party out the door is well over $135 gone. On a busy night that happens again and again, quietly.",
                 source: "TouchBistro / The Harris Poll, 2025",
                 sourceUrl: "https://www.touchbistro.com/press-releases/touchbistro-2025-american-diner-trends-report-shows-resilience-in-consumer-habits-signaling-optimism-for-restaurants/",
               },
               {
                 stat: "20 min",
                 label: "is all it takes — guests abandon a waitlist after 20 minutes with no status update",
-                blurb: "Toast analyzed real transaction data across thousands of restaurants and found that waitlisted guests typically walk out after just 20 minutes without an update. It's rarely the wait itself that drives them away — it's the silence. Guests who can't see where they stand in line simply leave.",
+                blurb: "It's almost never the wait that loses them — it's the silence. Standing there with no idea whether it's five more minutes or forty, most guests give up around the twenty-minute mark. Show them exactly where they stand and they'll happily keep waiting.",
                 source: "Toast Restaurant Trends, 2024",
                 sourceUrl: "https://pos.toasttab.com/blog/on-the-line/restaurant-waitlist-data",
               },
               {
                 stat: "34%",
                 label: "of guests say they will never return after just one bad experience",
-                blurb: "An Oracle study of 1,143 U.S. consumers found that 34% would never return to a business after a single bad experience. In a world where guests leave reviews and pick restaurants in seconds, one chaotic night at the host stand isn't just a lost table — it's a permanently closed door.",
+                blurb: "One rough night at the door doesn't just cost you that table. A third of guests never come back after a single bad experience — and plenty leave a review on the way out. The host stand is the first thing a guest feels, and the easiest thing to get right.",
                 source: "Oracle / H+K Strategies, 2019",
                 sourceUrl: "https://www.oracle.com/corporate/pressrelease/jeanne-bliss-customer-experience-073019.html",
               },
@@ -1813,13 +1817,13 @@ export default function MarketingPage() {
               The solution
             </div>
             <h2 style={{ fontSize: "clamp(1.5rem,3vw,2.1rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.1, margin: 0, color: "#fff" }}>
-              With HOST, every one of these goes away.
+              With HOST, those problems disappear.
             </h2>
           </div>
           <div className="stats-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: "rgba(34,197,94,0.08)", borderRadius: 20, overflow: "hidden", border: "1px solid rgba(34,197,94,0.12)" }}>
             {[
               { n: 2, s: " sec", l: "to join with a tap or scan" },
-              { n: 5, s: " sec", l: "for a host to notify, seat, or remove a party" },
+              { n: 1, s: " tap", l: "to notify, seat, or remove a party" },
               { n: 0, s: "", l: "app downloads required" },
               { n: 45, s: " min", l: "from onboarding call to live on your floor" },
             ].map(s => (
@@ -1864,25 +1868,25 @@ export default function MarketingPage() {
               {
                 Icon: Icon.Nfc, title: "NFC Tap & QR Join",
                 sub: "Guests tap the NFC puck or scan a QR code. On the list in two seconds. No app, no URL.",
-                detail: "The HOST puck lives at your host stand. Guests hold their phone over it — no app, no URL, no typing. The moment they tap, they're in your queue and receive a link to their live wait page. A QR code is printed on the puck as a backup. Every join is timestamped and logged to your dashboard in real time.",
+                detail: "Put the puck on a sign by your door. A guest holds their phone near it — or scans the QR — and they're on your list before they reach the host stand. No app to download, no URL to type, no clipboard to hunt down. Every join lands on your dashboard the instant it happens.",
                 bullets: ["Works on every modern iPhone and Android", "No app install required — ever", "QR backup always available at the stand", "Every join is timestamped and logged"],
               },
               {
                 Icon: Icon.Message, title: "SMS Notifications",
                 sub: "A text fires the moment their table is called, plus their live page tells them to head to the host stand.",
-                detail: "When you call a party, HOST fires an SMS to the guest instantly. The message includes a link to their live wait page which flips to 'head to the host stand.' No buzzers, no shouting names, no manual texting. Guests can step out, grab a drink, and come back right when you're ready for them.",
+                detail: "When you're ready for a party, tap their name. They get a text that their table's up, and their live page switches to 'head to the host stand.' They can wait at the bar or down the block and know the second it's time. No buzzers to chase down, no names shouted across a full room.",
                 bullets: ["Instant text the moment you call their table", "Live status page updates in real time", "No buzzer hardware to manage or replace", "Guests stay close — they know exactly when to return"],
               },
               {
                 Icon: Icon.Monitor, title: "Host Dashboard",
                 sub: "iPad-first. The whole queue, table map, and controls in one view.",
-                detail: "Built for the iPad at your host stand. The live queue shows every party in order — wait time, party size, and how they joined. The floor plan shows real-time table availability. One tap to notify, one tap to seat, one tap to remove. No training required — your staff is running it within minutes.",
+                detail: "Your iPad shows the whole night at a glance — every party in line, how long they've waited, and which tables are open right now. Notify, seat, or remove anyone in a single tap. It's simple enough that your hosts pick it up on their first shift.",
                 bullets: ["iPad-first, designed for the host stand", "Live queue + table map in one view", "One-tap notify, seat, or remove", "Full shift history after every service"],
               },
               {
                 Icon: Icon.BarChart, title: "Shift Insights",
                 sub: "See your peak times, average turns, and party flow after every service.",
-                detail: "After each service, HOST compiles your shift data automatically. See your busiest hour, average wait time by party size, turn time per table, and how many guests joined via NFC vs QR. No setup needed — the data is captured the moment HOST goes live at your restaurant.",
+                detail: "After every service you get the numbers that actually matter — your busiest stretch, average wait by party size, how fast tables turn, and whether guests joined by tap or scan. Nothing to set up and nothing to enter by hand. It's just there when the shift ends.",
                 bullets: ["Busiest periods by day and time", "Average wait and turn time tracking", "Party size and entry source breakdown", "No manual data entry — ever"],
               },
             ]
@@ -2047,8 +2051,9 @@ export default function MarketingPage() {
           <div className="pricing-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
 
             {/* Single location */}
-            <div style={{ background: "#0d0f11", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 20, padding: "40px 36px" }}>
-              <div style={{ fontSize: ".7rem", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(255,255,255,0.35)", marginBottom: 20 }}>Single Location</div>
+            <div className="price-card" style={{ background: "#0d0f11", borderRadius: 20, padding: "40px 36px", position: "relative", overflow: "hidden" }}>
+              <div className="price-top-bar" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #22c55e, #16a34a)" }} />
+              <div className="price-label" style={{ fontSize: ".7rem", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 20 }}>Single Location</div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: "3.4rem", fontWeight: 900, letterSpacing: "-0.05em", color: "#fff", lineHeight: 1 }}>$149</span>
                 <span style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>/month</span>
@@ -2056,8 +2061,9 @@ export default function MarketingPage() {
               <p style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.32)", marginBottom: 32, lineHeight: 1.65 }}>One restaurant. One host stand. Unlimited guests per night.</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 36 }}>
                 {[
+                  "2,500 guest texts included every month",
+                  "$0.20 per text after that",
                   "NFC puck + QR code included at launch",
-                  "Guest SMS when their table is ready",
                   "Live queue + floor plan on your iPad",
                   "Shift analytics after every service",
                   "Unlimited parties per night",
@@ -2074,9 +2080,9 @@ export default function MarketingPage() {
             </div>
 
             {/* Multi-location */}
-            <div style={{ background: "#0d0f11", border: "1px solid rgba(34,197,94,0.3)", borderRadius: 20, padding: "40px 36px", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #22c55e, #16a34a)" }} />
-              <div style={{ fontSize: ".7rem", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#22c55e", marginBottom: 20 }}>Multi-Location</div>
+            <div className="price-card" style={{ background: "#0d0f11", borderRadius: 20, padding: "40px 36px", position: "relative", overflow: "hidden" }}>
+              <div className="price-top-bar" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, background: "linear-gradient(90deg, #22c55e, #16a34a)" }} />
+              <div className="price-label" style={{ fontSize: ".7rem", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", marginBottom: 20 }}>Multi-Location</div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 8 }}>
                 <span style={{ fontSize: "3.4rem", fontWeight: 900, letterSpacing: "-0.05em", color: "#fff", lineHeight: 1 }}>$129</span>
                 <span style={{ fontSize: ".88rem", color: "rgba(255,255,255,0.3)", marginBottom: 10 }}>/location/month</span>
@@ -2084,11 +2090,11 @@ export default function MarketingPage() {
               <p style={{ fontSize: ".83rem", color: "rgba(255,255,255,0.32)", marginBottom: 32, lineHeight: 1.65 }}>Two or more locations. Same system, lower rate per door.</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 13, marginBottom: 36 }}>
                 {[
-                  "Everything in Single",
-                  "Separate host dashboard per location",
+                  "Everything in Single, at every location",
+                  "2,500 texts included per location / month",
+                  "$0.20 per text after that, per location",
                   "Owner-level view across all locations",
                   "We onboard each new location for you",
-                  "Scales with you as you grow",
                 ].map(f => (
                   <div key={f} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: ".85rem", color: "rgba(255,255,255,0.48)" }}>
                     <span style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "#22c55e", flexShrink: 0 }}><Icon.Check /></span>
