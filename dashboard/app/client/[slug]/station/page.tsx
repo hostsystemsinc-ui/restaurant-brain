@@ -880,7 +880,7 @@ function DraggableQueueCard({
       style={{
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
-        touchAction: "none",
+        touchAction: "pan-y",
         background: isSelected ? "rgba(255,220,100,0.09)" : isReady ? "rgba(34,197,94,0.10)" : "rgba(var(--accent),0.06)",
         border: `1px solid ${isSelected ? "rgba(255,220,100,0.55)" : isReady ? "rgba(34,197,94,0.30)" : "rgba(var(--accent),0.16)"}`,
         boxShadow: isSelected ? "0 0 0 2px rgba(255,220,100,0.18), inset 0 0 10px rgba(255,220,100,0.05)" : undefined,
@@ -2455,7 +2455,7 @@ function DraggableResCard({
       style={{
         transform: CSS.Translate.toString(transform),
         opacity: isDragging ? 0.35 : 1,
-        touchAction: "none",
+        touchAction: "pan-y",
         display: "flex",
         flexDirection: "column",
         gap: 0,
