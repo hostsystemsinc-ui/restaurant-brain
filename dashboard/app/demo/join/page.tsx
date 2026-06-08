@@ -301,7 +301,7 @@ export default function DemoJoinPage() {
             autoComplete="tel"
             style={{ width: "100%", background: "#111", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 13, padding: "13px 15px", color: "#fff", fontSize: ".95rem", boxSizing: "border-box", caretColor: "white" }} />
           <p style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 6 }}>
-            By providing your number you agree to receive SMS updates. Reply STOP to opt out.
+            By providing your number, you agree to receive an SMS from the restaurant (via HOST) when your table is ready — about one message per visit. Message and data rates may apply. Reply STOP to opt out, HELP for help.
           </p>
         </div>
       </div>
