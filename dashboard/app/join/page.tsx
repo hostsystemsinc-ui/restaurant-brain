@@ -272,7 +272,7 @@ export default function JoinPage() {
           />
           {phone.trim() && (
             <p style={{ fontSize: 10, color: TXT3, marginTop: 4 }}>
-              By providing your number, you agree to receive an SMS from the restaurant (via HOST) when your table is ready — about one message per visit. Message and data rates may apply. Reply STOP to opt out, HELP for help.
+              By providing your number, you agree to receive SMS updates from the restaurant (via HOST) about your spot in line and when your table is ready — message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help.
             </p>
           )}
         </div>

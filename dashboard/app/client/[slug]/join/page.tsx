@@ -359,7 +359,7 @@ function ClientJoinInner() {
           <input className="jw-input" type="tel" placeholder="(720) 000-0000" value={phone}
             onChange={e => setPhone(formatPhone(e.target.value))} onKeyDown={e => e.key === "Enter" && join()} autoComplete="tel"
             style={{ width: "100%", borderRadius: 13, padding: "13px 15px", fontSize: ".95rem", boxSizing: "border-box" as const, caretColor: TXT }} />
-          <p style={{ fontSize: 10, color: TXT3, marginTop: 5, lineHeight: 1.4 }}>By providing your number, you agree to receive an SMS from the restaurant (via HOST) when your table is ready — about one message per visit. Message and data rates may apply. Reply STOP to opt out, HELP for help.</p>
+          <p style={{ fontSize: 10, color: TXT3, marginTop: 5, lineHeight: 1.4 }}>By providing your number, you agree to receive SMS updates from the restaurant (via HOST) about your spot in line and when your table is ready — message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help.</p>
         </div>
       </div>
 

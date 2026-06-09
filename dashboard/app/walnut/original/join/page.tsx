@@ -317,7 +317,7 @@ function OriginalJoinInner() {
             autoComplete="tel"
             style={{ width: "100%", borderRadius: 13, padding: "13px 15px", color: DARK, fontSize: ".95rem", boxSizing: "border-box", caretColor: DARK }} />
           <p style={{ fontSize: 10, color: DARK3, marginTop: 6 }}>
-            By providing your number, you agree to receive an SMS from the restaurant (via HOST) when your table is ready — about one message per visit. Message and data rates may apply. Reply STOP to opt out, HELP for help.
+            By providing your number, you agree to receive SMS updates from the restaurant (via HOST) about your spot in line and when your table is ready — message frequency varies. Message and data rates may apply. Reply STOP to opt out, HELP for help.
           </p>
         </div>
       </div>
